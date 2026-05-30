@@ -14,7 +14,8 @@ import { OdontogramState, normalizeLegacyStateId, getStateById, STATE_FILLS } fr
 import StateConditionModal, { DentalCondition } from './odontogram/StateConditionModal';
 
 // ── Types ──
-interface SurfaceStates { occlusal: string; vestibular: string; lingual: string; mesial: string; distal: string; }
+interface SurfaceDetail { state: string; condition?: string | null; color?: string | null; }
+interface SurfaceStates { occlusal: SurfaceDetail; vestibular: SurfaceDetail; lingual: SurfaceDetail; mesial: SurfaceDetail; distal: SurfaceDetail; }
 interface ToothState { id: number; state: string; surfaces: SurfaceStates; notes: string; }
 interface OdontogramProps { patientId: number; recordId?: number; initialData?: any; onSave?: (data: any) => void; readOnly?: boolean; }
 
@@ -30,7 +31,8 @@ const DECID_LOWER_LEFT  = [71,72,73,74,75];
 const ALL_PERMANENT = [...PERM_UPPER_RIGHT,...PERM_UPPER_LEFT,...PERM_LOWER_RIGHT,...PERM_LOWER_LEFT];
 const ALL_DECIDUOUS = [...DECID_UPPER_RIGHT,...DECID_UPPER_LEFT,...DECID_LOWER_RIGHT,...DECID_LOWER_LEFT];
 
-const DEFAULT_SURFACES: SurfaceStates = { occlusal:'healthy', vestibular:'healthy', lingual:'healthy', mesial:'healthy', distal:'healthy' };
+const defSurface = (s = 'healthy'): SurfaceDetail => ({ state: s, condition: null, color: null });
+const DEFAULT_SURFACES: SurfaceStates = { occlusal:defSurface(), vestibular:defSurface(), lingual:defSurface(), mesial:defSurface(), distal:defSurface() };
 const SURFACE_KEYS: SurfaceName[] = ['occlusal','vestibular','lingual','mesial','distal'];
 
 // ── Dental context data ──
@@ -73,7 +75,7 @@ const FDI_NAMES: Record<number, string> = {
 function buildDefaultTeeth(ids: number[]): ToothState[] { return ids.map(id => ({ id, state:'healthy', surfaces:{...DEFAULT_SURFACES}, notes:'' })); }
 function fdiLabel(id: number): string { return `${Math.floor(id/10)}.${id%10}`; }
 function computeToothState(surfaces: SurfaceStates): string {
-  const nh = new Set(Object.values(surfaces).filter(s => s !== 'healthy'));
+  const nh = new Set(Object.values(surfaces).filter(s => s.state !== 'healthy').map(s => s.state));
   return nh.size === 1 ? [...nh][0] : 'healthy';
 }
 
@@ -89,11 +91,15 @@ function normalizeToothData(raw: any, allIds: number[]): ToothState[] {
     if (t.surfaces && typeof t.surfaces === 'object') {
       for (const sk of SURFACE_KEYS) {
         const sv = t.surfaces[sk];
-        if (sv && typeof sv === 'object' && sv.state) tooth.surfaces[sk] = normalizeLegacyStateId(sv.state);
-        else if (sv && typeof sv === 'string') tooth.surfaces[sk] = normalizeLegacyStateId(sv);
-        else tooth.surfaces[sk] = state;
+        if (sv && typeof sv === 'object' && sv.state) {
+          tooth.surfaces[sk] = { state: normalizeLegacyStateId(sv.state), condition: sv.condition || null, color: sv.color || null };
+        } else if (sv && typeof sv === 'string') {
+          tooth.surfaces[sk] = defSurface(normalizeLegacyStateId(sv));
+        } else {
+          tooth.surfaces[sk] = defSurface(state);
+        }
       }
-    } else { for (const sk of SURFACE_KEYS) tooth.surfaces[sk] = state; }
+    } else { for (const sk of SURFACE_KEYS) tooth.surfaces[sk] = defSurface(state); }
   }
   return Array.from(map.values());
 }
@@ -213,9 +219,11 @@ export default function Odontogram({ patientId, recordId, initialData, onSave, r
 
   const handleConditionApply = (condition: DentalCondition, color: string) => {
     if (!selectedTooth || !selectedSurface || !pendingState) return;
+    const effectiveColor = color !== pendingState.defaultColor ? color : null;
     setTeeth(prev => prev.map(tooth => {
       if (tooth.id !== selectedTooth) return tooth;
-      const ns = { ...tooth.surfaces }; ns[selectedSurface!] = pendingState.id;
+      const ns = { ...tooth.surfaces };
+      ns[selectedSurface!] = { state: pendingState.id, condition, color: effectiveColor };
       return { ...tooth, state: computeToothState(ns), surfaces: ns };
     }));
     markChanged(selectedTooth);
@@ -256,7 +264,8 @@ export default function Odontogram({ patientId, recordId, initialData, onSave, r
   const upperLeft = activeDentition === 'permanent' ? PERM_UPPER_LEFT : DECID_UPPER_LEFT;
   const lowerRight = activeDentition === 'permanent' ? PERM_LOWER_RIGHT : DECID_LOWER_RIGHT;
   const lowerLeft = activeDentition === 'permanent' ? PERM_LOWER_LEFT : DECID_LOWER_LEFT;
-  const currentSurfaceState = selectedToothData && selectedSurface ? selectedToothData.surfaces[selectedSurface] : 'healthy';
+  const currentSurfaceDetail = selectedToothData && selectedSurface ? selectedToothData.surfaces[selectedSurface] : defSurface();
+  const currentSurfaceState = typeof currentSurfaceDetail === 'string' ? currentSurfaceDetail : currentSurfaceDetail.state;
 
   const renderTeethRow = (ids: number[], numbersBelow: boolean) => (
     <div className="flex gap-px sm:gap-1">
@@ -268,7 +277,7 @@ export default function Odontogram({ patientId, recordId, initialData, onSave, r
             {!numbersBelow && <span className={`text-[7px] sm:text-[10px] font-bold mb-px select-none transition-colors ${isSelected ? 'text-blue-400' : 'text-white/30'}`}>{fdiLabel(id)}</span>}
             <ToothSVG toothId={id} state={tooth.state} isSelected={isSelected} readOnly={readOnly}
               onClick={() => handleToothClick(id)} justChanged={changedTeeth.has(id)}
-              surfaceStates={tooth.surfaces as Record<SurfaceName, string>} />
+              surfaceStates={tooth.surfaces as unknown as Record<SurfaceName, import('./odontogram/ToothSVG').SurfaceDetail>} />
             {numbersBelow && <span className={`text-[7px] sm:text-[10px] font-bold mt-px select-none transition-colors ${isSelected ? 'text-blue-400' : 'text-white/30'}`}>{fdiLabel(id)}</span>}
           </div>
         );

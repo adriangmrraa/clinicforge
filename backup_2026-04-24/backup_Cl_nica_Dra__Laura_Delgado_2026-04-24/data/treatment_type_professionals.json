@@ -1,0 +1,191 @@
+[
+  {
+    "id": 138,
+    "tenant_id": 1,
+    "treatment_type_id": 41,
+    "professional_id": 2,
+    "created_at": "2026-04-12T02:03:23.674950+00:00"
+  },
+  {
+    "id": 139,
+    "tenant_id": 1,
+    "treatment_type_id": 43,
+    "professional_id": 2,
+    "created_at": "2026-04-12T02:09:33.116435+00:00"
+  },
+  {
+    "id": 140,
+    "tenant_id": 1,
+    "treatment_type_id": 44,
+    "professional_id": 2,
+    "created_at": "2026-04-12T02:13:11.298039+00:00"
+  },
+  {
+    "id": 143,
+    "tenant_id": 1,
+    "treatment_type_id": 29,
+    "professional_id": 2,
+    "created_at": "2026-04-12T03:52:20.475806+00:00"
+  },
+  {
+    "id": 145,
+    "tenant_id": 1,
+    "treatment_type_id": 37,
+    "professional_id": 2,
+    "created_at": "2026-04-12T03:55:52.409963+00:00"
+  },
+  {
+    "id": 146,
+    "tenant_id": 1,
+    "treatment_type_id": 36,
+    "professional_id": 2,
+    "created_at": "2026-04-12T03:56:26.655052+00:00"
+  },
+  {
+    "id": 151,
+    "tenant_id": 1,
+    "treatment_type_id": 28,
+    "professional_id": 2,
+    "created_at": "2026-04-12T16:23:15.047351+00:00"
+  },
+  {
+    "id": 154,
+    "tenant_id": 1,
+    "treatment_type_id": 42,
+    "professional_id": 2,
+    "created_at": "2026-04-12T16:54:54.242127+00:00"
+  },
+  {
+    "id": 157,
+    "tenant_id": 1,
+    "treatment_type_id": 48,
+    "professional_id": 2,
+    "created_at": "2026-04-12T19:45:07.335479+00:00"
+  },
+  {
+    "id": 158,
+    "tenant_id": 1,
+    "treatment_type_id": 47,
+    "professional_id": 2,
+    "created_at": "2026-04-12T19:45:56.145471+00:00"
+  },
+  {
+    "id": 159,
+    "tenant_id": 1,
+    "treatment_type_id": 32,
+    "professional_id": 23,
+    "created_at": "2026-04-20T22:16:42.219656+00:00"
+  },
+  {
+    "id": 160,
+    "tenant_id": 1,
+    "treatment_type_id": 23,
+    "professional_id": 2,
+    "created_at": "2026-04-20T22:17:18.812580+00:00"
+  },
+  {
+    "id": 161,
+    "tenant_id": 1,
+    "treatment_type_id": 23,
+    "professional_id": 23,
+    "created_at": "2026-04-20T22:17:18.814460+00:00"
+  },
+  {
+    "id": 162,
+    "tenant_id": 1,
+    "treatment_type_id": 24,
+    "professional_id": 2,
+    "created_at": "2026-04-20T22:17:32.791347+00:00"
+  },
+  {
+    "id": 163,
+    "tenant_id": 1,
+    "treatment_type_id": 24,
+    "professional_id": 23,
+    "created_at": "2026-04-20T22:17:32.793851+00:00"
+  },
+  {
+    "id": 164,
+    "tenant_id": 1,
+    "treatment_type_id": 30,
+    "professional_id": 23,
+    "created_at": "2026-04-20T22:18:50.683105+00:00"
+  },
+  {
+    "id": 165,
+    "tenant_id": 1,
+    "treatment_type_id": 46,
+    "professional_id": 23,
+    "created_at": "2026-04-20T22:19:05.734787+00:00"
+  },
+  {
+    "id": 166,
+    "tenant_id": 1,
+    "treatment_type_id": 45,
+    "professional_id": 23,
+    "created_at": "2026-04-20T22:19:23.581346+00:00"
+  },
+  {
+    "id": 167,
+    "tenant_id": 1,
+    "treatment_type_id": 27,
+    "professional_id": 2,
+    "created_at": "2026-04-20T22:20:40.759025+00:00"
+  },
+  {
+    "id": 168,
+    "tenant_id": 1,
+    "treatment_type_id": 27,
+    "professional_id": 23,
+    "created_at": "2026-04-20T22:20:40.761185+00:00"
+  },
+  {
+    "id": 117,
+    "tenant_id": 1,
+    "treatment_type_id": 35,
+    "professional_id": 2,
+    "created_at": "2026-04-12T00:50:44.506624+00:00"
+  },
+  {
+    "id": 121,
+    "tenant_id": 1,
+    "treatment_type_id": 34,
+    "professional_id": 2,
+    "created_at": "2026-04-12T01:13:33.633652+00:00"
+  },
+  {
+    "id": 122,
+    "tenant_id": 1,
+    "treatment_type_id": 33,
+    "professional_id": 2,
+    "created_at": "2026-04-12T01:17:40.470378+00:00"
+  },
+  {
+    "id": 123,
+    "tenant_id": 1,
+    "treatment_type_id": 39,
+    "professional_id": 2,
+    "created_at": "2026-04-12T01:23:14.226265+00:00"
+  },
+  {
+    "id": 124,
+    "tenant_id": 1,
+    "treatment_type_id": 40,
+    "professional_id": 2,
+    "created_at": "2026-04-12T01:28:15.089123+00:00"
+  },
+  {
+    "id": 125,
+    "tenant_id": 1,
+    "treatment_type_id": 38,
+    "professional_id": 2,
+    "created_at": "2026-04-12T01:31:04.741442+00:00"
+  },
+  {
+    "id": 131,
+    "tenant_id": 1,
+    "treatment_type_id": 31,
+    "professional_id": 2,
+    "created_at": "2026-04-12T01:43:05.598327+00:00"
+  }
+]

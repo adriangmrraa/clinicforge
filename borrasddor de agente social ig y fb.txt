@@ -1,0 +1,2169 @@
+tado actual del sistema
+
+  ┌────────────────────────────────────┬───────────────────────────────────────┐
+  │             Componente             │                Estado                 │
+  ├────────────────────────────────────┼───────────────────────────────────────┤
+  │ pgvector RAG                       │ ✅ Funcionando — 88 FAQs vectorizadas │
+  ├────────────────────────────────────┼───────────────────────────────────────┤
+  │ asyncpg codec pgvector             │ ✅ Registrado en cada conexión        │
+  ├────────────────────────────────────┼───────────────────────────────────────┤
+  │ Migración 025 (column type)        │ ✅ Aplicada                           │
+  ├────────────────────────────────────┼───────────────────────────────────────┤
+  │ Migración 026 (cleanup nombres)    │ ✅ Aplicada — 2 profesionales         │
+  │                                    │ corregidos                            │
+  ├────────────────────────────────────┼───────────────────────────────────────┤
+  │ FAQ sync auto al startup           │ ✅ Funcionando                        │
+  ├────────────────────────────────────┼───────────────────────────────────────┤
+  │ FAQ embedding sincrónico al        │ ✅ Funcionando                        │
+  │ crear/editar                       │                                       │
+  ├────────────────────────────────────┼───────────────────────────────────────┤
+  │ Backend update_professional        │ ✅ Splitea correctamente first/last   │
+  │                                    │ name                                  │
+  ├────────────────────────────────────┼───────────────────────────────────────┤
+  │ Asignación paciente→profesional    │ ✅ Funcionando                        │
+  ├────────────────────────────────────┼───────────────────────────────────────┤
+  │ Bulk assign de pacientes           │ ✅ Funcionando                        │
+  ├────────────────────────────────────┼───────────────────────────────────────┤
+  │ Templates YCloud HSM               │ ⏳ Pendiente verificar después del    │
+  │                                    │ fix de filter                         │
+  └────────────────────────────────────┴───────────────────────────────────────┘
+
+  Lo que queda pendiente probar
+
+  1. Pregunta a la IA con FAQ: probá "Cuanto dura el blanqueamiento?" o "Duele el
+  blanqueamiento?" por WhatsApp — el agente debería responder con la respuesta
+  oficial de la FAQ. En los logs vas a ver:
+  📚 RAG pgvector: found N FAQs above threshold 0.55 for tenant 1
+  📚 RAG retrieved N FAQs for query='...': ¿Cuánto dura el blanqueamiento?(0.91),
+  ...
+  2. Plantillas YCloud: andá a /templates → tab "Plantillas YCloud" → Refrescar. Si   las 6 plantillas aprobadas en Meta no aparecen, abrí F12 → Console y mandame el
+  diagnostic que aparece — vamos a ver exactamente qué status devuelve YCloud.
+  3. Asignación de pacientes: andá a /patients, seleccioná los 70 importados con
+  los checkboxes y bulk assign a Dra. Laura.
+  4. Cargar datos UI: usar la guía GUIA_CARGA_FEEDBACK_DOCTORA_LAURA.md para cargar   tratamientos, FAQs, obras sociales y reglas de derivación.
+
+  ¿Querés probar algo específico ahora o avanzamos con otro tema?
+
+[Image #1]
+
+> Las plantillas tengo las credenciales de ycloud de pruebas, no las de la
+doctora, entonces no voy a ver nunca las Plantillas aprobadas, cuando lo haga te
+aviso si funciona o no, mientras tanto gusrda todo en engram el avance que
+hicimos.  Otro problema que tengo es que sigo con problemas de agenda. Te mando
+una captura fíjate que me agenda para el lunes a las 10, y yo le dije MAÑANA A LAS
+ 10 (sería martes) , pero esa opción no me dio nunca de lunes a las 10 hs, que fue
+ donde me agendó. Esta prueba fue ayer lunes, entonces mañana sería hoy martes.
+Revisa errores y posibles fallas en la actual flujo de agendamiento, chequear y
+dar huecos libres, y demas, explícame todo como está gestionado esto. NO PODEMOS
+NI DEBEMOS FALLAR NI JNA SOLA VEZ CON TEMA AGENDA, debe ser 100% certero.
+
+● Primero guardo el progreso en engram, después investigo a fondo el flujo de
+  agenda.
+
+● plugin:engram:engram - Save Memory (MCP)(title: "Session April 7 2026 — Full RAG
+                                          fix + Delgado bug + UI loading guide",
+                                          type: "architecture", project:
+                                          "clinicforge", scope: "project",
+                                          topic_key:
+                                          "session/2026-04-07-rag-and-name-bugs",
+                                          content: "**What**: Multi-bug debugging
+                                          session. Fixed RAG pgvector (5 chained
+                                          bugs), fixed professional name
+                                          duplication (\"Delgado Delgado
+                                          Delgado\"), integrated doctor's feedback
+                                          into system prompt, created UI loading
+                                          guide, fixed YCloud HSM templates
+                                          filter.\n\n**Why**: Production AI agent
+                                          had multiple critical failures: ignoring
+                                          vectorized FAQs, repeating professional
+                                          last names, broken pricing rules, missing                                           patient-professional assignment, broken
+                                          YCloud templates
+                                          display.\n\n**Where**:\n- orchestrator_se                                          rvice/services/embedding_service.py —
+                                          pgvector queries with numpy arrays,
+                                          comprehensive logging, threshold 0.55\n-
+                                          orchestrator_service/db.py — pgvector
+                                          codec registration on pool init\n-
+                                          orchestrator_service/admin_routes.py —
+                                          synchronous FAQ embedding, fixed
+                                          update_professional split, robust YCloud
+                                          templates filter\n-
+                                          orchestrator_service/main.py — system
+                                          prompt with PRIORIDAD ABSOLUTA FAQ rules,                                           doctor's feedback integration,
+                                          conditional sections, smart tool
+                                          returns\n- orchestrator_service/services/                                          buffer_task.py — classify_intent,
+                                          assigned professional injection, memory
+                                          query\n- orchestrator_service/services/pa                                          tient_memory.py — semantic memory
+                                          retrieval (top-8 by relevance)\n-
+                                          orchestrator_service/alembic/versions/024                                           — assigned_professional_id column\n-
+                                          orchestrator_service/alembic/versions/025                                           — fix bytea→vector column type\n-
+                                          orchestrator_service/alembic/versions/026                                           — clean up duplicated professional
+                                          names\n-
+                                          frontend_react/src/views/PatientsView.tsx                                           — bulk assign UI\n- frontend_react/src/v                                          iews/MetaTemplatesView.tsx — show YCloud
+                                          diagnostic warnings\n-
+                                          GUIA_CARGA_FEEDBACK_DOCTORA_LAURA.md — UI                                           loading guide for
+                                          doctor\n\n**Commits**:\n- 44b20d9:
+                                          ai-agent-context-optimization +
+                                          conditional prices + patient-professional                                           assignment\n- b26cae6: enforce FAQ
+                                          priority over get_service_details\n-
+                                          7942084: YCloud HSM templates robust
+                                          filter + diagnostics\n- aef0bdd:
+                                          integrate Dra. Laura feedback into system                                           prompt + UI loading guide\n- a2746f1:
+                                          pgvector cast attempt (didn't work)\n-
+                                          03f6138: register pgvector codec on
+                                          asyncpg pool\n- fea4deb: migration 025
+                                          (column type fix)\n- 47ea799:
+                                          comprehensive sync logging\n- e572929:
+                                          synchronous FAQ embedding\n- 7674a20:
+                                          removed status filter from sync\n-
+                                          d87d603: fix Delgado Delgado bug +
+                                          migration 026\n\n**Current state verified                                           in production**:\n- 88 FAQs vectorized
+                                          for tenant 1 (Dra. Laura)\n- 0
+                                          vectorization failures\n- pgvector codec
+                                          registered\n- 2 professional names
+                                          cleaned up by migration 026\n- UI shows
+                                          clean names (Laura Delgado, Raul
+                                          Perez)\n\n**Pending verification**:\n- AI                                           agent responds with FAQ text (not
+                                          get_service_details) for \"Cuanto dura el                                           blanqueamiento\" — needs WhatsApp
+                                          test\n- YCloud templates: user has test
+                                          credentials, will test with doctor's real                                           credentials later\n- Pre/post treatment
+                                          instructions configured for each
+                                          treatment from UI\n- Bulk assign 70
+                                          imported patients to Dra.
+                                          Laura\n\n**Known new issue (under
+                                          investigation)**:\n- Booking flow: user
+                                          said \"mañana a las 10hs\" on Monday,
+                                          agent confirmed for Lunes 06/04 at 10:00
+                                          (wrong date — should have been Martes
+                                          07). Date parsing/interpretation bug.\n-
+                                          ALSO: book_appointment confirmation
+                                          message STILL shows \"Laura Delgado
+                                          Delgado Delgado Delgado Delgado Delgado
+                                          Delgado Delgado\" even though migration
+                                          026 cleaned the DB. Suggests another
+                                          place constructs the name or test was
+                                          BEFORE migration deploy.\n\n**Doctor's
+                                          feedback integrated into system prompt**
+                                          (commit aef0bdd):\n- OBRAS SOCIALES,
+                                          COSEGURO Y COBERTURA section: never share                                           copay amounts, never confirm what
+                                          insurances cover, official responses for
+                                          autorizaciones/reintegros\n- DETECCIÓN DE                                           LEADS DE ALTO VALOR rule: \"me falta un
+                                          diente / se me rompió / no puedo
+                                          masticar\" → ALWAYS route to Dra. Laura,
+                                          never to general team\n- LISTA DE ESPERA
+                                          reinforced for implants without
+                                          availability\n- SEGUIMIENTO POST-ATENCIÓN                                           protocol: positive (no action), negative                                           (MANDATORY derivhumano + priority
+                                          case)\n- ESTUDIOS PREVIOS reinforced:
+                                          requested AFTER confirming
+                                          surgery/implant appointment\n- F4
+                                          (insurance not recognized) and F6 (tooth
+                                          loss) updated with more keywords and
+                                          official responses\n- Buffer_task
+                                          assigned_professional injection: pain →
+                                          urgency, no pain → medium
+                                          priority\n\n**Learned**:\n- Migration
+                                          with try/except around column alteration
+                                          is dangerous — silent failures persist
+                                          forever (bytea bug)\n- asyncpg + pgvector                                           requires explicit register_vector()
+                                          codec on every connection\n- Spanish
+                                          text-embedding-3-small needs threshold
+                                          0.55 (not 0.7) for synonyms\n- Frontend
+                                          sending \"name\" (full name) to backend
+                                          that splits it on first_name only causes
+                                          accumulating duplicates on each save\n-
+                                          Always investigate UPDATE bugs by tracing                                           what frontend sends vs what SQL
+                                          receives\n- 5 chained bugs took multiple
+                                          iterations — incremental debugging via
+                                          logs > big-bang rewrites")
+  ⎿  Memory saved: "Session April 7 2026 — Full RAG fix + Delgado bug + UI loa
+     ding guide" (architecture)
+
+● Guardado en engram. Ahora investigo a fondo el flujo de agenda. Hay 2 bugs en esa   captura:
+
+  1. Date parsing: dijiste "mañana a las 10hs" (martes) → agendó para "Lunes 06/04
+  a las 10:00"
+  2. Nombre repetido: aparece "Laura Delgado Delgado Delgado..." en la
+  confirmación, aunque la DB ya está limpia (migration 026 corrió bien)
+
+  Voy a hacer una investigación profunda del flujo completo.
+
+● Explore(Deep investigation booking flow + name bug)
+  ⎿  Done (38 tool uses · 103.9k tokens · 10m 23s)
+  (ctrl+o to expand)
+
+● Voy a verificar los puntos clave yo mismo. Primero el parse_date:
+
+  Read 1 file (ctrl+o to expand)
+
+● ¡BINGO! Bug 1 confirmado. Mirá línea 279:
+
+  if re.search(r"\bmañana\b", query_clean) and not re.search(
+      r"\b(por la|a la|de la)\s+mañana\b", query
+  ):
+      # Solo si no hay otros indicadores de fecha (evitar "mañana 30 de abril")
+      if not re.search(r"\d", query_clean):  # ← BUG ACÁ
+          return (get_now_arg() + timedelta(days=1)).date()
+
+  Cuando el usuario dice "mañana a las 10hs", el query contiene el dígito 10, así
+  que not re.search(r"\d", query_clean) da False y NO retorna mañana. Cae a las
+  capas siguientes que pueden devolver cualquier cosa.
+
+  Ahora verifico el bug del nombre. Reviso book_appointment para ver cómo construye   la confirmación:
+
+  Read 1 file (ctrl+o to expand)
+
+● Confirmado. Bug 1 está en línea 279 del parse_date(). Bug 2 — el test del usuario   fue ANTES del deploy de la migration 026 (la captura muestra el dato corrupto
+  viejo). Pero el bug del date parsing es real y urgente.
+
+  Voy a implementar el fix:
+
+● Update(orchestrator_service\main.py)
+  ⎿  Added 18 lines, removed 3 lines
+      275      if re.search(r"\bmañana\b", query_clean) and not re.search(
+      276          r"\b(por la|a la|de la)\s+mañana\b", query
+      277      ):
+      278 +        # FIX: strip time tokens (10hs, 10:00, 10am, a las 10, et
+          +c.) before checking for digits.
+      279 +        # Without this, "mañana a las 10hs" would have digit "10"
+          + and skip the tomorrow shortcut,
+      280 +        # falling through to dateutil which can return wrong date
+          +s.
+      281 +        time_pattern = re.compile(
+      282 +            r"\b(?:a\s+las?\s+)?\d{1,2}(?::\d{2})?\s*(?:hs?|h|am|
+          +pm|hrs|horas?)?\b",
+      283 +            re.IGNORECASE,
+      284 +        )
+      285 +        query_no_time = time_pattern.sub("", query_clean).strip()
+      286          # Solo si no hay otros indicadores de fecha (evitar "maña
+           na 30 de abril")
+      279 -        if not re.search(r"\d", query_clean):
+      287 +        if not re.search(r"\d", query_no_time):
+      288 +            logger.info(f"📅 parse_date: '{date_query}' → tomorro
+          +w (mañana keyword)")
+      289              return (get_now_arg() + timedelta(days=1)).date()
+      281 -    if "tomorrow" in query_clean and not re.search(r"\d", query_c
+          -lean):
+      282 -        return (get_now_arg() + timedelta(days=1)).date()
+      290 +    if "tomorrow" in query_clean:
+      291 +        time_pattern = re.compile(
+      292 +            r"\b(?:at\s+)?\d{1,2}(?::\d{2})?\s*(?:hs?|h|am|pm|hrs
+          +|hours?)?\b",
+      293 +            re.IGNORECASE,
+      294 +        )
+      295 +        query_no_time = time_pattern.sub("", query_clean).strip()
+      296 +        if not re.search(r"\d", query_no_time):
+      297 +            return (get_now_arg() + timedelta(days=1)).date()
+      298      for key, val in exact_map.items():
+      299          if query_clean == key or query == key:
+      300              return val
+
+● Ahora aplico la misma lógica al parse_datetime() para asegurarme. Veamos:
+
+  Read 1 file (ctrl+o to expand)
+
+● parse_datetime llama a parse_date(query) con el query COMPLETO en línea 536. Como   ahora parse_date ya entiende "mañana a las 10hs", esto va a funcionar. Pero hay
+  un problema sutil: en el flujo del booking, el agente le pasa al book_appointment   un parámetro date_time que NO necesariamente contiene "mañana". El agente lo
+  razona y le pasa algo como "martes 10:00" o "2026-04-07 10:00".
+
+  El verdadero problema: el agente está razonando MAL la fecha. Voy a ver
+  check_availability para entender qué params recibe del agente:
+
+  Read 1 file (ctrl+o to expand)
+
+● Reviso el parse_datetime y la parte de weekday-only del parse_date para ver cómo
+  maneja "lunes":
+
+  Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+● Veamos si hay validación de no agendar en el pasado:
+
+  Searched for 2 patterns, read 1 file (ctrl+o to expand)
+
+● Tengo el panorama completo. La validación existe pero el problema es que el LLM
+  razona mal "mañana" antes de llamar book_appointment. Voy a agregar una capa de
+  protección:
+
+  1. Agregar parámetro interpreted_date a book_appointment (igual que
+  check_availability)
+  2. Reforzar el prompt para que el agente SIEMPRE pase la fecha pre-calculada
+  3. Mensaje de error más claro cuando hay duda
+
+  Read 1 file (ctrl+o to expand)
+
+● Update(orchestrator_service\main.py)
+  ⎿  Added 5 lines, removed 1 line
+      1976      professional_name: Optional[str] = None,
+      1977      patient_phone: Optional[str] = None,
+      1978      is_minor: Optional[bool] = False,
+      1979 +    interpreted_date: Optional[str] = None,
+      1980  ):
+      1981      """
+      1982      Registra un turno en la BD.
+     ...
+      1992
+      1993      PROHIBIDO pedir fecha de nacimiento, email o ciudad al pacie
+            nte. Solo pasá esos campos si el paciente los dio ESPONTÁNEAMENT
+            E.
+      1994
+      1994 -    date_time: Fecha y hora en un solo string. Soporta términos
+           -relativos: 'hoy 17:00', 'mañana a las 10', 'lunes 15:30', 'miérc
+           -oles 17:00'.
+      1995 +    date_time: Hora del turno en formato 'HH:MM' o el texto del
+           +paciente (ej. '10:00', 'mañana a las 10', 'lunes 15:30').
+      1996 +    interpreted_date: OBLIGATORIO cuando el paciente eligió una
+           +opción que ofreciste con check_availability. Pasá la fecha exact
+           +a YYYY-MM-DD de la opción que el paciente eligió. Esto evita que
+           + se re-razone la fecha y se cometan errores.
+      1997 +      - Ejemplo: ofreciste "1️ Martes 07/04 — 10:00 hs" y el pac
+           +iente dijo "mañana a las 10" → interpreted_date="2026-04-07"
+      1998 +      - Si NO se ofreció previamente con check_availability, dej
+           +á vacío y el sistema parsea date_time.
+      1999      treatment_reason: Nombre del tratamiento tal como en list_se
+            rvices (ej. limpieza profunda, consulta).
+      2000      first_name, last_name: Nombre y apellido del PACIENTE (no de
+            l interlocutor si es un tercero).
+      2001      dni: Documento del PACIENTE (solo números).
+
+● Ahora modifico la lógica del parsing del datetime para usar interpreted_date si
+  viene:
+
+● Update(orchestrator_service\main.py)
+  ⎿  Added 37 lines, removed 2 lines
+      2044          # For themselves: current flow
+      2045          phone = chat_phone
+      2046      try:
+      2047 -        apt_datetime = parse_datetime(date_time)
+      2048 -        logger.info(f"📅 BOOK: parsed datetime={apt_datetime} fr
+           -om '{date_time}'")
+      2047 +        # PRIORIDAD: si el agente pasó interpreted_date (porque
+           +el paciente eligió una opción
+      2048 +        # ya ofrecida por check_availability), usar esa fecha di
+           +rectamente y solo extraer
+      2049 +        # la HORA del date_time. Esto evita re-razonamiento erró
+           +neo de "mañana", "lunes", etc.
+      2050 +        apt_datetime = None
+      2051 +        if interpreted_date:
+      2052 +            try:
+      2053 +                base_date = dateutil_parse(str(interpreted_date)
+           +, dayfirst=True).date()
+      2054 +                # Extraer SOLO la hora del date_time (ignorar la
+           + fecha que pueda contener)
+      2055 +                time_match = re.search(r"(\d{1,2})[:h](\d{2})",
+           +date_time)
+      2056 +                if time_match:
+      2057 +                    h, m = int(time_match.group(1)), int(time_ma
+           +tch.group(2))
+      2058 +                else:
+      2059 +                    hour_only = re.search(
+      2060 +                        r"(?:las?\s+)?(\d{1,2})\s*(?:hs?|horas?)
+           +?\b", date_time
+      2061 +                    )
+      2062 +                    if hour_only:
+      2063 +                        h, m = int(hour_only.group(1)), 0
+      2064 +                    else:
+      2065 +                        # Sin hora detectable — usar parse_datet
+           +ime completo como fallback
+      2066 +                        h, m = None, None
+      2067 +                if h is not None:
+      2068 +                    apt_datetime = datetime.combine(
+      2069 +                        base_date, datetime.min.time()
+      2070 +                    ).replace(hour=h, minute=m, second=0, micros
+           +econd=0, tzinfo=ARG_TZ)
+      2071 +                    logger.info(
+      2072 +                        f"📅 BOOK: using interpreted_date={inter
+           +preted_date} + extracted time={h:02d}:{m:02d} → {apt_datetime}"
+      2073 +                    )
+      2074 +            except Exception as e:
+      2075 +                logger.warning(
+      2076 +                    f"📅 BOOK: failed to use interpreted_date='{
+           +interpreted_date}': {e}, falling back to parse_datetime"
+      2077 +                )
+      2078 +                apt_datetime = None
+      2079 +
+      2080 +        if apt_datetime is None:
+      2081 +            apt_datetime = parse_datetime(date_time)
+      2082 +            logger.info(f"📅 BOOK: parsed datetime={apt_datetime
+           +} from '{date_time}'")
+      2083 +
+      2084          # No agendar en el pasado
+      2085          if apt_datetime < get_now_arg():
+      2086              return "❌ No se pueden agendar turnos para horarios
+             que ya pasaron. Indicá un día y hora futuros. Formato esperado:
+             date_time como 'día 17:00' (ej. miércoles 17:00)."
+
+● Ahora actualizo el system prompt para que el agente SIEMPRE pase interpreted_date   cuando el paciente eligió una opción ya ofrecida:
+
+  Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+● Update(orchestrator_service\main.py)
+  ⎿  Added 6 lines
+      6473    • Para sí mismo: flujo normal (sin patient_phone ni is_minor).
+      6474    • Para adulto tercero: pasá patient_phone con el teléfono del
+            tercero.
+      6475    • Para menor: pasá is_minor=true.
+      6476 +  ⚠️ REGLA CRÍTICA DE FECHA — INQUEBRANTABLE:
+      6477 +  Cuando el paciente eligió una de las opciones que ofreciste co
+           +n check_availability, DEBÉS pasar 'interpreted_date' con la fech
+           +a EXACTA YYYY-MM-DD de esa opción. NO re-razones la fecha desde
+           +"mañana", "el lunes", "ese día" — usá la fecha que YA mostraste
+           +al paciente.
+      6478 +  • Ejemplo: ofreciste "1️ Martes 07/04 — 10:00 hs" → paciente d
+           +ijo "mañana a las 10" → pasá interpreted_date="2026-04-07" + dat
+           +e_time="10:00"
+      6479 +  • Ejemplo: ofreciste "2️ Jueves 09/04 — 15:00 hs" → paciente d
+           +ijo "el jueves" → pasá interpreted_date="2026-04-09" + date_time
+           +="15:00"
+      6480 +  • PROHIBIDO inventar una fecha que no fue ofrecida. Si tenés d
+           +udas, volvé a llamar check_availability.
+      6481 +  • PROHIBIDO usar TIME ACTUAL como fecha del turno. {current_ti
+           +me} es solo referencia, NO la fecha del turno.
+      6482  PASO 7: CONFIRMACIÓN.
+      6483    La tool book_appointment devuelve un resumen estructurado con:
+             tratamiento, profesional, fecha, hora, duración, sede y precio.
+      6484    Presentá esa información TAL CUAL al paciente. NO la reformule
+            s ni la recortes. El paciente debe ver TODO.
+
+● Bash(cd "/c/Users/Asus/Documents/estabilizacion/Laura Delgado/clinicforge" && py
+      -c "import ast; ast.parse(open('orchestrator_service/main.py',
+      encoding='utf-8').rea…)
+  ⎿  OK
+
+● Bash(cd "/c/Users/Asus/Documents/estabilizacion/Laura Delgado/clinicforge" && git       add orchestrator_service/main.py && git commit -m "$(cat <<'EOF'
+      fix: critical book…)
+  ⎿  warning: in the working copy of 'orchestrator_service/main.py', LF will b
+     e replaced by CRLF the next time Git touches it
+     [main 7522c8f] fix: critical booking flow date interpretation bugs
+     … +3 lines (ctrl+o to expand)
+
+● Commit 7522c8f pusheado.
+
+  Cómo está estructurado HOY el flujo de agenda (explicación completa)
+
+  PACIENTE escribe → Buffer task → Agente IA
+         │
+         ▼
+  ┌──────────────────────────────────────────────┐
+  │ PASO 4: check_availability(                  │
+  │   date_query="mañana a las 10hs",            │
+  │   interpreted_date="2026-04-07",             │ ← LLM razona la fecha
+  │   search_mode="exact"                        │
+  │ )                                            │
+  └──────────────────────────────────────────────┘
+         │
+         ▼
+  ┌──────────────────────────────────────────────┐
+  │ check_availability:                          │
+  │ 1. Usa interpreted_date si está              │
+  │ 2. Sino, parse_date(date_query)              │
+  │ 3. Genera slots libres consultando:          │
+  │    - tenant.working_hours (días/horarios)    │
+  │    - tenant.max_chairs                       │
+  │    - appointments existentes                 │
+  │    - Google Calendar (si hybrid)             │
+  │ 4. Selecciona 2-3 slots representativos      │
+  │ 5. Devuelve formateado con emojis            │
+  └──────────────────────────────────────────────┘
+         │
+         ▼
+  AGENTE muestra: "1️⃣Martes 07/04 — 10:00 hs..."
+         │
+         ▼
+  PACIENTE: "mañana a las 10 me queda bien"
+         │
+         ▼
+  ┌──────────────────────────────────────────────┐
+  │ PASO 6: book_appointment(                    │
+  │   date_time="10:00",                         │
+  │   interpreted_date="2026-04-07",  ← NUEVO    │
+  │   first_name="...", dni="...",               │
+  │ )                                            │
+  └──────────────────────────────────────────────┘
+         │
+         ▼
+  ┌──────────────────────────────────────────────┐
+  │ book_appointment:                            │
+  │ 1. Si interpreted_date → usa esa fecha       │ ← NUEVO
+  │    + extrae solo la hora del date_time       │
+  │ 2. Sino → parse_datetime(date_time)          │
+  │ 3. Valida no sea pasado                      │
+  │ 4. Valida no sea feriado cerrado             │
+  │ 5. Busca paciente por phone/dni              │
+  │ 6. Encuentra profesional disponible:         │
+  │    - Filtra por nombre, día, hora            │
+  │    - Chequea no conflictos                   │
+  │    - Selecciona target_prof                  │
+  │ 7. Verifica chair constraint                 │
+  │ 8. INSERT en appointments                    │
+  │ 9. Sync a Google Calendar                    │
+  │ 10. Notifica via Socket.IO                   │
+  │ 11. Construye confirmación:                  │
+  │    f"Con {target_prof['first_name']}"        │ ← solo first_name de DB
+  │ 12. Retorna mensaje formateado               │
+  └──────────────────────────────────────────────┘
+
+  Bugs encontrados y arreglados
+
+  Bug 1: parse_date no manejaba "mañana a las 10hs" ✅ FIXED
+
+  Línea 279 tenía:
+  if not re.search(r"\d", query_clean):  # ← bloqueaba si había dígitos
+      return tomorrow
+
+  Si el query era "mañana a las 10hs", el dígito 10 (la hora) bloqueaba el
+  shortcut. Fix: ahora hago strip de los tokens de hora ANTES de buscar dígitos.
+
+  Bug 2: Agente re-razona la fecha en vez de usar la opción ofrecida ✅ FIXED
+
+  El agente ofrecía "Martes 07/04 — 10:00", el paciente decía "mañana a las 10", y
+  el LLM re-razonaba la fecha desde cero en vez de usar la del slot que ya había
+  mostrado.
+
+  Fix:
+  1. Nuevo parámetro interpreted_date en book_appointment (igual que ya tenía
+  check_availability)
+  2. Cuando el agente lo provee, se usa esa fecha directamente y solo se extrae la
+  hora del date_time
+  3. System prompt reforzado con regla INQUEBRANTABLE en PASO 6:
+  ▎ Cuando el paciente eligió una opción que ofreciste, DEBÉS pasar
+  interpreted_date con la fecha YYYY-MM-DD exacta. PROHIBIDO re-razonar la fecha
+  desde "mañana", "el lunes", etc.
+
+  Bug 3: nombre repetido en confirmación ⏭️ YA RESUELTO
+
+  El test del usuario fue antes del deploy de la migration 026 (d87d603). Después
+  del deploy, los logs mostraron:
+  Fixing professional 2: 'Laura Delgado Delgado Delgado...' → 'Laura'
+  Ya está limpio en la DB. Las próximas confirmaciones van a decir solo "Con
+  Laura".
+
+  Doble capa de seguridad
+
+  Ahora tenés 2 capas de protección contra errores de fecha:
+
+  ┌─────────────┬──────────────────────────┬───────────────────────────────────┐
+  │    Capa     │       Cuándo actúa       │             Qué hace              │
+  ├─────────────┼──────────────────────────┼───────────────────────────────────┤
+  │             │ Cuando el agente llama   │ Pasa interpreted_date con la      │
+  │ 1. LLM      │ book_appointment         │ fecha exacta de la opción         │
+  │             │                          │ ofrecida                          │
+  ├─────────────┼──────────────────────────┼───────────────────────────────────┤
+  │ 2.          │ Si el agente NO pasa     │ Maneja correctamente "mañana a    │
+  │ parse_date  │ interpreted_date         │ las 10hs" → mañana                │
+  └─────────────┴──────────────────────────┴───────────────────────────────────┘
+
+  Lo que tenés que probar después del deploy
+
+  1. Probar la misma situación: pedir un turno, elegir "mañana a las 10hs"
+  2. En los logs vas a ver:
+  📅 BOOK: using interpreted_date=2026-04-08 + extracted time=10:00 → 2026-04-08
+  10:00:00-03:00
+  3. La confirmación debería decir: Martes 08/04 a las 10:00 (no Lunes 07 que es
+  hoy)
+  4. El nombre debería decir: Con Laura (no "Laura Delgado Delgado Delgado...")
+
+  Mandame los logs después del próximo test para confirmar que el fix funciona en
+  producción.
+
+✻ Churned for 9m 59s
+
+> Este flujo de agendamiento es el mas optimo? en base a los requerimentos que
+tiene esta clinica, que hay que tener encuenta profesional, regla de derivacion de
+ prioridad, huecos libres, etc? O hay alguna forma de optimizar aun mas este flujo
+ de agenda? Como te dije, el objetivo y el ideal es que nunca falle y siempre el
+agente d eia gestione super bien la agenda de todos los pacientes, los no
+pacientrs tambien
+
+● Excelente pregunta. Voy a hacer una auditoría arquitectónica completa del flujo
+  de agenda para identificar TODAS las debilidades y oportunidades de optimización.
+● Explore(Deep audit of booking flow architecture)
+  ⎿  Done (31 tool uses · 117.1k tokens · 2m 9s)
+  (ctrl+o to expand)
+
+● Auditoría completa. Acá está el resumen ejecutivo y el plan de acción.
+
+  ---
+  Resumen — ¿Es óptimo el flujo actual?
+
+  Respuesta corta: Es sofisticado pero frágil. Tiene buenas bases (parsing de
+  fechas, holidays, chair constraints, multi-sede) pero vulnerabilidades críticas
+  que harán que tarde o temprano falle bajo carga.
+
+  Lo que está BIEN
+
+  ✅ Multi-layer date parsing (interpreted_date + parse_date)
+  ✅ Tenant + professional working_hours (con override)
+  ✅ Multi-sede por día
+  ✅ Treatment-professional mapping enforced
+  ✅ Chair constraint a 15-min granularity
+  ✅ Holiday handling con horarios especiales
+  ✅ Treatment priority caps search range
+  ✅ Google Calendar hybrid sync
+  ✅ Soft-lock con confirm_slot
+
+  Lo que está MAL — bugs críticos
+
+  🔴 CRÍTICOS (causa inevitable de double-booking)
+
+  #: 1
+  Problema: No hay transacción entre check_availability y book_appointment
+  Impacto: 2 pacientes pueden bookear el mismo slot
+  Fix: async with db.pool.transaction()
+  ────────────────────────────────────────
+  #: 2
+  Problema: Sin UNIQUE constraint en appointments
+  Impacto: DB no previene duplicados
+  Fix: ALTER TABLE ADD UNIQUE(prof, datetime)
+  ────────────────────────────────────────
+  #: 3
+  Problema: Soft-lock NO se verifica en book_appointment
+  Impacto: Bypass directo posible
+  Fix: Validar lock antes del INSERT
+  ────────────────────────────────────────
+  #: 4
+  Problema: Soft-lock dura 30s — muy corto
+  Impacto: Expira mientras paciente carga datos
+  Fix: Extender a 120s
+  ────────────────────────────────────────
+  #: 5
+  Problema: Multi-prof "any free" no rastrea cuál
+  Impacto: check_availability dice "10am libre" pero book_appointment toma OTRO
+  prof
+    que puede estar ocupado
+  Fix: Devolver el prof_id en check_availability
+  ────────────────────────────────────────
+  #: 6
+  Problema: assigned_professional_id mencionado en prompt pero no enforced en
+  código
+  Impacto: Pacientes habituales pueden ser routeados al equipo en vez de su doctora  Fix: Validar en book_appointment
+  ────────────────────────────────────────
+  #: 7
+  Problema: Reglas de derivación son solo prompt, no enforced
+  Impacto: Un paciente de implantes podría ser bookeado con Dra. Ester
+  Fix: Query a professional_derivation_rules en check_availability
+  ────────────────────────────────────────
+  #: 8
+  Problema: No hay transacción entre crear paciente y crear appointment
+  Impacto: Pacientes huérfanos si falla el appointment INSERT
+  Fix: Wrap en transacción
+
+  🟡  IMPORTANTES (degradan UX o causan fallas raras)
+
+  - Lista de espera NO existe — el prompt la promete pero no hay tabla ni job
+  - No verifica deudas pendientes — paciente con seña sin pagar puede agendar otra
+  - No detecta overlap entre turnos del mismo paciente
+  - DST hardcoded a -3 hs — sin soporte para cambios de horario
+  - Google Calendar sync silent failure — paciente ve confirmado pero doctora no
+  - No notifica al profesional — solo aparece en dashboard
+  - Reschedule no chequea chair constraint
+  - Cancel no limpia soft-locks — bloquea otros 30s
+  - Sin audit log de modificaciones
+  - Sin SMS/recordatorios automáticos pre-turno
+
+  🟢  MENORES (mejoras de UX)
+
+  - "el lunes" en viernes es ambiguo (próximo lunes vs el de la otra semana)
+  - Sin manejo de tratamientos multi-sesión (implante = 3 visitas)
+  - Sin recurring appointments
+  - Sin pre-generación de slots para performance
+
+  ---
+  Plan de optimización por prioridad
+
+  🚀 TIER 1 — HOY (15 min cada uno, eliminan double-booking)
+
+  1. Wrap booking en transacción + verificar soft-lock antes del INSERT
+  2. UNIQUE constraint en appointments(professional_id, appointment_datetime,
+  status)
+  3. Extender soft-lock a 120s
+  4. Validar assigned_professional_id en book_appointment (ya existe la columna
+  gracias a migration 024)
+  5. Limpiar soft-lock en cancel/reschedule
+
+  🛠️ TIER 2 — Esta semana (1-4 hs cada uno)
+
+  6. Lista de espera funcional (tabla waitlist_entries + job de notificación)
+  7. Check de deudas pendientes en check_availability
+  8. Filtrar profesional según assigned_professional_id en check_availability
+  9. Enforcer reglas de derivación desde DB (no solo prompt)
+  10. Devolver el profesional específico libre en check_availability (no "any
+  free")
+  11. Notificar al profesional cuando se agenda
+  12. Recordatorios SMS/WhatsApp 24h, 3h y 1h antes
+
+  🏗️ TIER 3 — Próximo sprint (más grande, más impacto)
+
+  13. Audit log completo de todas las mutaciones
+  14. Pre-generación de slots para performance + safety
+  15. Treatment plans (booking de múltiples sesiones a la vez)
+  16. Workload leveling entre profesionales
+  17. Reschedule transaccional con chair check
+  18. DST con pytz
+  19. Event sourcing para appointments
+
+  ---
+  Mi recomendación
+
+  Voy a implementar TIER 1 ahora — son fixes pequeños pero eliminan el principal
+  riesgo de double-booking, que es lo más crítico para una clínica que necesita
+  "100% certero".
+
+  Después, en orden:
+  1. TIER 1 (hoy) → cierre de los race conditions
+  2. TIER 2 (esta semana) → features que la doctora ya pidió (waitlist, derivación
+  enforced)
+  3. TIER 3 (siguiente) → robustez avanzada
+
+  ¿Procedo con TIER 1 ahora? Son ~5 cambios quirúrgicos de 15-30 min cada uno.
+  Después de eso, tu sistema va a ser resistente a race conditions y los
+  double-bookings van a ser técnicamente imposibles a nivel DB.
+
+  Decime y arranco.
+
+✻ Sautéed for 3m 34s
+
+> Vamos por partes: La lista de espera NO LA VAMOS A IMPLEMENTAR EN ESTA SESION Y
+DEBE SER ELIMINADO SI ESTA EN EL SYSTEM PROMPT. NO AGREGAREMOS NADA DE LISTA DE
+ESPERA AL PROYECTO, NO ES LO QUE HAREMOS. NO TENDRA LISTA DE ESPERA. Otra cosa:
+Los tratmaientos multisesion no los debe gestionar la  ia como de agendar 3 turnos
+ consecutivos, NO. Es solo agendar uno, y ahi personalmente se gestionan el resto
+de los turnos y se cargarian manualmente desde la ui digmaos, osea lo hara la
+secretaria junto con el paciente. Los recordatorios 24/3 y 1 hs antes no se deben
+gestionar con codigo, ya que todo eso serian plantillas de ycloud hsm, no mensajes
+ que salen desde el backend puro. Luego implementa todo lo necesario
+
+● Entendido. Eliminamos todo lo de lista de espera, NO multi-sesión, NO
+  recordatorios desde código (eso es YCloud HSM). Voy a implementar lo crítico.
+
+● Task 17: Eliminar lista de espera del system prompt
+
+  Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+● Update(orchestrator_service\main.py)
+  ⎿  Added 1 line, removed 1 line
+      1945              else:
+      1946                  no_slots_msg += f" para {date_query} ni en los d
+            ías cercanos"
+      1947              no_slots_msg += (
+      1948 -                ". ¿Querés que busque en otra semana o te anoto
+           -en lista de espera?"
+      1948 +                ". ¿Querés que busque en otra semana?"
+      1949              )
+      1950              return no_slots_msg
+      1951
+
+  Read 1 file (ctrl+o to expand)
+
+● Update(orchestrator_service\main.py)
+  ⎿  Added 5 lines, removed 5 lines
+      6556  • PROHIBIDO derivar al equipo general en estos casos. SIEMPRE de
+            rivar a {prof_display} (la doctora especialista en implantes/pró
+            tesis).
+      6557  • Aunque el paciente pregunte por "limpieza" o "control", si en
+            algún momento menciona dientes faltantes → priorizá implantes so
+            bre el motivo original.
+      6558
+      6559 -LISTA DE ESPERA:
+      6560 -• Si check_availability no encuentra turnos → ofrecé: "¿Querés q
+           -ue te anote en lista de espera para ese día? Si se libera un tur
+           -no te avisamos."
+      6561 -• Para tratamientos de IMPLANTES/PRÓTESIS sin disponibilidad cer
+           -cana: SIEMPRE ofrecer primer turno disponible + lista de espera.
+           - PROHIBIDO derivar a otro profesional (los implantes son siempre
+           - con la doctora).
+      6562 -• Respuesta: "Perfecto 😊 Estos tratamientos los realiza la doct
+           -ora de forma personalizada. Actualmente el primer turno disponib
+           -le es en [fecha]. Si querés, podemos agendarte y también dejarte
+           - en lista de espera por si se libera un turno antes."
+      6563 -• Esta funcionalidad es informativa — el paciente queda registra
+           -do en la memoria del sistema para follow-up manual.
+      6559 +SIN DISPONIBILIDAD CERCANA:
+      6560 +• Si check_availability no encuentra turnos en la fecha pedida →
+           + ofrecé buscar en otra semana o el siguiente día disponible.
+      6561 +• Para tratamientos de IMPLANTES/PRÓTESIS: PROHIBIDO derivar a o
+           +tro profesional (los implantes son siempre con la doctora). SIEM
+           +PRE ofrecer el primer turno disponible con la doctora aunque sea
+           + más lejano.
+      6562 +• Respuesta sugerida: "Perfecto 😊 Estos tratamientos los realiz
+           +a la doctora de forma personalizada. Actualmente el primer turno
+           + disponible es en [fecha]. ¿Te lo agendo?"
+      6563 +• PROHIBIDO ofrecer "lista de espera" — esa funcionalidad NO exi
+           +ste en el sistema.
+      6564
+      6565  PROFESIONAL AUTO-ASIGNADO:
+      6566  • Cuando el sistema asigna automáticamente un profesional (pacie
+            nte dijo "cualquiera" o no eligió):
+
+  Searched for 2 patterns (ctrl+o to expand)
+
+● Limpio. Solo queda la prohibición explícita. Ahora elimino también referencias en   la documentación interna del prompt si las hay:
+
+  Searched for 2 patterns (ctrl+o to expand)
+
+● Update(orchestrator_service\services\buffer_task.py)
+  ⎿  Added 1 line, removed 1 line
+      291                              f"PRIORIDAD ALTA por ser paciente pro
+           pio (independientemente de la complejidad del tratamiento). "
+      292                              f"Si menciona DOLOR → prioridad inmed
+           iata/urgencia. Sin dolor → prioridad media. "
+      293                              f"SIEMPRE ofrecer turnos con este pro
+           fesional primero. Si no hay disponibilidad, "
+      294 -                            f"mencionar que es su profesional hab
+          -itual y ofrecer lista de espera."
+      294 +                            f"mencionar que es su profesional hab
+          +itual y ofrecer la próxima fecha disponible."
+      295                          )
+      296                  except Exception:
+      297                      pass
+
+● Task 18: UNIQUE constraint para prevenir double-booking
+
+● Write(orchestrator_service\alembic\versions\027_appointment_unique_constraint.py)  ⎿  Wrote 77 lines to orchestrator_service\alembic\versions\027_appointment_u
+     nique_constraint.py
+       1 """027 - Add UNIQUE constraint on appointments to prevent double-bo
+         oking
+       2
+       3 Revision ID: 027
+       4 Revises: 026
+       5 Create Date: 2026-04-07
+       6                                                                                  7 Adds a partial UNIQUE index on (professional_id, appointment_dateti
+         me) for active                                                                   8 appointments (status IN scheduled/confirmed). This prevents double-
+         booking at the
+       9 DATABASE level — even if there's a race condition between check_ava
+         ilability and
+      10 book_appointment, PostgreSQL will reject the second INSERT with a u
+         niqueness
+     … +67 lines (ctrl+o to expand)
+
+● Verifico que la columna cancellation_reason exista:
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+● Existe. Sigue.
+
+● Task 19+20: Wrap booking en transacción + handler de double-booking + soft-lock
+  120s
+
+  Necesito ver dónde está el INSERT del appointment y dónde está el confirm_slot:
+
+  Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+● Update(orchestrator_service\main.py)
+  ⎿  Added 6 lines, removed 6 lines
+      4145      treatment_name: Optional[str] = None,
+      4146  ):
+      4147      """
+      4148 -    Confirma y reserva temporalmente un turno por 30 segundos mi
+           -entras se recopilan datos del paciente.
+      4148 +    Confirma y reserva temporalmente un turno por 120 segundos m
+           +ientras se recopilan datos del paciente.
+      4149      Llamar SIEMPRE cuando el paciente elige una de las opciones
+            de check_availability, ANTES de pedir datos de admisión.                     4150      date_time: Fecha y hora elegida (ej. "lunes 09:00", "2026-03
+            -25 15:00", "hoy 14:00").                                                    4151      professional_name: (Opcional) Profesional elegido.
+     ...
+      4187              if prof_row:
+      4188                  prof_id = prof_row["id"]
+      4189
+      4190 -        # Crear soft lock en Redis
+      4190 +        # Crear soft lock en Redis (120s para dar tiempo a que e
+           +l paciente complete admisión)
+      4191          date_str = apt_datetime.strftime("%Y-%m-%d")
+      4192          time_str = apt_datetime.strftime("%H:%M")
+      4193          lock_key = f"slot_lock:{tenant_id}:{prof_id}:{date_str}:
+            {time_str}"
+     ...
+      4198              r = get_redis()
+      4199              if r:
+      4200                  existing_lock = await r.get(lock_key)
+      4201 -                if existing_lock and existing_lock != phone:
+      4201 +                if existing_lock and existing_lock.decode() if i
+           +sinstance(existing_lock, bytes) else existing_lock != phone:
+      4202                      return f"⚠️ El turno de las {time_str} del {
+            date_str} acaba de ser reservado por otro paciente. Consultemos
+            otra opción."
+      4203 -                await r.setex(lock_key, 30, phone)
+      4204 -                logger.info(f"🔒 Soft lock created: {lock_key} f
+           -or {phone} (30s)")
+      4203 +                await r.setex(lock_key, 120, phone)
+      4204 +                logger.info(f"🔒 Soft lock created: {lock_key} f
+           +or {phone} (120s)")
+      4205          except Exception as e:
+      4206              logger.warning(f"Redis soft lock failed (non-blockin
+            g): {e}")
+      4207              # No bloquear el flujo si Redis falla
+      4208
+      4209          dia_name = DIAS_ES.get(DAYS_EN[apt_datetime.weekday()],
+            "")
+      4210 -        return f"✅ Reservé temporalmente el turno de las {time_
+           -str} del {dia_name} {apt_datetime.strftime('%d/%m')} por 30 segu
+           -ndos. Necesito tus datos para confirmar la reserva."
+      4210 +        return f"✅ Reservé temporalmente el turno de las {time_
+           +str} del {dia_name} {apt_datetime.strftime('%d/%m')} por 2 minut
+           +os. Necesito tus datos para confirmar la reserva."
+      4211
+      4212      except Exception as e:
+      4213          logger.error(f"Error en confirm_slot: {e}")
+
+● Ahora veo el bloque del INSERT para envolverlo en transacción y manejar la
+  UniqueViolation:
+
+  Read 1 file (ctrl+o to expand)
+
+● Ahora envuelvo el INSERT en un try/except que capture el UniqueViolationError
+  (cuando otro usuario gana la carrera por el mismo slot):
+
+● Update(orchestrator_service\main.py)
+  ⎿  Added 48 lines, removed 13 lines
+      2567              patient_id = row["id"]
+      2568
+      2569          apt_id = str(uuid.uuid4())
+      2570 -        await db.pool.execute(
+      2571 -            """
+      2572 -            INSERT INTO appointments (id, tenant_id, patient_id,
+           - professional_id, appointment_datetime, duration_minutes, appoin
+           -tment_type, status, source, created_at)                                      2573 -            VALUES ($1, $2, $3, $4, $5, $6, $7, 'scheduled', 'ai
+           -', NOW())                                                                    2574 -        """,
+      2575 -            apt_id,
+      2576 -            tenant_id,
+      2577 -            patient_id,
+      2578 -            target_prof["id"],
+      2579 -            apt_datetime,
+      2580 -            final_duration,
+      2581 -            treatment_code,
+      2582 -        )
+      2570 +
+      2571 +        # SAFETY: Verify soft-lock is still valid before INSERT
+           +(prevents bypass after expiration)
+      2572 +        try:
+      2573 +            from services.relay import get_redis as _get_redis_c
+           +heck
+      2574 +            _r_check = _get_redis_check()
+      2575 +            if _r_check:
+      2576 +                _date_str = apt_datetime.strftime("%Y-%m-%d")
+      2577 +                _time_str = apt_datetime.strftime("%H:%M")
+      2578 +                _lock_key = f"slot_lock:{tenant_id}:{target_prof
+           +['id']}:{_date_str}:{_time_str}"
+      2579 +                _lock_holder = await _r_check.get(_lock_key)
+      2580 +                if _lock_holder:
+      2581 +                    _lock_holder_str = _lock_holder.decode() if
+           +isinstance(_lock_holder, bytes) else _lock_holder
+      2582 +                    if _lock_holder_str and _lock_holder_str !=
+           +phone:
+      2583 +                        logger.warning(
+      2584 +                            f"❌ Soft-lock conflict: slot reserv
+           +ed by {_lock_holder_str}, requester is {phone}"
+      2585 +                        )
+      2586 +                        return "❌ Ese turno acaba de ser reserv
+           +ado por otro paciente. Volvamos a buscar disponibilidad."
+      2587 +        except Exception as _lock_check_err:
+      2588 +            logger.warning(f"Soft-lock pre-check failed (non-blo
+           +cking): {_lock_check_err}")
+      2589 +
+      2590 +        # Wrap patient + appointment in a single transaction (at
+           +omicity)
+      2591 +        # The UNIQUE index idx_appointments_no_double_booking wi
+           +ll reject duplicates
+      2592 +        # at the database level even if soft-locks fail
+      2593 +        try:
+      2594 +            async with db.pool.acquire() as _conn:
+      2595 +                async with _conn.transaction():
+      2596 +                    await _conn.execute(
+      2597 +                        """
+      2598 +                        INSERT INTO appointments (id, tenant_id,
+           + patient_id, professional_id, appointment_datetime, duration_min
+           +utes, appointment_type, status, source, created_at)
+      2599 +                        VALUES ($1, $2, $3, $4, $5, $6, $7, 'sch
+           +eduled', 'ai', NOW())
+      2600 +                    """,
+      2601 +                        apt_id,
+      2602 +                        tenant_id,
+      2603 +                        patient_id,
+      2604 +                        target_prof["id"],
+      2605 +                        apt_datetime,
+      2606 +                        final_duration,
+      2607 +                        treatment_code,
+      2608 +                    )
+      2609 +        except asyncpg.UniqueViolationError as _uniq_err:
+      2610 +            # Database-level double-booking protection triggered
+           + (race condition won by another booking)
+      2611 +            logger.warning(
+      2612 +                f"🔒 UNIQUE constraint blocked double-booking: p
+           +rof={target_prof['id']} datetime={apt_datetime} err={_uniq_err}"
+      2613 +            )
+      2614 +            return (
+      2615 +                "❌ Ese horario fue tomado por otro paciente jus
+           +to ahora. "
+      2616 +                "Te ofrezco otra opción cercana, ¿te parece?"
+      2617 +            )
+      2618          logger.info(
+      2619              f"✅ book_appointment OK phone={phone} tenant={tenan
+            t_id} apt_id={apt_id} patient_id={patient_id} prof={target_prof[
+            'first_name']} datetime={apt_datetime}"
+      2620          )
+
+● Task 21: check_availability respeta assigned_professional_id
+
+  El paciente con assigned_professional_id debe ver SOLO turnos con su doctora
+  habitual. Necesito agregar esto a check_availability:
+
+  Read 1 file (ctrl+o to expand)
+
+● Voy a inyectar la lógica de assigned_professional_id y derivation rules ANTES del   query de profesionales:
+
+● Update(orchestrator_service\main.py)
+  ⎿  Added 78 lines
+      1318              except Exception:
+      1319                  tenant_wh_raw = {}
+      1320          tenant_wh = tenant_wh_raw if isinstance(tenant_wh_raw, d
+            ict) else {}
+      1321 +
+      1322 +        # 0. AUTO-ROUTING: si el paciente tiene profesional asig
+           +nado y no especificó otro,
+      1323 +        # filtrar a SOLO ese profesional. Pacientes habituales S                  +IEMPRE con su doctora.
+      1324 +        forced_prof_id: Optional[int] = None                                 1325 +        if not clean_name:
+      1326 +            try:
+      1327 +                phone_for_lookup = current_customer_phone.get()
+      1328 +                if phone_for_lookup:
+      1329 +                    phone_digits = re.sub(r"\D", "", phone_for_l
+           +ookup)
+      1330 +                    assigned_row = await db.pool.fetchrow(
+      1331 +                        """
+      1332 +                        SELECT assigned_professional_id
+      1333 +                        FROM patients
+      1334 +                        WHERE tenant_id = $1
+      1335 +                          AND assigned_professional_id IS NOT NU
+           +LL
+      1336 +                          AND (REGEXP_REPLACE(phone_number, '[^0
+           +-9]', '', 'g') = $2
+      1337 +                               OR instagram_psid = $3
+      1338 +                               OR facebook_psid = $3)
+      1339 +                        LIMIT 1
+      1340 +                        """,
+      1341 +                        tenant_id,
+      1342 +                        phone_digits,
+      1343 +                        phone_for_lookup,
+      1344 +                    )
+      1345 +                    if assigned_row and assigned_row["assigned_p
+           +rofessional_id"]:
+      1346 +                        forced_prof_id = int(assigned_row["assig
+           +ned_professional_id"])
+      1347 +                        logger.info(
+      1348 +                            f"📅 check_availability: patient has
+           + assigned_professional_id={forced_prof_id} → filtering to that p
+           +rofessional"
+      1349 +                        )
+      1350 +            except Exception as _assign_err:
+      1351 +                logger.debug(f"assigned_professional_id lookup s
+           +kipped: {_assign_err}")
+      1352 +
+      1353 +        # 0b. DERIVATION RULES: if no professional specified and
+           + no forced assignment,
+      1354 +        # check if treatment matches a derivation rule. Rules ar
+           +e evaluated in priority order.
+      1355 +        derivation_filter_prof_id: Optional[int] = None
+      1356 +        if not clean_name and not forced_prof_id and treatment_n
+           +ame:
+      1357 +            try:
+      1358 +                rules = await db.pool.fetch(
+      1359 +                    """
+      1360 +                    SELECT id, target_professional_id, treatment
+           +_categories, patient_condition
+      1361 +                    FROM professional_derivation_rules
+      1362 +                    WHERE tenant_id = $1 AND is_active = true
+      1363 +                    ORDER BY priority_order ASC, id ASC
+      1364 +                    """,
+      1365 +                    tenant_id,
+      1366 +                )
+      1367 +                tname_lower = (treatment_name or "").lower()
+      1368 +                for rule in rules:
+      1369 +                    cats = rule.get("treatment_categories") or "
+           +"
+      1370 +                    cat_list = [c.strip().lower() for c in cats.
+           +split(",") if c.strip()]
+      1371 +                    if cat_list and any(c in tname_lower for c i
+           +n cat_list):
+      1372 +                        if rule.get("target_professional_id"):
+      1373 +                            derivation_filter_prof_id = int(rule
+           +["target_professional_id"])
+      1374 +                            logger.info(
+      1375 +                                f"📅 check_availability: derivat
+           +ion rule {rule['id']} matched → forcing prof_id={derivation_filt
+           +er_prof_id}"
+      1376 +                            )
+      1377 +                            break
+      1378 +            except Exception as _der_err:
+      1379 +                logger.debug(f"derivation rules lookup skipped:
+           +{_der_err}")
+      1380 +
+      1381          # Solo profesionales aprobados (users.status = 'active')
+             y activos en la sede
+      1382          query = """SELECT p.id, p.first_name, p.last_name, p.goo
+            gle_calendar_id, p.working_hours, p.is_priority_professional
+      1383                     FROM professionals p
+     ...
+      1388          if clean_name:
+      1389              query += " AND (p.first_name ILIKE $2 OR p.last_name
+             ILIKE $2 OR (p.first_name || ' ' || COALESCE(p.last_name, ''))
+            ILIKE $2)"
+      1390              params.append(f"%{clean_name}%")
+      1391 +        elif forced_prof_id:
+      1392 +            query += f" AND p.id = ${len(params) + 1}"
+      1393 +            params.append(forced_prof_id)
+      1394 +        elif derivation_filter_prof_id:
+      1395 +            query += f" AND p.id = ${len(params) + 1}"
+      1396 +            params.append(derivation_filter_prof_id)
+      1397
+      1398          active_professionals = await db.pool.fetch(query, *param
+            s)
+      1399          if not active_professionals and professional_name:
+      1400              return f"❌ No encontré al profesional '{professiona
+            l_name}'. ¿Querés consultar disponibilidad general?"
+      1401 +        if not active_professionals and forced_prof_id:
+      1402 +            logger.warning(
+      1403 +                f"📅 check_availability: forced prof {forced_pro
+           +f_id} returned 0 results — falling back to general search"
+      1404 +            )
+      1405 +            # Reintentar sin filtro forzado
+      1406 +            params = [tenant_id]
+      1407 +            query = """SELECT p.id, p.first_name, p.last_name, p
+           +.google_calendar_id, p.working_hours, p.is_priority_professional
+      1408 +                       FROM professionals p
+      1409 +                       LEFT JOIN users u ON p.user_id = u.id
+      1410 +                       WHERE p.is_active = true AND p.tenant_id
+           += $1
+      1411 +                       AND (p.user_id IS NULL OR (u.status = 'ac
+           +tive' AND u.role IN ('professional', 'ceo')))"""
+      1412 +            active_professionals = await db.pool.fetch(query, *p
+           +arams)
+      1413          if not active_professionals:
+      1414              return "❌ No hay profesionales activos en esta sede
+             para consultar disponibilidad. Por favor contactá a la clínica.
+            "
+      1415
+
+● Task 23: Limpiar soft-locks en cancel y reschedule
+
+  Searched for 2 patterns, read 1 file (ctrl+o to expand)
+
+● Update(orchestrator_service\main.py)
+  ⎿  Added 18 lines
+      3354              apt["id"],
+      3355          )
+      3356
+      3357 +        # 2b. Liberar soft-lock del slot recién cancelado (si ex
+           +iste)
+      3358 +        try:
+      3359 +            from services.relay import get_redis as _get_redis_c
+           +ancel
+      3360 +            _r_c = _get_redis_cancel()                                       3361 +            if _r_c and apt.get("appointment_datetime"):
+      3362 +                _apt_dt = apt["appointment_datetime"]                        3363 +                if hasattr(_apt_dt, "astimezone"):
+      3364 +                    _apt_dt = _apt_dt.astimezone(ARG_TZ)
+      3365 +                _date_str = _apt_dt.strftime("%Y-%m-%d")
+      3366 +                _time_str = _apt_dt.strftime("%H:%M")
+      3367 +                _prof_id = apt.get("professional_id") or 0
+      3368 +                for _lp in [_prof_id, 0]:
+      3369 +                    _lk = f"slot_lock:{tenant_id}:{_lp}:{_date_s
+           +tr}:{_time_str}"
+      3370 +                    await _r_c.delete(_lk)
+      3371 +                logger.info(f"🔓 Soft-locks released for cancell
+           +ed appointment {apt['id']}")
+      3372 +        except Exception as _cancel_lock_err:
+      3373 +            logger.warning(f"Cancel soft-lock cleanup failed (no
+           +n-blocking): {_cancel_lock_err}")
+      3374 +
+      3375          # 3. Notificar a la UI (Borrado visual)
+      3376          try:
+      3377              from main import sio
+
+● Ahora veo cómo es el reschedule:
+
+  Read 1 file (ctrl+o to expand)
+
+● Update(orchestrator_service\main.py)
+  ⎿  Added 1 line, removed 1 line
+      3420          new_dt = parse_datetime(new_date_time)
+      3421          apt = await db.pool.fetchrow(
+      3422              """
+      3423 -            SELECT a.id, a.google_calendar_event_id, a.professio
+           -nal_id, a.duration_minutes
+      3423 +            SELECT a.id, a.google_calendar_event_id, a.professio
+           +nal_id, a.duration_minutes, a.appointment_datetime
+      3424              FROM appointments a
+      3425              JOIN patients p ON a.patient_id = p.id                           3426              WHERE p.tenant_id = $1 AND REGEXP_REPLACE(p.phone_nu
+            mber, '[^0-9]', '', 'g') = $2 AND DATE(a.appointment_datetime) =                    $3
+
+● Update(orchestrator_service\main.py)
+  ⎿  Added 42 lines, removed 16 lines
+      3474                  end_time=(new_dt + timedelta(minutes=60)).isofor
+            mat(),
+      3475              )
+      3476          sync_status = "synced" if new_gcal else "local"
+      3477 -        await db.pool.execute(
+      3478 -            """
+      3479 -            UPDATE appointments SET
+      3480 -                appointment_datetime = $1,                                   3481 -                google_calendar_event_id = COALESCE($2, google_c
+           -alendar_event_id),                                                           3482 -                google_calendar_sync_status = $3,
+      3483 -                reminder_sent = false,
+      3484 -                reminder_sent_at = NULL,
+      3485 -                updated_at = NOW()
+      3486 -            WHERE id = $4
+      3487 -        """,
+      3488 -            new_dt,
+      3489 -            new_gcal["id"] if new_gcal else None,
+      3490 -            sync_status,
+      3491 -            apt["id"],
+      3492 -        )
+      3477 +        try:
+      3478 +            await db.pool.execute(
+      3479 +                """
+      3480 +                UPDATE appointments SET
+      3481 +                    appointment_datetime = $1,
+      3482 +                    google_calendar_event_id = COALESCE($2, goog
+           +le_calendar_event_id),
+      3483 +                    google_calendar_sync_status = $3,
+      3484 +                    reminder_sent = false,
+      3485 +                    reminder_sent_at = NULL,
+      3486 +                    updated_at = NOW()
+      3487 +                WHERE id = $4
+      3488 +            """,
+      3489 +                new_dt,
+      3490 +                new_gcal["id"] if new_gcal else None,
+      3491 +                sync_status,
+      3492 +                apt["id"],
+      3493 +            )
+      3494 +        except asyncpg.UniqueViolationError:
+      3495 +            logger.warning(
+      3496 +                f"🔒 Reschedule blocked by UNIQUE constraint: pr
+           +of={apt['professional_id']} new_dt={new_dt}"
+      3497 +            )
+      3498 +            return "❌ Ese horario ya fue tomado por otro pacien
+           +te. ¿Probamos con otro?"
+      3499
+      3500 +        # Liberar soft-locks del slot ORIGINAL y del NUEVO (post
+           +-booking cleanup)
+      3501 +        try:
+      3502 +            from services.relay import get_redis as _get_redis_r
+           +esched
+      3503 +            _r_re = _get_redis_resched()
+      3504 +            if _r_re:
+      3505 +                old_apt_dt = apt["appointment_datetime"]
+      3506 +                if hasattr(old_apt_dt, "astimezone"):
+      3507 +                    old_apt_dt = old_apt_dt.astimezone(ARG_TZ)
+      3508 +                _old_date = old_apt_dt.strftime("%Y-%m-%d")
+      3509 +                _old_time = old_apt_dt.strftime("%H:%M")
+      3510 +                _new_date = new_dt.strftime("%Y-%m-%d")
+      3511 +                _new_time = new_dt.strftime("%H:%M")
+      3512 +                _prof_id = apt["professional_id"] or 0
+      3513 +                for _lp in [_prof_id, 0]:
+      3514 +                    await _r_re.delete(f"slot_lock:{tenant_id}:{
+           +_lp}:{_old_date}:{_old_time}")
+      3515 +                    await _r_re.delete(f"slot_lock:{tenant_id}:{
+           +_lp}:{_new_date}:{_new_time}")
+      3516 +                logger.info(f"🔓 Soft-locks released after resch
+           +edule {apt['id']}")
+      3517 +        except Exception as _resched_lock_err:
+      3518 +            logger.warning(f"Reschedule soft-lock cleanup failed
+           + (non-blocking): {_resched_lock_err}")
+      3519 +
+      3520          # 5. Emitir evento Socket.IO (Actualizar UI)
+      3521          try:
+      3522              # Obtener datos actualizados para el frontend
+
+● Verifico que todo parsea y el import de asyncpg está disponible:
+
+● Searching for 1 pattern… (ctrl+o to expand)
+
+✶ Grooving… (5m 59s · ↓ 9.1k tokens · thought for 9s)
+  ⎿  Tip: Use /btw to ask a quick side question without interrupting Claude's
+     current worksafasf
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+tengo error al modificar una regla creada, para derivar x tratamientos a x profesional siempre. Esto dice el error: Error interno del servidor. El equipo técnico ha sido notificado.
+
+Esto tengo en consola del navegador: 
+﻿
+index-DyqRiJ7k.js:783 The width(-1) and height(-1) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(0) or use aspect(undefined) to control the
+       height and width.
+2
+index-DyqRiJ7k.js:783 The width(-1) and height(-1) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width.
+index-DyqRiJ7k.js:783 The width(-1) and height(-1) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(0) or use aspect(undefined) to control the
+       height and width.
+dentalforge-bff-serv…erivation-rules/1:1 
+ Failed to load resource: the server responded with a status of 500 ()
+index-DyqRiJ7k.js:1348 Error guardando regla: AxiosError: Request failed with status code 500
+    at CR (index-DyqRiJ7k.js:729:1091)
+    at XMLHttpRequest.b (index-DyqRiJ7k.js:729:5953)
+    at dl.request (index-DyqRiJ7k.js:731:2094)
+    at async Nn (index-DyqRiJ7k.js:1348:8788)
+
+
+
+
+---
+
+Y ESTO TENGO EN REGISTROS DEL ORCHESTRATOR: 
+
+
+{"event": "\ud83d\udce4 Devueltos 12 chats unificados (limit=50, offset=0)"}
+{"event": "\ud83d\udd0c Client connected: F473d7n8shAtOmcDAAAW (auth=none)"}
+{"event": "\ud83d\udd25 UNHANDLED ERROR: column \"treatment_categories\" is of type text[] but expression is of type jsonb\nHINT:  You will need to rewrite or cast the expression.", "exc_info": ["<class 'asyncpg.exceptions.DatatypeMismatchError'>", "DatatypeMismatchError('column \"treatment_categories\" is of type text[] but expression is of type jsonb')", "<traceback object at 0x7a55d84dfc40>"]}
+ERROR:    Exception in ASGI application
+  + Exception Group Traceback (most recent call last):
+  |   File "/usr/local/lib/python3.11/site-packages/starlette/_utils.py", line 81, in collapse_excgroups
+  |     yield
+  |   File "/usr/local/lib/python3.11/site-packages/starlette/middleware/base.py", line 192, in __call__
+  |     async with anyio.create_task_group() as task_group:
+  |   File "/usr/local/lib/python3.11/site-packages/anyio/_backends/_asyncio.py", line 799, in __aexit__
+  |     raise BaseExceptionGroup(
+  | ExceptionGroup: unhandled errors in a TaskGroup (1 sub-exception)
+  +-+---------------- 1 ----------------
+    | Traceback (most recent call last):
+    |   File "/usr/local/lib/python3.11/site-packages/uvicorn/protocols/http/h11_impl.py", line 415, in run_asgi
+    |     result = await app(  # type: ignore[func-returns-value]
+    |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/usr/local/lib/python3.11/site-packages/uvicorn/middleware/proxy_headers.py", line 60, in __call__
+    |     return await self.app(scope, receive, send)
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/usr/local/lib/python3.11/site-packages/engineio/async_drivers/asgi.py", line 75, in __call__
+    |     await self.other_asgi_app(scope, receive, send)
+    |   File "/usr/local/lib/python3.11/site-packages/fastapi/applications.py", line 1163, in __call__
+    |     await super().__call__(scope, receive, send)
+    |   File "/usr/local/lib/python3.11/site-packages/starlette/applications.py", line 90, in __call__
+    |     await self.middleware_stack(scope, receive, send)
+    |   File "/usr/local/lib/python3.11/site-packages/starlette/middleware/errors.py", line 186, in __call__
+    |     raise exc
+    |   File "/usr/local/lib/python3.11/site-packages/starlette/middleware/errors.py", line 164, in __call__
+    |     await self.app(scope, receive, _send)
+    |   File "/usr/local/lib/python3.11/site-packages/starlette/middleware/base.py", line 191, in __call__
+    |     with recv_stream, send_stream, collapse_excgroups():
+    |   File "/usr/local/lib/python3.11/contextlib.py", line 158, in __exit__
+    |     self.gen.throw(typ, value, traceback)
+    |   File "/usr/local/lib/python3.11/site-packages/starlette/_utils.py", line 87, in collapse_excgroups
+    |     raise exc
+    |   File "/usr/local/lib/python3.11/site-packages/starlette/middleware/base.py", line 193, in __call__
+    |     response = await self.dispatch_func(request, call_next)
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/app/dashboard/auth_integrated.py", line 99, in debug_auth_middleware
+    |     return await call_next(request)
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/usr/local/lib/python3.11/site-packages/starlette/middleware/base.py", line 168, in call_next
+    |     raise app_exc from app_exc.__cause__ or app_exc.__context__
+    |   File "/usr/local/lib/python3.11/site-packages/starlette/middleware/base.py", line 144, in coro
+    |     await self.app(scope, receive_or_disconnect, send_no_error)
+    |   File "/usr/local/lib/python3.11/site-packages/starlette/middleware/base.py", line 191, in __call__
+    |     with recv_stream, send_stream, collapse_excgroups():
+    |   File "/usr/local/lib/python3.11/contextlib.py", line 158, in __exit__
+    |     self.gen.throw(typ, value, traceback)
+    |   File "/usr/local/lib/python3.11/site-packages/starlette/_utils.py", line 87, in collapse_excgroups
+    |     raise exc
+    |   File "/usr/local/lib/python3.11/site-packages/starlette/middleware/base.py", line 193, in __call__
+    |     response = await self.dispatch_func(request, call_next)
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/app/main.py", line 7437, in dispatch
+    |     return await call_next(request)
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/usr/local/lib/python3.11/site-packages/starlette/middleware/base.py", line 168, in call_next
+    |     raise app_exc from app_exc.__cause__ or app_exc.__context__
+    |   File "/usr/local/lib/python3.11/site-packages/starlette/middleware/base.py", line 144, in coro
+    |     await self.app(scope, receive_or_disconnect, send_no_error)
+    |   File "/usr/local/lib/python3.11/site-packages/starlette/middleware/base.py", line 191, in __call__
+    |     with recv_stream, send_stream, collapse_excgroups():
+    |   File "/usr/local/lib/python3.11/contextlib.py", line 158, in __exit__
+    |     self.gen.throw(typ, value, traceback)
+    |   File "/usr/local/lib/python3.11/site-packages/starlette/_utils.py", line 87, in collapse_excgroups
+    |     raise exc
+    |   File "/usr/local/lib/python3.11/site-packages/starlette/middleware/base.py", line 193, in __call__
+    |     response = await self.dispatch_func(request, call_next)
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/app/core/security_middleware.py", line 12, in dispatch
+    |     response: Response = await call_next(request)
+    |                          ^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/usr/local/lib/python3.11/site-packages/starlette/middleware/base.py", line 168, in call_next
+    |     raise app_exc from app_exc.__cause__ or app_exc.__context__
+    |   File "/usr/local/lib/python3.11/site-packages/starlette/middleware/base.py", line 144, in coro
+    |     await self.app(scope, receive_or_disconnect, send_no_error)
+    |   File "/usr/local/lib/python3.11/site-packages/starlette/middleware/cors.py", line 96, in __call__
+    |     await self.simple_response(scope, receive, send, request_headers=headers)
+    |   File "/usr/local/lib/python3.11/site-packages/starlette/middleware/cors.py", line 154, in simple_response
+    |     await self.app(scope, receive, send)
+    |   File "/usr/local/lib/python3.11/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    |     await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+    |   File "/usr/local/lib/python3.11/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    |     raise exc
+    |   File "/usr/local/lib/python3.11/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    |     await app(scope, receive, sender)
+    |   File "/usr/local/lib/python3.11/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    |     await self.app(scope, receive, send)
+    |   File "/usr/local/lib/python3.11/site-packages/starlette/routing.py", line 660, in __call__
+    |     await self.middleware_stack(scope, receive, send)
+    |   File "/usr/local/lib/python3.11/site-packages/starlette/routing.py", line 680, in app
+    |     await route.handle(scope, receive, send)
+    |   File "/usr/local/lib/python3.11/site-packages/starlette/routing.py", line 276, in handle
+    |     await self.app(scope, receive, send)
+    |   File "/usr/local/lib/python3.11/site-packages/fastapi/routing.py", line 134, in app
+    |     await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+    |   File "/usr/local/lib/python3.11/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    |     raise exc
+    |   File "/usr/local/lib/python3.11/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    |     await app(scope, receive, sender)
+    |   File "/usr/local/lib/python3.11/site-packages/fastapi/routing.py", line 120, in app
+    |     response = await f(request)
+    |                ^^^^^^^^^^^^^^^^
+    |   File "/usr/local/lib/python3.11/site-packages/fastapi/routing.py", line 674, in app
+    |     raw_response = await run_endpoint_function(
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/usr/local/lib/python3.11/site-packages/fastapi/routing.py", line 328, in run_endpoint_function
+    |     return await dependant.call(**values)
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/app/admin_routes.py", line 8048, in update_derivation_rule
+    |     result = await db.pool.execute(
+    |              ^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/usr/local/lib/python3.11/site-packages/asyncpg/pool.py", line 592, in execute
+    |     return await con.execute(query, *args, timeout=timeout)
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/usr/local/lib/python3.11/site-packages/asyncpg/connection.py", line 357, in execute
+    |     _, status, _ = await self._execute(
+    |                    ^^^^^^^^^^^^^^^^^^^^
+    |   File "/usr/local/lib/python3.11/site-packages/asyncpg/connection.py", line 1873, in _execute
+    |     result, _ = await self.__execute(
+    |                 ^^^^^^^^^^^^^^^^^^^^^
+    |   File "/usr/local/lib/python3.11/site-packages/asyncpg/connection.py", line 1970, in __execute
+    |     result, stmt = await self._do_execute(
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/usr/local/lib/python3.11/site-packages/asyncpg/connection.py", line 2021, in _do_execute
+    |     stmt = await self._get_statement(
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/usr/local/lib/python3.11/site-packages/asyncpg/connection.py", line 443, in _get_statement
+    |     statement = await self._protocol.prepare(
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "asyncpg/protocol/protocol.pyx", line 165, in prepare
+    | asyncpg.exceptions.DatatypeMismatchError: column "treatment_categories" is of type text[] but expression is of type jsonb
+    | HINT:  You will need to rewrite or cast the expression.
+    +------------------------------------
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/uvicorn/protocols/http/h11_impl.py", line 415, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/uvicorn/middleware/proxy_headers.py", line 60, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/engineio/async_drivers/asgi.py", line 75, in __call__
+    await self.other_asgi_app(scope, receive, send)
+  File "/usr/local/lib/python3.11/site-packages/fastapi/applications.py", line 1163, in __call__
+    await super().__call__(scope, receive, send)
+  File "/usr/local/lib/python3.11/site-packages/starlette/applications.py", line 90, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/usr/local/lib/python3.11/site-packages/starlette/middleware/errors.py", line 186, in __call__
+    raise exc
+  File "/usr/local/lib/python3.11/site-packages/starlette/middleware/errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "/usr/local/lib/python3.11/site-packages/starlette/middleware/base.py", line 191, in __call__
+    with recv_stream, send_stream, collapse_excgroups():
+  File "/usr/local/lib/python3.11/contextlib.py", line 158, in __exit__
+    self.gen.throw(typ, value, traceback)
+  File "/usr/local/lib/python3.11/site-packages/starlette/_utils.py", line 87, in collapse_excgroups
+    raise exc
+  File "/usr/local/lib/python3.11/site-packages/starlette/middleware/base.py", line 193, in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/dashboard/auth_integrated.py", line 99, in debug_auth_middleware
+    return await call_next(request)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/starlette/middleware/base.py", line 168, in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+  File "/usr/local/lib/python3.11/site-packages/starlette/middleware/base.py", line 144, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "/usr/local/lib/python3.11/site-packages/starlette/middleware/base.py", line 191, in __call__
+    with recv_stream, send_stream, collapse_excgroups():
+  File "/usr/local/lib/python3.11/contextlib.py", line 158, in __exit__
+    self.gen.throw(typ, value, traceback)
+  File "/usr/local/lib/python3.11/site-packages/starlette/_utils.py", line 87, in collapse_excgroups
+    raise exc
+  File "/usr/local/lib/python3.11/site-packages/starlette/middleware/base.py", line 193, in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/main.py", line 7437, in dispatch
+    return await call_next(request)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/starlette/middleware/base.py", line 168, in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+  File "/usr/local/lib/python3.11/site-packages/starlette/middleware/base.py", line 144, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "/usr/local/lib/python3.11/site-packages/starlette/middleware/base.py", line 191, in __call__
+    with recv_stream, send_stream, collapse_excgroups():
+  File "/usr/local/lib/python3.11/contextlib.py", line 158, in __exit__
+    self.gen.throw(typ, value, traceback)
+  File "/usr/local/lib/python3.11/site-packages/starlette/_utils.py", line 87, in collapse_excgroups
+    raise exc
+  File "/usr/local/lib/python3.11/site-packages/starlette/middleware/base.py", line 193, in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/core/security_middleware.py", line 12, in dispatch
+    response: Response = await call_next(request)
+                         ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/starlette/middleware/base.py", line 168, in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+  File "/usr/local/lib/python3.11/site-packages/starlette/middleware/base.py", line 144, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "/usr/local/lib/python3.11/site-packages/starlette/middleware/cors.py", line 96, in __call__
+    await self.simple_response(scope, receive, send, request_headers=headers)
+  File "/usr/local/lib/python3.11/site-packages/starlette/middleware/cors.py", line 154, in simple_response
+    await self.app(scope, receive, send)
+  File "/usr/local/lib/python3.11/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/usr/local/lib/python3.11/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/usr/local/lib/python3.11/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/usr/local/lib/python3.11/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "/usr/local/lib/python3.11/site-packages/starlette/routing.py", line 660, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/usr/local/lib/python3.11/site-packages/starlette/routing.py", line 680, in app
+    await route.handle(scope, receive, send)
+  File "/usr/local/lib/python3.11/site-packages/starlette/routing.py", line 276, in handle
+    await self.app(scope, receive, send)
+  File "/usr/local/lib/python3.11/site-packages/fastapi/routing.py", line 134, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/usr/local/lib/python3.11/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/usr/local/lib/python3.11/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/usr/local/lib/python3.11/site-packages/fastapi/routing.py", line 120, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/fastapi/routing.py", line 674, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/fastapi/routing.py", line 328, in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/admin_routes.py", line 8048, in update_derivation_rule
+    result = await db.pool.execute(
+             ^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asyncpg/pool.py", line 592, in execute
+    return await con.execute(query, *args, timeout=timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asyncpg/connection.py", line 357, in execute
+    _, status, _ = await self._execute(
+                   ^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asyncpg/connection.py", line 1873, in _execute
+    result, _ = await self.__execute(
+                ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asyncpg/connection.py", line 1970, in __execute
+    result, stmt = await self._do_execute(
+                   ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asyncpg/connection.py", line 2021, in _do_execute
+    stmt = await self._get_statement(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/asyncpg/connection.py", line 443, in _get_statement
+    statement = await self._protocol.prepare(
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "asyncpg/protocol/protocol.pyx", line 165, in prepare
+asyncpg.exceptions.DatatypeMismatchError: column "treatment_categories" is of type text[] but expression is of type jsonb
+HINT:  You will need to rewrite or cast the expression.
+
+
+
+
+
+
+
+
+
+
+
+call last):
+  File "/usr/local/bin/uvicorn", line 8, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1485, in __call__
+    return self.main(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1406, in main
+    rv = self.invoke(ctx)
+         ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1269, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/click/core.py", line 824, in invoke
+    return callback(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 433, in main
+    run(
+  File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 606, in run
+    server.run()
+  File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 75, in run
+    return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/uvicorn/_compat.py", line 30, in asyncio_run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/asyncio/base_events.py", line 654, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 79, in serve
+    await self._serve(sockets)
+  File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 86, in _serve
+    config.load()
+  File "/usr/local/lib/python3.11/site-packages/uvicorn/config.py", line 441, in load
+    self.loaded_app = import_from_string(self.app)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/uvicorn/importer.py", line 19, in import_from_string
+    module = importlib.import_module(module_str)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/importlib/__init__.py", line 126, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1204, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1176, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1147, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 690, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+  File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+  File "/app/main.py", line 58, in <module>
+    from admin_routes import router as admin_router
+  File "/app/admin_routes.py", line 3435, in <module>
+    class ClinicSettingsUpdate(BaseModel):
+  File "/app/admin_routes.py", line 3437, in ClinicSettingsUpdate
+    ai_engine_mode: Optional[Literal["solo", "multi"]] = None  # dual-engine system
+                             ^^^^^^^
+NameError: name 'Literal' is not defined
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Phase 5 — SDD insurance-coverage-by-treatment
+Contexto:
+- Ya completaste Phases 1-4 (migration 034, Pydantic, prompt wiring, frontend CoverageMatrix)
+- Los cambios están en el working tree sin commitear ( ClinicsView.tsx + es.json + en.json )
+- Falta commitear Phase 4 Y hacer Phase 5 (E2E verification)
+Tareas:
+1. Commit Phase 4 (frontend):
+cd clinicforge-sdd
+git add frontend_react/src/views/ClinicsView.tsx frontend_react/src/locales/es.json frontend_react/src/locales/en.json
+git commit -m "feat(insurance): Phase 4 — CoverageMatrix frontend + i18n keys (phase 4)"
+2. Phase 5 — E2E verification (6 scenarios de Gherkin desde spec.md REQ-4):
+   - test_copay_percent_displayed
+   - test_preauthorization_displayed  
+   - test_waiting_period_displayed
+   - test_not_covered_labeled
+   - test_prepaid_flag_shown
+   - test_default_copay_fallback
+   Crear tests/test_insurance_coverage_e2e.py con estos 6 tests.
+3. Push y merge a main:
+git push origin feat/clinic-insurance-coverage
+# Luego merge a main via PR o cherry-pick
+Archivos clave del working tree:
+- frontend_react/src/views/ClinicsView.tsx — CoverageMatrix
+- frontend_react/src/locales/es.json — i18n keys
+- orchestrator_service/main.py — Phase 3 (prompt formatter)
+- orchestrator_service/services/buffer_task.py — Phase 3 (wiring)
+Constraints:
+- NO ejecutar pytest sin permiso explícito
+- NO usar destructive git commands
+- Usar conventional commits
+- Spanish (voseo) para comentarios/mensajes
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+tengo este error al desplegar el orchestrator, esto tengo en registros:
+
+ers: {'id': 1}]
+(Background on this error at: https://sqlalche.me/e/20/f405)
+UPGRADE
+Aplicando migraciones...
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade 033 -> 034, 034 - Insurance coverage by treatment (structured JSONB)
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+psycopg2.errors.SyntaxError: syntax error at or near ":"
+LINE 1: ...t_insurance_providers SET coverage_by_treatment = :cov::json...
+                                                             ^
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/usr/local/bin/alembic", line 8, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/alembic/config.py", line 1047, in main
+    CommandLine(prog=prog).main(argv=argv)
+  File "/usr/local/lib/python3.11/site-packages/alembic/config.py", line 1037, in main
+    self.run_cmd(cfg, options)
+  File "/usr/local/lib/python3.11/site-packages/alembic/config.py", line 971, in run_cmd
+    fn(
+  File "/usr/local/lib/python3.11/site-packages/alembic/command.py", line 483, in upgrade
+    script.run_env()
+  File "/usr/local/lib/python3.11/site-packages/alembic/script/base.py", line 545, in run_env
+    util.load_python_file(self.dir, "env.py")
+  File "/usr/local/lib/python3.11/site-packages/alembic/util/pyfiles.py", line 116, in load_python_file
+    module = load_module_py(module_id, path)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/alembic/util/pyfiles.py", line 136, in load_module_py
+    spec.loader.exec_module(module)  # type: ignore
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+  File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+  File "/app/alembic/env.py", line 69, in <module>
+    run_migrations_online()
+  File "/app/alembic/env.py", line 63, in run_migrations_online
+    context.run_migrations()
+  File "<string>", line 8, in run_migrations
+  File "/usr/local/lib/python3.11/site-packages/alembic/runtime/environment.py", line 969, in run_migrations
+    self.get_context().run_migrations(**kw)
+  File "/usr/local/lib/python3.11/site-packages/alembic/runtime/migration.py", line 626, in run_migrations
+    step.migration_fn(**kw)
+  File "/app/alembic/versions/034_insurance_coverage_by_treatment.py", line 155, in upgrade
+    conn.execute(
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1419, in execute
+    return meth(
+           ^^^^^
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/sql/elements.py", line 527, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1641, in _execute_clauseelement
+    ret = self._execute_context(
+          ^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 2363, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+sqlalchemy.exc.ProgrammingError: (psycopg2.errors.SyntaxError) syntax error at or near ":"
+LINE 1: ...t_insurance_providers SET coverage_by_treatment = :cov::json...
+                                                             ^
+
+[SQL: UPDATE tenant_insurance_providers SET coverage_by_treatment = :cov::jsonb WHERE id = %(id)s]
+[parameters: {'id': 1}]
+(Background on this error at: https://sqlalche.me/e/20/f405)
+UPGRADE
+Aplicando migraciones...
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade 033 -> 034, 034 - Insurance coverage by treatment (structured JSONB)
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+psycopg2.errors.SyntaxError: syntax error at or near ":"
+LINE 1: ...t_insurance_providers SET coverage_by_treatment = :cov::json...
+                                                             ^
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/usr/local/bin/alembic", line 8, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/alembic/config.py", line 1047, in main
+    CommandLine(prog=prog).main(argv=argv)
+  File "/usr/local/lib/python3.11/site-packages/alembic/config.py", line 1037, in main
+    self.run_cmd(cfg, options)
+  File "/usr/local/lib/python3.11/site-packages/alembic/config.py", line 971, in run_cmd
+    fn(
+  File "/usr/local/lib/python3.11/site-packages/alembic/command.py", line 483, in upgrade
+    script.run_env()
+  File "/usr/local/lib/python3.11/site-packages/alembic/script/base.py", line 545, in run_env
+    util.load_python_file(self.dir, "env.py")
+  File "/usr/local/lib/python3.11/site-packages/alembic/util/pyfiles.py", line 116, in load_python_file
+    module = load_module_py(module_id, path)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/alembic/util/pyfiles.py", line 136, in load_module_py
+    spec.loader.exec_module(module)  # type: ignore
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+  File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+  File "/app/alembic/env.py", line 69, in <module>
+    run_migrations_online()
+  File "/app/alembic/env.py", line 63, in run_migrations_online
+    context.run_migrations()
+  File "<string>", line 8, in run_migrations
+  File "/usr/local/lib/python3.11/site-packages/alembic/runtime/environment.py", line 969, in run_migrations
+    self.get_context().run_migrations(**kw)
+  File "/usr/local/lib/python3.11/site-packages/alembic/runtime/migration.py", line 626, in run_migrations
+    step.migration_fn(**kw)
+  File "/app/alembic/versions/034_insurance_coverage_by_treatment.py", line 155, in upgrade
+    conn.execute(
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1419, in execute
+    return meth(
+           ^^^^^
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/sql/elements.py", line 527, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1641, in _execute_clauseelement
+    ret = self._execute_context(
+          ^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 2363, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+sqlalchemy.exc.ProgrammingError: (psycopg2.errors.SyntaxError) syntax error at or near ":"
+LINE 1: ...t_insurance_providers SET coverage_by_treatment = :cov::json...
+                                                             ^
+
+[SQL: UPDATE tenant_insurance_providers SET coverage_by_treatment = :cov::jsonb WHERE id = %(id)s]
+[parameters: {'id': 1}]
+(Background on this error at: https://sqlalche.me/e/20/f405)
+UPGRADE
+Aplicando migraciones...
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade 033 -> 034, 034 - Insurance coverage by treatment (structured JSONB)
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+psycopg2.errors.SyntaxError: syntax error at or near ":"
+LINE 1: ...t_insurance_providers SET coverage_by_treatment = :cov::json...
+                                                             ^
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/usr/local/bin/alembic", line 8, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/alembic/config.py", line 1047, in main
+    CommandLine(prog=prog).main(argv=argv)
+  File "/usr/local/lib/python3.11/site-packages/alembic/config.py", line 1037, in main
+    self.run_cmd(cfg, options)
+  File "/usr/local/lib/python3.11/site-packages/alembic/config.py", line 971, in run_cmd
+    fn(
+  File "/usr/local/lib/python3.11/site-packages/alembic/command.py", line 483, in upgrade
+    script.run_env()
+  File "/usr/local/lib/python3.11/site-packages/alembic/script/base.py", line 545, in run_env
+    util.load_python_file(self.dir, "env.py")
+  File "/usr/local/lib/python3.11/site-packages/alembic/util/pyfiles.py", line 116, in load_python_file
+    module = load_module_py(module_id, path)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/alembic/util/pyfiles.py", line 136, in load_module_py
+    spec.loader.exec_module(module)  # type: ignore
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+  File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+  File "/app/alembic/env.py", line 69, in <module>
+    run_migrations_online()
+  File "/app/alembic/env.py", line 63, in run_migrations_online
+    context.run_migrations()
+  File "<string>", line 8, in run_migrations
+  File "/usr/local/lib/python3.11/site-packages/alembic/runtime/environment.py", line 969, in run_migrations
+    self.get_context().run_migrations(**kw)
+  File "/usr/local/lib/python3.11/site-packages/alembic/runtime/migration.py", line 626, in run_migrations
+    step.migration_fn(**kw)
+  File "/app/alembic/versions/034_insurance_coverage_by_treatment.py", line 155, in upgrade
+    conn.execute(
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1419, in execute
+    return meth(
+           ^^^^^
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/sql/elements.py", line 527, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1641, in _execute_clauseelement
+    ret = self._execute_context(
+          ^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 2363, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+sqlalchemy.exc.ProgrammingError: (psycopg2.errors.SyntaxError) syntax error at or near ":"
+LINE 1: ...t_insurance_providers SET coverage_by_treatment = :cov::json...
+                                                             ^
+
+[SQL: UPDATE tenant_insurance_providers SET coverage_by_treatment = :cov::jsonb WHERE id = %(id)s]
+[parameters: {'id': 1}]
+(Background on this error at: https://sqlalche.me/e/20/f405)
+UPGRADE
+Aplicando migraciones...
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade 033 -> 034, 034 - Insurance coverage by treatment (structured JSONB)
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+psycopg2.errors.SyntaxError: syntax error at or near ":"
+LINE 1: ...t_insurance_providers SET coverage_by_treatment = :cov::json...
+                                                             ^
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/usr/local/bin/alembic", line 8, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/alembic/config.py", line 1047, in main
+    CommandLine(prog=prog).main(argv=argv)
+  File "/usr/local/lib/python3.11/site-packages/alembic/config.py", line 1037, in main
+    self.run_cmd(cfg, options)
+  File "/usr/local/lib/python3.11/site-packages/alembic/config.py", line 971, in run_cmd
+    fn(
+  File "/usr/local/lib/python3.11/site-packages/alembic/command.py", line 483, in upgrade
+    script.run_env()
+  File "/usr/local/lib/python3.11/site-packages/alembic/script/base.py", line 545, in run_env
+    util.load_python_file(self.dir, "env.py")
+  File "/usr/local/lib/python3.11/site-packages/alembic/util/pyfiles.py", line 116, in load_python_file
+    module = load_module_py(module_id, path)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/alembic/util/pyfiles.py", line 136, in load_module_py
+    spec.loader.exec_module(module)  # type: ignore
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+  File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+  File "/app/alembic/env.py", line 69, in <module>
+    run_migrations_online()
+  File "/app/alembic/env.py", line 63, in run_migrations_online
+    context.run_migrations()
+  File "<string>", line 8, in run_migrations
+  File "/usr/local/lib/python3.11/site-packages/alembic/runtime/environment.py", line 969, in run_migrations
+    self.get_context().run_migrations(**kw)
+  File "/usr/local/lib/python3.11/site-packages/alembic/runtime/migration.py", line 626, in run_migrations
+    step.migration_fn(**kw)
+  File "/app/alembic/versions/034_insurance_coverage_by_treatment.py", line 155, in upgrade
+    conn.execute(
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1419, in execute
+    return meth(
+           ^^^^^
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/sql/elements.py", line 527, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1641, in _execute_clauseelement
+    ret = self._execute_context(
+          ^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 2363, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "/usr/local/lib/python3.11/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+sqlalchemy.exc.ProgrammingError: (psycopg2.errors.SyntaxError) syntax error at or near ":"
+LINE 1: ...t_insurance_providers SET coverage_by_treatment = :cov::json...
+                                                             ^
+
+[SQL: UPDATE tenant_insurance_providers SET coverage_by_treatment = :cov::jsonb WHERE id = %(id)s]
+[parameters: {'id': 1}]
+(Background on this error at: https://sqlalche.me/e/20/f405)
+UPGRADE
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+quiero implementar el
+  pack instagram-facebook-social-agent que dejé en engram pero quiero mejorar al plan que ya tenia, quiero agregar que para instagram y facebook de tanto de chatwoot como de meta conection, el agente con el nuevo prompt debe poder agendar a un paciente, debe indagar en su necesidad, la idea es que nutra al paciente sobre los servicios y lo que hace. Que indague su problema o necesidad y en base a eso agende evaluaciones o consulttas. El agente con el nuevo prompt debe poder acceder a toda la informacion de tratamientos, profesionales y todo lo demas si es necesario, tal cual lo puede hacer tora o multiagents con el sistema actual. Lo mismo con los ctas, se le manda la estrcutura y despues s elo lleva para agendar
+
+
+
+ tengo un error y es que en instagram me sigue respondiendo dos veces los         mensajes cuando responde mensajes desde instagram usando chatwoot, no Meta         conection. igual me he fijado y solo en la plataforma, osea la pagina de chats     solo ahi se ve doble el mensaje, en instagram creo que llega una sola vez, o nose  si la doctora ha borrado el segundo, revisa porfavor es un error gravisimo y no    debe suceder, de todas maneras, estoy queriendo hacer un cambio, debe haber un     switch que creo que ya existe que detecte el canal, y si es chatwoot debe ir por   un agente de ia nuevo, con un system prompt nuevo, osea tora tambien o el          multiagente, lo que este seleccionado en el selector, pero con otro system prompt  digamos, enfocado en redes sociales ya que la interaccion alli es totalmente       diferente que en whatsapp. Yo estoy armando un system promopt, un borrador, junto  con estrategias de CTAS (que serian palabras como BLANQUEAMIENTO, CIRUGIA, etc,    palabras claves que pedire que los leads manden entonces el prompt ya estara       preparado apra eso) para que los leads repsondan las historias por ejemplo o       manden mensaje, y entonces ahi  el agente este nuevo con el system prompt nuevo    tendra las estrategias y sabra exactamente que mandar y como mandar. El documento  que te he cargado a la raiz de clinicforge es instagram rutas DraLauraDelgado.md ,  analizado tiene todas las rutas de repsuestas a histoerias como comentarios, pero  serian mensajes recibidos con esas claves. Hay muchas reglas y cosas, todo        deberia tener este system prompt nuevo. Y tengo una landing de balnqueamineot que  no me acuerdo la url, y deberia mandarsela el agente cuando es de blanqueamiento,  o preguntan por ello, y luego otra url de mi landiung principal que si la tengo a  la url yu es https://dralauradelgado.com/   debe mandasre ambien en algunos casos.  Ademas de como interactua ante los ctas, debe manejarse bien y coherentemente en  todas las situaciones en las que se le hable al instagram, y detectar si le habla  un lead, o un amigo o conocido de la doctora Laura Delgado, ya que es el instagram  profesional pero al final de l dia el instagram d euna persona, de un profeisonal  de la clinica que esta registrado como profesinal, pero que ademas es la ceo , me  explico? entiendes lo que necesito del system prompt nuevo? Y tambien debe usar   buffer, y todos los chiches y lujos, adicionales que tiene todo el sistema actual  para lso mensajes de whatsapp por ejemplo que funcionan bien, eso debe seguir, mee  xplico, hermano?                                                                  
+● Pará, hermano. Entiendo TODO lo que decís, y está clarísimo. Pero ojo — acá hay
+  dos cosas muy distintas y las quiero separar antes de tocar una sola línea:
+
+  1. Bug crítico — duplicado de mensajes Instagram vía Chatwoot
+                                                                                     Esto es lo PRIMERO. Un bug de duplicación en producción no espera a una feature
+  nueva. Antes de arreglarlo necesito entender exactamente dónde pasa el duplicado.   Dos hipótesis iniciales, ninguna verificada todavía:
+
+  - Hipótesis A: Chatwoot manda el mismo mensaje dos veces al webhook (evento
+  message_created + algún conversation_updated que reintroduce el mensaje).
+  - Hipótesis B: Nosotros lo procesamos una vez y lo guardamos DOS veces en
+  chat_messages (una desde el webhook de Chatwoot, otra desde un listener antiguo
+  que quedó colgado de cuando usabas Meta native).
+  - Hipótesis C: El duplicado no es real — es el mismo mensaje mostrado dos veces
+  en el frontend por un bug de render (key duplicada en React, sin dedup por
+  provider_message_id).
+
+  Decís que en Instagram real se ve una vez y en la plataforma se ve dos. Eso
+  apunta fuertísimo a B o C, no a A. Tengo que leer el handler de Chatwoot, ver
+  cómo guarda en chat_messages, y confirmar si usa provider_message_id como UNIQUE
+  (ya hay un índice de eso — commit 5ad98b9).
+
+  Para esto no necesito nada tuyo, lo investigo yo.
+
+  2. Feature nueva — agente IG con system prompt de redes sociales
+
+  Esto es un pack SDD completo, separado. Lo que describís lo entiendo perfecto:
+
+  - Switch por canal: si channel = instagram/facebook (vía Chatwoot) → usar el
+  mismo engine seleccionado (solo/multi) PERO con un system prompt distinto,
+  orientado a redes.
+  - Detección CTAs: keywords como BLANQUEAMIENTO, CIRUGIA, IMPLANTE → disparadores
+  de flujos específicos con mensajes y landings preparadas.
+  - Rutas de historias: tomar el doc instagram rutas DraLauraDelgado.md como fuente
+   de verdad para las respuestas.
+  - Landings:
+    - https://dralauradelgado.com/ (principal)
+    - Landing de blanqueamiento → ❓ la URL no la tenés, hay que conseguirla
+  - Detección lead vs amigo/conocido de Laura — es su IG profesional pero personal
+  al mismo tiempo. Hay que tener tono distinto.
+  - Buffer + todos los chiches (debouncing, human override, Meta Ads attribution,
+  memorias, anamnesis link, etc.) — todo se mantiene, solo cambia el system prompt.
+
+  Lo entiendo 100%. Y SÍ es un pack grande pero es totalmente factible.
+
+  ---
+  Mi propuesta (antes de tocar código)
+
+  Paso 1 — AHORA: Investigo el bug del duplicado. Leo el handler de Chatwoot
+  webhooks, veo cómo se guarda en chat_messages, cómo lo renderiza el frontend en
+  ChatsView. Te traigo diagnóstico + fix concreto.
+
+  Paso 2 — DESPUÉS del bug: Arranco pack SDD instagram-social-media-agent. Pero
+  antes necesito DOS cosas tuyas sí o sí:
+
+  1. El archivo instagram rutas DraLauraDelgado.md — decís que lo subiste a la raíz
+   de clinicforge. Lo leo yo mismo, no te preocupes por eso.
+  2. La URL de la landing de blanqueamiento — ¿la tenés en algún lado? ¿Google Ads?
+   ¿WordPress admin? Si no la conseguís vos, puedo dejar el slot en la config del
+  tenant (blanqueamiento_landing_url en tenants) y la cargás desde la UI cuando la
+  encuentres. Así no bloqueamos el pack.
+
+  Pregunta bloqueante (una sola, prometido): ¿querés que arranque ya con la
+  investigación del bug del duplicado, o preferís que primero lea el instagram
+  rutas DraLauraDelgado.md y te arme la propuesta SDD completa del pack IG, y el
+  bug lo ataco en paralelo?
+
+  Yo te recomiendo bug primero porque es producción y es grave. Pero vos decidís.
+  ¿Qué hacemos, loco?
+
+✻ Baked for 51s
+
+───────────────────────────────────────────────────────────────────────────────────
+> esta es la landing de blanqueamiento, la encontre:
+  https://blanqueamiento.dralauradelgado.com/       

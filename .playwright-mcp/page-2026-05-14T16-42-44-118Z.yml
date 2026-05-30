@@ -1,0 +1,204 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - generic [ref=e4]:
+      - generic [ref=e5]:
+        - link "Fusa Labs Logotipo Fusa Labs Wordmark" [ref=e6] [cursor=pointer]:
+          - /url: /
+          - generic [ref=e7]:
+            - img "Fusa Labs Logotipo" [ref=e8]
+            - img "Fusa Labs Wordmark" [ref=e9]
+        - navigation "Main" [ref=e10]:
+          - list [ref=e12]:
+            - listitem [ref=e13]:
+              - link "Equipo" [ref=e14] [cursor=pointer]:
+                - /url: /equipo
+      - generic [ref=e15]:
+        - link "CONTACTO" [ref=e16] [cursor=pointer]:
+          - /url: /#contacto
+          - text: CONTACTO
+          - img
+        - button "ES" [ref=e17]:
+          - text: ES
+          - img
+        - button "Toggle theme" [ref=e18]:
+          - img
+          - generic [ref=e19]: Toggle theme
+  - main [ref=e20]:
+    - generic [ref=e23]:
+      - generic [ref=e24]:
+        - heading "¿Procesos repetitivos software inadecuado o marca imperceptible?" [level=1] [ref=e26]:
+          - generic [ref=e27]:
+            - generic [ref=e28]:
+              - paragraph [ref=e29]:
+                - generic [ref=e30]: ¿Procesos
+              - generic [ref=e32]:
+                - generic [ref=e33]: repetitivos
+                - generic [ref=e35]:
+                  - generic [ref=e36]: r
+                  - generic [ref=e37]: e
+                  - generic [ref=e38]: p
+                  - generic [ref=e39]: e
+                  - generic [ref=e40]: t
+                  - generic [ref=e41]: i
+                  - generic [ref=e42]: t
+                  - generic [ref=e43]: i
+                  - generic [ref=e44]: v
+                  - generic [ref=e45]: o
+                  - generic [ref=e46]: s
+            - paragraph [ref=e48]:
+              - generic [ref=e49]: software
+              - generic [ref=e50]: inadecuado
+            - paragraph [ref=e52]:
+              - generic [ref=e53]: o
+              - generic [ref=e54]: marca
+              - generic [ref=e55]: imperceptible?
+        - paragraph [ref=e56]:
+          - text: Concentrate en lo que importa y volvé a tomar el control de tu negocio.
+          - text: Del resto nos encargamos nosotros.
+      - link "Empezá hoy mismo →" [ref=e58] [cursor=pointer]:
+        - /url: "#contacto"
+        - generic [ref=e59]:
+          - text: Empezá hoy mismo
+          - generic [ref=e60]: →
+    - generic [ref=e61]:
+      - heading "Nuestros Servicios" [level=2] [ref=e63]
+      - generic [ref=e64]:
+        - generic [ref=e66]:
+          - generic [ref=e68]:
+            - heading "IA y Automatización" [level=3] [ref=e70]
+            - generic [ref=e71]: "Recuperar el tiempo para lo que importa: Automatizamos procesos para que tu empresa sea más ágil, pero sobre todo, más humana."
+          - region [ref=e73]:
+            - generic [ref=e75]:
+              - group [ref=e76]:
+                - img "IA y Automatización - 1" [ref=e78]
+              - group [ref=e79]:
+                - img "IA y Automatización - 2" [ref=e81] [cursor=pointer]
+              - group [ref=e82]:
+                - img "IA y Automatización - 3" [ref=e84] [cursor=pointer]
+              - group [ref=e85]:
+                - img "IA y Automatización - 4" [ref=e87]
+              - group [ref=e88]:
+                - img "IA y Automatización - 5" [ref=e90] [cursor=pointer]
+              - group [ref=e91]:
+                - img "IA y Automatización - 6" [ref=e93] [cursor=pointer]
+            - generic:
+              - button "Previous slide" [ref=e94]:
+                - img
+                - generic [ref=e95]: Previous slide
+              - button "Next slide" [ref=e96]:
+                - img
+                - generic [ref=e97]: Next slide
+          - button "Read more" [ref=e99]:
+            - text: Read more
+            - img
+        - generic [ref=e101]:
+          - generic [ref=e103]:
+            - heading "Desarrollo de Software" [level=3] [ref=e105]
+            - generic [ref=e106]: "Tranquilidad técnica a largo plazo: Sistemas robustos y escalables, pensados para acompañar tu crecimiento."
+          - region [ref=e108]:
+            - generic [ref=e110]:
+              - group [ref=e111]:
+                - img "Desarrollo de Software - 1" [ref=e113]
+              - group [ref=e114]:
+                - img "Desarrollo de Software - 2" [ref=e116] [cursor=pointer]
+              - group [ref=e117]:
+                - img "Desarrollo de Software - 3" [ref=e119] [cursor=pointer]
+              - group [ref=e120]:
+                - img "Desarrollo de Software - 4" [ref=e122]
+              - group [ref=e123]:
+                - img "Desarrollo de Software - 5" [ref=e125] [cursor=pointer]
+              - group [ref=e126]:
+                - img "Desarrollo de Software - 6" [ref=e128] [cursor=pointer]
+            - generic:
+              - button "Previous slide" [ref=e129]:
+                - img
+                - generic [ref=e130]: Previous slide
+              - button "Next slide" [ref=e131]:
+                - img
+                - generic [ref=e132]: Next slide
+          - button "Read more" [ref=e134]:
+            - text: Read more
+            - img
+        - generic [ref=e136]:
+          - generic [ref=e138]:
+            - heading "Branding y Marketing" [level=3] [ref=e140]
+            - generic [ref=e141]: "Coherencia y posicionamiento: Construimos identidades visuales que reflejen el valor real de tu proyecto."
+          - region [ref=e143]:
+            - generic [ref=e145]:
+              - group [ref=e146]:
+                - img "Branding y Marketing - 1" [ref=e148]
+              - group [ref=e149]:
+                - img "Branding y Marketing - 2" [ref=e151] [cursor=pointer]
+              - group [ref=e152]:
+                - img "Branding y Marketing - 3" [ref=e154] [cursor=pointer]
+              - group [ref=e155]:
+                - img "Branding y Marketing - 4" [ref=e157]
+              - group [ref=e158]:
+                - img "Branding y Marketing - 5" [ref=e160] [cursor=pointer]
+              - group [ref=e161]:
+                - img "Branding y Marketing - 6" [ref=e163] [cursor=pointer]
+            - generic:
+              - button "Previous slide" [ref=e164]:
+                - img
+                - generic [ref=e165]: Previous slide
+              - button "Next slide" [ref=e166]:
+                - img
+                - generic [ref=e167]: Next slide
+          - button "Read more" [ref=e169]:
+            - text: Read more
+            - img
+    - generic [ref=e172]:
+      - generic [ref=e173]:
+        - heading "¿Tenés un proyecto en mente?" [level=2] [ref=e174]
+        - paragraph [ref=e176]: Contanos sobre tu proyecto y nos contactamos con vos al instante.
+      - generic [ref=e177]:
+        - generic [ref=e178]:
+          - paragraph [ref=e179]:
+            - text: Te ofreceremos
+            - strong [ref=e180]: consultorias
+            - strong [ref=e181]: personalizadas
+            - text: ","
+            - text: propuestas de desarrollo y
+            - strong [ref=e182]: Productos IA
+            - text: que mejor se adapten a tu situación.
+          - generic [ref=e183]:
+            - generic [ref=e185]:
+              - img [ref=e187]
+              - generic [ref=e189]:
+                - paragraph [ref=e190]: Respuesta rápida.
+                - paragraph [ref=e191]: Te responderemos en breve para colaborar.
+            - generic [ref=e193]:
+              - img [ref=e195]
+              - generic [ref=e198]:
+                - paragraph [ref=e199]: Próximos pasos.
+                - paragraph [ref=e200]: Te proporcionaremos un plan detallado y presupuesto.
+        - generic [ref=e204]:
+          - heading "CONTACTANOS" [level=3] [ref=e206]
+          - generic [ref=e207]:
+            - generic [ref=e208]:
+              - generic [ref=e209]: Tu nombre*
+              - textbox "Tu nombre*" [ref=e210]:
+                - /placeholder: Juan Ramirez
+            - generic [ref=e211]:
+              - generic [ref=e212]: Correo electrónico*
+              - textbox "Correo electrónico*" [ref=e213]:
+                - /placeholder: juan@site.com
+            - generic [ref=e214]:
+              - generic [ref=e215]: Mensaje
+              - textbox "Mensaje" [ref=e216]:
+                - /placeholder: Tu mensaje
+            - button "Enviar mensaje" [ref=e217]:
+              - text: Enviar mensaje
+              - img
+  - contentinfo [ref=e218]:
+    - paragraph [ref=e220]:
+      - text: © 2026
+      - strong [ref=e221]: FUSA
+      - text: LABS® — ALL RIGHTS RESERVED
+  - button "Back to top":
+    - img
+  - link "Contactar por WhatsApp" [ref=e222] [cursor=pointer]:
+    - /url: https://wa.me/5493518799794?text=Hola%20Fusa%20Labs,%20estoy%20interesado%20en%20sus%20servicios%20de%20IA.
+    - img [ref=e223]
+  - region "Notifications alt+T"
+  - alert [ref=e225]

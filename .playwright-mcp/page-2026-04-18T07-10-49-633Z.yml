@@ -1,0 +1,194 @@
+- generic [ref=e3]:
+  - complementary [ref=e5]:
+    - generic [ref=e7]:
+      - img "Logo" [ref=e9]
+      - generic [ref=e10]: Clínica Dra. Laura Delgado
+    - navigation [ref=e11]:
+      - button "Dashboard" [ref=e13] [cursor=pointer]:
+        - generic [ref=e16]:
+          - img [ref=e18]
+          - generic [ref=e21]: Dashboard
+      - button "Agenda" [ref=e23] [cursor=pointer]:
+        - generic [ref=e26]:
+          - img [ref=e28]
+          - generic [ref=e30]: Agenda
+      - button "Pacientes" [ref=e32] [cursor=pointer]:
+        - generic [ref=e35]:
+          - img [ref=e37]
+          - generic [ref=e42]: Pacientes
+      - button "Conversaciones" [ref=e44] [cursor=pointer]:
+        - generic [ref=e47]:
+          - img [ref=e49]
+          - generic [ref=e51]: Conversaciones
+      - button "Personal" [ref=e54] [cursor=pointer]:
+        - generic [ref=e57]:
+          - img [ref=e59]
+          - generic [ref=e62]: Personal
+      - button "Sedes (Clínicas)" [ref=e64] [cursor=pointer]:
+        - generic [ref=e67]:
+          - img [ref=e69]
+          - generic [ref=e73]: Sedes (Clínicas)
+      - button "Estrategia" [ref=e75] [cursor=pointer]:
+        - generic [ref=e78]:
+          - img [ref=e80]
+          - generic [ref=e82]: Estrategia
+      - button "Tokens y Métricas" [ref=e84] [cursor=pointer]:
+        - generic [ref=e87]:
+          - img [ref=e89]
+          - generic [ref=e91]: Tokens y Métricas
+      - button "Tratamientos" [ref=e93] [cursor=pointer]:
+        - generic [ref=e96]:
+          - img [ref=e98]
+          - generic [ref=e101]: Tratamientos
+      - button "Mi Perfil" [ref=e103] [cursor=pointer]:
+        - generic [ref=e106]:
+          - img [ref=e108]
+          - generic [ref=e111]: Mi Perfil
+      - button "Marketing Hub" [ref=e113] [cursor=pointer]:
+        - generic [ref=e116]:
+          - img [ref=e118]
+          - generic [ref=e121]: Marketing Hub
+      - button "ROI Dashboard" [ref=e123] [cursor=pointer]:
+        - generic [ref=e126]:
+          - img [ref=e128]
+          - generic [ref=e131]: ROI Dashboard
+      - button "Leads Forms Meta" [ref=e133] [cursor=pointer]:
+        - generic [ref=e136]:
+          - img [ref=e138]
+          - generic [ref=e143]: Leads Forms Meta
+      - button "Automatizaciones" [ref=e145] [cursor=pointer]:
+        - generic [ref=e148]:
+          - img [ref=e150]
+          - generic [ref=e152]: Automatizaciones
+      - button "HSM & Automatización" [ref=e154] [cursor=pointer]:
+        - generic [ref=e157]:
+          - img [ref=e159]
+          - generic [ref=e161]: HSM & Automatización
+      - button "Configuración" [ref=e163] [cursor=pointer]:
+        - generic [ref=e166]:
+          - img [ref=e168]
+          - generic [ref=e171]: Configuración
+      - button "Cerrar Sesión" [ref=e172] [cursor=pointer]:
+        - generic [ref=e174]:
+          - img [ref=e176]
+          - generic [ref=e179]: Cerrar Sesión
+    - generic [ref=e181]:
+      - generic [ref=e182]: c
+      - generic [ref=e183]:
+        - paragraph [ref=e184]: consultoriolauradelgado@gmail.com
+        - paragraph [ref=e185]: ceo
+  - main [ref=e186]:
+    - generic [ref=e187]:
+      - heading "Clínica Dra. Laura Delgado" [level=1] [ref=e189]
+      - generic [ref=e190]:
+        - button "Guia de la pagina" [ref=e192] [cursor=pointer]:
+          - img [ref=e193]
+        - img [ref=e199]
+        - combobox [ref=e241] [cursor=pointer]:
+          - option "Clínica Dra. Laura Delgado" [selected]
+          - option "Dentalogic centro"
+          - option "Prueba"
+        - generic [ref=e207]: C
+    - generic [ref=e209]:
+      - generic [ref=e210]:
+        - generic [ref=e211]:
+          - generic [ref=e212]:
+            - heading "Conversaciones" [level=2] [ref=e213]
+            - button "Silenciar notificaciones" [ref=e214] [cursor=pointer]:
+              - img [ref=e215]
+          - generic [ref=e242]:
+            - generic [ref=e243]: Clínica
+            - combobox [ref=e244]:
+              - option "Clínica Dra. Laura Delgado" [selected]
+              - option "Dentalogic centro"
+              - option "Prueba"
+          - generic [ref=e219]:
+            - generic [ref=e220]: Canal
+            - combobox [ref=e221]:
+              - option "Todos" [selected]
+              - option "WhatsApp"
+              - option "Instagram"
+              - option "Facebook"
+          - generic [ref=e222]:
+            - img [ref=e223]
+            - textbox "Buscar por nombre o teléfono..." [ref=e226]: Cynthia
+        - generic [ref=e1676] [cursor=pointer]:
+          - generic [ref=e1677]:
+            - generic [ref=e1678]: C
+            - img [ref=e1680]
+          - generic [ref=e1683]:
+            - generic [ref=e1684]:
+              - generic [ref=e1685]:
+                - generic [ref=e1686]: Cynthia Reyes
+                - generic [ref=e1687]: Paciente
+              - generic [ref=e1688]: WhatsApp
+            - paragraph [ref=e1690]: Hola Cynthia, te recordamos tu turno de mañana a las 10:30. ¿Nos confirmás tu asistencia?
+            - text: 21h
+      - generic [ref=e1330]:
+        - generic [ref=e1331]:
+          - generic [ref=e1332]:
+            - generic [ref=e1333] [cursor=pointer]:
+              - generic [ref=e1334]: C
+              - img [ref=e1336]
+            - generic [ref=e1339] [cursor=pointer]:
+              - heading "Cynthia Reyes WhatsApp" [level=3] [ref=e2725]:
+                - text: Cynthia Reyes
+                - generic [ref=e1341]: WhatsApp
+              - paragraph [ref=e1342]: 299 589-1350
+          - button "Manual" [ref=e1344] [cursor=pointer]:
+            - img [ref=e1345]
+            - generic [ref=e1348]: Manual
+        - generic [ref=e1349]:
+          - img [ref=e1350]
+          - generic [ref=e1353]: chats.window_closed_warning
+        - generic [ref=e1354]:
+          - img [ref=e1355]
+          - generic [ref=e1358]: "⏳ Ventana de 24hs cerrada: No puedes enviar mensajes manuales hasta que el paciente te escriba de nuevo."
+          - button "Plantillas Meta" [ref=e1359] [cursor=pointer]:
+            - text: Plantillas Meta
+            - img [ref=e1360]
+        - generic [ref=e2728]:
+          - generic [ref=e2730]: Hola Cynthia, te recordamos tu turno de mañana a las 10:30. ¿Nos confirmás tu asistencia?
+          - paragraph [ref=e2731]: 07:00 a. m.
+        - generic [ref=e1600]:
+          - button "Adjuntar archivo" [ref=e1601] [cursor=pointer]:
+            - img [ref=e1602]
+          - textbox "Ventana cerrada - Esperando paciente..." [disabled] [ref=e1604]
+          - button "Ventana de 24hs cerrada" [disabled] [ref=e1605]:
+            - img [ref=e1606]
+          - button "Grabar mensaje de voz" [disabled] [ref=e1609]:
+            - img [ref=e1610]
+      - generic [ref=e1613]:
+        - generic [ref=e1614]:
+          - img [ref=e1615]
+          - heading "Contexto Clínico" [level=3] [ref=e1617]
+        - generic [ref=e1618]:
+          - generic [ref=e1619]:
+            - generic [ref=e1620]:
+              - img [ref=e1621]
+              - generic [ref=e1623]: Estado del Bot
+            - paragraph [ref=e1624]: IA activa
+          - generic [ref=e1625]:
+            - generic [ref=e1626]:
+              - generic [ref=e1627]:
+                - heading "CONTACTO / SIN TURNOS" [level=4] [ref=e2732]
+                - generic [ref=e1629]: Paciente
+              - paragraph [ref=e1630]: Cynthia Reyes
+              - paragraph [ref=e1631]: 299 589-1350
+              - paragraph [ref=e2733]: Este contacto aún no tiene turnos. El historial se mostrará cuando reserve.
+              - generic [ref=e1632]:
+                - button "Ver ficha del paciente" [ref=e1633] [cursor=pointer]:
+                  - img [ref=e1634]
+                  - text: Ver ficha del paciente
+                - button "Agendar turno" [ref=e1637] [cursor=pointer]:
+                  - img [ref=e1638]
+                  - text: Agendar turno
+                - button "Para hijo/familiar" [ref=e1640] [cursor=pointer]:
+                  - img [ref=e1641]
+                  - text: Para hijo/familiar
+                - button "Vincular a paciente" [ref=e1644] [cursor=pointer]:
+                  - img [ref=e1645]
+                  - text: Vincular a paciente
+            - paragraph [ref=e2735]: Sin historial clínico (contacto sin turnos)
+  - button [ref=e234] [cursor=pointer]:
+    - img [ref=e235]

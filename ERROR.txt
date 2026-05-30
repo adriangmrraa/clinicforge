@@ -1,0 +1,109 @@
+error en logs de ycloud:
+
+
+whatsapp.inbound_message.received
+Response
+HTTP status code: 200
+RESPONSE_STATUS_ERROR
+ "Received a non-2xx response"
+{
+  "status": "processed",
+  "count": 1
+}
+Request
+{
+  "id": "evt_6a0cf3bffa09150f3a987d1c",
+  "type": "whatsapp.inbound_message.received",
+  "apiVersion": "v2",
+  "createTime": "2026-05-19T23:35:27.750Z",
+  "whatsappInboundMessage": {
+    "id": "6a0cf3bfb4b922792b8663bf",
+    "wamid": "wamid.HBgNNTQ5MzcwNDg2ODQyMRUCABIYFDNBNzgwMjkyMzQ1MzdEODhDNzNGAA==",
+    "wabaId": "1208359681371850",
+    "from": "+5493704868421",
+    "fromUserId": "AR.1477164083872701",
+    "customerProfile": {
+      "name": "Hector Adrian Gamarra"
+    },
+    "to": "+5492995244868",
+    "sendTime": "2026-05-19T23:35:26.000Z",
+    "type": "text",
+    "text": {
+      "body": "Hola"
+    }
+  }
+} 
+
+
+
+
+-----
+
+
+"\ud83d\udcca Service tokens tracked: nova_daily_analysis | gpt-4o-mini | 527 tokens | $0.000172"}
+{"event": "nova_analysis_tenant_25_cached (Dentalogic centro)"}
+{"event": "nova_analysis: tenant 1 using model 'gpt-5.4-pro' (JSON mode enabled)"}
+{"event": "[weekly_backup] Already ran this week (2026-05-15T22:13:48.119313), skipping"}
+{"event": "nova_analysis_gpt_http_error tenant 1 attempt 1: HTTP 404: {\n  \"error\": {\n    \"message\": \"This is not a chat model and thus not supported in the v1/chat/completions endpoint. Did you mean to use v1/completions?\",\n    \"type\": \"invalid_request_error\",\n    \"param\": \"model\",\n    \"code\": null\n  }\n}"}
+{"event": "nova_analysis_gpt_failed tenant 1 after 3 attempts"}
+{"event": "Exception happened while polling for updates.", "exc_info": ["<class 'telegram.error.Conflict'>", "Conflict('Conflict: terminated by other getUpdates request; make sure that only one bot instance is running')", "<traceback object at 0x761f05d01880>"]}
+{"event": "YCLOUD_RAW_PAYLOAD: {\"id\": \"evt_6a0cf3c838f34b62db7a218e\", \"type\": \"whatsapp.inbound_message.received\", \"apiVersion\": \"v2\", \"createTime\": \"2026-05-19T23:35:36.862Z\", \"whatsappInboundMessage\": {\"id\": \"6a0cf3c838f34b62db7a218b\", \"wamid\": \"wamid.HBgNNTQ5MzcwNDg2ODQyMRUCABIYFDNBQzNCMjJCRjREM0U4RTUyRUE1AA==\", \"wabaId\": \"1208359681371850\", \"from\": \"+5493704868421\", \"fromUserId\": \"AR.1477164083872701\", \"customerProfile\": {\"name\": \"Hector Adrian Gamarra\"}, \"to\": \"+5492995244868\", \"sendTime\": \"2026-05-19T23:35:35.000Z\", \"type\": \"text\", \"text\": {\"body\": \"Hola\"}}}"}
+{"event": "\ud83d\udd04 [ChannelService] YCloud: Normalized 1 events -> Types: []"}
+{"event": "\u2705 ChannelService: Normalized 1 msgs from ycloud"}
+{"event": "\u2705 Message saved: 17257 (Conv: dfe99ff3-2e3a-45a2-9e59-5d71de3803de)"}
+{"event": "\ud83d\udce1 Socket NEW_MESSAGE emitted for +5493704868421 via ycloud"}
+{"event": "\ud83d\udd12 Override check: conv=dfe99ff3-2e3a-45a2-9e59-5d71de3803de conv_locked=False patient_locked=False is_locked=False"}
+{"event": "\u23f3 Buffer task queued for +5493704868421"}
+{"event": "\ud83c\udfaf Buffer task SPAWNED for ycloud/1/+5493704868421 (lock acquired)"}
+{"event": "YCLOUD_RAW_PAYLOAD: {\"id\": \"evt_6a0cf3bffa09150f3a987d1c\", \"type\": \"whatsapp.inbound_message.received\", \"apiVersion\": \"v2\", \"createTime\": \"2026-05-19T23:35:27.750Z\", \"whatsappInboundMessage\": {\"id\": \"6a0cf3bfb4b922792b8663bf\", \"wamid\": \"wamid.HBgNNTQ5MzcwNDg2ODQyMRUCABIYFDNBNzgwMjkyMzQ1MzdEODhDNzNGAA==\", \"wabaId\": \"1208359681371850\", \"from\": \"+5493704868421\", \"fromUserId\": \"AR.1477164083872701\", \"customerProfile\": {\"name\": \"Hector Adrian Gamarra\"}, \"to\": \"+5492995244868\", \"sendTime\": \"2026-05-19T23:35:26.000Z\", \"type\": \"text\", \"text\": {\"body\": \"Hola\"}}}"}
+{"event": "\ud83d\udd04 [ChannelService] YCloud: Normalized 1 events -> Types: []"}
+{"event": "\u2705 ChannelService: Normalized 1 msgs from ycloud"}
+{"event": "\u2705 Message saved: 17258 (Conv: dfe99ff3-2e3a-45a2-9e59-5d71de3803de)"}
+{"event": "\ud83d\udce1 Socket NEW_MESSAGE emitted for +5493704868421 via ycloud"}
+{"event": "\ud83d\udd12 Override check: conv=dfe99ff3-2e3a-45a2-9e59-5d71de3803de conv_locked=False patient_locked=False is_locked=False"}
+{"event": "\u23f3 Buffer task queued for +5493704868421"}
+{"event": "\u23ed\ufe0f Buffer task ALREADY ACTIVE for ycloud/1/+5493704868421 \u2014 message enqueued, no new task spawned"}
+{"event": "\ud83e\uddbe Processing Buffer Task | tenant=1 conv=dfe99ff3-2e3a-45a2-9e59-5d71de3803de user=+5493704868421 provider=ycloud msgs=1"}
+{"event": "patient_memories table ensured (v2)"}
+{"event": "\ud83d\udcca Service tokens tracked: rag_embedding | text-embedding-3-small | 3 tokens | $0.000000"}
+{"event": "\ud83d\udcda RAG pgvector: found 0 FAQs above threshold 0.55 for tenant 1"}
+{"event": "\ud83d\udcda RAG fallback: injecting 20 static FAQs (no pgvector or no relevant matches)"}
+{"event": "\ud83d\udcca BOOKING_FLOW | phone=+5493704868421 | state=IDLE | msg='Hola\\nHola'"}
+{"event": "\ud83e\udd16 MODEL: Using tenant-specific API key for tenant=1"}
+{"event": "\ud83e\udd16 MODEL: Loaded from DB system_config: 'gpt-5.4-mini' for tenant=1"}
+{"event": "\ud83e\udd16 MODEL FINAL: tenant=1 model='gpt-5.4-mini' provider=openai"}
+{"event": "\ud83e\udde0 Invoking Agent for +5493704868421..."}
+{"event": "Engine router pubsub initialized"}
+{"event": "\u26a0\ufe0f Engine router check failed, using default: module 'db' has no attribute 'pool'"}
+{"event": "\ud83d\udcca BOOKING_FLOW | LLM_RESULT | tools=[] | response='Hola! Qu\u00e9 tal? \ud83d\ude0a' | tokens=32180"}
+{"event": "\ud83d\udcca Token source: callback | in=32171 out=9 total=32180"}
+{"event": "\ud83d\udcca Tokens tracked: 32180 | cost: $0.004831"}
+{"event": "\ud83d\ude80 Sending YCloud Response | tenant=1 to=+5493704868421 media=0"}
+{"event": "\ud83d\udcde YCloud from_number (normalized): +54915492995244868"}
+{"event": "Ping Preventivo [typing_on] enviado a ycloud/whatsapp para id dfe99ff3-2e3a-45a2-9e59-5d71de3803de"}
+{"event": "ycloud_send_failed: to=+5493704868421 status=403 body={\"error\":{\"status\":403,\"code\":\"WHATSAPP_PHONE_NUMBER_UNAVAILABLE\",\"message\":\"Phone number +54915492995244868 has not been registered.\",\"target\":\"from\",\"docUrl\":\"https://docs.ycloud.com/v2/reference/er"}
+{"event": "\u274c Error sending ycloud bubble: Client error '403 ' for url 'https://api.ycloud.com/v2/whatsapp/messages/sendDirectly'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/403"}
+{"event": "\ud83d\udce1 Socket AI NEW_MESSAGE emitted for +5493704868421"}
+{"event": "\u2705 Signed URL verificada: path=/uploads/1/547dc7cd-cf66-426a-8817-b8f784f349f8.jp..., tenant=1"}
+{"event": "\ud83c\udf9e\ufe0f Proxying media (tenant 1): /uploads/1/547dc7cd-cf66-426a-8817-b8f784f349f8.jpg"}
+{"event": "\ud83d\udcc1 Serving local media via FileResponse: /app/media/1/547dc7cd-cf66-426a-8817-b8f784f349f8.jpg (Range Support)"}
+{"event": "\ud83d\udd10 Firmando attachment: original=/uploads/1/547dc7cd-cf66-426a-8817-b8f784f349f8.jpg..., clean=/uploads/1/547dc7cd-cf66-426a-8817-b8f784f349f8.jpg..., tenant=1, expires=1779320187"}
+{"event": "\ud83d\udd10 Firmando attachment: original=/uploads/1/179e227e-eb8f-476e-bcac-87f734c8df03.ogg..., clean=/uploads/1/179e227e-eb8f-476e-bcac-87f734c8df03.ogg..., tenant=1, expires=1779320187"}
+{"event": "\ud83d\udd0d Muestra de content_attributes crudos (primeros 3): [(0, '[]', <class 'str'>), (1, '[]', <class 'str'>), (2, '[]', <class 'str'>)]"}
+{"event": "\ud83d\udce4 Devueltos 30 mensajes para conversaci\u00f3n dfe99ff3-2e3a-45a2-9e59-5d71de3803de (attachments check: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0])"}
+{"event": "\ud83d\udce4 Devueltos 50 chats unificados (limit=50, offset=0)"}
+{"event": "\u2705 Signed URL verificada: path=/uploads/1/547dc7cd-cf66-426a-8817-b8f784f349f8.jp..., tenant=1"}
+{"event": "\ud83c\udf9e\ufe0f Proxying media (tenant 1): /uploads/1/547dc7cd-cf66-426a-8817-b8f784f349f8.jpg"}
+{"event": "\ud83d\udcc1 Serving local media via FileResponse: /app/media/1/547dc7cd-cf66-426a-8817-b8f784f349f8.jpg (Range Support)"}
+{"event": "\u2705 Signed URL verificada: path=/uploads/1/179e227e-eb8f-476e-bcac-87f734c8df03.og..., tenant=1"}
+{"event": "\ud83c\udf9e\ufe0f Proxying media (tenant 1): /uploads/1/179e227e-eb8f-476e-bcac-87f734c8df03.ogg"}
+{"event": "\ud83d\udcc1 Serving local media via FileResponse: /app/media/1/179e227e-eb8f-476e-bcac-87f734c8df03.ogg (Range Support)"}
+INFO:     10.11.0.23:52680 - "WebSocket /socket.io/?EIO=4&transport=websocket" [accepted]
+INFO:     connection open
+{"event": "\ud83d\udd0c Client connected: fozvoGHNRk2eOeFvAAAB \u2192 room tenant:1"}
+{"event": "\ud83e\udd16 CONFIG SAVE: key=MODEL_INSIGHTS value='gpt-5.4-mini' tenant_id=1"}
+{"event": "\u2705 Configuraci\u00f3n actualizada: MODEL_INSIGHTS = gpt-5.4-mini"}
+{"event": "\u2705 MODEL_INSIGHTS actualizado a: gpt-5.4-mini"}
+{"event": "\ud83e\udd16 CONFIG SAVE: key=MODEL_PATIENT_MEMORY value='gpt-5.4-mini' tenant_id=1"}
+{"event": "\u2705 Configuraci\u00f3n actualizada: MODEL_PATIENT_MEMORY = gpt-5.4-mini"}
+{"event": "\u2705 MODEL_PATIENT_MEMORY actualizado a: gpt-5.4-mini"}

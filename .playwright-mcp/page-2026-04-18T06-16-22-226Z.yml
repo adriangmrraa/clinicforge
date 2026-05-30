@@ -1,0 +1,76 @@
+- generic [ref=e3]:
+  - generic [ref=e25]:
+    - generic [ref=e27]:
+      - img [ref=e29]
+      - generic [ref=e31]:
+        - heading "Dentalogic" [level=1] [ref=e32]
+        - paragraph [ref=e33]: Clinical Intelligence
+    - generic [ref=e34]:
+      - heading "El futuro de la gestion dental" [level=2] [ref=e35]:
+        - text: El futuro de la
+        - text: gestion dental
+      - paragraph [ref=e36]: Inteligencia artificial que transforma cada interaccion con tus pacientes.
+      - generic [ref=e37]:
+        - generic [ref=e38]:
+          - img [ref=e40]
+          - paragraph [ref=e42]: Odontograma digital
+          - paragraph [ref=e43]: Registro clinico inteligente
+        - generic [ref=e44]:
+          - img [ref=e46]
+          - paragraph [ref=e48]: Agente IA 24/7
+          - paragraph [ref=e49]: Atencion automatizada
+        - generic [ref=e50]:
+          - img [ref=e52]
+          - paragraph [ref=e54]: Analytics en tiempo real
+          - paragraph [ref=e55]: Metricas que importan
+        - generic [ref=e56]:
+          - img [ref=e58]
+          - paragraph [ref=e60]: Omnicanal
+          - paragraph [ref=e61]: WhatsApp + Instagram + Facebook
+    - generic [ref=e62]:
+      - generic [ref=e63]:
+        - generic [ref=e64]:
+          - paragraph [ref=e65]: 20+
+          - paragraph [ref=e66]: Profesionales
+        - generic [ref=e67]:
+          - paragraph [ref=e68]: 5K+
+          - paragraph [ref=e69]: Pacientes
+        - generic [ref=e70]:
+          - paragraph [ref=e71]: 99.9%
+          - paragraph [ref=e72]: Uptime
+      - generic [ref=e73]:
+        - generic [ref=e74]:
+          - generic [ref=e76]: D
+          - generic [ref=e78]: A
+          - generic [ref=e80]: M
+          - generic [ref=e82]: R
+        - paragraph [ref=e83]: Profesionales que ya transformaron su practica
+  - generic [ref=e85]:
+    - generic [ref=e87]:
+      - generic [ref=e88]:
+        - heading "Dental Clinic" [level=2] [ref=e89]
+        - paragraph [ref=e90]: Bienvenido de nuevo
+      - generic [ref=e91]:
+        - generic [ref=e92]:
+          - generic [ref=e93]:
+            - text: Correo electrónico
+            - button "Correo electrónico" [ref=e95] [cursor=pointer]:
+              - img [ref=e96]
+          - generic [ref=e98]:
+            - img [ref=e99]
+            - textbox "dr.perez@clinica.com" [ref=e102]
+        - generic [ref=e103]:
+          - generic [ref=e104]:
+            - text: Contraseña
+            - button "Contraseña" [ref=e106] [cursor=pointer]:
+              - img [ref=e107]
+          - generic [ref=e109]:
+            - img [ref=e110]
+            - textbox "••••••••" [ref=e113]
+            - button [ref=e114] [cursor=pointer]:
+              - img [ref=e115]
+        - button "Ingresar" [ref=e118] [cursor=pointer]:
+          - text: Ingresar
+          - img [ref=e119]
+      - button "¿No tienes acceso? Solicitalo ahora" [ref=e122] [cursor=pointer]
+    - paragraph [ref=e123]: Powered by Dentalogic AI

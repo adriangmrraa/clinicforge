@@ -1,0 +1,172 @@
+           code            |                name                | first_name | last_name 
+---------------------------+------------------------------------+------------+-----------
+ atm_tratamiento_          | ATM                                | Laura      | Delgado
+ atm_tratamiento_          | ATM                                | Laura      | Delgado
+ blanqueamiento_dental     | Blanqueamiento Diamante            | Laura      | Delgado
+ blanqueamiento_dental     | Blanqueamiento Diamante            | Laura      | Delgado
+ carilla_tratamiento       | Carillas/Estetica Anterior         | Laura      | Delgado
+ carilla_tratamiento       | Carillas/Estetica Anterior         | Laura      | Delgado
+ cirugia_compleja          | Consulta de Cirugía                | Laura      | Delgado
+ cirugia_compleja          | Consulta de Cirugía                | Laura      | Delgado
+ cirugia_simple            | Consulta de Cirugía                | Laura      | Delgado
+ cirugia_simple            | Consulta de Cirugía                | Laura      | Delgado
+ consulta_general          | Consulta General                   | Elizabeth  | Ester
+ consulta_general          | Consulta General                   | Laura      | Delgado
+ consulta_general          | Consulta General                   | Eli        | Perez
+ consulta_ortodoncia       | Ortodoncia                         | Elizabeth  | Ester
+ consulta_urgencia         | Consulta Urgencia                  | Laura      | Delgado
+ consulta_urgencia         | Consulta Urgencia                  | Elizabeth  | Ester
+ consulta_urgencia         | Consulta Urgencia                  | Eli        | Perez
+ control_ortodoncia        | Control Ortodoncia                 | Eli        | Perez
+ control_ortodoncia        | Control Ortodoncia                 | Elizabeth  | Ester
+ control_ortodoncia        | Control Ortodoncia                 | Laura      | Delgado
+ control_revision          | Control / Revisión                 | Laura      | Delgado
+ control_revision          | Control / Revisión                 | Eli        | Perez
+ endodoncia                | Endodoncia                         | Laura      | Delgado
+ endodoncia                | Endodoncia                         | Elizabeth  | Ester
+ endolifting               | Endolifting                        | Laura      | Delgado
+ endolifting               | Endolifting                        | Laura      | Delgado
+ estetica_facial_avanzada  | Estética Facial Avanzada           | Laura      | Delgado
+ estetica_facial_avanzada  | Estética Facial Avanzada           | Laura      | Delgado
+ estetica_facial_simple    | Estética Facial Simple             | Laura      | Delgado
+ estetica_facial_simple    | Estética Facial Simple             | Laura      | Delgado
+ implante_complejo_cima    | Implante Complejo (Protocolo CIMA) | Laura      | Delgado
+ implante_complejo_cima    | Implante Complejo (Protocolo CIMA) | Laura      | Delgado
+ implante_guiado_tomo      | Implante Guiado Tomográficamente   | Laura      | Delgado
+ implante_guiado_tomo      | Implante Guiado Tomográficamente   | Laura      | Delgado
+ implante_simple_risa      | Implante Simple (Protocolo RISA)   | Laura      | Delgado
+ implante_simple_risa      | Implante Simple (Protocolo RISA)   | Laura      | Delgado
+ injerto_regeneracion_osea | Injerto / Regeneración Ósea        | Laura      | Delgado
+ injerto_regeneracion_osea | Injerto / Regeneración Ósea        | Laura      | Delgado
+ limpieza_dental           | Limpieza Dental                    | Eli        | Perez
+ limpieza_dental           | Limpieza Dental                    | Elizabeth  | Ester
+ limpieza_dental           | Limpieza Dental                    | Laura      | Delgado
+ rehabilitacion_compleja   | Rehabilitación Compleja            | Laura      | Delgado
+ rehabilitacion_compleja   | Rehabilitación Compleja            | Laura      | Delgado
+ rehabilitacion_integral   | Rehabilitación Integral            | Laura      | Delgado
+ rehabilitacion_integral   | Rehabilitación Integral            | Laura      | Delgado
+ rehabilitacion_simple     | Rehabilitación Simple              | Laura      | Delgado
+ rehabilitacion_simple     | Rehabilitación Simple              | Laura      | Delgado
+ restauracion_compleja     | Restauración Compleja              | Laura      | Delgado
+ restauracion_compleja     | Restauración Compleja              | Laura      | Delgado
+ restauracion_simple       | Restauración Simple                | Laura      | Delgado
+ restauracion_simple       | Restauración Simple                | Elizabeth  | Ester
+(51 rows)
+
+~
+
+
+
+-------------
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ id | provider_name |       status        |                                                                                                                                                                                                                                                                                                                                                                                            coverage_by_treatment                                                                                                                                                                                                                                                                                                                                                                                            | external_target |                                    ai_response_template                                    
+----+---------------+---------------------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+-----------------+--------------------------------------------------------------------------------------------
+ 16 | OSDE          | restricted          | {"cirugia_simple": {"notes": "", "covered": true, "copay_percent": 0.0, "max_annual_coverage": null, "waiting_period_days": 0, "pre_auth_leadtime_days": 0, "requires_pre_authorization": false}, "cirugia_compleja": {"notes": "", "covered": true, "copay_percent": 0.0, "max_annual_coverage": null, "waiting_period_days": 0, "pre_auth_leadtime_days": 0, "requires_pre_authorization": false}, "consulta_general": {"notes": "", "covered": true, "copay_percent": 0.0, "max_annual_coverage": null, "waiting_period_days": 0, "pre_auth_leadtime_days": 0, "requires_pre_authorization": false}, "consulta_urgencia": {"notes": "", "covered": true, "copay_percent": 0.0, "max_annual_coverage": null, "waiting_period_days": 0, "pre_auth_leadtime_days": 0, "requires_pre_authorization": false}} |                 | Trabajamos con OSDE para consultas y tratamientos quirúrgicos.                            +
+    |               |                     |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |                 |                                                                                           +
+    |               |                     |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |                 | El coseguro correspondiente se abona el día de la consulta.                               +
+    |               |                     |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |                 |                                                                                           +
+    |               |                     |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |                 | Si querés, contame qué necesitás y te orientamos para indicarte cómo manejarlo en tu caso.
+ 17 | ISSN          | external_derivation | {}                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | CIMO            | En este caso, los tratamientos quirúrgicos con Instituto se realizan a través de CIMO.    +
+    |               |                     |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |                 |                                                                                           +
+    |               |                     |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |                 | Si querés, te orientamos para que puedas gestionar el turno allí correctamente.           +
+    |               |                     |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |                 | Podés comunicarte con CIMO al [TELÉFONO / CONTACTO].                                      +
+    |               |                     |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |                 |                                                                                           +
+    |               |                     |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |                 | Cualquier duda, quedo a disposición para ayudarte.
+(2 rows)
+
+~
+
+----
+
+SEGUNDO COMANDO TRATAMENTS TYPES: 
+
+WARNING:  database "postgres" has a collation version mismatch
+DETAIL:  The database was created using collation version 2.41, but the operating system provides version 2.36.
+HINT:  Rebuild all objects in this database that use the default collation and run ALTER DATABASE postgres REFRESH COLLATION VERSION, or build PostgreSQL with the right library version.
+psql (17.9 (Debian 17.9-1.pgdg12+1))
+Type "help" for help.
+
+postgres=# SELECT id, code, name, category
+FROM treatment_types WHERE tenant_id = 1 AND is_active = true
+ORDER BY code;
+ id |           code            |                name                |     category      
+----+---------------------------+------------------------------------+-------------------
+ 48 | atm_tratamiento_          | ATM                                | atm
+ 29 | blanqueamiento_dental     | Blanqueamiento Diamante            | estetica_facial
+ 47 | carilla_tratamiento       | Carillas/Estetica Anterior         | estetica_facial
+ 37 | cirugia_compleja          | Consulta de Cirugía                | cirugia
+ 36 | cirugia_simple            | Consulta de Cirugía                | cirugia
+ 23 | consulta_general          | Consulta General                   | consultas
+ 45 | consulta_ortodoncia       | Ortodoncia                         | ortodoncia
+ 24 | consulta_urgencia         | Consulta Urgencia                  | consultas
+ 46 | control_ortodoncia        | Control Ortodoncia                 | ortodoncia
+ 28 | control_revision          | Control / Revisión                 | prevencion
+ 32 | endodoncia                | Endodoncia                         | operatoria
+ 35 | endolifting               | Endolifting                        | endolifting
+ 34 | estetica_facial_avanzada  | Estética Facial Avanzada           | estetica_facial
+ 33 | estetica_facial_simple    | Estética Facial Simple             | estetica_facial
+ 39 | implante_complejo_cima    | Implante Complejo (Protocolo CIMA) | implantes
+ 40 | implante_guiado_tomo      | Implante Guiado Tomográficamente   | implantes
+ 38 | implante_simple_risa      | Implante Simple (Protocolo RISA)   | implantes
+ 41 | injerto_regeneracion_osea | Injerto / Regeneración Ósea        | regeneracion_osea
+ 27 | limpieza_dental           | Limpieza Dental                    | prevencion
+ 43 | rehabilitacion_compleja   | Rehabilitación Compleja            | rehabilitacion
+ 44 | rehabilitacion_integral   | Rehabilitación Integral            | rehabilitacion
+ 42 | rehabilitacion_simple     | Rehabilitación Simple              | rehabilitacion
+ 31 | restauracion_compleja     | Restauración Compleja              | operatoria
+ 30 | restauracion_simple       | Restauración Simple                | operatoria
+(24 rows)
+
+postgres=# 
+
+
+
+------
+
+TRERCER COMANDO: 
+
+WARNING:  database "postgres" has a collation version mismatch
+DETAIL:  The database was created using collation version 2.41, but the operating system provides version 2.36.
+HINT:  Rebuild all objects in this database that use the default collation and run ALTER DATABASE postgres REFRESH COLLATION VERSION, or build PostgreSQL with the right library version.
+psql (17.9 (Debian 17.9-1.pgdg12+1))
+Type "help" for help.
+
+postgres=# SELECT id, first_name, last_name, specialty
+FROM professionals WHERE tenant_id = 1 AND is_active = true;
+ id | first_name | last_name |      specialty      
+----+------------+-----------+---------------------
+  2 | Laura      | Delgado   | Cirugía Oral
+ 22 | Paula      | Casas     | 
+ 23 | Elizabeth  | Ester     | 
+  4 | Laura      | Delgado   | Cirugía Oral
+  3 | Eli        | Perez     | Odontología General
+(5 rows)
+
+postgres=# 
+
+
+-----
+
+

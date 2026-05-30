@@ -123,3 +123,148 @@ DEL "payment_verify_cooldown:1:+5492994529972"
 | `timer` | `timer:{tenant}:{external_user_id}` | `services/relay.py` |
 | `active_task` | `active_task:{tenant}:{external_user_id}` | `services/relay.py` |
 | `payment_verify_cooldown` | `payment_verify_cooldown:{tenant}:{phone}` | `services/payment_cooldown.py` |
+
+---
+
+## 3. Comandos listos para copiar y pegar (Dra. Laura Delgado — tenant 1)
+
+### Credenciales Redis
+
+```
+AUTH t2m0fwanclrykj2tfdhp
+```
+
+### Borrar un solo numero
+
+Reemplazar `XXXXXXXXXXXX` con los ultimos 10 digitos y `+549XXXXXXXXXXXX` con el telefono completo.
+
+**PostgreSQL:**
+
+```sql
+BEGIN;
+DELETE FROM chat_messages WHERE conversation_id IN (SELECT id FROM chat_conversations WHERE external_user_id LIKE '%XXXXXXXXXXXX');
+DELETE FROM chat_conversations WHERE external_user_id LIKE '%XXXXXXXXXXXX';
+DELETE FROM patient_context_snapshots WHERE phone_number LIKE '%XXXXXXXXXXXX';
+DELETE FROM agent_turn_log WHERE phone_number LIKE '%XXXXXXXXXXXX';
+DELETE FROM automation_executions WHERE phone_number LIKE '%XXXXXXXXXXXX';
+DELETE FROM automation_logs WHERE phone_number LIKE '%XXXXXXXXXXXX';
+DELETE FROM patient_memories WHERE patient_phone LIKE '%XXXXXXXXXXXX';
+DELETE FROM lead_notes WHERE lead_id IN (SELECT id FROM meta_form_leads WHERE phone_number LIKE '%XXXXXXXXXXXX');
+DELETE FROM lead_status_history WHERE lead_id IN (SELECT id FROM meta_form_leads WHERE phone_number LIKE '%XXXXXXXXXXXX');
+DELETE FROM meta_form_leads WHERE phone_number LIKE '%XXXXXXXXXXXX';
+UPDATE accounting_transactions SET patient_id = NULL WHERE patient_id IN (SELECT id FROM patients WHERE phone_number LIKE '%XXXXXXXXXXXX');
+UPDATE automation_logs SET patient_id = NULL WHERE patient_id IN (SELECT id FROM patients WHERE phone_number LIKE '%XXXXXXXXXXXX');
+DELETE FROM patient_attribution_history WHERE patient_id IN (SELECT id FROM patients WHERE phone_number LIKE '%XXXXXXXXXXXX');
+DELETE FROM patients WHERE guardian_phone LIKE '%XXXXXXXXXXXX';
+DELETE FROM patients WHERE phone_number LIKE '%XXXXXXXXXXXX';
+COMMIT;
+```
+
+**Redis (dentro de redis-cli):**
+
+```
+DEL "patient_ctx_working:1:+549XXXXXXXXXXXX"
+DEL "convstate:1:+549XXXXXXXXXXXX"
+DEL "greet:1:+549XXXXXXXXXXXX"
+DEL "lead_ctx:1:XXXXXXXXXXXX"
+DEL "buffer:1:+549XXXXXXXXXXXX"
+DEL "timer:1:+549XXXXXXXXXXXX"
+DEL "active_task:1:+549XXXXXXXXXXXX"
+DEL "payment_verify_cooldown:1:+549XXXXXXXXXXXX"
+```
+
+---
+
+### Borrar multiples numeros (ejemplo con 3)
+
+Solo copiar este bloque entero, reemplazar los sufijos y listo.
+
+**PostgreSQL:**
+
+```sql
+BEGIN;
+
+-- ========== NUMERO 1: +5492994529972 ==========
+DELETE FROM chat_messages WHERE conversation_id IN (SELECT id FROM chat_conversations WHERE external_user_id LIKE '%2994529972');
+DELETE FROM chat_conversations WHERE external_user_id LIKE '%2994529972';
+DELETE FROM patient_context_snapshots WHERE phone_number LIKE '%2994529972';
+DELETE FROM agent_turn_log WHERE phone_number LIKE '%2994529972';
+DELETE FROM automation_executions WHERE phone_number LIKE '%2994529972';
+DELETE FROM automation_logs WHERE phone_number LIKE '%2994529972';
+DELETE FROM patient_memories WHERE patient_phone LIKE '%2994529972';
+DELETE FROM lead_notes WHERE lead_id IN (SELECT id FROM meta_form_leads WHERE phone_number LIKE '%2994529972');
+DELETE FROM lead_status_history WHERE lead_id IN (SELECT id FROM meta_form_leads WHERE phone_number LIKE '%2994529972');
+DELETE FROM meta_form_leads WHERE phone_number LIKE '%2994529972';
+UPDATE accounting_transactions SET patient_id = NULL WHERE patient_id IN (SELECT id FROM patients WHERE phone_number LIKE '%2994529972');
+UPDATE automation_logs SET patient_id = NULL WHERE patient_id IN (SELECT id FROM patients WHERE phone_number LIKE '%2994529972');
+DELETE FROM patient_attribution_history WHERE patient_id IN (SELECT id FROM patients WHERE phone_number LIKE '%2994529972');
+DELETE FROM patients WHERE guardian_phone LIKE '%2994529972';
+DELETE FROM patients WHERE phone_number LIKE '%2994529972';
+
+-- ========== NUMERO 2: +5493434732389 ==========
+DELETE FROM chat_messages WHERE conversation_id IN (SELECT id FROM chat_conversations WHERE external_user_id LIKE '%3434732389');
+DELETE FROM chat_conversations WHERE external_user_id LIKE '%3434732389';
+DELETE FROM patient_context_snapshots WHERE phone_number LIKE '%3434732389';
+DELETE FROM agent_turn_log WHERE phone_number LIKE '%3434732389';
+DELETE FROM automation_executions WHERE phone_number LIKE '%3434732389';
+DELETE FROM automation_logs WHERE phone_number LIKE '%3434732389';
+DELETE FROM patient_memories WHERE patient_phone LIKE '%3434732389';
+DELETE FROM lead_notes WHERE lead_id IN (SELECT id FROM meta_form_leads WHERE phone_number LIKE '%3434732389');
+DELETE FROM lead_status_history WHERE lead_id IN (SELECT id FROM meta_form_leads WHERE phone_number LIKE '%3434732389');
+DELETE FROM meta_form_leads WHERE phone_number LIKE '%3434732389';
+UPDATE accounting_transactions SET patient_id = NULL WHERE patient_id IN (SELECT id FROM patients WHERE phone_number LIKE '%3434732389');
+UPDATE automation_logs SET patient_id = NULL WHERE patient_id IN (SELECT id FROM patients WHERE phone_number LIKE '%3434732389');
+DELETE FROM patient_attribution_history WHERE patient_id IN (SELECT id FROM patients WHERE phone_number LIKE '%3434732389');
+DELETE FROM patients WHERE guardian_phone LIKE '%3434732389';
+DELETE FROM patients WHERE phone_number LIKE '%3434732389';
+
+-- ========== NUMERO 3: +5493704868421 ==========
+DELETE FROM chat_messages WHERE conversation_id IN (SELECT id FROM chat_conversations WHERE external_user_id LIKE '%3704868421');
+DELETE FROM chat_conversations WHERE external_user_id LIKE '%3704868421';
+DELETE FROM patient_context_snapshots WHERE phone_number LIKE '%3704868421';
+DELETE FROM agent_turn_log WHERE phone_number LIKE '%3704868421';
+DELETE FROM automation_executions WHERE phone_number LIKE '%3704868421';
+DELETE FROM automation_logs WHERE phone_number LIKE '%3704868421';
+DELETE FROM patient_memories WHERE patient_phone LIKE '%3704868421';
+DELETE FROM lead_notes WHERE lead_id IN (SELECT id FROM meta_form_leads WHERE phone_number LIKE '%3704868421');
+DELETE FROM lead_status_history WHERE lead_id IN (SELECT id FROM meta_form_leads WHERE phone_number LIKE '%3704868421');
+DELETE FROM meta_form_leads WHERE phone_number LIKE '%3704868421';
+UPDATE accounting_transactions SET patient_id = NULL WHERE patient_id IN (SELECT id FROM patients WHERE phone_number LIKE '%3704868421');
+UPDATE automation_logs SET patient_id = NULL WHERE patient_id IN (SELECT id FROM patients WHERE phone_number LIKE '%3704868421');
+DELETE FROM patient_attribution_history WHERE patient_id IN (SELECT id FROM patients WHERE phone_number LIKE '%3704868421');
+DELETE FROM patients WHERE guardian_phone LIKE '%3704868421';
+DELETE FROM patients WHERE phone_number LIKE '%3704868421';
+
+COMMIT;
+```
+
+**Redis (dentro de redis-cli, despues de AUTH):**
+
+```
+DEL "patient_ctx_working:1:+5492994529972"
+DEL "convstate:1:+5492994529972"
+DEL "greet:1:+5492994529972"
+DEL "lead_ctx:1:2994529972"
+DEL "buffer:1:+5492994529972"
+DEL "timer:1:+5492994529972"
+DEL "active_task:1:+5492994529972"
+DEL "payment_verify_cooldown:1:+5492994529972"
+
+DEL "patient_ctx_working:1:+5493434732389"
+DEL "convstate:1:+5493434732389"
+DEL "greet:1:+5493434732389"
+DEL "lead_ctx:1:3434732389"
+DEL "buffer:1:+5493434732389"
+DEL "timer:1:+5493434732389"
+DEL "active_task:1:+5493434732389"
+DEL "payment_verify_cooldown:1:+5493434732389"
+
+DEL "patient_ctx_working:1:+5493704868421"
+DEL "convstate:1:+5493704868421"
+DEL "greet:1:+5493704868421"
+DEL "lead_ctx:1:3704868421"
+DEL "buffer:1:+5493704868421"
+DEL "timer:1:+5493704868421"
+DEL "active_task:1:+5493704868421"
+DEL "payment_verify_cooldown:1:+5493704868421"
+```

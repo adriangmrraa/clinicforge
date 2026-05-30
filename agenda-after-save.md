@@ -1,0 +1,64 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e124]:
+    - complementary [ref=e126]:
+      - generic [ref=e128]:
+        - img "Logo" [ref=e130]
+        - generic [ref=e131]: Clínica Dra. Laura Delgado
+      - navigation [ref=e132]:
+        - button "Dashboard" [ref=e134] [cursor=pointer]:
+          - generic [ref=e137]
+        - button "Agenda" [ref=e145] [cursor=pointer]:
+          - generic [ref=e148]
+        - button "Pacientes" [ref=e154] [cursor=pointer]:
+          - generic [ref=e157]
+        - button "Conversaciones" [ref=e166] [cursor=pointer]:
+          - generic [ref=e169]
+        - button "Personal" [ref=e175] [cursor=pointer]:
+          - generic [ref=e178]
+        - button "Sedes (Clínicas)" [ref=e185] [cursor=pointer]:
+          - generic [ref=e188]
+        - button "Estrategia" [ref=e196] [cursor=pointer]:
+          - generic [ref=e199]
+        - button "Tokens y Métricas" [ref=e205] [cursor=pointer]:
+          - generic [ref=e208]
+        - button "Tratamientos" [ref=e214] [cursor=pointer]:
+          - generic [ref=e217]
+        - button "Mi Perfil" [ref=e224] [cursor=pointer]:
+          - generic [ref=e227]
+        - button "Marketing Hub" [ref=e234] [cursor=pointer]:
+          - generic [ref=e237]
+        - button "ROI Dashboard" [ref=e244] [cursor=pointer]:
+          - generic [ref=e247]
+        - button "Leads Forms Meta" [ref=e254] [cursor=pointer]:
+          - generic [ref=e257]
+        - button "Automatizaciones" [ref=e266] [cursor=pointer]:
+          - generic [ref=e269]
+        - button "HSM & Automatización" [ref=e275] [cursor=pointer]:
+          - generic [ref=e278]
+        - button "Configuración" [ref=e284] [cursor=pointer]:
+          - generic [ref=e287]
+        - button "Cerrar Sesión" [ref=e293] [cursor=pointer]:
+          - generic [ref=e295]
+      - generic [ref=e302]:
+        - generic [ref=e303]: c
+        - generic [ref=e304]:
+          - paragraph [ref=e305]: consultoriolauradelgado@gmail.com
+          - paragraph [ref=e306]: ceo
+    - main [ref=e307]:
+      - generic [ref=e308]:
+        - heading "Clínica Dra. Laura Delgado" [level=1] [ref=e310]
+        - generic [ref=e311]:
+          - button "Guia de la pagina" [ref=e313] [cursor=pointer]
+          - img [ref=e319]
+          - combobox [ref=e323] [cursor=pointer]
+          - generic [ref=e325]: C
+      - generic [ref=e524]:
+        - generic [ref=e526]:
+          - generic [ref=e527]
+          - generic [ref=e539]
+        - generic [ref=e555]:
+          - generic [ref=e556]
+          - generic "2026" [ref=e1334]
+    - button [ref=e519] [cursor=pointer]:
+      - img [ref=e520]
+  - generic [ref=e522]: "0"

@@ -1,0 +1,10 @@
+ClinicForge Backup — Clínica Dra. Laura Delgado
+Fecha: 2026-04-24
+Tenant ID: 1
+Schema: 058
+Tablas: 25
+Registros totales: 2466
+Archivos: 34
+
+Este archivo puede ser restaurado en una nueva instancia de ClinicForge
+usando la opción 'Restaurar Backup' en Configuración > Mantenimiento.

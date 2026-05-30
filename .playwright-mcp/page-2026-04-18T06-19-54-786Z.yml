@@ -1,0 +1,917 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e124]:
+    - complementary [ref=e126]:
+      - generic [ref=e128]:
+        - img "Logo" [ref=e130]
+        - generic [ref=e131]: Clínica Dra. Laura Delgado
+      - navigation [ref=e132]:
+        - button "Dashboard" [ref=e134] [cursor=pointer]:
+          - generic [ref=e137]:
+            - img [ref=e139]
+            - generic [ref=e142]: Dashboard
+        - button "Agenda" [ref=e145] [cursor=pointer]:
+          - generic [ref=e148]:
+            - img [ref=e150]
+            - generic [ref=e152]: Agenda
+        - button "Pacientes" [ref=e154] [cursor=pointer]:
+          - generic [ref=e157]:
+            - img [ref=e159]
+            - generic [ref=e164]: Pacientes
+        - button "Conversaciones" [ref=e166] [cursor=pointer]:
+          - generic [ref=e169]:
+            - img [ref=e171]
+            - generic [ref=e173]: Conversaciones
+        - button "Personal" [ref=e175] [cursor=pointer]:
+          - generic [ref=e178]:
+            - img [ref=e180]
+            - generic [ref=e183]: Personal
+        - button "Sedes (Clínicas)" [ref=e185] [cursor=pointer]:
+          - generic [ref=e188]:
+            - img [ref=e190]
+            - generic [ref=e194]: Sedes (Clínicas)
+        - button "Estrategia" [ref=e196] [cursor=pointer]:
+          - generic [ref=e199]:
+            - img [ref=e201]
+            - generic [ref=e203]: Estrategia
+        - button "Tokens y Métricas" [ref=e205] [cursor=pointer]:
+          - generic [ref=e208]:
+            - img [ref=e210]
+            - generic [ref=e212]: Tokens y Métricas
+        - button "Tratamientos" [ref=e214] [cursor=pointer]:
+          - generic [ref=e217]:
+            - img [ref=e219]
+            - generic [ref=e222]: Tratamientos
+        - button "Mi Perfil" [ref=e224] [cursor=pointer]:
+          - generic [ref=e227]:
+            - img [ref=e229]
+            - generic [ref=e232]: Mi Perfil
+        - button "Marketing Hub" [ref=e234] [cursor=pointer]:
+          - generic [ref=e237]:
+            - img [ref=e239]
+            - generic [ref=e242]: Marketing Hub
+        - button "ROI Dashboard" [ref=e244] [cursor=pointer]:
+          - generic [ref=e247]:
+            - img [ref=e249]
+            - generic [ref=e252]: ROI Dashboard
+        - button "Leads Forms Meta" [ref=e254] [cursor=pointer]:
+          - generic [ref=e257]:
+            - img [ref=e259]
+            - generic [ref=e264]: Leads Forms Meta
+        - button "Automatizaciones" [ref=e266] [cursor=pointer]:
+          - generic [ref=e269]:
+            - img [ref=e271]
+            - generic [ref=e273]: Automatizaciones
+        - button "HSM & Automatización" [ref=e275] [cursor=pointer]:
+          - generic [ref=e278]:
+            - img [ref=e280]
+            - generic [ref=e282]: HSM & Automatización
+        - button "Configuración" [ref=e284] [cursor=pointer]:
+          - generic [ref=e287]:
+            - img [ref=e289]
+            - generic [ref=e292]: Configuración
+        - button "Cerrar Sesión" [ref=e293] [cursor=pointer]:
+          - generic [ref=e295]:
+            - img [ref=e297]
+            - generic [ref=e300]: Cerrar Sesión
+      - generic [ref=e302]:
+        - generic [ref=e303]: c
+        - generic [ref=e304]:
+          - paragraph [ref=e305]: consultoriolauradelgado@gmail.com
+          - paragraph [ref=e306]: ceo
+    - main [ref=e307]:
+      - generic [ref=e308]:
+        - heading "Clínica Dra. Laura Delgado" [level=1] [ref=e310]
+        - generic [ref=e311]:
+          - button "Guia de la pagina" [ref=e313] [cursor=pointer]:
+            - img [ref=e314]
+          - img [ref=e319]
+          - combobox [ref=e323] [cursor=pointer]:
+            - option "Clínica Dra. Laura Delgado" [selected]
+            - option "Dentalogic centro"
+            - option "Prueba"
+          - generic [ref=e325]: C
+      - generic [ref=e524]:
+        - generic [ref=e526]:
+          - generic [ref=e527]:
+            - generic [ref=e528]:
+              - heading "Agenda" [level=1] [ref=e529]
+              - paragraph [ref=e530]: Gestión de turnos y citas
+              - paragraph [ref=e531]: 40 turnos en pantalla • 1 de ene de 2026 – 1 de ene de 2027
+            - generic [ref=e532]:
+              - img [ref=e533]
+              - combobox [ref=e537] [cursor=pointer]:
+                - option "Todos los Profesionales" [selected]
+                - option "Dr. Laura Delgado"
+                - option "Dr. Elizabeth Ester"
+          - generic [ref=e539]:
+            - generic [ref=e542]: Ventas IA
+            - generic [ref=e545]: Nova
+            - generic [ref=e548]: Manual
+            - generic [ref=e551]: GCal
+        - generic [ref=e555]:
+          - generic [ref=e556]:
+            - generic [ref=e557]:
+              - generic [ref=e558]:
+                - button "Previous Año" [ref=e1331] [cursor=pointer]:
+                  - img [ref=e560]: 
+                - button "Next Año" [ref=e1332] [cursor=pointer]:
+                  - img [ref=e562]: 
+              - button "Hoy" [disabled] [ref=e563]
+            - heading "2026" [level=2] [ref=e1333]
+            - generic [ref=e567]:
+              - button "Día" [ref=e568] [cursor=pointer]
+              - button "Semana" [ref=e569] [cursor=pointer]
+              - button "Mes" [ref=e570] [cursor=pointer]
+              - button "Lista" [pressed] [ref=e571] [cursor=pointer]
+              - button "Lista" [ref=e572] [cursor=pointer]
+          - generic "2026" [ref=e1334]:
+            - table [ref=e1337]:
+              - rowgroup [ref=e1338]:
+                - row "Time Event" [ref=e1339]:
+                  - columnheader "Time" [ref=e1340]
+                  - columnheader "Event" [ref=e1341]
+              - rowgroup [ref=e1342]:
+                - row "13 de abril de 2026" [ref=e1343]:
+                  - columnheader "13 de abril de 2026" [ref=e1344]:
+                    - generic [ref=e1345]:
+                      - generic "13 de abril de 2026" [ref=e1346]
+                      - generic [ref=e1347]: lunes
+                - row "11:00 - 11:45 Gastón Bleckmann Consulta General" [ref=e1348]:
+                  - cell "11:00 - 11:45" [ref=e1349]
+                  - cell [ref=e1350]
+                  - cell "Gastón Bleckmann Consulta General" [ref=e1352]:
+                    - generic [ref=e1353] [cursor=pointer]:
+                      - img [ref=e1356]
+                      - generic [ref=e1359]: Gastón Bleckmann
+                      - generic [ref=e1362]: Consulta General
+                - row "14:00 - 14:45 Norma Moguillansky Consulta General Dr. Laura" [ref=e1363]:
+                  - cell "14:00 - 14:45" [ref=e1364]
+                  - cell [ref=e1365]
+                  - cell "Norma Moguillansky Consulta General Dr. Laura" [ref=e1367]:
+                    - generic [ref=e1368] [cursor=pointer]:
+                      - img [ref=e1371]
+                      - generic [ref=e1374]: Norma Moguillansky
+                      - generic [ref=e1375]:
+                        - generic [ref=e1377]: Consulta General
+                        - generic [ref=e1378]:
+                          - img [ref=e1379]
+                          - generic [ref=e1382]: Dr. Laura
+                - row "18:30 - 19:15 María Laura Consulta General Dr. Laura" [ref=e1383]:
+                  - cell "18:30 - 19:15" [ref=e1384]
+                  - cell [ref=e1385]
+                  - cell "María Laura Consulta General Dr. Laura" [ref=e1387]:
+                    - generic [ref=e1388] [cursor=pointer]:
+                      - img [ref=e1391]
+                      - generic [ref=e1394]: María Laura
+                      - generic [ref=e1395]:
+                        - generic [ref=e1397]: Consulta General
+                        - generic [ref=e1398]:
+                          - img [ref=e1399]
+                          - generic [ref=e1402]: Dr. Laura
+                - row "14 de abril de 2026" [ref=e1403]:
+                  - columnheader "14 de abril de 2026" [ref=e1404]:
+                    - generic [ref=e1405]:
+                      - generic "14 de abril de 2026" [ref=e1406]
+                      - generic [ref=e1407]: martes
+                - row "6:00 - 7:15 Rmanuel Gerardo Lillo Cirugía Compleja" [ref=e1408]:
+                  - cell "6:00 - 7:15" [ref=e1409]
+                  - cell [ref=e1410]
+                  - cell "Rmanuel Gerardo Lillo Cirugía Compleja" [ref=e1412]:
+                    - generic [ref=e1413] [cursor=pointer]:
+                      - img [ref=e1416]
+                      - generic [ref=e1419]: Rmanuel Gerardo Lillo
+                      - generic [ref=e1422]: Cirugía Compleja
+                - row "7:30 - 8:15 Leonardo Mastrangelo Cirugía Simple" [ref=e1423]:
+                  - cell "7:30 - 8:15" [ref=e1424]
+                  - cell [ref=e1425]
+                  - cell "Leonardo Mastrangelo Cirugía Simple" [ref=e1427]:
+                    - generic [ref=e1428] [cursor=pointer]:
+                      - img [ref=e1431]
+                      - generic [ref=e1434]: Leonardo Mastrangelo
+                      - generic [ref=e1437]: Cirugía Simple
+                - row "9:30 - 10:00 nerviosa rubio Kinast consultation" [ref=e1438]:
+                  - cell "9:30 - 10:00" [ref=e1439]
+                  - cell [ref=e1440]
+                  - cell "nerviosa rubio Kinast consultation" [ref=e1442]:
+                    - generic [ref=e1443] [cursor=pointer]:
+                      - img [ref=e1446]
+                      - generic [ref=e1449]: nerviosa rubio Kinast
+                      - generic [ref=e1452]: consultation
+                - row "10:00 - 11:00 CARLOS SEBASTIAN MIEREZ Restauración Compleja Dr. Laura" [ref=e1453]:
+                  - cell "10:00 - 11:00" [ref=e1454]
+                  - cell [ref=e1455]
+                  - cell "CARLOS SEBASTIAN MIEREZ Restauración Compleja Dr. Laura" [ref=e1457]:
+                    - generic [ref=e1458] [cursor=pointer]:
+                      - img [ref=e1461]
+                      - generic [ref=e1464]: CARLOS SEBASTIAN MIEREZ
+                      - generic [ref=e1465]:
+                        - generic [ref=e1467]: Restauración Compleja
+                        - generic [ref=e1468]:
+                          - img [ref=e1469]
+                          - generic [ref=e1472]: Dr. Laura
+                - row "11:00 - 11:45 Emanuel Manssini Cirugía Simple" [ref=e1473]:
+                  - cell "11:00 - 11:45" [ref=e1474]
+                  - cell [ref=e1475]
+                  - cell "Emanuel Manssini Cirugía Simple" [ref=e1477]:
+                    - generic [ref=e1478] [cursor=pointer]:
+                      - img [ref=e1481]
+                      - generic [ref=e1484]: Emanuel Manssini
+                      - generic [ref=e1487]: Cirugía Simple
+                - row "11:30 - 12:15 wilma vazquez Consulta Urgencia Dr. Laura" [ref=e1488]:
+                  - cell "11:30 - 12:15" [ref=e1489]
+                  - cell [ref=e1490]
+                  - cell "wilma vazquez Consulta Urgencia Dr. Laura" [ref=e1492]:
+                    - generic [ref=e1493] [cursor=pointer]:
+                      - img [ref=e1496]
+                      - generic [ref=e1499]: wilma vazquez
+                      - generic [ref=e1500]:
+                        - generic [ref=e1502]: Consulta Urgencia
+                        - generic [ref=e1503]:
+                          - img [ref=e1504]
+                          - generic [ref=e1507]: Dr. Laura
+                - row "12:15 - 13:00 Sonia Arévalo Consulta General Dr. Laura" [ref=e1508]:
+                  - cell "12:15 - 13:00" [ref=e1509]
+                  - cell [ref=e1510]
+                  - cell "Sonia Arévalo Consulta General Dr. Laura" [ref=e1512]:
+                    - generic [ref=e1513] [cursor=pointer]:
+                      - img [ref=e1516]
+                      - generic [ref=e1519]: Sonia Arévalo
+                      - generic [ref=e1520]:
+                        - generic [ref=e1522]: Consulta General
+                        - generic [ref=e1523]:
+                          - img [ref=e1524]
+                          - generic [ref=e1527]: Dr. Laura
+                - row "13:30 - 14:15 Norma Moguillansky Consulta General Dr. Laura" [ref=e1528]:
+                  - cell "13:30 - 14:15" [ref=e1529]
+                  - cell [ref=e1530]
+                  - cell "Norma Moguillansky Consulta General Dr. Laura" [ref=e1532]:
+                    - generic [ref=e1533] [cursor=pointer]:
+                      - img [ref=e1536]
+                      - generic [ref=e1539]: Norma Moguillansky
+                      - generic [ref=e1540]:
+                        - generic [ref=e1542]: Consulta General
+                        - generic [ref=e1543]:
+                          - img [ref=e1544]
+                          - generic [ref=e1547]: Dr. Laura
+                - row "14:15 - 14:45 Vero Millahual Consulta Urgencia Dr. Laura" [ref=e1548]:
+                  - cell "14:15 - 14:45" [ref=e1549]
+                  - cell [ref=e1550]
+                  - cell "Vero Millahual Consulta Urgencia Dr. Laura" [ref=e1552]:
+                    - generic [ref=e1553] [cursor=pointer]:
+                      - img [ref=e1556]
+                      - generic [ref=e1559]: Vero Millahual
+                      - generic [ref=e1560]:
+                        - generic [ref=e1562]: Consulta Urgencia
+                        - generic [ref=e1563]:
+                          - img [ref=e1564]
+                          - generic [ref=e1567]: Dr. Laura
+                - row "15:30 - 15:50 joaquin perez checkup" [ref=e1568]:
+                  - cell "15:30 - 15:50" [ref=e1569]
+                  - cell [ref=e1570]
+                  - cell "joaquin perez checkup" [ref=e1572]:
+                    - generic [ref=e1573] [cursor=pointer]:
+                      - img [ref=e1576]
+                      - generic [ref=e1579]: joaquin perez
+                      - generic [ref=e1582]: checkup
+                - row "15 de abril de 2026" [ref=e1583]:
+                  - columnheader "15 de abril de 2026" [ref=e1584]:
+                    - generic [ref=e1585]:
+                      - generic "15 de abril de 2026" [ref=e1586]
+                      - generic [ref=e1587]: miércoles
+                - row "13:00 - 13:45 Antonella morales clozza Consulta General Dr. Laura" [ref=e1588]:
+                  - cell "13:00 - 13:45" [ref=e1589]
+                  - cell [ref=e1590]
+                  - cell "Antonella morales clozza Consulta General Dr. Laura" [ref=e1592]:
+                    - generic [ref=e1593] [cursor=pointer]:
+                      - img [ref=e1596]
+                      - generic [ref=e1599]: Antonella morales clozza
+                      - generic [ref=e1600]:
+                        - generic [ref=e1602]: Consulta General
+                        - generic [ref=e1603]:
+                          - img [ref=e1604]
+                          - generic [ref=e1607]: Dr. Laura
+                - row "15:00 - 15:45 Katia Paula Cirugía Simple Dr. Laura" [ref=e1608]:
+                  - cell "15:00 - 15:45" [ref=e1609]
+                  - cell [ref=e1610]
+                  - cell "Katia Paula Cirugía Simple Dr. Laura" [ref=e1612]:
+                    - generic [ref=e1613] [cursor=pointer]:
+                      - img [ref=e1616]
+                      - generic [ref=e1619]: Katia Paula
+                      - generic [ref=e1620]:
+                        - generic [ref=e1622]: Cirugía Simple
+                        - generic [ref=e1623]:
+                          - img [ref=e1624]
+                          - generic [ref=e1627]: Dr. Laura
+                - row "16:00 - 16:45 Carolina Basgal Cirugía Simple Dr. Laura" [ref=e1628]:
+                  - cell "16:00 - 16:45" [ref=e1629]
+                  - cell [ref=e1630]
+                  - cell "Carolina Basgal Cirugía Simple Dr. Laura" [ref=e1632]:
+                    - generic [ref=e1633] [cursor=pointer]:
+                      - img [ref=e1636]
+                      - generic [ref=e1639]: Carolina Basgal
+                      - generic [ref=e1640]:
+                        - generic [ref=e1642]: Cirugía Simple
+                        - generic [ref=e1643]:
+                          - img [ref=e1644]
+                          - generic [ref=e1647]: Dr. Laura
+                - row "16 de abril de 2026" [ref=e1648]:
+                  - columnheader "16 de abril de 2026" [ref=e1649]:
+                    - generic [ref=e1650]:
+                      - generic "16 de abril de 2026" [ref=e1651]
+                      - generic [ref=e1652]: jueves
+                - row "9:00 - 10:30 Analia Riquelme Cirugía Simple Dr. Laura" [ref=e1653]:
+                  - cell "9:00 - 10:30" [ref=e1654]
+                  - cell [ref=e1655]
+                  - cell "Analia Riquelme Cirugía Simple Dr. Laura" [ref=e1657]:
+                    - generic [ref=e1658] [cursor=pointer]:
+                      - img [ref=e1661]
+                      - generic [ref=e1664]: Analia Riquelme
+                      - generic [ref=e1665]:
+                        - generic [ref=e1667]: Cirugía Simple
+                        - generic [ref=e1668]:
+                          - img [ref=e1669]
+                          - generic [ref=e1672]: Dr. Laura
+                - row "11:00 - 11:45 Alicia Landriani Control / Revisión Dr. Laura" [ref=e1673]:
+                  - cell "11:00 - 11:45" [ref=e1674]
+                  - cell [ref=e1675]
+                  - cell "Alicia Landriani Control / Revisión Dr. Laura" [ref=e1677]:
+                    - generic [ref=e1678] [cursor=pointer]:
+                      - img [ref=e1681]
+                      - generic [ref=e1684]: Alicia Landriani
+                      - generic [ref=e1685]:
+                        - generic [ref=e1687]: Control / Revisión
+                        - generic [ref=e1688]:
+                          - img [ref=e1689]
+                          - generic [ref=e1692]: Dr. Laura
+                - row "12:00 - 12:30 Antonella Clozza Consulta General Dr. Laura" [ref=e1693]:
+                  - cell "12:00 - 12:30" [ref=e1694]
+                  - cell [ref=e1695]
+                  - cell "Antonella Clozza Consulta General Dr. Laura" [ref=e1697]:
+                    - generic [ref=e1698] [cursor=pointer]:
+                      - img [ref=e1701]
+                      - generic [ref=e1704]: Antonella Clozza
+                      - generic [ref=e1705]:
+                        - generic [ref=e1707]: Consulta General
+                        - generic [ref=e1708]:
+                          - img [ref=e1709]
+                          - generic [ref=e1712]: Dr. Laura
+                - row "16:00 - 16:45 Denise Belén Barccos Control / Revisión Dr. Laura" [ref=e1713]:
+                  - cell "16:00 - 16:45" [ref=e1714]
+                  - cell [ref=e1715]
+                  - cell "Denise Belén Barccos Control / Revisión Dr. Laura" [ref=e1717]:
+                    - generic [ref=e1718] [cursor=pointer]:
+                      - img [ref=e1721]
+                      - generic [ref=e1724]: Denise Belén Barccos
+                      - generic [ref=e1725]:
+                        - generic [ref=e1727]: Control / Revisión
+                        - generic [ref=e1728]:
+                          - img [ref=e1729]
+                          - generic [ref=e1732]: Dr. Laura
+                - row "17 de abril de 2026" [ref=e1733]:
+                  - columnheader "17 de abril de 2026" [ref=e1734]:
+                    - generic [ref=e1735]:
+                      - generic "17 de abril de 2026" [ref=e1736]
+                      - generic [ref=e1737]: viernes
+                - row "10:00 - 11:30 CARLOS SEBASTIAN MIEREZ Cirugía Simple Dr. Elizabeth" [ref=e1738]:
+                  - cell "10:00 - 11:30" [ref=e1739]
+                  - cell [ref=e1740]
+                  - cell "CARLOS SEBASTIAN MIEREZ Cirugía Simple Dr. Elizabeth" [ref=e1742]:
+                    - generic [ref=e1743] [cursor=pointer]:
+                      - img [ref=e1746]
+                      - generic [ref=e1749]: CARLOS SEBASTIAN MIEREZ
+                      - generic [ref=e1750]:
+                        - generic [ref=e1752]: Cirugía Simple
+                        - generic [ref=e1753]:
+                          - img [ref=e1754]
+                          - generic [ref=e1757]: Dr. Elizabeth
+                - row "11:30 - 12:00 Sebastian Acheveria Consulta General Dr. Elizabeth" [ref=e1758]:
+                  - cell "11:30 - 12:00" [ref=e1759]
+                  - cell [ref=e1760]
+                  - cell "Sebastian Acheveria Consulta General Dr. Elizabeth" [ref=e1762]:
+                    - generic [ref=e1763] [cursor=pointer]:
+                      - img [ref=e1766]
+                      - generic [ref=e1769]: Sebastian Acheveria
+                      - generic [ref=e1770]:
+                        - generic [ref=e1772]: Consulta General
+                        - generic [ref=e1773]:
+                          - img [ref=e1774]
+                          - generic [ref=e1777]: Dr. Elizabeth
+                - row "18:30 - 19:15 Roxana Jara Consulta General Dr. Laura" [ref=e1778]:
+                  - cell "18:30 - 19:15" [ref=e1779]
+                  - cell [ref=e1780]
+                  - cell "Roxana Jara Consulta General Dr. Laura" [ref=e1782]:
+                    - generic [ref=e1783] [cursor=pointer]:
+                      - img [ref=e1786]
+                      - generic [ref=e1789]: Roxana Jara
+                      - generic [ref=e1790]:
+                        - generic [ref=e1792]: Consulta General
+                        - generic [ref=e1793]:
+                          - img [ref=e1794]
+                          - generic [ref=e1797]: Dr. Laura
+                - row "18 de abril de 2026" [ref=e1798]:
+                  - columnheader "18 de abril de 2026" [ref=e1799]:
+                    - generic [ref=e1800]:
+                      - generic "18 de abril de 2026" [ref=e1801]
+                      - generic [ref=e1802]: sábado
+                - row "10:30 - 11:00 Cynthia Reyes Control Ortodoncia Dr. Elizabeth" [ref=e1803]:
+                  - cell "10:30 - 11:00" [ref=e1804]
+                  - cell [ref=e1805]
+                  - cell "Cynthia Reyes Control Ortodoncia Dr. Elizabeth" [ref=e1807]:
+                    - generic [ref=e1808] [cursor=pointer]:
+                      - img [ref=e1811]
+                      - generic [ref=e1814]: Cynthia Reyes
+                      - generic [ref=e1815]:
+                        - generic [ref=e1817]: Control Ortodoncia
+                        - generic [ref=e1818]:
+                          - img [ref=e1819]
+                          - generic [ref=e1822]: Dr. Elizabeth
+                - row "20 de abril de 2026" [ref=e1823]:
+                  - columnheader "20 de abril de 2026" [ref=e1824]:
+                    - generic [ref=e1825]:
+                      - generic "20 de abril de 2026" [ref=e1826]
+                      - generic [ref=e1827]: lunes
+                - row "13:30 - 14:00 Antonella Cursaro Consulta General Dr. Laura" [ref=e1828]:
+                  - cell "13:30 - 14:00" [ref=e1829]
+                  - cell [ref=e1830]
+                  - cell "Antonella Cursaro Consulta General Dr. Laura" [ref=e1832]:
+                    - generic [ref=e1833] [cursor=pointer]:
+                      - img [ref=e1836]
+                      - generic [ref=e1839]: Antonella Cursaro
+                      - generic [ref=e1840]:
+                        - generic [ref=e1842]: Consulta General
+                        - generic [ref=e1843]:
+                          - img [ref=e1844]
+                          - generic [ref=e1847]: Dr. Laura
+                - row "14:00 - 14:30 Nicolas Palma Consulta General Dr. Laura" [ref=e1848]:
+                  - cell "14:00 - 14:30" [ref=e1849]
+                  - cell [ref=e1850]
+                  - cell "Nicolas Palma Consulta General Dr. Laura" [ref=e1852]:
+                    - generic [ref=e1853] [cursor=pointer]:
+                      - img [ref=e1856]
+                      - generic [ref=e1859]: Nicolas Palma
+                      - generic [ref=e1860]:
+                        - generic [ref=e1862]: Consulta General
+                        - generic [ref=e1863]:
+                          - img [ref=e1864]
+                          - generic [ref=e1867]: Dr. Laura
+                - row "14:30 - 15:00 Alejandro Diaz Consulta General Dr. Laura" [ref=e1868]:
+                  - cell "14:30 - 15:00" [ref=e1869]
+                  - cell [ref=e1870]
+                  - cell "Alejandro Diaz Consulta General Dr. Laura" [ref=e1872]:
+                    - generic [ref=e1873] [cursor=pointer]:
+                      - img [ref=e1876]
+                      - generic [ref=e1879]: Alejandro Diaz
+                      - generic [ref=e1880]:
+                        - generic [ref=e1882]: Consulta General
+                        - generic [ref=e1883]:
+                          - img [ref=e1884]
+                          - generic [ref=e1887]: Dr. Laura
+                - row "15:00 - 15:30 Guillermina Diaz Consulta General Dr. Laura" [ref=e1888]:
+                  - cell "15:00 - 15:30" [ref=e1889]
+                  - cell [ref=e1890]
+                  - cell "Guillermina Diaz Consulta General Dr. Laura" [ref=e1892]:
+                    - generic [ref=e1893] [cursor=pointer]:
+                      - img [ref=e1896]
+                      - generic [ref=e1899]: Guillermina Diaz
+                      - generic [ref=e1900]:
+                        - generic [ref=e1902]: Consulta General
+                        - generic [ref=e1903]:
+                          - img [ref=e1904]
+                          - generic [ref=e1907]: Dr. Laura
+                - row "21 de abril de 2026" [ref=e1908]:
+                  - columnheader "21 de abril de 2026" [ref=e1909]:
+                    - generic [ref=e1910]:
+                      - generic "21 de abril de 2026" [ref=e1911]
+                      - generic [ref=e1912]: martes
+                - row "10:00 - 11:00 Brenda Becerra Consulta General Dr. Laura" [ref=e1913]:
+                  - cell "10:00 - 11:00" [ref=e1914]
+                  - cell [ref=e1915]
+                  - cell "Brenda Becerra Consulta General Dr. Laura" [ref=e1917]:
+                    - generic [ref=e1918] [cursor=pointer]:
+                      - img [ref=e1921]
+                      - generic [ref=e1924]: Brenda Becerra
+                      - generic [ref=e1925]:
+                        - generic [ref=e1927]: Consulta General
+                        - generic [ref=e1928]:
+                          - img [ref=e1929]
+                          - generic [ref=e1932]: Dr. Laura
+                - row "11:00 - 11:45 Sonia Arévalo Consulta General Dr. Laura" [ref=e1933]:
+                  - cell "11:00 - 11:45" [ref=e1934]
+                  - cell [ref=e1935]
+                  - cell "Sonia Arévalo Consulta General Dr. Laura" [ref=e1937]:
+                    - generic [ref=e1938] [cursor=pointer]:
+                      - img [ref=e1941]
+                      - generic [ref=e1944]: Sonia Arévalo
+                      - generic [ref=e1945]:
+                        - generic [ref=e1947]: Consulta General
+                        - generic [ref=e1948]:
+                          - img [ref=e1949]
+                          - generic [ref=e1952]: Dr. Laura
+                - row "16:30 - 17:00 Griselda Venegas Consulta General Dr. Laura" [ref=e1953]:
+                  - cell "16:30 - 17:00" [ref=e1954]
+                  - cell [ref=e1955]
+                  - cell "Griselda Venegas Consulta General Dr. Laura" [ref=e1957]:
+                    - generic [ref=e1958] [cursor=pointer]:
+                      - img [ref=e1961]
+                      - generic [ref=e1964]: Griselda Venegas
+                      - generic [ref=e1965]:
+                        - generic [ref=e1967]: Consulta General
+                        - generic [ref=e1968]:
+                          - img [ref=e1969]
+                          - generic [ref=e1972]: Dr. Laura
+                - row "23 de abril de 2026" [ref=e1973]:
+                  - columnheader "23 de abril de 2026" [ref=e1974]:
+                    - generic [ref=e1975]:
+                      - generic "23 de abril de 2026" [ref=e1976]
+                      - generic [ref=e1977]: jueves
+                - row "16:30 - 17:00 Marilina Romero Consulta General Dr. Laura" [ref=e1978]:
+                  - cell "16:30 - 17:00" [ref=e1979]
+                  - cell [ref=e1980]
+                  - cell "Marilina Romero Consulta General Dr. Laura" [ref=e1982]:
+                    - generic [ref=e1983] [cursor=pointer]:
+                      - img [ref=e1986]
+                      - generic [ref=e1989]: Marilina Romero
+                      - generic [ref=e1990]:
+                        - generic [ref=e1992]: Consulta General
+                        - generic [ref=e1993]:
+                          - img [ref=e1994]
+                          - generic [ref=e1997]: Dr. Laura
+                - row "27 de abril de 2026" [ref=e1998]:
+                  - columnheader "27 de abril de 2026" [ref=e1999]:
+                    - generic [ref=e2000]:
+                      - generic "27 de abril de 2026" [ref=e2001]
+                      - generic [ref=e2002]: lunes
+                - row "15:00 - 16:00 Cristian Retamal Rehabilitación Compleja Dr. Laura" [ref=e2003]:
+                  - cell "15:00 - 16:00" [ref=e2004]
+                  - cell [ref=e2005]
+                  - cell "Cristian Retamal Rehabilitación Compleja Dr. Laura" [ref=e2007]:
+                    - generic [ref=e2008] [cursor=pointer]:
+                      - img [ref=e2011]
+                      - generic [ref=e2014]: Cristian Retamal
+                      - generic [ref=e2015]:
+                        - generic [ref=e2017]: Rehabilitación Compleja
+                        - generic [ref=e2018]:
+                          - img [ref=e2019]
+                          - generic [ref=e2022]: Dr. Laura
+                - row "28 de abril de 2026" [ref=e2023]:
+                  - columnheader "28 de abril de 2026" [ref=e2024]:
+                    - generic [ref=e2025]:
+                      - generic "28 de abril de 2026" [ref=e2026]
+                      - generic [ref=e2027]: martes
+                - row "10:00 - 11:00 Jorgelina Carrizo Cirugía Compleja Dr. Laura" [ref=e2028]:
+                  - cell "10:00 - 11:00" [ref=e2029]
+                  - cell [ref=e2030]
+                  - cell "Jorgelina Carrizo Cirugía Compleja Dr. Laura" [ref=e2032]:
+                    - generic [ref=e2033] [cursor=pointer]:
+                      - img [ref=e2036]
+                      - generic [ref=e2039]: Jorgelina Carrizo
+                      - generic [ref=e2040]:
+                        - generic [ref=e2042]: Cirugía Compleja
+                        - generic [ref=e2043]:
+                          - img [ref=e2044]
+                          - generic [ref=e2047]: Dr. Laura
+                - row "29 de abril de 2026" [ref=e2048]:
+                  - columnheader "29 de abril de 2026" [ref=e2049]:
+                    - generic [ref=e2050]:
+                      - generic "29 de abril de 2026" [ref=e2051]
+                      - generic [ref=e2052]: miércoles
+                - row "16:00 - 16:45 Catalina Herrera Cirugía Simple Dr. Laura" [ref=e2053]:
+                  - cell "16:00 - 16:45" [ref=e2054]
+                  - cell [ref=e2055]
+                  - cell "Catalina Herrera Cirugía Simple Dr. Laura" [ref=e2057]:
+                    - generic [ref=e2058] [cursor=pointer]:
+                      - img [ref=e2061]
+                      - generic [ref=e2064]: Catalina Herrera
+                      - generic [ref=e2065]:
+                        - generic [ref=e2067]: Cirugía Simple
+                        - generic [ref=e2068]:
+                          - img [ref=e2069]
+                          - generic [ref=e2072]: Dr. Laura
+                - row "5 de mayo de 2026" [ref=e2073]:
+                  - columnheader "5 de mayo de 2026" [ref=e2074]:
+                    - generic [ref=e2075]:
+                      - generic "5 de mayo de 2026" [ref=e2076]
+                      - generic [ref=e2077]: martes
+                - row "10:00 - 10:30 Carolina surt Consulta General Dr. Laura" [ref=e2078]:
+                  - cell "10:00 - 10:30" [ref=e2079]
+                  - cell [ref=e2080]
+                  - cell "Carolina surt Consulta General Dr. Laura" [ref=e2082]:
+                    - generic [ref=e2083] [cursor=pointer]:
+                      - img [ref=e2086]
+                      - generic [ref=e2089]: Carolina surt
+                      - generic [ref=e2090]:
+                        - generic [ref=e2092]: Consulta General
+                        - generic [ref=e2093]:
+                          - img [ref=e2094]
+                          - generic [ref=e2097]: Dr. Laura
+                - row "7 de mayo de 2026" [ref=e2098]:
+                  - columnheader "7 de mayo de 2026" [ref=e2099]:
+                    - generic [ref=e2100]:
+                      - generic "7 de mayo de 2026" [ref=e2101]
+                      - generic [ref=e2102]: jueves
+                - row "10:00 - 11:00 Thiago Alexander Luna Cirugía Simple Dr. Laura" [ref=e2103]:
+                  - cell "10:00 - 11:00" [ref=e2104]
+                  - cell [ref=e2105]
+                  - cell "Thiago Alexander Luna Cirugía Simple Dr. Laura" [ref=e2107]:
+                    - generic [ref=e2108] [cursor=pointer]:
+                      - img [ref=e2111]
+                      - generic [ref=e2114]: Thiago Alexander Luna
+                      - generic [ref=e2115]:
+                        - generic [ref=e2117]: Cirugía Simple
+                        - generic [ref=e2118]:
+                          - img [ref=e2119]
+                          - generic [ref=e2122]: Dr. Laura
+                - row "8 de mayo de 2026" [ref=e2123]:
+                  - columnheader "8 de mayo de 2026" [ref=e2124]:
+                    - generic [ref=e2125]:
+                      - generic "8 de mayo de 2026" [ref=e2126]
+                      - generic [ref=e2127]: viernes
+                - row "13:00 - 14:00 Marcela Aguirre Control / Revisión Dr. Laura" [ref=e2128]:
+                  - cell "13:00 - 14:00" [ref=e2129]
+                  - cell [ref=e2130]
+                  - cell "Marcela Aguirre Control / Revisión Dr. Laura" [ref=e2132]:
+                    - generic [ref=e2133] [cursor=pointer]:
+                      - img [ref=e2136]
+                      - generic [ref=e2139]: Marcela Aguirre
+                      - generic [ref=e2140]:
+                        - generic [ref=e2142]: Control / Revisión
+                        - generic [ref=e2143]:
+                          - img [ref=e2144]
+                          - generic [ref=e2147]: Dr. Laura
+                - row "15 de mayo de 2026" [ref=e2148]:
+                  - columnheader "15 de mayo de 2026" [ref=e2149]:
+                    - generic [ref=e2150]:
+                      - generic "15 de mayo de 2026" [ref=e2151]
+                      - generic [ref=e2152]: viernes
+                - row "18:30 - 19:00 Lida Valeria Rauque Consulta General Dr. Laura" [ref=e2153]:
+                  - cell "18:30 - 19:00" [ref=e2154]
+                  - cell [ref=e2155]
+                  - cell "Lida Valeria Rauque Consulta General Dr. Laura" [ref=e2157]:
+                    - generic [ref=e2158] [cursor=pointer]:
+                      - img [ref=e2161]
+                      - generic [ref=e2164]: Lida Valeria Rauque
+                      - generic [ref=e2165]:
+                        - generic [ref=e2167]: Consulta General
+                        - generic [ref=e2168]:
+                          - img [ref=e2169]
+                          - generic [ref=e2172]: Dr. Laura
+                - row "25 de mayo de 2026" [ref=e2173]:
+                  - columnheader "25 de mayo de 2026" [ref=e2174]:
+                    - generic [ref=e2175]:
+                      - generic "25 de mayo de 2026" [ref=e2176]
+                      - generic [ref=e2177]: lunes
+                - row "Todo el día 🎉 Día de la Revolución de Mayo Consulta" [ref=e2178]:
+                  - cell "Todo el día" [ref=e2179]
+                  - cell [ref=e2180]
+                  - cell "🎉 Día de la Revolución de Mayo Consulta" [ref=e2182]:
+                    - generic [ref=e2183] [cursor=pointer]:
+                      - img [ref=e2186]
+                      - generic [ref=e2189]: 🎉 Día de la Revolución de Mayo
+                      - generic [ref=e2192]: Consulta
+                - row "15 de junio de 2026" [ref=e2193]:
+                  - columnheader "15 de junio de 2026" [ref=e2194]:
+                    - generic [ref=e2195]:
+                      - generic "15 de junio de 2026" [ref=e2196]
+                      - generic [ref=e2197]: lunes
+                - row "Todo el día 🎉 Paso a la Inmortalidad del General Don Martín Miguel de Güemes Consulta" [ref=e2198]:
+                  - cell "Todo el día" [ref=e2199]
+                  - cell [ref=e2200]
+                  - cell "🎉 Paso a la Inmortalidad del General Don Martín Miguel de Güemes Consulta" [ref=e2202]:
+                    - generic [ref=e2203] [cursor=pointer]:
+                      - img [ref=e2206]
+                      - generic [ref=e2209]: 🎉 Paso a la Inmortalidad del General Don Martín Miguel de Güemes
+                      - generic [ref=e2212]: Consulta
+                - row "17 de junio de 2026" [ref=e2213]:
+                  - columnheader "17 de junio de 2026" [ref=e2214]:
+                    - generic [ref=e2215]:
+                      - generic "17 de junio de 2026" [ref=e2216]
+                      - generic [ref=e2217]: miércoles
+                - row "7:00 - 7:30 Laura González cirugia_maxilofacial Dr. Laura" [ref=e2218]:
+                  - cell "7:00 - 7:30" [ref=e2219]
+                  - cell [ref=e2220]
+                  - cell "Laura González cirugia_maxilofacial Dr. Laura" [ref=e2222]:
+                    - generic [ref=e2223] [cursor=pointer]:
+                      - img [ref=e2226]
+                      - generic [ref=e2229]: Laura González
+                      - generic [ref=e2230]:
+                        - generic [ref=e2232]: cirugia_maxilofacial
+                        - generic [ref=e2233]:
+                          - img [ref=e2234]
+                          - generic [ref=e2237]: Dr. Laura
+                - row "20 de junio de 2026" [ref=e2238]:
+                  - columnheader "20 de junio de 2026" [ref=e2239]:
+                    - generic [ref=e2240]:
+                      - generic "20 de junio de 2026" [ref=e2241]
+                      - generic [ref=e2242]: sábado
+                - row "Todo el día 🎉 Paso a la Inmortalidad del General Don Manuel Belgrano Consulta" [ref=e2243]:
+                  - cell "Todo el día" [ref=e2244]
+                  - cell [ref=e2245]
+                  - cell "🎉 Paso a la Inmortalidad del General Don Manuel Belgrano Consulta" [ref=e2247]:
+                    - generic [ref=e2248] [cursor=pointer]:
+                      - img [ref=e2251]
+                      - generic [ref=e2254]: 🎉 Paso a la Inmortalidad del General Don Manuel Belgrano
+                      - generic [ref=e2257]: Consulta
+                - row "9 de julio de 2026" [ref=e2258]:
+                  - columnheader "9 de julio de 2026" [ref=e2259]:
+                    - generic [ref=e2260]:
+                      - generic "9 de julio de 2026" [ref=e2261]
+                      - generic [ref=e2262]: jueves
+                - row "Todo el día 🎉 Día de la Independencia Consulta" [ref=e2263]:
+                  - cell "Todo el día" [ref=e2264]
+                  - cell [ref=e2265]
+                  - cell "🎉 Día de la Independencia Consulta" [ref=e2267]:
+                    - generic [ref=e2268] [cursor=pointer]:
+                      - img [ref=e2271]
+                      - generic [ref=e2274]: 🎉 Día de la Independencia
+                      - generic [ref=e2277]: Consulta
+                - row "10 de julio de 2026" [ref=e2278]:
+                  - columnheader "10 de julio de 2026" [ref=e2279]:
+                    - generic [ref=e2280]:
+                      - generic "10 de julio de 2026" [ref=e2281]
+                      - generic [ref=e2282]: viernes
+                - row "Todo el día 🎉 Feriado con fines turísticos Consulta" [ref=e2283]:
+                  - cell "Todo el día" [ref=e2284]
+                  - cell [ref=e2285]
+                  - cell "🎉 Feriado con fines turísticos Consulta" [ref=e2287]:
+                    - generic [ref=e2288] [cursor=pointer]:
+                      - img [ref=e2291]
+                      - generic [ref=e2294]: 🎉 Feriado con fines turísticos
+                      - generic [ref=e2297]: Consulta
+                - row "17 de agosto de 2026" [ref=e2298]:
+                  - columnheader "17 de agosto de 2026" [ref=e2299]:
+                    - generic [ref=e2300]:
+                      - generic "17 de agosto de 2026" [ref=e2301]
+                      - generic [ref=e2302]: lunes
+                - row "Todo el día 🎉 Paso a la Inmortalidad del General Don José de San Martín Consulta" [ref=e2303]:
+                  - cell "Todo el día" [ref=e2304]
+                  - cell [ref=e2305]
+                  - cell "🎉 Paso a la Inmortalidad del General Don José de San Martín Consulta" [ref=e2307]:
+                    - generic [ref=e2308] [cursor=pointer]:
+                      - img [ref=e2311]
+                      - generic [ref=e2314]: 🎉 Paso a la Inmortalidad del General Don José de San Martín
+                      - generic [ref=e2317]: Consulta
+                - row "12 de octubre de 2026" [ref=e2318]:
+                  - columnheader "12 de octubre de 2026" [ref=e2319]:
+                    - generic [ref=e2320]:
+                      - generic "12 de octubre de 2026" [ref=e2321]
+                      - generic [ref=e2322]: lunes
+                - row "Todo el día 🎉 Día del Respeto a la Diversidad Cultural Consulta" [ref=e2323]:
+                  - cell "Todo el día" [ref=e2324]
+                  - cell [ref=e2325]
+                  - cell "🎉 Día del Respeto a la Diversidad Cultural Consulta" [ref=e2327]:
+                    - generic [ref=e2328] [cursor=pointer]:
+                      - img [ref=e2331]
+                      - generic [ref=e2334]: 🎉 Día del Respeto a la Diversidad Cultural
+                      - generic [ref=e2337]: Consulta
+                - row "23 de noviembre de 2026" [ref=e2338]:
+                  - columnheader "23 de noviembre de 2026" [ref=e2339]:
+                    - generic [ref=e2340]:
+                      - generic "23 de noviembre de 2026" [ref=e2341]
+                      - generic [ref=e2342]: lunes
+                - row "Todo el día 🎉 Día de la Soberanía Nacional Consulta" [ref=e2343]:
+                  - cell "Todo el día" [ref=e2344]
+                  - cell [ref=e2345]
+                  - cell "🎉 Día de la Soberanía Nacional Consulta" [ref=e2347]:
+                    - generic [ref=e2348] [cursor=pointer]:
+                      - img [ref=e2351]
+                      - generic [ref=e2354]: 🎉 Día de la Soberanía Nacional
+                      - generic [ref=e2357]: Consulta
+                - row "7 de diciembre de 2026" [ref=e2358]:
+                  - columnheader "7 de diciembre de 2026" [ref=e2359]:
+                    - generic [ref=e2360]:
+                      - generic "7 de diciembre de 2026" [ref=e2361]
+                      - generic [ref=e2362]: lunes
+                - row "Todo el día 🎉 Feriado con fines turísticos Consulta" [ref=e2363]:
+                  - cell "Todo el día" [ref=e2364]
+                  - cell [ref=e2365]
+                  - cell "🎉 Feriado con fines turísticos Consulta" [ref=e2367]:
+                    - generic [ref=e2368] [cursor=pointer]:
+                      - img [ref=e2371]
+                      - generic [ref=e2374]: 🎉 Feriado con fines turísticos
+                      - generic [ref=e2377]: Consulta
+                - row "8 de diciembre de 2026" [ref=e2378]:
+                  - columnheader "8 de diciembre de 2026" [ref=e2379]:
+                    - generic [ref=e2380]:
+                      - generic "8 de diciembre de 2026" [ref=e2381]
+                      - generic [ref=e2382]: martes
+                - row "Todo el día 🎉 Inmaculada Concepción de María Consulta" [ref=e2383]:
+                  - cell "Todo el día" [ref=e2384]
+                  - cell [ref=e2385]
+                  - cell "🎉 Inmaculada Concepción de María Consulta" [ref=e2387]:
+                    - generic [ref=e2388] [cursor=pointer]:
+                      - img [ref=e2391]
+                      - generic [ref=e2394]: 🎉 Inmaculada Concepción de María
+                      - generic [ref=e2397]: Consulta
+                - row "25 de diciembre de 2026" [ref=e2398]:
+                  - columnheader "25 de diciembre de 2026" [ref=e2399]:
+                    - generic [ref=e2400]:
+                      - generic "25 de diciembre de 2026" [ref=e2401]
+                      - generic [ref=e2402]: viernes
+                - row "Todo el día 🎉 Navidad Consulta" [ref=e2403]:
+                  - cell "Todo el día" [ref=e2404]
+                  - cell [ref=e2405]
+                  - cell "🎉 Navidad Consulta" [ref=e2407]:
+                    - generic [ref=e2408] [cursor=pointer]:
+                      - img [ref=e2411]
+                      - generic [ref=e2414]: 🎉 Navidad
+                      - generic [ref=e2417]: Consulta
+        - generic [ref=e2419]:
+          - generic [ref=e2420]:
+            - generic [ref=e2421]:
+              - generic [ref=e2422]:
+                - heading "Editar Turno" [level=2] [ref=e2423]
+                - generic [ref=e2424]: Manual
+              - paragraph [ref=e2425]: Inspector Clínico
+            - button "Cerrar" [ref=e2426] [cursor=pointer]:
+              - img [ref=e2427]
+          - generic [ref=e2430]:
+            - button "General" [ref=e2431] [cursor=pointer]:
+              - img [ref=e2432]
+              - text: General
+            - button "Anamnesis" [ref=e2435] [cursor=pointer]:
+              - img [ref=e2436]
+              - text: Anamnesis
+            - button "Facturación" [ref=e2438] [cursor=pointer]:
+              - img [ref=e2439]
+              - text: Facturación
+          - generic [ref=e2442]:
+            - generic [ref=e2443]:
+              - text: Paciente
+              - generic [ref=e2444]:
+                - img [ref=e2445]
+                - generic [ref=e2448]: Antonella Cursaro
+            - generic [ref=e2449]:
+              - text: Profesional
+              - generic [ref=e2450]:
+                - img [ref=e2451]
+                - combobox [ref=e2454] [cursor=pointer]:
+                  - option "Seleccionar Profesional"
+                  - option "Dr. Laura Delgado" [selected]
+                  - option "Dr. Elizabeth Ester"
+            - generic [ref=e2455]:
+              - generic [ref=e2456]:
+                - text: Fecha y Hora
+                - generic [ref=e2457]:
+                  - img [ref=e2458]
+                  - textbox [ref=e2460]: 2026-04-20T13:30
+              - generic [ref=e2461]:
+                - text: Duración (min)
+                - generic [ref=e2462]:
+                  - img [ref=e2463]
+                  - combobox [ref=e2466]:
+                    - option "15 min"
+                    - option "30 min" [selected]
+                    - option "45 min"
+                    - option "60 min"
+                    - option "90 min"
+                    - option "2 horas"
+            - generic [ref=e2467]:
+              - text: Tipo de Turno
+              - generic [ref=e2468]:
+                - button "ATM" [ref=e2469] [cursor=pointer]
+                - button "Blanqueamiento Diamante" [ref=e2470] [cursor=pointer]
+                - button "Carillas/Estetica Anterior" [ref=e2471] [cursor=pointer]
+                - button "Cirugía Compleja" [ref=e2472] [cursor=pointer]
+                - button "Cirugía Simple" [ref=e2473] [cursor=pointer]
+                - button "Consulta General" [ref=e2474] [cursor=pointer]
+                - button "Consulta Urgencia" [ref=e2475] [cursor=pointer]
+                - button "Control Ortodoncia" [ref=e2476] [cursor=pointer]
+                - button "Control / Revisión" [ref=e2477] [cursor=pointer]
+                - button "Endodoncia" [ref=e2478] [cursor=pointer]
+                - button "Endolifting" [ref=e2479] [cursor=pointer]
+                - button "Estética Facial Avanzada" [ref=e2480] [cursor=pointer]
+                - button "Estética Facial Simple" [ref=e2481] [cursor=pointer]
+                - button "Implante Complejo (Protocolo CIMA)" [ref=e2482] [cursor=pointer]
+                - button "Implante Guiado Tomográficamente" [ref=e2483] [cursor=pointer]
+                - button "Implante Simple (Protocolo RISA)" [ref=e2484] [cursor=pointer]
+                - button "Injerto / Regeneración Ósea" [ref=e2485] [cursor=pointer]
+                - button "Limpieza Dental" [ref=e2486] [cursor=pointer]
+                - button "Ortodoncia" [ref=e2487] [cursor=pointer]
+                - button "Rehabilitación Compleja" [ref=e2488] [cursor=pointer]
+                - button "Rehabilitación Integral" [ref=e2489] [cursor=pointer]
+                - button "Rehabilitación Simple" [ref=e2490] [cursor=pointer]
+                - button "Restauración Compleja" [ref=e2491] [cursor=pointer]
+                - button "Restauración Simple" [ref=e2492] [cursor=pointer]
+            - generic [ref=e2493]:
+              - text: Estado del Turno
+              - paragraph [ref=e2494]: Cambiar a "Completada" enviará un mensaje de feedback al paciente en 45 minutos.
+              - generic [ref=e2495]:
+                - button "📅 Programado" [ref=e2496] [cursor=pointer]
+                - button "✅ Confirmado" [ref=e2497] [cursor=pointer]
+                - button "🏁 Completada" [ref=e2498] [cursor=pointer]
+                - button "❌ Cancelado" [ref=e2499] [cursor=pointer]
+                - button "👻 No asistió" [ref=e2500] [cursor=pointer]
+            - generic [ref=e2501]:
+              - text: Notas
+              - textbox "Notas adicionales..." [ref=e2502]: consulta cirugía- osde coseg. 20 mil
+          - generic [ref=e2503]:
+            - button [ref=e2504] [cursor=pointer]:
+              - img [ref=e2505]
+            - generic [ref=e2508]:
+              - button "Cancelar" [ref=e2509] [cursor=pointer]
+              - button "Guardar Cambios" [ref=e2510] [cursor=pointer]:
+                - img [ref=e2511]
+                - text: Guardar Cambios
+    - button [ref=e519] [cursor=pointer]:
+      - img [ref=e520]
+  - generic [ref=e522]: "0"

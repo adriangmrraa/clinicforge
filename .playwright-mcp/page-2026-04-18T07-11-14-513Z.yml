@@ -1,0 +1,92 @@
+- generic [ref=e3]:
+  - complementary [ref=e5]:
+    - generic [ref=e7]:
+      - img "Logo" [ref=e9]
+      - generic [ref=e10]: Clínica Dra. Laura Delgado
+    - navigation [ref=e11]:
+      - button "Dashboard" [ref=e13] [cursor=pointer]:
+        - generic [ref=e16]:
+          - img [ref=e18]
+          - generic [ref=e21]: Dashboard
+      - button "Agenda" [ref=e24] [cursor=pointer]:
+        - generic [ref=e27]:
+          - img [ref=e29]
+          - generic [ref=e31]: Agenda
+      - button "Pacientes" [ref=e33] [cursor=pointer]:
+        - generic [ref=e36]:
+          - img [ref=e38]
+          - generic [ref=e43]: Pacientes
+      - button "Conversaciones" [ref=e45] [cursor=pointer]:
+        - generic [ref=e48]:
+          - img [ref=e50]
+          - generic [ref=e52]: Conversaciones
+      - button "Personal" [ref=e54] [cursor=pointer]:
+        - generic [ref=e57]:
+          - img [ref=e59]
+          - generic [ref=e62]: Personal
+      - button "Sedes (Clínicas)" [ref=e64] [cursor=pointer]:
+        - generic [ref=e67]:
+          - img [ref=e69]
+          - generic [ref=e73]: Sedes (Clínicas)
+      - button "Estrategia" [ref=e75] [cursor=pointer]:
+        - generic [ref=e78]:
+          - img [ref=e80]
+          - generic [ref=e82]: Estrategia
+      - button "Tokens y Métricas" [ref=e84] [cursor=pointer]:
+        - generic [ref=e87]:
+          - img [ref=e89]
+          - generic [ref=e91]: Tokens y Métricas
+      - button "Tratamientos" [ref=e93] [cursor=pointer]:
+        - generic [ref=e96]:
+          - img [ref=e98]
+          - generic [ref=e101]: Tratamientos
+      - button "Mi Perfil" [ref=e103] [cursor=pointer]:
+        - generic [ref=e106]:
+          - img [ref=e108]
+          - generic [ref=e111]: Mi Perfil
+      - button "Marketing Hub" [ref=e113] [cursor=pointer]:
+        - generic [ref=e116]:
+          - img [ref=e118]
+          - generic [ref=e121]: Marketing Hub
+      - button "ROI Dashboard" [ref=e123] [cursor=pointer]:
+        - generic [ref=e126]:
+          - img [ref=e128]
+          - generic [ref=e131]: ROI Dashboard
+      - button "Leads Forms Meta" [ref=e133] [cursor=pointer]:
+        - generic [ref=e136]:
+          - img [ref=e138]
+          - generic [ref=e143]: Leads Forms Meta
+      - button "Automatizaciones" [ref=e145] [cursor=pointer]:
+        - generic [ref=e148]:
+          - img [ref=e150]
+          - generic [ref=e152]: Automatizaciones
+      - button "HSM & Automatización" [ref=e154] [cursor=pointer]:
+        - generic [ref=e157]:
+          - img [ref=e159]
+          - generic [ref=e161]: HSM & Automatización
+      - button "Configuración" [ref=e163] [cursor=pointer]:
+        - generic [ref=e166]:
+          - img [ref=e168]
+          - generic [ref=e171]: Configuración
+      - button "Cerrar Sesión" [ref=e172] [cursor=pointer]:
+        - generic [ref=e174]:
+          - img [ref=e176]
+          - generic [ref=e179]: Cerrar Sesión
+    - generic [ref=e181]:
+      - generic [ref=e182]: c
+      - generic [ref=e183]:
+        - paragraph [ref=e184]: consultoriolauradelgado@gmail.com
+        - paragraph [ref=e185]: ceo
+  - main [ref=e186]:
+    - generic [ref=e187]:
+      - heading "Clínica Dra. Laura Delgado" [level=1] [ref=e189]
+      - generic [ref=e190]:
+        - button "Guia de la pagina" [ref=e192] [cursor=pointer]:
+          - img [ref=e193]
+        - img [ref=e199]
+        - generic [ref=e203]:
+          - generic [ref=e204]: "Sucursal:"
+          - generic [ref=e205]: Principal
+        - generic [ref=e207]: C
+  - button [ref=e211] [cursor=pointer]:
+    - img [ref=e212]

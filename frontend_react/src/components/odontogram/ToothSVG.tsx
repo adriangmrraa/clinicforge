@@ -5,6 +5,12 @@ import { getPathForSurface } from './utils';
 
 export type SurfaceName = 'occlusal' | 'vestibular' | 'lingual' | 'mesial' | 'distal';
 
+export interface SurfaceDetail {
+  state: string;
+  condition?: string | null;
+  color?: string | null;
+}
+
 /**
  * SVG paths for a 40x40 viewBox, center (20,20).
  * Outer circle R=18, inner circle r=7.
@@ -27,7 +33,7 @@ interface ToothSVGProps {
   readOnly: boolean;
   onClick: () => void;
   justChanged?: boolean;
-  surfaceStates?: Record<SurfaceName, string>;
+  surfaceStates?: Record<SurfaceName, SurfaceDetail>;
   selectedSurface?: SurfaceName | null;
   onSurfaceClick?: (surface: SurfaceName) => void;
 }
@@ -46,8 +52,8 @@ export function ToothSVG({
   const fills = STATE_FILLS[state] || STATE_FILLS['healthy'];
   const isAbsent = state === 'ausente' || state === 'indicacion_extraccion';
 
-  const getSurfaceState = (surface: SurfaceName): string => {
-    return surfaceStates?.[surface] || state;
+  const getSurfaceState = (surface: SurfaceName): SurfaceDetail => {
+    return surfaceStates?.[surface] || { state, condition: null, color: null };
   };
 
   const handleSurfaceClick = (surface: SurfaceName) => (e: React.MouseEvent) => {
@@ -79,16 +85,20 @@ export function ToothSVG({
       )}
 
       {/* 5 surface sections */}
-      {SURFACES.map(surface => (
-        <SurfacePath
-          key={surface}
-          pathD={getPathForSurface(toothId, surface, SURFACE_PATHS)}
-          surfaceName={surface}
-          state={getSurfaceState(surface)}
-          isSelected={selectedSurface === surface}
-          onClick={!readOnly && onSurfaceClick ? handleSurfaceClick(surface) : undefined}
-        />
-      ))}
+      {SURFACES.map(surface => {
+        const sd = getSurfaceState(surface);
+        return (
+          <SurfacePath
+            key={surface}
+            pathD={getPathForSurface(toothId, surface, SURFACE_PATHS)}
+            surfaceName={surface}
+            state={sd.state}
+            color={sd.color || undefined}
+            isSelected={selectedSurface === surface}
+            onClick={!readOnly && onSurfaceClick ? handleSurfaceClick(surface) : undefined}
+          />
+        );
+      })}
 
       {/* Structural dividers — white lines visible on dark background */}
       <line x1="7.3" y1="7.3" x2="15" y2="15" stroke="rgba(255,255,255,0.18)" strokeWidth="0.8" opacity={isAbsent ? 0.3 : 1} />

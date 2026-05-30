@@ -1,0 +1,379 @@
+- generic [ref=e3]:
+  - complementary [ref=e5]:
+    - generic [ref=e7]:
+      - img "Logo" [ref=e9]
+      - generic [ref=e10]: Clínica Dra. Laura Delgado
+    - navigation [ref=e11]:
+      - button "Dashboard" [ref=e13] [cursor=pointer]:
+        - generic [ref=e16]:
+          - img [ref=e18]
+          - generic [ref=e21]: Dashboard
+      - button "Agenda" [ref=e23] [cursor=pointer]:
+        - generic [ref=e26]:
+          - img [ref=e28]
+          - generic [ref=e30]: Agenda
+      - button "Pacientes" [ref=e32] [cursor=pointer]:
+        - generic [ref=e35]:
+          - img [ref=e37]
+          - generic [ref=e42]: Pacientes
+      - button "Conversaciones" [ref=e44] [cursor=pointer]:
+        - generic [ref=e47]:
+          - img [ref=e49]
+          - generic [ref=e51]: Conversaciones
+      - button "Personal" [ref=e54] [cursor=pointer]:
+        - generic [ref=e57]:
+          - img [ref=e59]
+          - generic [ref=e62]: Personal
+      - button "Sedes (Clínicas)" [ref=e64] [cursor=pointer]:
+        - generic [ref=e67]:
+          - img [ref=e69]
+          - generic [ref=e73]: Sedes (Clínicas)
+      - button "Estrategia" [ref=e75] [cursor=pointer]:
+        - generic [ref=e78]:
+          - img [ref=e80]
+          - generic [ref=e82]: Estrategia
+      - button "Tokens y Métricas" [ref=e84] [cursor=pointer]:
+        - generic [ref=e87]:
+          - img [ref=e89]
+          - generic [ref=e91]: Tokens y Métricas
+      - button "Tratamientos" [ref=e93] [cursor=pointer]:
+        - generic [ref=e96]:
+          - img [ref=e98]
+          - generic [ref=e101]: Tratamientos
+      - button "Mi Perfil" [ref=e103] [cursor=pointer]:
+        - generic [ref=e106]:
+          - img [ref=e108]
+          - generic [ref=e111]: Mi Perfil
+      - button "Marketing Hub" [ref=e113] [cursor=pointer]:
+        - generic [ref=e116]:
+          - img [ref=e118]
+          - generic [ref=e121]: Marketing Hub
+      - button "ROI Dashboard" [ref=e123] [cursor=pointer]:
+        - generic [ref=e126]:
+          - img [ref=e128]
+          - generic [ref=e131]: ROI Dashboard
+      - button "Leads Forms Meta" [ref=e133] [cursor=pointer]:
+        - generic [ref=e136]:
+          - img [ref=e138]
+          - generic [ref=e143]: Leads Forms Meta
+      - button "Automatizaciones" [ref=e145] [cursor=pointer]:
+        - generic [ref=e148]:
+          - img [ref=e150]
+          - generic [ref=e152]: Automatizaciones
+      - button "HSM & Automatización" [ref=e154] [cursor=pointer]:
+        - generic [ref=e157]:
+          - img [ref=e159]
+          - generic [ref=e161]: HSM & Automatización
+      - button "Configuración" [ref=e163] [cursor=pointer]:
+        - generic [ref=e166]:
+          - img [ref=e168]
+          - generic [ref=e171]: Configuración
+      - button "Cerrar Sesión" [ref=e172] [cursor=pointer]:
+        - generic [ref=e174]:
+          - img [ref=e176]
+          - generic [ref=e179]: Cerrar Sesión
+    - generic [ref=e181]:
+      - generic [ref=e182]: c
+      - generic [ref=e183]:
+        - paragraph [ref=e184]: consultoriolauradelgado@gmail.com
+        - paragraph [ref=e185]: ceo
+  - main [ref=e186]:
+    - generic [ref=e187]:
+      - heading "Clínica Dra. Laura Delgado" [level=1] [ref=e189]
+      - generic [ref=e190]:
+        - button "Guia de la pagina" [ref=e192] [cursor=pointer]:
+          - img [ref=e193]
+        - img [ref=e199]
+        - combobox [ref=e241] [cursor=pointer]:
+          - option "Clínica Dra. Laura Delgado" [selected]
+          - option "Dentalogic centro"
+          - option "Prueba"
+        - generic [ref=e207]: C
+    - generic [ref=e209]:
+      - generic [ref=e210]:
+        - generic [ref=e211]:
+          - generic [ref=e212]:
+            - heading "Conversaciones" [level=2] [ref=e213]
+            - button "Silenciar notificaciones" [ref=e214] [cursor=pointer]:
+              - img [ref=e215]
+          - generic [ref=e242]:
+            - generic [ref=e243]: Clínica
+            - combobox [ref=e244]:
+              - option "Clínica Dra. Laura Delgado" [selected]
+              - option "Dentalogic centro"
+              - option "Prueba"
+          - generic [ref=e219]:
+            - generic [ref=e220]: Canal
+            - combobox [ref=e221]:
+              - option "Todos" [selected]
+              - option "WhatsApp"
+              - option "Instagram"
+              - option "Facebook"
+          - generic [ref=e222]:
+            - img [ref=e223]
+            - textbox "Buscar por nombre o teléfono..." [ref=e226]: Carolina
+        - generic [ref=e227]:
+          - generic [ref=e990] [cursor=pointer]:
+            - generic [ref=e991]:
+              - generic [ref=e992]: C
+              - img [ref=e994]
+            - generic [ref=e997]:
+              - generic [ref=e998]:
+                - generic [ref=e999]:
+                  - generic [ref=e1000]: Carolina Basgal
+                  - generic [ref=e1001]: Paciente
+                - generic [ref=e1002]: WhatsApp
+              - generic [ref=e1003]:
+                - paragraph [ref=e1004]: "[Media]"
+                - generic [ref=e1005]: "1"
+              - text: 15/4/2026
+          - generic [ref=e1136] [cursor=pointer]:
+            - generic [ref=e1137]:
+              - generic [ref=e1138]: C
+              - img [ref=e1140]
+            - generic [ref=e1143]:
+              - generic [ref=e1144]:
+                - generic [ref=e1145]:
+                  - generic [ref=e1146]: Carolina surt
+                  - generic [ref=e1147]: Paciente
+                - generic [ref=e1148]: WhatsApp
+              - generic [ref=e1149]:
+                - paragraph [ref=e1150]: te pido que puedas ingresar para terminar de completar tu legajo digital. desde ya muchas gracias !
+                - generic [ref=e1151]: "1"
+              - text: 14/4/2026
+      - generic [ref=e1330]:
+        - generic [ref=e1331]:
+          - generic [ref=e1332]:
+            - generic [ref=e1333] [cursor=pointer]:
+              - generic [ref=e1334]: C
+              - img [ref=e1336]
+            - generic [ref=e1339] [cursor=pointer]:
+              - heading "Carolina surt WhatsApp" [level=3] [ref=e1340]:
+                - text: Carolina surt
+                - generic [ref=e1341]: WhatsApp
+              - paragraph [ref=e1342]: "+5492995940813"
+          - button "Manual" [ref=e1344] [cursor=pointer]:
+            - img [ref=e1345]
+            - generic [ref=e1348]: Manual
+        - generic [ref=e1349]:
+          - img [ref=e1350]
+          - generic [ref=e1353]: chats.window_closed_warning
+        - generic [ref=e1354]:
+          - img [ref=e1355]
+          - generic [ref=e1358]: "⏳ Ventana de 24hs cerrada: No puedes enviar mensajes manuales hasta que el paciente te escriba de nuevo."
+          - button "Plantillas Meta" [ref=e1359] [cursor=pointer]:
+            - text: Plantillas Meta
+            - img [ref=e1360]
+        - generic [ref=e1362]:
+          - generic [ref=e1364]:
+            - generic [ref=e1366]: Buen día mi nombre es carolina y vivo en Rincón de los sauces, le quería comentar mi situación, estoy buscando un especialista que me arregle mis dientes, si bien tengo espacio sin diente porque debían extraer por ciertas situaciones como ser caries avanzada, y a su vez tengo un tratamiento conducto que me ocasiona molestia. Mi consulta es saber si puedo recuperar los espacios donde no tengo diente, hacerle una limpieza, etc.
+            - paragraph [ref=e1367]: 10:54 a. m.
+          - generic [ref=e1369]:
+            - generic [ref=e1371]: Hola 😊 Soy Paula, la asistente virtual de Clínica Dra. Laura Delgado.
+            - paragraph [ref=e1372]: 10:55 a. m.
+          - generic [ref=e1374]:
+            - generic [ref=e1376]: Por lo que me contás, lo ideal es una evaluación de rehabilitación para ver cómo recuperar esos espacios y revisar también ese conducto que te molesta.
+            - paragraph [ref=e1377]: 10:55 a. m.
+          - generic [ref=e1379]:
+            - generic [ref=e1381]: "Te dejo opciones para Consulta General: 1️⃣ Miércoles 15/04 — 13:00 hs 2️⃣ Jueves 16/04 — 10:00 hs 3️⃣ Lunes 20/04 — 13:45 hs"
+            - paragraph [ref=e1382]: 10:55 a. m.
+          - generic [ref=e1384]:
+            - generic [ref=e1386]: Cuál te queda mejor?
+            - paragraph [ref=e1387]: 10:55 a. m.
+          - generic [ref=e1389]:
+            - generic [ref=e1391]: El lunes 27/04 tendría turno por la mañana?
+            - paragraph [ref=e1392]: 10:56 a. m.
+          - generic [ref=e1394]:
+            - generic [ref=e1396]: "No hay turno por la mañana ese día, pero sí estas opciones:"
+            - paragraph [ref=e1397]: 10:57 a. m.
+          - generic [ref=e1399]:
+            - generic [ref=e1401]: 1️⃣ Lunes 27/04 — 14:00 hs 2️⃣ Lunes 27/04 — 16:15 hs 3️⃣ Martes 28/04 — 10:00 hs
+            - paragraph [ref=e1402]: 10:57 a. m.
+          - generic [ref=e1404]:
+            - generic [ref=e1406]: Con Laura Delgado.
+            - paragraph [ref=e1407]: 10:57 a. m.
+          - generic [ref=e1409]:
+            - generic [ref=e1411]: El lunes 27/04 a las 14hs
+            - paragraph [ref=e1412]: 11:00 a. m.
+          - generic [ref=e1414]:
+            - generic [ref=e1416]: Perfecto, ya te lo reservé temporalmente ✅
+            - paragraph [ref=e1417]: 11:00 a. m.
+          - generic [ref=e1419]:
+            - generic [ref=e1421]: Ahora pasame tu nombre y apellido, y tu DNI sin puntos.
+            - paragraph [ref=e1422]: 11:00 a. m.
+          - generic [ref=e1424]:
+            - generic [ref=e1426]: Carolina surt 34825327
+            - paragraph [ref=e1427]: 11:01 a. m.
+          - generic [ref=e1429]:
+            - generic [ref=e1431]: "[Sin respuesta]"
+            - paragraph [ref=e1432]: 11:01 a. m.
+          - generic [ref=e1434]:
+            - generic [ref=e1436]: Repetírmelo Porfavor, tuve intermitencias
+            - paragraph [ref=e1437]: 11:26 a. m.
+          - generic [ref=e1439]:
+            - generic [ref=e1441]: Carolina surt 34825327
+            - paragraph [ref=e1442]: 11:30 a. m.
+          - generic [ref=e1444]:
+            - generic [ref=e1446]:
+              - text: "✅ Turno confirmado para Carolina surt: 🦷 Consulta General 📅 Lunes 27/04 a las 14:00 👩‍⚕️ Con Laura 📍 Salta 147, Neuquén Capital 🗺️ Maps:"
+              - link "https://maps.app.goo.gl/w8qH8FmQvhQ6b9iy9" [ref=e1447] [cursor=pointer]:
+                - /url: https://maps.app.goo.gl/w8qH8FmQvhQ6b9iy9
+                - text: https://maps.app.goo.gl/w8qH8FmQvhQ6b9iy9
+                - img [ref=e1448]
+            - paragraph [ref=e1452]: 11:31 a. m.
+          - generic [ref=e1454]:
+            - generic [ref=e1456]: "Si querés, podés adelantar una seña de $25.000 para asegurar el turno: Alias: dradelgadoml CBU: 0970099455003515270012 Titular: Delgado Maria Laura Pero no es obligatorio, tu turno ya quedó agendado."
+            - paragraph [ref=e1457]: 11:31 a. m.
+          - generic [ref=e1459]:
+            - generic [ref=e1461]: Por cierto, cómo nos conociste? Redes, recomendación, Google...?
+            - paragraph [ref=e1462]: 11:31 a. m.
+          - generic [ref=e1464]:
+            - generic [ref=e1466]:
+              - text: "Para ahorrar tiempo en tu consulta, completá tu ficha médica desde acá:"
+              - link "https://app.dralauradelgado.com/anamnesis/1/21a19dac-4c47-4a01-9bb8-d083a790facb" [ref=e1467] [cursor=pointer]:
+                - /url: https://app.dralauradelgado.com/anamnesis/1/21a19dac-4c47-4a01-9bb8-d083a790facb
+                - text: https://app.dralauradelgado.com/anamnesis/1/21a19dac-4c47-4a01-9bb8-d083a790facb
+                - img [ref=e1468]
+            - paragraph [ref=e1472]: 11:31 a. m.
+          - generic [ref=e1474]:
+            - generic [ref=e1476]: Si contás con estudios previos, podés traerlos a la consulta 📎
+            - paragraph [ref=e1477]: 11:31 a. m.
+          - generic [ref=e1479]:
+            - generic [ref=e1481]: Hola Carolina, ¡buen día! Espero que estés muy bien. Te escribo porque, por motivos ajenos a nosotros, vamos a tener que reprogramar tu turno con la Dra. Laura. Por favor, confirmame qué disponibilidad tenés para darte una nueva fecha. Además, ¿podrías decirme si vas a atenderte por obra social o de forma particular? Así ya te dejo el registro completo. ¡Muchas gracias!
+            - paragraph [ref=e1482]: 12:50 p. m.
+          - generic [ref=e1484]:
+            - generic [ref=e1486]: Buenas tarde puedo el día 27/04 o en mayo a principios
+            - paragraph [ref=e1487]: 01:04 p. m.
+          - generic [ref=e1489]:
+            - generic [ref=e1491]: Buenas tardes Caro,
+            - paragraph [ref=e1492]: 01:06 p. m.
+          - generic [ref=e1494]:
+            - generic [ref=e1496]: vas a atenderte con cobertura médica ( obra social) o de forma particular ?
+            - paragraph [ref=e1497]: 01:08 p. m.
+          - generic [ref=e1499]:
+            - generic [ref=e1501]: Tengo la obra social instituto
+            - paragraph [ref=e1502]: 01:10 p. m.
+          - generic [ref=e1504]:
+            - generic [ref=e1506]: No trabajamos con esa cobertura Carolina, te interesaría realizar la consulta de forma particular?
+            - paragraph [ref=e1507]: 01:17 p. m.
+          - generic [ref=e1509]:
+            - generic [ref=e1511]: Si por favor
+            - paragraph [ref=e1512]: 01:22 p. m.
+          - generic [ref=e1514]:
+            - generic [ref=e1516]: Sí, claro Carolina 😊
+            - paragraph [ref=e1517]: 01:23 p. m.
+          - generic [ref=e1519]:
+            - generic [ref=e1521]: Podés hacerte la consulta de forma particular y te damos la documentación para reintegro si la necesitás.
+            - paragraph [ref=e1522]: 01:23 p. m.
+          - generic [ref=e1524]:
+            - generic [ref=e1526]: ¿Querés que te pase turnos disponibles?
+            - paragraph [ref=e1527]: 01:23 p. m.
+          - generic [ref=e1529]:
+            - generic [ref=e1531]: Por favor
+            - paragraph [ref=e1532]: 01:23 p. m.
+          - generic [ref=e1534]:
+            - generic [ref=e1536]: Y el costo de la consulta
+            - paragraph [ref=e1537]: 01:23 p. m.
+          - generic [ref=e1539]:
+            - generic [ref=e1541]: Sí, Carolina. La primera consulta tiene un costo de $45.000.
+            - paragraph [ref=e1542]: 01:24 p. m.
+          - generic [ref=e1544]:
+            - generic [ref=e1546]: "Te pasé los turnos más cercanos para principios de mayo: 1️⃣ Lunes 04/05 — 15:00 hs 2️⃣ Martes 05/05 — 10:00 hs 3️⃣ Miércoles 06/05 — 12:00 hs"
+            - paragraph [ref=e1547]: 01:24 p. m.
+          - generic [ref=e1549]:
+            - generic [ref=e1551]: Si querés, elegí una opción y te la reservo 😊
+            - paragraph [ref=e1552]: 01:24 p. m.
+          - generic [ref=e1554]:
+            - generic [ref=e1556]: Miércoles 6
+            - paragraph [ref=e1557]: 01:35 p. m.
+          - generic [ref=e1559]:
+            - generic [ref=e1561]: Perdón martes 5/5
+            - paragraph [ref=e1562]: 01:35 p. m.
+          - generic [ref=e1564]:
+            - generic [ref=e1566]: Ese horario ya pasó, Caro 😊
+            - paragraph [ref=e1567]: 01:35 p. m.
+          - generic [ref=e1569]:
+            - generic [ref=e1571]: Te busco otro horario cercano para mayo?
+            - paragraph [ref=e1572]: 01:35 p. m.
+          - generic [ref=e1574]:
+            - generic [ref=e1576]: "[Media]"
+            - paragraph [ref=e1577]: 01:35 p. m.
+          - generic [ref=e1579]:
+            - generic [ref=e1581]: Caro ya agendamos el turno para el martes 5/5 a las 10 hs
+            - paragraph [ref=e1582]: 02:07 p. m.
+          - generic [ref=e1584]:
+            - link "https://app.dralauradelgado.com/anamnesis/1/21a19dac-4c47-4a01-9bb8-d083a790facb" [ref=e1587] [cursor=pointer]:
+              - /url: https://app.dralauradelgado.com/anamnesis/1/21a19dac-4c47-4a01-9bb8-d083a790facb
+              - text: https://app.dralauradelgado.com/anamnesis/1/21a19dac-4c47-4a01-9bb8-d083a790facb
+              - img [ref=e1588]
+            - paragraph [ref=e1592]: 02:07 p. m.
+          - generic [ref=e1594]:
+            - generic [ref=e1596]: te pido que puedas ingresar para terminar de completar tu legajo digital. desde ya muchas gracias !
+            - paragraph [ref=e1597]: 02:09 p. m.
+        - generic [ref=e1600]:
+          - button "Adjuntar archivo" [ref=e1601] [cursor=pointer]:
+            - img [ref=e1602]
+          - textbox "Ventana cerrada - Esperando paciente..." [disabled] [ref=e1604]
+          - button "Ventana de 24hs cerrada" [disabled] [ref=e1605]:
+            - img [ref=e1606]
+          - button "Grabar mensaje de voz" [disabled] [ref=e1609]:
+            - img [ref=e1610]
+      - generic [ref=e1613]:
+        - generic [ref=e1614]:
+          - img [ref=e1615]
+          - heading "Contexto Clínico" [level=3] [ref=e1617]
+        - generic [ref=e1618]:
+          - generic [ref=e1619]:
+            - generic [ref=e1620]:
+              - img [ref=e1621]
+              - generic [ref=e1623]: Estado del Bot
+            - paragraph [ref=e1624]: IA activa
+          - generic [ref=e1625]:
+            - generic [ref=e1626]:
+              - generic [ref=e1627]:
+                - heading "PACIENTE" [level=4] [ref=e1628]
+                - generic [ref=e1629]: Paciente
+              - paragraph [ref=e1630]: Carolina surt
+              - paragraph [ref=e1631]: "+5492995940813"
+              - generic [ref=e1632]:
+                - button "Ver ficha del paciente" [ref=e1633] [cursor=pointer]:
+                  - img [ref=e1634]
+                  - text: Ver ficha del paciente
+                - button "Agendar turno" [ref=e1637] [cursor=pointer]:
+                  - img [ref=e1638]
+                  - text: Agendar turno
+                - button "Para hijo/familiar" [ref=e1640] [cursor=pointer]:
+                  - img [ref=e1641]
+                  - text: Para hijo/familiar
+                - button "Vincular a paciente" [ref=e1644] [cursor=pointer]:
+                  - img [ref=e1645]
+                  - text: Vincular a paciente
+            - generic [ref=e1648]:
+              - heading "ÚLTIMA CITA" [level=4] [ref=e1649]:
+                - img [ref=e1650]
+                - text: ÚLTIMA CITA
+              - paragraph [ref=e1652]: Sin citas previas
+            - generic [ref=e1653]:
+              - heading "PRÓXIMA CITA" [level=4] [ref=e1654]:
+                - img [ref=e1655]
+                - text: PRÓXIMA CITA
+              - generic [ref=e1658]:
+                - paragraph [ref=e1659]: consulta_general
+                - generic [ref=e1660]:
+                  - generic [ref=e1661]: 05/05/2026 10:00 a. m.
+                  - generic [ref=e1662]: 30 min
+                - paragraph [ref=e1663]: "Profesional: Laura"
+            - generic [ref=e1664]:
+              - heading "TRATAMIENTO ACTUAL" [level=4] [ref=e1665]
+              - paragraph [ref=e1666]: Sin plan de tratamiento
+            - generic [ref=e1667]:
+              - heading "🦷 Anamnesis" [level=4] [ref=e1668]:
+                - generic [ref=e1669]: 🦷
+                - text: Anamnesis
+              - generic [ref=e1670]:
+                - img [ref=e1671]
+                - paragraph [ref=e1674]:
+                  - text: Este paciente aún no
+                  - text: completó la anamnesis.
+  - button [ref=e234] [cursor=pointer]:
+    - img [ref=e235]

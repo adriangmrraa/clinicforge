@@ -1,0 +1,68 @@
+[
+  {
+    "id": 1,
+    "tenant_id": 1,
+    "name": "Recordatorio 24h",
+    "is_active": true,
+    "is_system": true,
+    "trigger_type": "appointment_reminder",
+    "condition_json": "{\"hours_before\": 24}",
+    "message_type": "free_text",
+    "free_text_message": "Hola {{first_name}}, te recordamos tu turno mañana a las {{appointment_time}}. Confirmás tu asistencia? 🦷",
+    "ycloud_template_name": null,
+    "ycloud_template_lang": "es",
+    "ycloud_template_vars": "{}",
+    "channels": [
+      "whatsapp"
+    ],
+    "send_hour_min": 8,
+    "send_hour_max": 20,
+    "created_by": null,
+    "created_at": "2026-03-11T18:42:27.211214+00:00",
+    "updated_at": "2026-04-14T02:47:46.411959+00:00"
+  },
+  {
+    "id": 2,
+    "tenant_id": 1,
+    "name": "Feedback Pacientes",
+    "is_active": true,
+    "is_system": true,
+    "trigger_type": "post_appointment_completed",
+    "condition_json": "{\"delay_minutes\": 45}",
+    "message_type": "free_text",
+    "free_text_message": "Hola {{first_name}}! Cómo te sentís después de tu atención de hoy? Si tuviste alguna molestia, no dudes en escribirnos. Estamos para ayudarte 💙",
+    "ycloud_template_name": null,
+    "ycloud_template_lang": "es",
+    "ycloud_template_vars": "{}",
+    "channels": [
+      "whatsapp"
+    ],
+    "send_hour_min": 8,
+    "send_hour_max": 20,
+    "created_by": null,
+    "created_at": "2026-03-11T18:42:27.211214+00:00",
+    "updated_at": "2026-03-27T00:49:22.344821+00:00"
+  },
+  {
+    "id": 3,
+    "tenant_id": 1,
+    "name": "Recuperación de Leads",
+    "is_active": true,
+    "is_system": true,
+    "trigger_type": "lead_meta_no_booking",
+    "condition_json": "{\"source\": \"meta\", \"delay_minutes\": 120}",
+    "message_type": "free_text",
+    "free_text_message": "Hola {{first_name}}! Vi que te interesaste en nuestros servicios. Tenemos disponibilidad esta semana. Te puedo ayudar a coordinar una consulta? 😊",
+    "ycloud_template_name": null,
+    "ycloud_template_lang": "es",
+    "ycloud_template_vars": "{}",
+    "channels": [
+      "whatsapp"
+    ],
+    "send_hour_min": 8,
+    "send_hour_max": 20,
+    "created_by": null,
+    "created_at": "2026-03-11T18:42:27.211214+00:00",
+    "updated_at": "2026-03-27T00:49:23.373144+00:00"
+  }
+]

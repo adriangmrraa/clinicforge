@@ -1,0 +1,242 @@
+[
+  {
+    "id": 30,
+    "execution_id": 22,
+    "step_id": 564,
+    "event_type": "step_failed",
+    "event_data": "{\"success\": false, \"action_type\": \"send_template\"}",
+    "created_at": "2026-04-24T08:04:16.828982+00:00"
+  },
+  {
+    "id": 29,
+    "execution_id": 23,
+    "step_id": 564,
+    "event_type": "step_failed",
+    "event_data": "{\"success\": false, \"action_type\": \"send_template\"}",
+    "created_at": "2026-04-24T08:04:14.654242+00:00"
+  },
+  {
+    "id": 28,
+    "execution_id": 17,
+    "step_id": null,
+    "event_type": "step_failed",
+    "event_data": "{\"success\": false, \"action_type\": \"send_template\"}",
+    "created_at": "2026-04-21T08:02:45.623360+00:00"
+  },
+  {
+    "id": 27,
+    "execution_id": 18,
+    "step_id": null,
+    "event_type": "step_failed",
+    "event_data": "{\"success\": false, \"action_type\": \"send_template\"}",
+    "created_at": "2026-04-21T08:02:43.168176+00:00"
+  },
+  {
+    "id": 26,
+    "execution_id": 19,
+    "step_id": null,
+    "event_type": "step_failed",
+    "event_data": "{\"success\": false, \"action_type\": \"send_template\"}",
+    "created_at": "2026-04-21T08:02:40.642291+00:00"
+  },
+  {
+    "id": 25,
+    "execution_id": 20,
+    "step_id": null,
+    "event_type": "step_failed",
+    "event_data": "{\"success\": false, \"action_type\": \"send_template\"}",
+    "created_at": "2026-04-21T08:02:38.468957+00:00"
+  },
+  {
+    "id": 24,
+    "execution_id": 21,
+    "step_id": null,
+    "event_type": "step_failed",
+    "event_data": "{\"success\": false, \"action_type\": \"send_template\"}",
+    "created_at": "2026-04-21T08:02:36.002900+00:00"
+  },
+  {
+    "id": 23,
+    "execution_id": 16,
+    "step_id": null,
+    "event_type": "step_failed",
+    "event_data": "{\"success\": false, \"action_type\": \"send_template\"}",
+    "created_at": "2026-04-20T08:02:27.045875+00:00"
+  },
+  {
+    "id": 22,
+    "execution_id": 15,
+    "step_id": null,
+    "event_type": "step_failed",
+    "event_data": "{\"success\": false, \"action_type\": \"send_template\"}",
+    "created_at": "2026-04-20T08:02:24.617667+00:00"
+  },
+  {
+    "id": 21,
+    "execution_id": 14,
+    "step_id": null,
+    "event_type": "step_failed",
+    "event_data": "{\"success\": false, \"action_type\": \"send_template\"}",
+    "created_at": "2026-04-20T08:02:22.097498+00:00"
+  },
+  {
+    "id": 20,
+    "execution_id": 13,
+    "step_id": null,
+    "event_type": "step_failed",
+    "event_data": "{\"success\": false, \"action_type\": \"send_template\"}",
+    "created_at": "2026-04-20T08:02:19.887654+00:00"
+  },
+  {
+    "id": 19,
+    "execution_id": 12,
+    "step_id": null,
+    "event_type": "step_failed",
+    "event_data": "{\"success\": false, \"action_type\": \"send_template\"}",
+    "created_at": "2026-04-20T08:02:17.370218+00:00"
+  },
+  {
+    "id": 18,
+    "execution_id": 11,
+    "step_id": null,
+    "event_type": "step_failed",
+    "event_data": "{\"success\": false, \"action_type\": \"send_template\"}",
+    "created_at": "2026-04-20T08:02:14.782067+00:00"
+  },
+  {
+    "id": 17,
+    "execution_id": 10,
+    "step_id": null,
+    "event_type": "step_failed",
+    "event_data": "{\"success\": false, \"action_type\": \"send_template\"}",
+    "created_at": "2026-04-18T08:02:15.501853+00:00"
+  },
+  {
+    "id": 16,
+    "execution_id": 9,
+    "step_id": null,
+    "event_type": "step_failed",
+    "event_data": "{\"success\": false, \"action_type\": \"send_template\"}",
+    "created_at": "2026-04-16T19:55:31.677029+00:00"
+  },
+  {
+    "id": 15,
+    "execution_id": 8,
+    "step_id": null,
+    "event_type": "step_failed",
+    "event_data": "{\"success\": false, \"action_type\": \"send_template\"}",
+    "created_at": "2026-04-16T19:55:29.212139+00:00"
+  },
+  {
+    "id": 14,
+    "execution_id": 7,
+    "step_id": null,
+    "event_type": "step_failed",
+    "event_data": "{\"success\": false, \"action_type\": \"send_template\"}",
+    "created_at": "2026-04-16T19:55:26.713203+00:00"
+  },
+  {
+    "id": 13,
+    "execution_id": 3,
+    "step_id": 558,
+    "event_type": "step_executed",
+    "event_data": "{\"success\": true, \"action_type\": \"send_text\"}",
+    "created_at": "2026-04-14T13:13:22.407634+00:00"
+  },
+  {
+    "id": 12,
+    "execution_id": 2,
+    "step_id": 558,
+    "event_type": "step_executed",
+    "event_data": "{\"success\": true, \"action_type\": \"send_text\"}",
+    "created_at": "2026-04-14T13:13:16.417177+00:00"
+  },
+  {
+    "id": 11,
+    "execution_id": 1,
+    "step_id": 558,
+    "event_type": "step_executed",
+    "event_data": "{\"success\": true, \"action_type\": \"send_text\"}",
+    "created_at": "2026-04-14T12:04:04.635497+00:00"
+  },
+  {
+    "id": 10,
+    "execution_id": 3,
+    "step_id": 557,
+    "event_type": "timeout",
+    "event_data": "{\"on_no_response\": \"continue\"}",
+    "created_at": "2026-04-14T01:13:00.427638+00:00"
+  },
+  {
+    "id": 9,
+    "execution_id": 2,
+    "step_id": 557,
+    "event_type": "timeout",
+    "event_data": "{\"on_no_response\": \"continue\"}",
+    "created_at": "2026-04-14T01:13:00.418610+00:00"
+  },
+  {
+    "id": 8,
+    "execution_id": 2,
+    "step_id": 557,
+    "event_type": "response_classified",
+    "event_data": "{\"action\": \"pass_to_ai\", \"rule_name\": null, \"classification\": \"unclassified\", \"message_preview\": \"Ok..ahí estaré\"}",
+    "created_at": "2026-04-14T00:31:46.299199+00:00"
+  },
+  {
+    "id": 7,
+    "execution_id": 1,
+    "step_id": 557,
+    "event_type": "timeout",
+    "event_data": "{\"on_no_response\": \"continue\"}",
+    "created_at": "2026-04-14T00:03:26.533442+00:00"
+  },
+  {
+    "id": 6,
+    "execution_id": 3,
+    "step_id": null,
+    "event_type": "step_executed",
+    "event_data": "{\"success\": true, \"action_type\": \"wait_response\"}",
+    "created_at": "2026-04-13T17:12:57.764802+00:00"
+  },
+  {
+    "id": 5,
+    "execution_id": 2,
+    "step_id": null,
+    "event_type": "step_executed",
+    "event_data": "{\"success\": true, \"action_type\": \"wait_response\"}",
+    "created_at": "2026-04-13T17:12:57.758555+00:00"
+  },
+  {
+    "id": 4,
+    "execution_id": 3,
+    "step_id": null,
+    "event_type": "step_failed",
+    "event_data": "{\"success\": false, \"action_type\": \"send_ai_message\"}",
+    "created_at": "2026-04-13T17:07:57.740348+00:00"
+  },
+  {
+    "id": 3,
+    "execution_id": 2,
+    "step_id": null,
+    "event_type": "step_failed",
+    "event_data": "{\"success\": false, \"action_type\": \"send_ai_message\"}",
+    "created_at": "2026-04-13T17:07:57.490292+00:00"
+  },
+  {
+    "id": 2,
+    "execution_id": 1,
+    "step_id": null,
+    "event_type": "step_executed",
+    "event_data": "{\"success\": true, \"action_type\": \"wait_response\"}",
+    "created_at": "2026-04-13T16:02:56.850915+00:00"
+  },
+  {
+    "id": 1,
+    "execution_id": 1,
+    "step_id": null,
+    "event_type": "step_failed",
+    "event_data": "{\"success\": false, \"action_type\": \"send_ai_message\"}",
+    "created_at": "2026-04-13T15:57:56.826315+00:00"
+  }
+]

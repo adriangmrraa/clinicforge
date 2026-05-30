@@ -1,0 +1,717 @@
+documento feedback doctora laura:
+
+Sobre Obras Sociales
+​1.​¿El coseguro es un monto fijo o varía por obra social/tratamiento? — Si varía, necesitamos saber si el agente debe informar el monto o solo decir “tiene coseguro”.
+ 
+RESPUESTA: prefiero q el chat no informe montos especificos. solo indiacar q la consulta o atencion puede tener coseguro segun coberrtura. el valor exacto se informa en la clinica.
+rta de ia:
+ 
+“Si contás con obra social, la consulta se realiza por tu cobertura y puede tener un coseguro según el plan.”
+👉 Si insisten:
+💬
+“El valor exacto depende de la obra social y se confirma en la clínica.”
+ 
+La IA puede mencionar de forma general:
+“En algunos casos, las obras sociales pueden ofrecer reintegros presentando la factura.”
+👉 Sin detallar montos, condiciones ni procesos
+—👉 Si insiste mucho en precio →
+✔️ ofrecer equipo (obra social general)
+👉 Si hay potencial de tratamiento grande →
+✔️ mantenerlo con vos
+ 
+“El valor exacto del coseguro depende de la obra social y el tipo de atención, por eso se confirma en la clínica 😊
+Si preferís, podemos coordinarte directamente con el equipo por obra social para una atención general.”
+ 
+Si el paciente dice cosas como:
+“me falta un diente”
+“quiero algo estético”
+“no puedo masticar bien”
+👉 ❌ NO lo mandes al equipo
+👉 💥 Ese es paciente TUYO (implantes/protesis)
+ 
+​2.​¿Qué cirugías específicas cubre Federada Salud? — Dice “solo cirugías específicas” pero no cuáles. Necesitamos la lista y los tratamientos cargados con deralles y mucha informacion configurable desde la ui en la página de tratamientos para las reglas de negocio. Para la etapa de pruebas necesitamos que los  tratamientos esten registrados en la plataforma, realicen la primera puesta en marcha configurando uno por uno los tratamientos. Es urgente y necesario que se haga desde el consultorio, ya que sirve para entender cómo funciona el agente de ia y lo grave que es cambiar los valores desde la ui. Tambien  es necesario para avanzar ‼️🚨
+
+
+RESPUESTA:
+ 
+La IA NO debe:
+Determinar si un tratamiento está cubierto o no
+Listar cirugías específicas cubiertas por cada obra social
+Interpretar estudios o dar indicaciones clínicas
+Confirmar valores exactos de coseguro o cobertura. 
+el el paciente rpegunta que cubre: 
+“La cobertura de las obras sociales puede variar según el plan y el tipo de tratamiento.
+Para indicarte con precisión qué incluye en tu caso, es necesario realizar una evaluación clínica y revisar tu cobertura específica.
+Si querés, podemos coordinarte una consulta y orientarte correctamente 😊”
+ 
+Los tratamientos pueden estar cargados en la plataforma solo como:
+Referencia interna
+Organización del sistema
+👉 NO para que la IA:
+Decida cobertura
+Dé diagnósticos
+Informe reglas rígidas al paciente
+——
+ 
+​3.​¿Qué cirugías cubre OSDE? — Mismo caso, “solo cirugías” es ambiguo. ¿Todas las cirugías o un subset?
+ 
+RESPUESTA:
+idem punto anterior. 
+ 
+
+——
+ 
+​4.​¿Cuál es el contacto de CIMO para derivar pacientes de ISSN? — El agente dice “te paso el contacto” pero necesita el dato concreto (teléfono, dirección, link).
+ 
+RESPUESTA: se deriva a cimo solo consultas de cirugia maxilofacial. 
+ 
+cimosalud.com
+https://api.whatsapp.com/send/?phone=5492995348849
+——
+ 
+​5.​¿Qué pasa cuando un paciente tiene una obra social que NO está en la lista? — ¿Se atiende particular? ¿Se le dice que no trabajan con esa OS? ¿Se deriva?
+ 
+RESPUESTA: 
+ 
+Trabajamos con algunas obras sociales específicas.
+Si tu cobertura no está dentro de ellas, podemos evaluarte de forma particular y ofrecerte la mejor opción de tratamiento según tu caso 😊
+Contanos qué necesitás y te orientamos.”
+ 
+——
+ 
+​6.​¿La lista de obras sociales cambia seguido? — Para saber si necesitas poder editarla vos misma o algún usuario sin intervención técnica.
+ 
+RESPUESTA: si dejenla para editar. 
+ 
+
+——
+ 
+​7.​¿Hay obras sociales que requieran autorización previa para ALGÚN tratamiento? — El feedback dice “no informar autorizaciones”, pero si alguna OS las exige, el agente debería al menos mencionarlo post-turno.
+La IA NO debe informar ni detallar procesos de autorización antes de la consulta.
+La necesidad de autorización depende del diagnóstico clínico y del tipo de tratamiento.
+ 
+💬 COMPORTAMIENTO DE LA IA
+🔹 ANTES DEL TURNO
+La IA debe responder de forma general:
+“En algunos tratamientos, especialmente quirúrgicos, la obra social puede requerir una autorización previa.
+Esto se gestiona luego de la evaluación, ya que depende del diagnóstico 😊”
+🔹 DESPUÉS DE AGENDAR TURNO
+La IA puede ampliar levemente:
+“Luego de la consulta, en caso de requerir un tratamiento quirúrgico, se te indicarán los pasos a seguir.
+Algunas obras sociales solicitan autorizaciones previas, para lo cual se realiza un informe clínico y la documentación correspondiente.”
+🔹 SOBRE REINTEGROS
+La IA puede mencionar de forma general:
+“En algunos casos, las obras sociales pueden ofrecer reintegros presentando la factura.”
+👉 Sin detallar montos, condiciones ni procesos
+🔹 SOBRE COBERTURA (MUY IMPORTANTE)
+La IA NO debe:
+Confirmar qué cubre cada obra social
+Listar tratamientos incluidos
+Decir si un tratamiento está cubierto o no
+👉 Respuesta estándar:
+“La cobertura depende de la obra social, el plan y el tipo de tratamiento.
+Se confirma luego de la evaluación clínica.”
+——
+ 
+​8.​¿Qué significa “turnos lejanos” en concreto? — ¿1 semana? ¿2 semanas? ¿El primer turno disponible después de X días? Necesitamos un número.
+ 
+RESPUESTA:
+ 
+Turnos lejanos” no es un número fijo, sino una estrategia de priorización de agenda.
+Sin embargo, para la configuración del sistema, se define de la siguiente manera:
+🎯 DEFINICIÓN OPERATIVA
+Turnos prioritarios (implantes / prótesis / estética):
+👉 ofrecer dentro de los próximos 3 a 7 días
+Turnos intermedios (cirugía maxilofacial – obra social):
+👉 ofrecer entre 7 a 14 días
+Turnos lejanos (odontología general / obra social básica):
+👉 ofrecer a partir de 14 días en adelante
+🔴🟡🟢 LÓGICA (SEMAFORO)
+🟢 ALTA PRIORIDAD
+Implantes / prótesis / estética → agenda cercana
+🟡 MEDIA PRIORIDAD
+Cirugía maxilofacial → agenda intermedia
+🔴 BAJA PRIORIDAD
+Odontología general / obra social → agenda más lejana
+⚠️ ACLARACIÓN IMPORTANTE
+Esto no es por disponibilidad médica, sino por criterio estratégico de agenda:
+Priorizar tratamientos de mayor valor
+Mantener volumen quirúrgico
+Delegar odontología general
+🔹 EXCEPCIONES
+Dolor agudo / urgencias → pueden adelantarse
+Pacientes ya existentes de la doctora → prioridad alta
+💎 OBJETIVO
+Optimizar la agenda
+Priorizar tratamientos de implantes y rehabilitación
+Evitar saturación con tratamientos de bajo valor
+ 
+
+No bloquear agenda ni generar demoras artificiales si hay disponibilidad.
+La prioridad es ordenar, no limitar.
+Pacientes actuales de la doctora → prioridad alta
+Urgencias → prioridad inmediata
+——
+ 
+​9.​¿La prioridad aplica solo a primeras consultas o también a pacientes recurrentes? — Un paciente de la Dra. que viene por una exodoncia simple, ¿tiene prioridad alta o baja?
+ 
+RESPUESTA:
+ 
+Paciente de la doctora que viene por una exodoncia simple:
+✔️ Se considera prioridad alta/media. alta si esta con dolor. media si no presenta dolor. 
+👉 por ser paciente propio, independientemente de la complejidad
+ 
+OBJETIVO
+No perder pacientes actuales
+Aumentar tratamientos de implantes y rehabilitación
+Optimizar uso del tiempo clínico
+——
+ 
+​10.​¿Hay tratamientos de prioridad MEDIA? — Solo mencionó alta y baja. ¿Ortodoncia, blanqueamiento, conductos dónde caen? Revisar la página de tratamientos en la plataforma. Cada tratamiento tiene su configuración de precio, duración, detalles de tratamiento, etc. adjunto imágenes, primero responde si hay tratamientos de prioridad media y como deberíamos tratarlos 👇
+ 
+RESPUESTA:
+ 
+SOBRE PRIORIDADES Y ASIGNACIÓN DE PROFESIONAL
+Sí, existen prioridades alta, media y baja, y además es fundamental definir qué tratamientos atiende la doctora y cuáles el equipo.
+🎯 DEFINICIÓN FINAL
+🟢 PRIORIDAD ALTA (DOCTORA)
+Implantes
+Prótesis / rehabilitación
+Estética (armonización, endolifting)
+Pacientes actuales de la doctora
+👉 Turnos cercanos
+👉 Siempre con la doctora
+🟡 PRIORIDAD MEDIA (DOCTORA)
+Cirugía maxilofacial (obra social o particular)
+👉 Siempre con la doctora
+👉 Turnos intermedios (no urgentes)
+🔴 PRIORIDAD BAJA (EQUIPO)
+Odontología general
+Ortodoncia
+Blanqueamiento
+Tratamientos básicos por obra social
+👉 Derivar al equipo
+👉 No ocupar agenda de la doctora
+👉 Usar para completar agenda
+⚠️ ACLARACIÓN CLAVE
+La cirugía maxilofacial NO se deriva al equipo, aunque sea por obra social.
+Siempre debe ser atendida por la doctora.
+🔥 REGLA FUNDAMENTAL
+👉 La agenda de la doctora debe enfocarse en:
+Implantes
+Prótesis
+Cirugía maxilofacial
+👉 El equipo debe absorber:
+Odontología general
+Ortodoncia
+Blanqueamiento
+tratamientos de conducto
+  
+💎 OBJETIVO
+Priorizar implantes (foco principal)
+Mantener volumen quirúrgico
+Llenar agenda del equipo con tratamientos generales
+Optimizar el tiempo clínico de la doctora
+🧠 TRADUCCIÓN SIMPLE
+👉 Vos: TODO lo importante (implantes + cirugía)
+👉 Equipo: TODO lo delegable
+👉 Agenda: ordenada por valor, no por orden de llegada
+
+
+——
+ 
+Sobre Derivación
+ 
+​11.​¿Quiénes son los profesionales del equipo y qué hace cada uno? — Dice “derivar a odontólogo del equipo” para limpieza, arreglos, conductos, etc. Necesitamos nombres y especialidades para que el agente rutee. Para la etapa de pruebas necesitamos que los profesionales que van a trabajar registrados en la plataforma, realicen el proceso de registro real para testear funcionamiento y acciones en conjunto. Es urgente ‼️ y necesario para avanzar.
+ 
+RESPUESTA:
+Actualmente el equipo está conformado por:
+👩‍⚕️ Dra. [Tu Nombre]
+Cirujana maxilofacial
+Implantes dentales
+Prótesis / rehabilitación
+Estética (armonización, endolifting)
+👉 Atiende:
+Implantes
+Prótesis
+Cirugía maxilofacial
+Estética
+Pacientes actuales propios
+👩‍⚕️ Dra. Ester Alberto
+Odontología general (adultos, niños y adolescentes)
+Ortodoncia
+Endodoncia (tratamientos de conducto)
+👉 Atiende:
+Limpiezas
+Caries / arreglos
+Controles
+Ortodoncia
+Endodoncia
+Tratamientos generales por obra social
+🎯 LÓGICA DE DERIVACIÓN
+👉 La IA debe asignar según tipo de tratamiento:
+🔹 DERIVAR A DRA. (VOS)
+Implantes
+Prótesis / rehabilitación
+Falta de dientes
+Casos complejos
+Cirugía (muela, cordal, infecciones, etc.)
+Estética facial
+Pacientes actuales de la doctora
+🔹 DERIVAR A DRA. ESTER ALBERTO
+Odontología general
+Limpiezas
+Caries
+Controles
+Ortodoncia
+Endodoncia
+⚠️ REGLA IMPORTANTE
+Si hay duda entre odontología general y rehabilitación (ej: “me falta un diente”, “se me rompió un diente”):
+👉 Derivar a la doctora (implantes / prótesis)
+NO al equipo
+🔄 ESCALABILIDAD (IMPORTANTE PARA FUTURO)
+El sistema debe permitir agregar nuevos profesionales y especialidades sin modificar la lógica base.
+💎 OBJETIVO
+Optimizar agenda
+Priorizar tratamientos de mayor valor
+Delegar correctamente odontología general
+Evitar mala clasificación de pacientes
+ 
+
+——
+ 
+​12.​¿Qué pasa si un paciente nuevo pide implantes pero la Dra. no tiene disponibilidad cercana? — ¿Se lo pone en lista de espera(podría ser opción. Queres verlo en alguna página? Al mail?) . Si hay otro profesional que pueda atender eso, ¿se deriva a el?
+ 
+RESPUESTA:
+ 
+PACIENTE NUEVO QUE SOLICITA IMPLANTES SIN DISPONIBILIDAD CERCANA
+Los tratamientos de implantes y rehabilitación son de alta prioridad estratégica.
+🎯 COMPORTAMIENTO DE LA IA
+Si no hay disponibilidad cercana con la doctora:
+1. 👉 OFRECER PRIMER TURNO DISPONIBLE
+(SIEMPRE)
+2. 👉 OFRECER LISTA DE ESPERA (OBLIGATORIO)
+“En caso de liberarse un turno antes, podemos avisarte para adelantarte 😊”
+👉 Puede ser:
+Lista de espera interna
+Aviso por WhatsApp o mail
+3. 🚫 NO DERIVAR A OTRO PROFESIONAL
+Los implantes y rehabilitación:
+👉 NO se derivan al equipo
+👉 Siempre deben ser atendidos por la doctora
+🔥 4. REGLA DE OPTIMIZACIÓN DE AGENDA (MUY IMPORTANTE)
+Si aparece un paciente de alta prioridad (implantes):
+👉 Se puede reorganizar la agenda moviendo:
+Controles
+Odontología general
+Tratamientos de baja prioridad
+👉 Siempre que no sea urgencia
+⚠️ ACLARACIÓN
+La IA no debe prometer cambios de agenda, pero sí puede:
+👉 Priorizar implantes
+👉 Ofrecer lista de espera
+👉 Escalar el caso para revisión interna
+💬 RESPUESTA AL PACIENTE
+“Perfecto 😊
+Estos tratamientos los realiza la doctora de forma personalizada.
+Actualmente el primer turno disponible es en [fecha].
+Si querés, podemos agendarte y también dejarte en lista de espera por si se libera un turno antes.”
+💎 OBJETIVO
+No perder pacientes de alto valor
+Priorizar implantes en la agenda
+Mantener control interno de reorganización
+ 
+ESCALABILIDAD FUTURA (IMPORTANTE)
+Actualmente puede haber disponibilidad suficiente, pero el sistema debe contemplar escenarios futuros de alta demanda.
+En esos casos:
+Los tratamientos de implantes y rehabilitación deben mantenerse como prioridad alta
+No deben derivarse a otros profesionales
+Debe existir opción de lista de espera
+🔹 OPTIMIZACIÓN INTERNA
+La reorganización de agenda (en caso necesario) es una decisión interna de la clínica.
+👉 No debe ser comunicada ni ofrecida por la IA
+👉 La IA solo debe:
+Ofrecer turno disponible
+Ofrecer lista de espera y avisar a humano. 
+——
+ 
+Sobre Seguimientos
+​13.​¿Tienen las indicaciones pre/post quirúrgicas ya redactadas? — Si sí, son contenido para cargar como FAQs/templates. Si no, hay que redactarlas y cargarlas.
+ 
+RESPUESTA:
+ 
+✨ BLANQUEAMIENTO DENTAL (BEYOND)
+🌿 PRE TRATAMIENTO
+Para lograr mejores resultados:
+Realizar una limpieza dental previa
+Evitar alimentos con colorantes el día del turno
+Informar si presentás sensibilidad dental
+💛 Esto nos permite optimizar el resultado del tratamiento
+🤍 POST TRATAMIENTO
+Acabamos de blanquear tu sonrisa ✨
+Ahora comienza una etapa clave para mantener el resultado:
+🥛 DIETA BLANCA (48 hs)
+🚫 Evitar:
+Café, mate, té
+Vino tinto
+Gaseosas oscuras
+Salsas (tomate, soja)
+Remolacha
+✔️ Preferir:
+Agua
+Lácteos
+Pollo, pescado
+Arroz
+🚫 EVITAR
+Fumar
+Alimentos y bebidas con colorantes
+😬 SENSIBILIDAD
+En la mayoría de los casos no genera sensibilidad 😊
+Si aparece, suele ser leve y transitoria
+👉 Si es intensa o persiste, escribinos
+🪥 HIGIENE
+Mantener buena higiene bucal
+Usar productos recomendados
+💬 Estamos para acompañarte 😊
+💉 BOTOX
+🌿 PRE
+Evitar alcohol 24 hs antes
+No tomar antiinflamatorios si no es necesario
+Informar medicación o condiciones médicas
+🤍 POST
+No acostarse por 4 horas
+No masajear la zona
+Evitar ejercicio físico 24 hs
+No consumir alcohol el mismo día
+💛 Los resultados comienzan a verse en pocos días
+✨ ARMONIZACIÓN FACIAL
+🌿 PRE
+Evitar alcohol 24 hs antes
+Informar medicación
+No asistir con maquillaje en la zona
+🤍 POST
+No masajear la zona
+Evitar ejercicio físico 24 hs
+Puede aparecer leve inflamación o hematomas
+Evitar calor intenso
+💛 Los resultados se aprecian de forma progresiva
+✨ ENDOLIFTING
+🌿 PRE
+Informar antecedentes médicos
+Evitar alcohol 24 hs antes
+Asistir con la piel limpia
+🤍 POST
+Puede haber inflamación leve o hematomas
+Aplicar frío si es necesario
+Evitar ejercicio físico por 48 hs
+No exponerse al sol
+💛 Los resultados son progresivos en las semanas siguientes
+🦷 CIRUGÍA EN CONSULTORIO
+(Extracciones, implantes, injertos)
+🌿 PRE
+Comer normalmente (salvo indicación)
+No consumir alcohol 24 hs antes
+Informar medicación y antecedentes médicos
+Mantener buena higiene bucal
+📄 Enviar previamente si tenés:
+Radiografías
+Tomografías
+Estudios previos
+Derivaciones
+💛 Esto nos permite planificar mejor tu tratamiento
+🤍 POST
+Morder la gasa 30-40 minutos
+No enjuagarse ni escupir por 24 hs
+Aplicar frío (10 min sí / 10 min no)
+Evitar actividad física el mismo día
+🥣 ALIMENTACIÓN
+Dieta blanda y fría
+Evitar comidas calientes
+🪥 HIGIENE
+No enjuagar 24 hs
+Luego, enjuagues suaves según indicación
+Cepillar con cuidado
+🚫 EVITAR
+Fumar
+Alcohol
+Manipular la zona
+🤍 ES NORMAL
+Dolor leve
+Inflamación
+Sangrado leve
+⚠️ CONSULTAR SI
+Dolor intenso
+Sangrado persistente
+Fiebre
+Inflamación excesiva
+💬 Estamos para acompañarte en todo el proceso 😊
+ 
+ 
+ 
+ 
+si el paciente consulta por implantes/cirugia extraccion de muelas de juicio, protesis etc . poner en la ia. una vez q confirme el turno: 
+ 
+“Perfecto 😊
+Si contás con estudios (radiografías, tomografías, etc.), podés enviarlos antes de tu consulta para optimizar la evaluación y planificación de tu caso.”
+ 
+una vez q los envia: 
+recibimos tu caso, lo estamos evaluando.
+ 
+🧠 AUTOMATIZACIÓN POR TIPO DE TURNO
+🎯 LÓGICA GENERAL
+Cuando se agenda un turno →
+👉 el sistema detecta el tipo de tratamiento
+👉 envía el mensaje correspondiente automáticamente
+🦷 1. CIRUGÍA (EXTRACCIONES / IMPLANTES / INJERTOS)
+📩 MENSAJE AUTOMÁTICO
+“Hola 😊
+Te compartimos las indicaciones previas a tu cirugía para que todo se desarrolle de la mejor manera:
+Comer normalmente (salvo indicación)
+No consumir alcohol 24 hs antes
+Mantener buena higiene bucal
+📄 Si tenés estudios (radiografías, tomografías, etc.), podés enviarlos antes de tu consulta para optimizar la evaluación
+Cualquier duda, estamos para ayudarte 💛”
+👉 POST CIRUGÍA:
+“Hola 😊
+Te dejamos las indicaciones para tu recuperación:
+Morder la gasa 30-40 minutos
+No enjuagarte ni escupir por 24 hs
+Aplicar frío en la zona
+Dieta blanda y fría
+Ante cualquier duda, escribinos 💛”
+(+ PDF completo)
+✨ 2. BLANQUEAMIENTO
+📩 PRE
+“Hola 😊
+Para tu blanqueamiento:
+Evitar alimentos con colorantes el día del turno
+Informanos si tenés sensibilidad
+Nos vemos pronto ✨”
+📩 POST
+“Hola 😊
+Recordá durante 48 hs:
+Evitar café, mate, vino y alimentos con color
+No fumar
+Esto es clave para mantener el resultado ✨
+Cualquier duda, escribinos 💛”
+💉 3. BOTOX / ARMONIZACIÓN
+📩 PRE
+“Hola 😊
+Antes de tu turno:
+Evitar alcohol 24 hs antes
+Informar medicación
+Nos vemos pronto 💛”
+📩 POST
+“Hola 😊
+Después del tratamiento:
+No acostarte por 4 hs
+No masajear la zona
+Evitar ejercicio 24 hs
+Cualquier duda, escribinos 💛”
+✨ 4. ENDOLIFTING
+📩 PRE
+“Hola 😊
+Antes de tu turno:
+Evitar alcohol 24 hs antes
+Asistir con piel limpia
+Nos vemos pronto 💛”
+📩 POST
+“Hola 😊
+Después del procedimiento:
+Evitar ejercicio 48 hs
+No exponerse al sol
+Puede haber leve inflamación
+Estamos para acompañarte 💛”
+ 
+( esto creo q ya lo habia enviado…solo faltaban indicacionespara el pdf pero por las dudas vuelvo a enviarlo)
+ 
+ 
+——
+
+ 
+​14.​¿El seguimiento de “¿cómo te sentiste?” lleva a alguna acción si la respuesta es negativa? — ¿Deriva a humano? ¿Agenda, control?
+ 
+RESPUESTA:
+ 
+COMPORTAMIENTO DEL SISTEMA
+
+🟢 RESPUESTA POSITIVA (ej: “todo bien”)
+
+👉 La IA responde:
+
+“¡Qué bueno 😊!
+
+Cualquier duda que tengas, podés escribirnos. Estamos para acompañarte 💛”
+
+👉 No requiere acción adicional
+
+🔴 RESPUESTA NEGATIVA (ej: dolor, inflamación, molestia)
+
+👉 La IA debe:
+
+Mostrar contención inmediata
+
+Derivar a humano (OBLIGATORIO)
+
+Ofrecer evaluación si corresponde
+
+💬 RESPUESTA AUTOMÁTICA
+
+“Gracias por contarnos 😊
+
+Es importante que podamos evaluarte para acompañarte correctamente.
+
+Ya derivamos tu caso para que podamos contactarte a la brevedad 💛”
+
+⚙️ ACCIÓN INTERNA (CLAVE)
+
+👉 El sistema debe:
+
+Notificar al equipo humano
+
+Marcar el caso como PRIORITARIO
+
+Permitir contacto manual (WhatsApp / llamado)——
+👉 Ofrecer turno de control:
+“Si lo necesitás, podemos coordinarte un control para revisarte 😊” 
+ 
+ 
+
+
+
+
+info general: mas o menos de lo q venimos trabajando: quedaria algo asi
+
+ 
+🔹 1. ESTRUCTURA DE SERVICIOS
+La clínica trabaja con las siguientes líneas:
+• Cirugía maxilofacial
+• Implantes y prótesis (foco principal)
+• Estética (armonización, botox, endolifting, blanqueamiento)
+• Odontología general
+ 
+🔹 2. PROFESIONALES
+👩‍⚕️ Dra. [Nombre]
+• Cirugía maxilofacial
+• Implantes
+• Prótesis
+• Estética
+👉 Atiende también a todos sus pacientes actuales
+ 
+👩‍⚕️ Dra. Ester Alberto
+• Odontología general (adultos, niños y adolescentes)
+• Ortodoncia
+• Endodoncia
+ 
+🔹 3. LÓGICA DE DERIVACIÓN
+👉 A la doctora:
+• Implantes / prótesis
+• Falta de dientes
+• Casos complejos
+• Cirugía maxilofacial
+• Estética
+• Pacientes actuales
+👉 A Dra. Ester:
+• Limpiezas
+• Caries
+• Controles
+• Ortodoncia
+• Endodoncia
+⚠️ Si hay duda (ej: “me falta un diente”) → SIEMPRE doctora
+ 
+🔹 4. PRIORIDAD DE AGENDA
+Sistema tipo semáforo:
+🟢 ALTA:
+• Implantes
+• Prótesis
+• Estética
+• Pacientes actuales
+🟡 MEDIA:
+• Cirugía maxilofacial
+🔴 BAJA:
+• Odontología general
+👉 Importante: hoy NO bloquear agenda, solo priorizar
+ 
+🔹 5. OBRA SOCIAL Y COSEGURO
+• El coseguro NO es fijo
+• NO informar montos
+👉 Respuesta: “Puede tener coseguro según la cobertura”
+• NO confirmar coberturas
+• NO listar qué cubre cada obra social
+ 
+🔹 6. AUTORIZACIONES Y REINTEGROS
+• Algunas cirugías pueden requerir autorización
+• Esto se informa SOLO después de la consulta
+👉 La IA solo dice: “Puede requerir autorización según el caso”
+• Se pueden mencionar reintegros de forma general
+• NO explicar procesos
+ 
+🔹 7. PACIENTES SIN OBRA SOCIAL
+👉 Respuesta: “Podemos atenderte de forma particular 😊”
+ 
+🔹 8. PACIENTES ACTUALES
+👉 Siempre prioridad alta
+👉 Siempre con la doctora
+ 
+🔹 9. DETECCIÓN DE IMPLANTES (MUY IMPORTANTE)
+Si el paciente dice:
+• me falta un diente
+• se me rompió un diente
+• no puedo masticar
+👉 NO derivar a general
+👉 Derivar a doctora (implantes/protesis)
+ 
+🔹 10. TURNOS Y DISPONIBILIDAD
+• Implantes = prioridad alta
+• NO derivar a otro profesional
+Si no hay turno: 👉 ofrecer primer disponible + lista de espera
+ 
+🔹 11. SEGUIMIENTO AUTOMÁTICO
+Aplica para:
+• cirugía
+• implantes
+• estética
+Día 1 y día 3:
+👉 Si respuesta positiva:
+• contención
+• posibilidad de sugerencia leve
+👉 Si respuesta negativa:
+• derivación a humano inmediata
+• marcar como prioridad
+❌ La IA NO da indicaciones clínicas
+ 
+🔹 12. INDICACIONES PRE Y POST
+Ya están redactadas para:
+• Cirugía
+• Implantes
+• Blanqueamiento (Beyond + ambulatorio)
+• Botox
+• Armonización
+• Endolifting
+👉 Deben enviarse automáticamente según tipo de turno
+ 
+🔹 13. ENVÍO DE ESTUDIOS
+En cirugía e implantes SIEMPRE incluir:
+“Si contás con estudios, podés enviarlos antes de tu consulta para optimizar la evaluación”
+ 
+🔹 14. FUNCIÓN DE LA IA
+La IA debe: ✔️ orientar
+✔️ clasificar
+✔️ llevar a consulta
+La IA NO debe: ❌ diagnosticar
+❌ indicar tratamientos
+❌ confirmar coberturas
+❌ dar precios específicos de coseguro
+ 
+💎 OBJETIVO GENERAL
+• Priorizar implantes y prótesis
+• Mantener volumen quirúrgico
+• Delegar odontología general
+• Mejorar experiencia del paciente
+• Optimizar agenda
+ 
+Listo para implementación y pruebas 🙌
+ 
+💥 Este mensaje está perfecto porque: 👉 es claro
+👉 no deja grises
+👉 evita errores del sistema

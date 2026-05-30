@@ -1,0 +1,1094 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Informe de Pruebas — Bot Paula | Clínica Dra. Laura Delgado — Mayo 2026</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700;800;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    /* ============================================================
+       RESET & GLOBALS
+       ============================================================ */
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: #050505;
+      font-family: 'Space Grotesk', sans-serif;
+      color: #FFFFFF;
+    }
+
+    /* ============================================================
+       PAGE / SLIDE SYSTEM
+       ============================================================ */
+    .page {
+      width: 1920px;
+      height: 1080px;
+      background: #050505;
+      position: relative;
+      overflow: hidden;
+      page-break-after: always;
+      break-after: page;
+    }
+
+    .page-content {
+      position: absolute;
+      top: 100px;
+      left: 100px;
+      right: 100px;
+      bottom: 100px;
+      max-width: 1720px;
+      display: flex;
+      align-items: flex-start;
+      justify-content: flex-start;
+    }
+
+    /* ============================================================
+       TYPOGRAPHY LEVELS
+       ============================================================ */
+    .level-1 {
+      font-family: 'Space Grotesk', sans-serif;
+      font-weight: 900;
+      letter-spacing: -4px;
+      line-height: 1.05;
+      color: #FFFFFF;
+    }
+
+    .level-2 {
+      font-family: 'Space Grotesk', sans-serif;
+      font-weight: 600;
+      color: rgba(255,255,255,0.60);
+      line-height: 1.3;
+    }
+
+    .level-3 {
+      font-family: 'Inter', sans-serif;
+      font-weight: 400;
+      color: rgba(255,255,255,0.40);
+      line-height: 1.5;
+    }
+
+    /* Accent colors */
+    .accent-red { color: #E11D48; }
+    .accent-cyan { color: #00E5FF; }
+    .accent-green { color: #059669; }
+
+    /* ============================================================
+       PAGE FOOTER
+       ============================================================ */
+    .page-footer {
+      position: absolute;
+      bottom: 48px;
+      left: 80px;
+      right: 80px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .page-number {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 14px;
+      font-weight: 500;
+      color: rgba(255,255,255,0.25);
+      letter-spacing: 2px;
+    }
+
+    .page-subject {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 14px;
+      font-weight: 500;
+      color: rgba(255,255,255,0.25);
+      letter-spacing: 1px;
+    }
+
+    /* ============================================================
+       PAGE 1 — PORTADA
+       ============================================================ */
+    #page-1 .page-content {
+      flex-direction: column;
+      align-items: flex-start;
+      justify-content: center;
+      gap: 40px;
+      padding-top: 0;
+    }
+
+    .doc-label {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 18px;
+      font-weight: 600;
+      color: #E11D48;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+
+    .doc-title {
+      font-size: 140px;
+      font-weight: 900;
+      letter-spacing: -6px;
+      line-height: 1.0;
+    }
+
+    .doc-title .highlight {
+      color: #00E5FF;
+    }
+
+    .doc-subtitle {
+      font-size: 40px;
+      font-weight: 600;
+      color: rgba(255,255,255,0.60);
+      margin-top: 8px;
+    }
+
+    .doc-meta {
+      display: flex;
+      gap: 60px;
+      margin-top: 32px;
+    }
+
+    .doc-meta-item {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .doc-meta-label {
+      font-family: 'Inter', sans-serif;
+      font-size: 14px;
+      font-weight: 500;
+      color: rgba(255,255,255,0.30);
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+
+    .doc-meta-value {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 22px;
+      font-weight: 600;
+      color: rgba(255,255,255,0.85);
+    }
+
+    /* Divider line */
+    .top-divider {
+      position: absolute;
+      top: 60px;
+      left: 120px;
+      right: 120px;
+      height: 2px;
+      background: linear-gradient(90deg, #E11D48 0%, rgba(0,229,255,0.3) 100%);
+    }
+
+    /* ============================================================
+       PAGE 2 — OVERVIEW / BUG SUMMARY
+       ============================================================ */
+    #page-2 .page-content {
+      flex-direction: column;
+      padding-top: 40px;
+      gap: 24px;
+    }
+
+    .section-header {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .section-number {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 14px;
+      font-weight: 600;
+      color: rgba(0,229,255,0.6);
+      letter-spacing: 3px;
+    }
+
+    .section-title {
+      font-size: 48px;
+      font-weight: 900;
+      letter-spacing: -2px;
+    }
+
+    .section-sub {
+      font-size: 20px;
+      font-weight: 600;
+      color: rgba(255,255,255,0.50);
+      margin-top: 2px;
+    }
+
+    .bugs-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      width: 100%;
+    }
+
+    .bug-card {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 12px;
+      padding: 18px 22px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .bug-card-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .bug-severity {
+      font-family: 'Inter', sans-serif;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      padding: 4px 12px;
+      border-radius: 4px;
+    }
+
+    .sev-critical {
+      background: rgba(225,29,72,0.2);
+      color: #E11D48;
+      border: 1px solid rgba(225,29,72,0.3);
+    }
+
+    .sev-high {
+      background: rgba(239,68,68,0.15);
+      color: #ef4444;
+      border: 1px solid rgba(239,68,68,0.25);
+    }
+
+    .sev-medium {
+      background: rgba(245,158,11,0.15);
+      color: #f59e0b;
+      border: 1px solid rgba(245,158,11,0.25);
+    }
+
+    .sev-low {
+      background: rgba(5,150,105,0.15);
+      color: #059669;
+      border: 1px solid rgba(5,150,105,0.25);
+    }
+
+    .bug-id {
+      font-family: 'Inter', sans-serif;
+      font-size: 13px;
+      font-weight: 700;
+      color: rgba(255,255,255,0.30);
+      letter-spacing: 1px;
+    }
+
+    .bug-title {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 15px;
+      font-weight: 700;
+      color: #FFFFFF;
+      line-height: 1.2;
+    }
+
+    .bug-desc {
+      font-family: 'Inter', sans-serif;
+      font-size: 12px;
+      font-weight: 400;
+      color: rgba(255,255,255,0.55);
+      line-height: 1.4;
+    }
+
+    /* ============================================================
+       PAGE 3 — CRITICAL AREAS
+       ============================================================ */
+    #page-3 .page-content {
+      flex-direction: column;
+      padding-top: 40px;
+      gap: 24px;
+    }
+
+    .areas-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 20px;
+      width: 100%;
+    }
+
+    .area-card {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 16px;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .area-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 22px;
+      font-weight: 900;
+    }
+
+    .area-icon.red {
+      background: rgba(225,29,72,0.15);
+      color: #E11D48;
+    }
+
+    .area-icon.cyan {
+      background: rgba(0,229,255,0.12);
+      color: #00E5FF;
+    }
+
+    .area-icon.green {
+      background: rgba(5,150,105,0.15);
+      color: #059669;
+    }
+
+    .area-name {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 20px;
+      font-weight: 700;
+      color: #FFFFFF;
+    }
+
+    .area-bugs {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .area-bug-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      font-family: 'Inter', sans-serif;
+      font-size: 13px;
+      font-weight: 400;
+      color: rgba(255,255,255,0.55);
+      line-height: 1.4;
+    }
+
+    .area-bug-bullet {
+      color: #E11D48;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+
+    .area-bug-bullet.cyan {
+      color: #00E5FF;
+    }
+
+    .area-bug-bullet.green {
+      color: #059669;
+    }
+
+    /* ============================================================
+       PAGE 4 — DERIVATION & COVERAGE MATRIX
+       ============================================================ */
+    #page-4 .page-content {
+      flex-direction: column;
+      padding-top: 36px;
+      gap: 24px;
+    }
+
+    .matrix-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 28px;
+      width: 100%;
+    }
+
+    .matrix-col {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .matrix-title {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 18px;
+      font-weight: 700;
+      color: #FFFFFF;
+      margin-bottom: 4px;
+    }
+
+    .matrix-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      padding: 10px 16px;
+      background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(255,255,255,0.05);
+      border-radius: 10px;
+      font-family: 'Inter', sans-serif;
+      font-size: 14px;
+    }
+
+    .matrix-case {
+      font-weight: 600;
+      color: rgba(255,255,255,0.85);
+    }
+
+    .matrix-dest {
+      font-weight: 400;
+      color: rgba(255,255,255,0.55);
+    }
+
+    .matrix-dest.equipo {
+      color: #00E5FF;
+    }
+
+    .matrix-dest.dra {
+      color: #E11D48;
+    }
+
+    .matrix-dest.particular {
+      color: #f59e0b;
+    }
+
+    .matrix-dest.si {
+      color: #059669;
+    }
+
+    .matrix-dest.no {
+      color: #ef4444;
+    }
+
+    /* ============================================================
+       PAGE 5 — ACTION PLAN
+       ============================================================ */
+    #page-5 .page-content {
+      flex-direction: column;
+      padding-top: 36px;
+      gap: 20px;
+    }
+
+    .plan-list {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .plan-item {
+      display: grid;
+      grid-template-columns: 60px 1fr 120px;
+      gap: 20px;
+      align-items: center;
+      padding: 12px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+
+    .plan-item:last-child {
+      border-bottom: none;
+    }
+
+    .plan-num {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 26px;
+      font-weight: 900;
+      color: rgba(0,229,255,0.5);
+      letter-spacing: -1px;
+    }
+
+    .plan-text {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 17px;
+      font-weight: 600;
+      color: #FFFFFF;
+      line-height: 1.3;
+    }
+
+    .plan-priority {
+      font-family: 'Inter', sans-serif;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      text-align: right;
+    }
+
+    .prio-critical {
+      color: #E11D48;
+    }
+
+    .prio-high {
+      color: #f59e0b;
+    }
+
+    /* ============================================================
+       PAGE 6 — FORBIDDEN PHRASES & CLOSING
+       ============================================================ */
+    #page-6 .page-content {
+      flex-direction: column;
+      padding-top: 36px;
+      gap: 20px;
+    }
+
+    .forbidden-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      width: 100%;
+    }
+
+    .forbidden-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 12px 16px;
+      background: rgba(225,29,72,0.06);
+      border: 1px solid rgba(225,29,72,0.12);
+      border-radius: 10px;
+    }
+
+    .forbidden-x {
+      color: #E11D48;
+      font-size: 18px;
+      font-weight: 900;
+      font-family: 'Space Grotesk', sans-serif;
+      flex-shrink: 0;
+      width: 22px;
+      text-align: center;
+    }
+
+    .forbidden-text {
+      font-family: 'Inter', sans-serif;
+      font-size: 12px;
+      font-weight: 500;
+      color: rgba(255,255,255,0.75);
+      line-height: 1.3;
+    }
+
+    .forbidden-reason {
+      font-family: 'Inter', sans-serif;
+      font-size: 11px;
+      font-weight: 400;
+      color: rgba(255,255,255,0.35);
+      margin-top: 2px;
+    }
+
+    .closing-quote {
+      padding: 16px 24px;
+      border-left: 3px solid #00E5FF;
+      background: rgba(0,229,255,0.04);
+      border-radius: 0 12px 12px 0;
+      width: 100%;
+    }
+
+    .closing-quote p {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 16px;
+      font-weight: 500;
+      color: rgba(255,255,255,0.70);
+      line-height: 1.4;
+      font-style: italic;
+    }
+
+    /* ============================================================
+       PRINT / PDF EXPORT
+       ============================================================ */
+    @media print {
+      body {
+        background: #050505 !important;
+        margin: 0;
+        padding: 0;
+      }
+
+      .page {
+        page-break-after: always;
+        break-after: page;
+        width: 1920px !important;
+        height: 1080px !important;
+        overflow: hidden !important;
+      }
+
+      @page {
+        size: 1920px 1080px landscape;
+        margin: 0;
+      }
+
+      * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ============================================================
+       PAGE 1 — PORTADA
+       ============================================================ -->
+  <div class="page" id="page-1">
+    <div class="top-divider"></div>
+    <div class="page-content">
+      <div class="doc-label">Informe de Pruebas</div>
+      <h1 class="doc-title">
+        BOT <span class="highlight">PAULA</span><br>
+        ANALISIS COMPLETO
+      </h1>
+      <p class="doc-subtitle">Clinica Dra. Laura Delgado · Neuquen</p>
+      <div class="doc-meta">
+        <div class="doc-meta-item">
+          <span class="doc-meta-label">Pruebas realizadas</span>
+          <span class="doc-meta-value">14–15 de mayo de 2026</span>
+        </div>
+        <div class="doc-meta-item">
+          <span class="doc-meta-label">Responsable</span>
+          <span class="doc-meta-value">Dra. Maria Laura Delgado</span>
+        </div>
+        <div class="doc-meta-item">
+          <span class="doc-meta-label">Tests ejecutados</span>
+          <span class="doc-meta-value">9 pruebas funcionales</span>
+        </div>
+        <div class="doc-meta-item">
+          <span class="doc-meta-label">Bugs detectados</span>
+          <span class="doc-meta-value accent-red">9 hallazgos</span>
+        </div>
+      </div>
+    </div>
+    <div class="page-footer">
+      <span class="page-number">01 / 06</span>
+      <span class="page-subject">Pruebas Bot Paula · Mayo 2026</span>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       PAGE 2 — BUG SUMMARY
+       ============================================================ -->
+  <div class="page" id="page-2">
+    <div class="page-content">
+      <div class="section-header">
+        <span class="section-number">RESUMEN DE HALLAZGOS</span>
+        <h2 class="section-title">9 bugs detectados en 9 pruebas</h2>
+        <p class="section-sub">3 criticos · 4 altos · 2 medios · 1 bajo</p>
+      </div>
+
+      <div class="bugs-grid">
+        <!-- B1 -->
+        <div class="bug-card">
+          <div class="bug-card-header">
+            <span class="bug-severity sev-critical">CRITICO</span>
+            <span class="bug-id">B1</span>
+          </div>
+          <p class="bug-title">Asume historial clinico con la clinica</p>
+          <p class="bug-desc">Cuando el paciente menciona un tratamiento previo fallido, el bot asume automaticamente que fue en la clinica. Debe responder con empatia neutral sin asumir el lugar.</p>
+        </div>
+
+        <!-- B2 -->
+        <div class="bug-card">
+          <div class="bug-card-header">
+            <span class="bug-severity sev-critical">CRITICO</span>
+            <span class="bug-id">B2</span>
+          </div>
+          <p class="bug-title">OSDE + implantes: genera expectativa falsa de cobertura</p>
+          <p class="bug-desc">Responde "trabajamos con OSDE para tratamientos quirurgicos" cuando preguntan especificamente por implantes. OSDE no cubre implantes. Genera expectativa falsa.</p>
+        </div>
+
+        <!-- B3 -->
+        <div class="bug-card">
+          <div class="bug-card-header">
+            <span class="bug-severity sev-critical">CRITICO</span>
+            <span class="bug-id">B3</span>
+          </div>
+          <p class="bug-title">Desconoce que el equipo NO recibe OSDE ni ISSN</p>
+          <p class="bug-desc">Cuando preguntan si el equipo recibe OSDE, el bot confirma que si. La realidad: solo la Dra. Delgado atiende por OSDE (cirugia maxilofacial). El equipo no recibe OSDE ni ISSN.</p>
+        </div>
+
+        <!-- B4 -->
+        <div class="bug-card">
+          <div class="bug-card-header">
+            <span class="bug-severity sev-high">ALTO</span>
+            <span class="bug-id">B4</span>
+          </div>
+          <p class="bug-title">Agenda endodoncia directo con la Dra. Delgado</p>
+          <p class="bug-desc">Paciente dice "dolor + conducto" y el bot agenda directo con la Dra. Delgado. Debe escalar al equipo humano para que definan que profesional corresponde.</p>
+        </div>
+
+        <!-- B5 -->
+        <div class="bug-card">
+          <div class="bug-card-header">
+            <span class="bug-severity sev-high">ALTO</span>
+            <span class="bug-id">B5</span>
+          </div>
+          <p class="bug-title">No tiene flujo de contencion para urgencias</p>
+          <p class="bug-desc">Ante dolor, urgencia o sangrado, el bot agenda directo en vez de contener, pedir datos minimos y escalar al equipo humano. No existe flujo de contencion.</p>
+        </div>
+
+        <!-- B6 -->
+        <div class="bug-card">
+          <div class="bug-card-header">
+            <span class="bug-severity sev-high">ALTO</span>
+            <span class="bug-id">B6</span>
+          </div>
+          <p class="bug-title">ISSN: respuesta evasiva sobre atencion particular</p>
+          <p class="bug-desc">Cuando el paciente pregunta si puede atenderse en el consultorio con ISSN, el bot deriva a CIMO sin aclarar que la atencion en el consultorio es particular.</p>
+        </div>
+
+        <!-- B7 -->
+        <div class="bug-card">
+          <div class="bug-card-header">
+            <span class="bug-severity sev-high">ALTO</span>
+            <span class="bug-id">B7</span>
+          </div>
+          <p class="bug-title">Frase generica de OSDE repetida ante preguntas especificas</p>
+          <p class="bug-desc">"Trabajamos con OSDE para consultas y tratamientos quirurgicos" se repite como respuesta generica ante cualquier pregunta de cobertura, sin distinguir el caso concreto.</p>
+        </div>
+
+        <!-- B8 -->
+        <div class="bug-card">
+          <div class="bug-card-header">
+            <span class="bug-severity sev-critical">CRITICO</span>
+            <span class="bug-id">B8</span>
+          </div>
+          <p class="bug-title">ISSN + odontologia general: confusion total</p>
+          <p class="bug-desc">Mezcla CIMO con limpieza dental, no dice claramente "la atencion es particular". El paciente dice "no entiendo" TRES veces durante la conversacion.</p>
+        </div>
+
+        <!-- B9 -->
+        <div class="bug-card">
+          <div class="bug-card-header">
+            <span class="bug-severity sev-low">BAJO</span>
+            <span class="bug-id">B9</span>
+          </div>
+          <p class="bug-title">Ortodoncia sola: nombra a la Dra. Delgado</p>
+          <p class="bug-desc">Para ortodoncia sin cirugia, el bot menciona a la Dra. Delgado cuando deberia derivar al equipo directamente.</p>
+        </div>
+      </div>
+    </div>
+    <div class="page-footer">
+      <span class="page-number">02 / 06</span>
+      <span class="page-subject">Pruebas Bot Paula · Mayo 2026</span>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       PAGE 3 — THREE CRITICAL AREAS
+       ============================================================ -->
+  <div class="page" id="page-3">
+    <div class="page-content">
+      <div class="section-header">
+        <span class="section-number">AREAS CRITICAS</span>
+        <h2 class="section-title">Tres frentes de correccion</h2>
+        <p class="section-sub">Toda la estrategia de cambios se resume en 3 areas</p>
+      </div>
+
+      <div class="areas-grid">
+        <!-- Area 1 -->
+        <div class="area-card">
+          <div class="area-icon red">01</div>
+          <p class="area-name">Sistema de Derivaciones</p>
+          <div class="area-bugs">
+            <div class="area-bug-item">
+              <span class="area-bug-bullet">×</span>
+              <span>El bot agenda con la Dra. Delgado para TODO. Necesita una matriz clara: dolor/endodoncia/caries/arreglos/limpieza → EQUIPO. Cirugia/implantes/evaluacion → DRA. DELGADO.</span>
+            </div>
+            <div class="area-bug-item">
+              <span class="area-bug-bullet">×</span>
+              <span>Ortodoncia sola → equipo. Ortodoncia + cirugia ortognatica → Dra. Delgado.</span>
+            </div>
+            <div class="area-bug-item">
+              <span class="area-bug-bullet">×</span>
+              <span>Urgencias/dolor: contencion + datos minimos → escalar al equipo. No agendar directo.</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Area 2 -->
+        <div class="area-card">
+          <div class="area-icon cyan">02</div>
+          <p class="area-name">Cobertura de Obras Sociales</p>
+          <div class="area-bugs">
+            <div class="area-bug-item">
+              <span class="area-bug-bullet cyan">×</span>
+              <span>OSDE: consulta con Dra. Delgado = SI. Cirugia maxilofacial = SI. Implantes = NO (particular/reintegro). Odontologia general = NO. Equipo = NO.</span>
+            </div>
+            <div class="area-bug-item">
+              <span class="area-bug-bullet cyan">×</span>
+              <span>ISSN: en consultorio = SIEMPRE PARTICULAR. Cirugia cubierta solo en CIMO (dar telefono). Nunca mezclar CIMO con odontologia general.</span>
+            </div>
+            <div class="area-bug-item">
+              <span class="area-bug-bullet cyan">×</span>
+              <span>Galeno/Medicus/Federada/Medife: se aceptan. En consulta se evalua. No adelantar cobertura.</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Area 3 -->
+        <div class="area-card">
+          <div class="area-icon green">03</div>
+          <p class="area-name">Historial y Reglas de Conducta</p>
+          <div class="area-bugs">
+            <div class="area-bug-item">
+              <span class="area-bug-bullet green">×</span>
+              <span>Tratamiento previo fallido: NO asumir que fue en la clinica. Empatia neutral + ofrecer evaluacion.</span>
+            </div>
+            <div class="area-bug-item">
+              <span class="area-bug-bullet green">×</span>
+              <span>Frases prohibidas: "hacemos endodoncia", "trabajamos con OSDE para tratamientos quirurgicos" (generica), "parece que ya tenes historial".</span>
+            </div>
+            <div class="area-bug-item">
+              <span class="area-bug-bullet green">×</span>
+              <span>Respuesta modelo para urgencias: contener + 3 preguntas + escalar al equipo.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="page-footer">
+      <span class="page-number">03 / 06</span>
+      <span class="page-subject">Pruebas Bot Paula · Mayo 2026</span>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       PAGE 4 — MATRICES: DERIVACIONES + COBERTURA
+       ============================================================ -->
+  <div class="page" id="page-4">
+    <div class="page-content">
+      <div class="section-header">
+        <span class="section-number">MATRICES DE REGLAS</span>
+        <h2 class="section-title">Derivaciones y cobertura</h2>
+        <p class="section-sub">Reglas exactas que debe incorporar el system prompt del bot</p>
+      </div>
+
+      <div class="matrix-grid">
+        <!-- Matriz Derivaciones -->
+        <div class="matrix-col">
+          <p class="matrix-title">Matriz de Derivaciones</p>
+
+          <div class="matrix-row">
+            <span class="matrix-case">Dolor / urgencia / sangrado</span>
+            <span class="matrix-dest equipo">EQUIPO (urgente)</span>
+          </div>
+          <div class="matrix-row">
+            <span class="matrix-case">Endodoncia / conducto</span>
+            <span class="matrix-dest equipo">EQUIPO</span>
+          </div>
+          <div class="matrix-row">
+            <span class="matrix-case">Caries / arreglo / limpieza</span>
+            <span class="matrix-dest equipo">EQUIPO</span>
+          </div>
+          <div class="matrix-row">
+            <span class="matrix-case">Ortodoncia sola</span>
+            <span class="matrix-dest equipo">EQUIPO</span>
+          </div>
+          <div class="matrix-row">
+            <span class="matrix-case">Ortodoncia + cirugia ortognatica</span>
+            <span class="matrix-dest dra">DRA. DELGADO</span>
+          </div>
+          <div class="matrix-row">
+            <span class="matrix-case">Evaluacion de implantes</span>
+            <span class="matrix-dest dra">DRA. DELGADO</span>
+          </div>
+          <div class="matrix-row">
+            <span class="matrix-case">Paciente propio de Dra. con urgencia</span>
+            <span class="matrix-dest dra">DRA. DELGADO / equipo</span>
+          </div>
+          <div class="matrix-row">
+            <span class="matrix-case">Cirugia maxilofacial</span>
+            <span class="matrix-dest dra">DRA. DELGADO</span>
+          </div>
+        </div>
+
+        <!-- Matriz Cobertura OSDE -->
+        <div class="matrix-col">
+          <p class="matrix-title">Cobertura OSDE</p>
+
+          <div class="matrix-row">
+            <span class="matrix-case">Consulta con Dra. Delgado</span>
+            <span class="matrix-dest si">SI (coseguro segun plan)</span>
+          </div>
+          <div class="matrix-row">
+            <span class="matrix-case">Cirugia maxilofacial</span>
+            <span class="matrix-dest si">SI (nomenclador)</span>
+          </div>
+          <div class="matrix-row">
+            <span class="matrix-case">Implantes</span>
+            <span class="matrix-dest no">NO (particular / reintegro)</span>
+          </div>
+          <div class="matrix-row">
+            <span class="matrix-case">Rehabilitacion / protesis</span>
+            <span class="matrix-dest no">NO (particular)</span>
+          </div>
+          <div class="matrix-row">
+            <span class="matrix-case">Odontologia general</span>
+            <span class="matrix-dest no">NO (particular / reintegro)</span>
+          </div>
+          <div class="matrix-row">
+            <span class="matrix-case">Atencion por el equipo</span>
+            <span class="matrix-dest no">NO (particular)</span>
+          </div>
+
+          <p class="matrix-title" style="margin-top: 20px;">Cobertura ISSN</p>
+
+          <div class="matrix-row">
+            <span class="matrix-case">En consultorio particular</span>
+            <span class="matrix-dest particular">PARTICULAR</span>
+          </div>
+          <div class="matrix-row">
+            <span class="matrix-case">Cirugia (solo en CIMO)</span>
+            <span class="matrix-dest si">SI (en CIMO)</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="page-footer">
+      <span class="page-number">04 / 06</span>
+      <span class="page-subject">Pruebas Bot Paula · Mayo 2026</span>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       PAGE 5 — ACTION PLAN
+       ============================================================ -->
+  <div class="page" id="page-5">
+    <div class="page-content">
+      <div class="section-header">
+        <span class="section-number">PLAN DE ACCION</span>
+        <h2 class="section-title">Que cambiar y en que orden</h2>
+        <p class="section-sub">7 cambios priorizados para el system prompt del bot Paula</p>
+      </div>
+
+      <div class="plan-list">
+        <div class="plan-item">
+          <span class="plan-num">01</span>
+          <span class="plan-text">Incorporar matriz de derivaciones al system prompt</span>
+          <span class="plan-priority prio-critical">CRITICO</span>
+        </div>
+        <div class="plan-item">
+          <span class="plan-num">02</span>
+          <span class="plan-text">Incorporar tabla de cobertura de obras sociales (OSDE + ISSN + otras)</span>
+          <span class="plan-priority prio-critical">CRITICO</span>
+        </div>
+        <div class="plan-item">
+          <span class="plan-num">03</span>
+          <span class="plan-text">Corregir regla de "tratamiento previo fallido" → neutralidad total</span>
+          <span class="plan-priority prio-critical">CRITICO</span>
+        </div>
+        <div class="plan-item">
+          <span class="plan-num">04</span>
+          <span class="plan-text">Agregar flujo de contencion para urgencias: contener → preguntar → escalar</span>
+          <span class="plan-priority prio-high">ALTO</span>
+        </div>
+        <div class="plan-item">
+          <span class="plan-num">05</span>
+          <span class="plan-text">Eliminar frases prohibidas del repertorio (lista de 9 frases)</span>
+          <span class="plan-priority prio-high">ALTO</span>
+        </div>
+        <div class="plan-item">
+          <span class="plan-num">06</span>
+          <span class="plan-text">Prohibir mencion de CIMO para odontologia general</span>
+          <span class="plan-priority prio-high">ALTO</span>
+        </div>
+        <div class="plan-item">
+          <span class="plan-num">07</span>
+          <span class="plan-text">Ejecutar pruebas de regresion: re-correr las 9 pruebas post-cambios</span>
+          <span class="plan-priority prio-high">ALTO</span>
+        </div>
+      </div>
+    </div>
+    <div class="page-footer">
+      <span class="page-number">05 / 06</span>
+      <span class="page-subject">Pruebas Bot Paula · Mayo 2026</span>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       PAGE 6 — FORBIDDEN PHRASES + CLOSING
+       ============================================================ -->
+  <div class="page" id="page-6">
+    <div class="page-content">
+      <div class="section-header">
+        <span class="section-number">PROHIBICIONES</span>
+        <h2 class="section-title">Frases que el bot no debe decir</h2>
+        <p class="section-sub">9 frases eliminadas del repertorio de Paula</p>
+      </div>
+
+      <div class="forbidden-grid">
+        <div class="forbidden-item">
+          <span class="forbidden-x">×</span>
+          <div>
+            <div class="forbidden-text">"Si, hacemos endodoncia"</div>
+            <div class="forbidden-reason">Debe escalar al equipo, no confirmar tratamiento</div>
+          </div>
+        </div>
+        <div class="forbidden-item">
+          <span class="forbidden-x">×</span>
+          <div>
+            <div class="forbidden-text">"Trabajamos con OSDE para consultas y tratamientos quirurgicos"</div>
+            <div class="forbidden-reason">Frase generica que genera expectativa falsa de cobertura</div>
+          </div>
+        </div>
+        <div class="forbidden-item">
+          <span class="forbidden-x">×</span>
+          <div>
+            <div class="forbidden-text">"Parece que ya tenes un historial con la clinica"</div>
+            <div class="forbidden-reason">Asume incorrectamente tratamiento previo en la clinica</div>
+          </div>
+        </div>
+        <div class="forbidden-item">
+          <span class="forbidden-x">×</span>
+          <div>
+            <div class="forbidden-text">"Te coordino un turno con la Dra. Laura Delgado" (para odontologia general)</div>
+            <div class="forbidden-reason">Eso lo decide el equipo, no el bot</div>
+          </div>
+        </div>
+        <div class="forbidden-item">
+          <span class="forbidden-x">×</span>
+          <div>
+            <div class="forbidden-text">Mencionar CIMO cuando el paciente habla de limpieza/caries</div>
+            <div class="forbidden-reason">CIMO es solo para cirugia, no para odontologia general</div>
+          </div>
+        </div>
+        <div class="forbidden-item">
+          <span class="forbidden-x">×</span>
+          <div>
+            <div class="forbidden-text">"No hay problema, tomate el tiempo que necesites" duplicada</div>
+            <div class="forbidden-reason">Respuesta duplicada en el flujo de agendamiento</div>
+          </div>
+        </div>
+        <div class="forbidden-item">
+          <span class="forbidden-x">×</span>
+          <div>
+            <div class="forbidden-text">"La consulta de urgencia la puede hacer la Dra. X, Y o Z"</div>
+            <div class="forbidden-reason">No debe listar profesionales. Debe escalar al equipo.</div>
+          </div>
+        </div>
+        <div class="forbidden-item">
+          <span class="forbidden-x">×</span>
+          <div>
+            <div class="forbidden-text">"Con ISSN la cobertura se gestiona a traves de CIMO" (para arreglos/limpieza)</div>
+            <div class="forbidden-reason">ISSN no cubre odontologia general en ningun lado. Decir "particular".</div>
+          </div>
+        </div>
+        <div class="forbidden-item" style="grid-column: 1 / -1;">
+          <span class="forbidden-x">×</span>
+          <div>
+            <div class="forbidden-text">Ignorar la pregunta de obra social y seguir ofreciendo turnos</div>
+            <div class="forbidden-reason">Siempre responder primero a la consulta de cobertura antes de continuar</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="closing-quote">
+        <p>El bot Paula funciona bien para el caso feliz (agendar turno sin complicaciones). Las correcciones se concentran en 3 areas clave del system prompt: derivaciones, cobertura de obras sociales y contencion de urgencias. Son cambios textuales en el prompt, no en el codigo del bot.</p>
+      </div>
+    </div>
+    <div class="page-footer">
+      <span class="page-number">06 / 06</span>
+      <span class="page-subject">Pruebas Bot Paula · Mayo 2026</span>
+    </div>
+  </div>
+
+</body>
+</html>

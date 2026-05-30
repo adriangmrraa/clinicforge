@@ -1,0 +1,110 @@
+[
+  {
+    "id": 1,
+    "tenant_id": 1,
+    "type": "feedback",
+    "title": "Corrección de odontograma: vestibular no es caries",
+    "content": "Cuando el usuario indique una pieza dental con un estado en una superficie específica, no debo reinterpretar vestibular como caries si me aclara que corresponde a extracción. Debo respetar exactamente el estado/superficie que el usuario corrige y, si hace falta, actualizar el odontograma en consecuencia.",
+    "topic_key": "feedback/odontograma-vestibular-extraccion",
+    "created_by": "Adrian",
+    "source_channel": "telegram",
+    "created_at": "2026-04-04T23:21:33.044691+00:00",
+    "updated_at": "2026-04-04T23:21:33.044691+00:00"
+  },
+  {
+    "id": 2,
+    "tenant_id": 1,
+    "type": "feedback",
+    "title": "Corrección odontograma visual vs clínico",
+    "content": "Cuando el usuario pida que el odontograma sea 'visual' o que 'se vea' de cierta forma, no debo modificar el estado clínico real de todas las piezas. Debo interpretar que se trata de una indicación visual/estética y, si hace falta, pedir aclaración o registrar solo una nota clínica/visual sin alterar el odontograma real. No marcar todas las piezas como fractura ni cambiar estados clínicos sin confirmación explícita de piezas y estados reales.",
+    "topic_key": "feedback/odontograma-visual-vs-clinico",
+    "created_by": "Adrian",
+    "source_channel": "telegram",
+    "created_at": "2026-04-05T00:13:11.620535+00:00",
+    "updated_at": "2026-04-05T00:13:38.770309+00:00"
+  },
+  {
+    "id": 3,
+    "tenant_id": 1,
+    "type": "workflow",
+    "title": "Unificación de nombres de pacientes",
+    "content": "Se unificaron los nombres de pacientes para evitar variantes en el sistema: 1) Emanuel Gerardo Lillo (ID 148), corrigiendo alias previos como Rmanuel Gerardo Lillo. 2) Nerdinia Rubio Kinast (ID 147), corrigiendo alias previos como nerviosa rubio Kinast. A partir de ahora usar estos nombres correctos en agenda, mensajes y fichas.",
+    "topic_key": "workflow/unificacion-nombres-pacientes",
+    "created_by": "Laura",
+    "source_channel": "telegram",
+    "created_at": "2026-04-13T14:30:59.695640+00:00",
+    "updated_at": "2026-04-13T14:30:59.695640+00:00"
+  },
+  {
+    "id": 4,
+    "tenant_id": 1,
+    "type": "feedback",
+    "title": "Corrección de agendamiento: revisar hora y duración antes de confirmar",
+    "content": "El usuario corrigió dos turnos agendados recientemente porque las horas quedaron mal. A partir de ahora, al agendar turnos debo validar con más cuidado la hora exacta y la duración solicitada para no asumir valores por defecto ni redondear a 45 min si pidió 30 min. Si hay ambigüedad, inferir lo más probable pero respetar la hora indicada por el usuario.",
+    "topic_key": "feedback/agendamiento-hora-duracion",
+    "created_by": "Adrian",
+    "source_channel": "telegram",
+    "created_at": "2026-04-14T22:50:10.024904+00:00",
+    "updated_at": "2026-04-14T22:50:10.024904+00:00"
+  },
+  {
+    "id": 5,
+    "tenant_id": 1,
+    "type": "feedback",
+    "title": "Corrección de zona horaria en agenda",
+    "content": "El usuario detectó que Nova estaba interpretando mal la hora de la agenda: un turno que en la UI figura a las 10:00 fue leído como 13:00, con un desfase de +3 horas. A partir de ahora, al leer o referenciar horarios de agenda debo validar explícitamente la zona horaria/UTC y priorizar la hora mostrada en la UI de la agenda para evitar corrimientos.",
+    "topic_key": "feedback/timezone-agenda-offset",
+    "created_by": "Adrian",
+    "source_channel": "telegram",
+    "created_at": "2026-04-15T03:50:21.188495+00:00",
+    "updated_at": "2026-04-15T03:50:21.188495+00:00"
+  },
+  {
+    "id": 6,
+    "tenant_id": 1,
+    "type": "feedback",
+    "title": "Corrección de zona horaria en agenda",
+    "content": "El usuario corrigió que la hora correcta del turno debe tomarse desde la UI de la agenda como fuente de verdad. En un caso de Gastón Blackman, la base mostraba 13:00 pero la UI mostraba 10:00. A partir de ahora, al interpretar turnos debo priorizar la hora visible en la agenda y no aplicar corrimientos de UTC/zona horaria que desfasen el horario local de la clínica.",
+    "topic_key": "feedback/agenda-zona-horaria-ui",
+    "created_by": "Adrian",
+    "source_channel": "telegram",
+    "created_at": "2026-04-15T03:51:24.272013+00:00",
+    "updated_at": "2026-04-15T03:51:24.272013+00:00"
+  },
+  {
+    "id": 7,
+    "tenant_id": 1,
+    "type": "workflow",
+    "title": "Validación de hora y duración antes de confirmar turnos",
+    "content": "Regla operativa: antes de confirmar o agendar turnos, validar siempre la hora y la duración contra la UI de la agenda como fuente de verdad. No asumir zona horaria ni aplicar corrimientos automáticos. Si hay discrepancia, priorizar lo que muestra la agenda visual.",
+    "topic_key": "workflow/agenda-validacion-hora-duracion",
+    "created_by": "Adrian",
+    "source_channel": "telegram",
+    "created_at": "2026-04-15T03:52:37.869568+00:00",
+    "updated_at": "2026-04-15T03:52:37.869568+00:00"
+  },
+  {
+    "id": 8,
+    "tenant_id": 1,
+    "type": "feedback",
+    "title": "Emails ficticios cargados por secretaria desde cuenta CEO",
+    "content": "El usuario aclaró que algunos mails pueden ser ficticios porque fueron cargados por la secretaria desde la cuenta de CEO. A tener en cuenta al evaluar completitud de fichas: no asumir que el email sea real o válido como criterio de calidad de datos.",
+    "topic_key": "feedback/email-ficticio-secretaria-ceo",
+    "created_by": "Adrian",
+    "source_channel": "telegram",
+    "created_at": "2026-04-15T19:00:19.886004+00:00",
+    "updated_at": "2026-04-15T19:00:19.886004+00:00"
+  },
+  {
+    "id": 9,
+    "tenant_id": 1,
+    "type": "workflow",
+    "title": "Franco Della Valentina: esperar revisión médica antes de turno",
+    "content": "Franco Della Valentina (ID 102) quedó como paciente activo. Instrucción operativa: no agendar turno todavía. Esperar revisión del equipo médico antes de cargarle turno. Caso de seguimiento administrativo con factura final pendiente.",
+    "topic_key": "workflow/franco-esperar-revision-medica",
+    "created_by": "Adrian",
+    "source_channel": "telegram",
+    "created_at": "2026-04-15T19:06:09.257439+00:00",
+    "updated_at": "2026-04-15T19:15:14.936017+00:00"
+  }
+]

@@ -1,0 +1,211 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e124]:
+    - complementary [ref=e126]:
+      - generic [ref=e128]:
+        - img "Logo" [ref=e130]
+        - generic [ref=e131]: Clínica Dra. Laura Delgado
+      - navigation [ref=e132]:
+        - button "Dashboard" [ref=e134] [cursor=pointer]:
+          - generic [ref=e137]:
+            - img [ref=e139]
+            - generic [ref=e142]: Dashboard
+        - button "Agenda" [ref=e145] [cursor=pointer]:
+          - generic [ref=e148]:
+            - img [ref=e150]
+            - generic [ref=e152]: Agenda
+        - button "Pacientes" [ref=e154] [cursor=pointer]:
+          - generic [ref=e157]:
+            - img [ref=e159]
+            - generic [ref=e164]: Pacientes
+        - button "Conversaciones" [ref=e166] [cursor=pointer]:
+          - generic [ref=e169]:
+            - img [ref=e171]
+            - generic [ref=e173]: Conversaciones
+        - button "Personal" [ref=e175] [cursor=pointer]:
+          - generic [ref=e178]:
+            - img [ref=e180]
+            - generic [ref=e183]: Personal
+        - button "Sedes (Clínicas)" [ref=e185] [cursor=pointer]:
+          - generic [ref=e188]:
+            - img [ref=e190]
+            - generic [ref=e194]: Sedes (Clínicas)
+        - button "Estrategia" [ref=e196] [cursor=pointer]:
+          - generic [ref=e199]:
+            - img [ref=e201]
+            - generic [ref=e203]: Estrategia
+        - button "Tokens y Métricas" [ref=e205] [cursor=pointer]:
+          - generic [ref=e208]:
+            - img [ref=e210]
+            - generic [ref=e212]: Tokens y Métricas
+        - button "Tratamientos" [ref=e214] [cursor=pointer]:
+          - generic [ref=e217]:
+            - img [ref=e219]
+            - generic [ref=e222]: Tratamientos
+        - button "Mi Perfil" [ref=e224] [cursor=pointer]:
+          - generic [ref=e227]:
+            - img [ref=e229]
+            - generic [ref=e232]: Mi Perfil
+        - button "Marketing Hub" [ref=e234] [cursor=pointer]:
+          - generic [ref=e237]:
+            - img [ref=e239]
+            - generic [ref=e242]: Marketing Hub
+        - button "ROI Dashboard" [ref=e244] [cursor=pointer]:
+          - generic [ref=e247]:
+            - img [ref=e249]
+            - generic [ref=e252]: ROI Dashboard
+        - button "Leads Forms Meta" [ref=e254] [cursor=pointer]:
+          - generic [ref=e257]:
+            - img [ref=e259]
+            - generic [ref=e264]: Leads Forms Meta
+        - button "Automatizaciones" [ref=e266] [cursor=pointer]:
+          - generic [ref=e269]:
+            - img [ref=e271]
+            - generic [ref=e273]: Automatizaciones
+        - button "HSM & Automatización" [ref=e275] [cursor=pointer]:
+          - generic [ref=e278]:
+            - img [ref=e280]
+            - generic [ref=e282]: HSM & Automatización
+        - button "Configuración" [ref=e284] [cursor=pointer]:
+          - generic [ref=e287]:
+            - img [ref=e289]
+            - generic [ref=e292]: Configuración
+        - button "Cerrar Sesión" [ref=e293] [cursor=pointer]:
+          - generic [ref=e295]:
+            - img [ref=e297]
+            - generic [ref=e300]: Cerrar Sesión
+      - generic [ref=e302]:
+        - generic [ref=e303]: c
+        - generic [ref=e304]:
+          - paragraph [ref=e305]: consultoriolauradelgado@gmail.com
+          - paragraph [ref=e306]: ceo
+    - main [ref=e307]:
+      - generic [ref=e308]:
+        - heading "Clínica Dra. Laura Delgado" [level=1] [ref=e310]
+        - generic [ref=e311]:
+          - button "Guia de la pagina" [ref=e313] [cursor=pointer]:
+            - img [ref=e314]
+          - img [ref=e319]
+          - combobox [ref=e323] [cursor=pointer]:
+            - option "Clínica Dra. Laura Delgado" [selected]
+            - option "Dentalogic centro"
+            - option "Prueba"
+          - generic [ref=e325]: C
+      - generic [ref=e524]:
+        - generic [ref=e526]:
+          - generic [ref=e527]:
+            - generic [ref=e528]:
+              - heading "Agenda" [level=1] [ref=e529]
+              - paragraph [ref=e530]: Gestión de turnos y citas
+              - paragraph [ref=e531]: 40 turnos en pantalla • 1 de ene de 2026 – 1 de ene de 2027
+            - generic [ref=e532]:
+              - img [ref=e533]
+              - combobox [ref=e537] [cursor=pointer]:
+                - option "Todos los Profesionales" [selected]
+                - option "Dr. Laura Delgado"
+                - option "Dr. Elizabeth Ester"
+          - generic [ref=e539]:
+            - generic [ref=e542]: Ventas IA
+            - generic [ref=e545]: Nova
+            - generic [ref=e548]: Manual
+            - generic [ref=e551]: GCal
+        - generic [ref=e555]:
+          - generic [ref=e556]:
+            - generic [ref=e557]:
+              - generic [ref=e558]:
+                - button "Previous Año" [ref=e1331] [cursor=pointer]
+                - button "Next Año" [ref=e1332] [cursor=pointer]
+              - button "Hoy" [disabled] [ref=e563]
+            - heading "2026" [level=2] [ref=e1333]
+            - generic [ref=e567]:
+              - button "Día" [ref=e568] [cursor=pointer]
+              - button "Semana" [ref=e569] [cursor=pointer]
+              - button "Mes" [ref=e570] [cursor=pointer]
+              - button "Lista" [pressed] [ref=e571] [cursor=pointer]
+              - button "Lista" [ref=e572] [cursor=pointer]
+          - generic "2026" [ref=e1334]:
+            - table [ref=e1337]:
+              - rowgroup [ref=e1338]:
+                - row "Time Event" [ref=e1339]
+              - rowgroup [ref=e1342]:
+                - row "13 de abril de 2026" [ref=e1343]
+                - row "11:00 - 11:45 Gastón Bleckmann Consulta General" [ref=e1348]
+                - row "14:00 - 14:45 Norma Moguillansky Consulta General Dr. Laura" [ref=e1363]
+                - row "18:30 - 19:15 María Laura Consulta General Dr. Laura" [ref=e1383]
+                - row "14 de abril de 2026" [ref=e1403]
+                - row "6:00 - 7:15 Rmanuel Gerardo Lillo Cirugía Compleja" [ref=e1408]
+                - row "7:30 - 8:15 Leonardo Mastrangelo Cirugía Simple" [ref=e1423]
+                - row "9:30 - 10:00 nerviosa rubio Kinast consultation" [ref=e1438]
+                - row "10:00 - 11:00 CARLOS SEBASTIAN MIEREZ Restauración Compleja Dr. Laura" [ref=e1453]
+                - row "11:00 - 11:45 Emanuel Manssini Cirugía Simple" [ref=e1473]
+                - row "11:30 - 12:15 wilma vazquez Consulta Urgencia Dr. Laura" [ref=e1488]
+                - row "12:15 - 13:00 Sonia Arévalo Consulta General Dr. Laura" [ref=e1508]
+                - row "13:30 - 14:15 Norma Moguillansky Consulta General Dr. Laura" [ref=e1528]
+                - row "14:15 - 14:45 Vero Millahual Consulta Urgencia Dr. Laura" [ref=e1548]
+                - row "15:30 - 15:50 joaquin perez checkup" [ref=e1568]
+                - row "15 de abril de 2026" [ref=e1583]
+                - row "13:00 - 13:45 Antonella morales clozza Consulta General Dr. Laura" [ref=e1588]
+                - row "15:00 - 15:45 Katia Paula Cirugía Simple Dr. Laura" [ref=e1608]
+                - row "16:00 - 16:45 Carolina Basgal Cirugía Simple Dr. Laura" [ref=e1628]
+                - row "16 de abril de 2026" [ref=e1648]
+                - row "9:00 - 10:30 Analia Riquelme Cirugía Simple Dr. Laura" [ref=e1653]
+                - row "11:00 - 11:45 Alicia Landriani Control / Revisión Dr. Laura" [ref=e1673]
+                - row "12:00 - 12:30 Antonella Clozza Consulta General Dr. Laura" [ref=e1693]
+                - row "16:00 - 16:45 Denise Belén Barccos Control / Revisión Dr. Laura" [ref=e1713]
+                - row "17 de abril de 2026" [ref=e1733]
+                - row "10:00 - 11:30 CARLOS SEBASTIAN MIEREZ Cirugía Simple Dr. Elizabeth" [ref=e1738]
+                - row "11:30 - 12:00 Sebastian Acheveria Consulta General Dr. Elizabeth" [ref=e1758]
+                - row "18:30 - 19:15 Roxana Jara Consulta General Dr. Laura" [ref=e1778]
+                - row "18 de abril de 2026" [ref=e1798]
+                - row "10:30 - 11:00 Cynthia Reyes Control Ortodoncia Dr. Elizabeth" [ref=e1803]
+                - row "20 de abril de 2026" [ref=e1823]
+                - row "13:30 - 14:00 Antonella Cursaro Consulta General Dr. Laura" [ref=e1828]
+                - row "14:00 - 14:30 Nicolas Palma Consulta General Dr. Laura" [ref=e1848]
+                - row "14:30 - 15:00 Alejandro Diaz Consulta General Dr. Laura" [ref=e1868]
+                - row "15:00 - 15:30 Guillermina Diaz Consulta General Dr. Laura" [ref=e1888]
+                - row "21 de abril de 2026" [ref=e1908]
+                - row "10:00 - 11:00 Brenda Becerra Consulta General Dr. Laura" [ref=e1913]
+                - row "11:00 - 11:45 Sonia Arévalo Consulta General Dr. Laura" [ref=e1933]
+                - row "16:30 - 17:00 Griselda Venegas Consulta General Dr. Laura" [ref=e1953]
+                - row "23 de abril de 2026" [ref=e1973]
+                - row "16:30 - 17:00 Marilina Romero Consulta General Dr. Laura" [ref=e1978]
+                - row "27 de abril de 2026" [ref=e1998]
+                - row "15:00 - 16:00 Cristian Retamal Rehabilitación Compleja Dr. Laura" [ref=e2003]
+                - row "28 de abril de 2026" [ref=e2023]
+                - row "10:00 - 11:00 Jorgelina Carrizo Cirugía Compleja Dr. Laura" [ref=e2028]
+                - row "29 de abril de 2026" [ref=e2048]
+                - row "16:00 - 16:45 Catalina Herrera Cirugía Simple Dr. Laura" [ref=e2053]
+                - row "5 de mayo de 2026" [ref=e2073]
+                - row "10:00 - 10:30 Carolina surt Consulta General Dr. Laura" [ref=e2078]
+                - row "7 de mayo de 2026" [ref=e2098]
+                - row "10:00 - 11:00 Thiago Alexander Luna Cirugía Simple Dr. Laura" [ref=e2103]
+                - row "8 de mayo de 2026" [ref=e2123]
+                - row "13:00 - 14:00 Marcela Aguirre Control / Revisión Dr. Laura" [ref=e2128]
+                - row "15 de mayo de 2026" [ref=e2148]
+                - row "18:30 - 19:00 Lida Valeria Rauque Consulta General Dr. Laura" [ref=e2153]
+                - row "25 de mayo de 2026" [ref=e2173]
+                - row "Todo el día 🎉 Día de la Revolución de Mayo Consulta" [ref=e2178]
+                - row "15 de junio de 2026" [ref=e2193]
+                - row "Todo el día 🎉 Paso a la Inmortalidad del General Don Martín Miguel de Güemes Consulta" [ref=e2198]
+                - row "17 de junio de 2026" [ref=e2213]
+                - row "7:00 - 7:30 Laura González cirugia_maxilofacial Dr. Laura" [ref=e2218]
+                - row "20 de junio de 2026" [ref=e2238]
+                - row "Todo el día 🎉 Paso a la Inmortalidad del General Don Manuel Belgrano Consulta" [ref=e2243]
+                - row "9 de julio de 2026" [ref=e2258]
+                - row "Todo el día 🎉 Día de la Independencia Consulta" [ref=e2263]
+                - row "10 de julio de 2026" [ref=e2278]
+                - row "Todo el día 🎉 Feriado con fines turísticos Consulta" [ref=e2283]
+                - row "17 de agosto de 2026" [ref=e2298]
+                - row "Todo el día 🎉 Paso a la Inmortalidad del General Don José de San Martín Consulta" [ref=e2303]
+                - row "12 de octubre de 2026" [ref=e2318]
+                - row "Todo el día 🎉 Día del Respeto a la Diversidad Cultural Consulta" [ref=e2323]
+                - row "23 de noviembre de 2026" [ref=e2338]
+                - row "Todo el día 🎉 Día de la Soberanía Nacional Consulta" [ref=e2343]
+                - row "7 de diciembre de 2026" [ref=e2358]
+                - row "Todo el día 🎉 Feriado con fines turísticos Consulta" [ref=e2363]
+                - row "8 de diciembre de 2026" [ref=e2378]
+                - row "Todo el día 🎉 Inmaculada Concepción de María Consulta" [ref=e2383]
+                - row "25 de diciembre de 2026" [ref=e2398]
+                - row "Todo el día 🎉 Navidad Consulta" [ref=e2403]
+    - button [ref=e519] [cursor=pointer]:
+      - img [ref=e520]
+  - generic [ref=e522]: "0"

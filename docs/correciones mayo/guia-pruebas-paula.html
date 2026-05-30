@@ -1,0 +1,859 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Guia de Pruebas — Agente Paula | Correcciones Mayo 2026</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700;800;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #050505;
+      font-family: 'Inter', sans-serif;
+      color: #FFFFFF;
+    }
+
+    /* Print / PDF */
+    @media print {
+      #scale-wrapper { transform: none !important; width: 1920px !important; height: auto !important; position: static !important; }
+      #slideshow { position: static !important; width: 1920px !important; height: auto !important; overflow: visible !important; }
+      .slide { position: relative !important; opacity: 1 !important; display: flex !important; width: 1920px !important; height: 1080px !important; transform: none !important; page-break-after: always; break-after: page; overflow: hidden !important; }
+      .nav-controls, .export-btn { display: none !important; }
+      @page { size: 1920px 1080px landscape; margin: 0; }
+      * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    }
+
+    /* Slide system */
+    #slideshow { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; overflow: hidden; }
+    #scale-wrapper { position: absolute; top: 0; left: 0; width: 1920px; height: 1080px; transform-origin: top left; }
+    .slide { position: absolute; top: 0; left: 0; width: 1920px; height: 1080px; background: #0a0e1a; opacity: 0; transition: opacity 0.4s ease; overflow: hidden; padding: 80px 120px; }
+    .slide.active { opacity: 1; z-index: 1; }
+
+    /* Brand colors — clinical dark blue theme */
+    :root {
+      --bg-primary: #0a0e1a;
+      --bg-card: #111827;
+      --bg-card-hover: #1a2332;
+      --accent-blue: #3b82f6;
+      --accent-cyan: #06b6d4;
+      --accent-green: #10b981;
+      --accent-red: #ef4444;
+      --accent-amber: #f59e0b;
+      --text-primary: #FFFFFF;
+      --text-secondary: rgba(255,255,255,0.70);
+      --text-muted: rgba(255,255,255,0.45);
+      --border: rgba(255,255,255,0.08);
+    }
+
+    /* Typography */
+    .title-hero {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 72px;
+      font-weight: 800;
+      letter-spacing: -3px;
+      line-height: 1.05;
+      color: var(--text-primary);
+    }
+
+    .title-section {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 48px;
+      font-weight: 700;
+      letter-spacing: -2px;
+      color: var(--text-primary);
+      line-height: 1.1;
+    }
+
+    .title-sub {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 28px;
+      font-weight: 600;
+      color: var(--text-secondary);
+    }
+
+    .body-text {
+      font-family: 'Inter', sans-serif;
+      font-size: 22px;
+      font-weight: 400;
+      color: var(--text-secondary);
+      line-height: 1.5;
+    }
+
+    .label {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: var(--accent-cyan);
+    }
+
+    /* Footer */
+    .slide-footer {
+      position: absolute;
+      bottom: 36px;
+      left: 80px;
+      right: 80px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .slide-number {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 15px;
+      font-weight: 500;
+      color: rgba(255,255,255,0.25);
+      letter-spacing: 2px;
+    }
+    .footer-brand {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 14px;
+      font-weight: 500;
+      color: rgba(255,255,255,0.20);
+      letter-spacing: 1px;
+    }
+
+    /* Cards */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px 28px;
+    }
+
+    /* Table styles */
+    .data-table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+    .data-table th {
+      background: rgba(59,130,246,0.12);
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--accent-cyan);
+      padding: 14px 18px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+    .data-table td {
+      font-family: 'Inter', sans-serif;
+      font-size: 16px;
+      color: var(--text-secondary);
+      padding: 12px 18px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+    .data-table tr:last-child td { border-bottom: none; }
+    .data-table tr:nth-child(even) td { background: rgba(255,255,255,0.02); }
+
+    /* Priority badges */
+    .badge {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 6px;
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+    }
+    .badge-critical { background: rgba(239,68,68,0.15); color: #f87171; }
+    .badge-alta { background: rgba(245,158,11,0.15); color: #fbbf24; }
+    .badge-media { background: rgba(59,130,246,0.15); color: #60a5fa; }
+    .badge-code { background: rgba(16,185,129,0.12); color: #34d399; }
+    .badge-db { background: rgba(168,85,247,0.12); color: #c084fc; }
+    .badge-mixed { background: rgba(245,158,11,0.12); color: #fbbf24; }
+
+    /* Scenario cards */
+    .scenario {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px 28px;
+      display: flex;
+      gap: 20px;
+    }
+    .scenario-num {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 32px;
+      font-weight: 800;
+      color: var(--accent-blue);
+      min-width: 50px;
+      line-height: 1;
+      padding-top: 2px;
+    }
+    .scenario-content { flex: 1; }
+    .scenario-title {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 10px;
+    }
+    .scenario-input {
+      font-family: 'Inter', sans-serif;
+      font-size: 15px;
+      color: var(--accent-cyan);
+      margin-bottom: 8px;
+    }
+    .scenario-expected {
+      font-family: 'Inter', sans-serif;
+      font-size: 15px;
+      color: var(--text-secondary);
+      line-height: 1.5;
+    }
+    .scenario-forbidden {
+      font-family: 'Inter', sans-serif;
+      font-size: 14px;
+      color: #f87171;
+      margin-top: 6px;
+    }
+
+    /* Checklist */
+    .check-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      padding: 10px 0;
+    }
+    .check-box {
+      width: 22px;
+      height: 22px;
+      border: 2px solid rgba(255,255,255,0.20);
+      border-radius: 4px;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    /* Grid helpers */
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+
+    /* Divider */
+    .divider {
+      width: 80px;
+      height: 3px;
+      background: linear-gradient(90deg, var(--accent-blue), var(--accent-cyan));
+      border-radius: 2px;
+    }
+
+    /* Navigation */
+    .nav-controls {
+      position: fixed;
+      bottom: 40px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      z-index: 100;
+    }
+    .nav-btn {
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 50%;
+      width: 44px; height: 44px;
+      color: #FFF;
+      font-size: 18px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .nav-btn:hover { background: rgba(255,255,255,0.16); }
+    .nav-dots { display: flex; gap: 8px; }
+    .nav-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.25);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .nav-dot.active { background: var(--accent-cyan); transform: scale(1.4); }
+    .export-btn {
+      position: fixed; top: 20px; right: 20px; z-index: 100;
+      background: var(--accent-blue); color: #FFF; border: none;
+      border-radius: 8px; padding: 10px 20px;
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 14px; font-weight: 600; cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+<div id="slideshow">
+<div id="scale-wrapper">
+
+<!-- ============================================================
+     SLIDE 1 — PORTADA
+     ============================================================ -->
+<div class="slide active" data-slide="1">
+  <div style="display:flex; flex-direction:column; justify-content:center; height:100%;">
+    <div class="label" style="margin-bottom:32px;">Documento interno — Equipo clinico</div>
+    <h1 class="title-hero" style="max-width:1100px;">
+      Guia de Pruebas<br>
+      <span style="color:var(--accent-cyan);">Agente Paula</span>
+    </h1>
+    <div class="divider" style="margin:32px 0;"></div>
+    <p class="title-sub">Correcciones Mayo 2026</p>
+    <p class="body-text" style="margin-top:12px; color:var(--text-muted);">
+      Basada en testeo de Dra. Laura Delgado — 11/05/2026<br>
+      12 bugs identificados — 14 escenarios de verificacion
+    </p>
+  </div>
+  <footer class="slide-footer">
+    <span class="slide-number">01 / 10</span>
+    <span class="footer-brand">Clinica Dra. Laura Delgado — Uso interno</span>
+  </footer>
+</div>
+
+<!-- ============================================================
+     SLIDE 2 — RESUMEN DE CORRECCIONES (parte 1)
+     ============================================================ -->
+<div class="slide" data-slide="2">
+  <div style="display:flex; flex-direction:column; height:100%;">
+    <div class="label" style="margin-bottom:16px;">Resumen de correcciones</div>
+    <h2 class="title-section" style="margin-bottom:28px;">12 bugs corregidos</h2>
+    <table class="data-table" style="flex:1;">
+      <thead>
+        <tr>
+          <th style="width:40px;">#</th>
+          <th>Bug</th>
+          <th style="width:100px;">Prioridad</th>
+          <th style="width:100px;">Tipo</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="color:var(--accent-blue); font-weight:700;">1</td>
+          <td>Mensaje inicial rudo + precio sin explicacion de que incluye</td>
+          <td><span class="badge badge-alta">ALTA</span></td>
+          <td><span class="badge badge-code">Codigo</span></td>
+        </tr>
+        <tr>
+          <td style="color:var(--accent-blue); font-weight:700;">2</td>
+          <td>"Dale, pasamelos y sigo" — tono grotesco al pedir datos</td>
+          <td><span class="badge badge-alta">ALTA</span></td>
+          <td><span class="badge badge-code">Codigo</span></td>
+        </tr>
+        <tr>
+          <td style="color:var(--accent-blue); font-weight:700;">3</td>
+          <td>No confirma turno al elegir + ofrece turnos post-confirmacion</td>
+          <td><span class="badge badge-alta">ALTA</span></td>
+          <td><span class="badge badge-code">Codigo</span></td>
+        </tr>
+        <tr>
+          <td style="color:var(--accent-blue); font-weight:700;">4</td>
+          <td>Menciona anestesia sin aguja (sacar)</td>
+          <td><span class="badge badge-media">MEDIA</span></td>
+          <td><span class="badge badge-code">Codigo</span></td>
+        </tr>
+        <tr>
+          <td style="color:var(--accent-blue); font-weight:700;">5</td>
+          <td>Repite "te ayudo a coordinar" 4+ veces sin avanzar</td>
+          <td><span class="badge badge-alta">ALTA</span></td>
+          <td><span class="badge badge-code">Codigo</span></td>
+        </tr>
+        <tr>
+          <td style="color:var(--accent-blue); font-weight:700;">6</td>
+          <td>"Si queres" suena debil — cambiar a tono asertivo</td>
+          <td><span class="badge badge-media">MEDIA</span></td>
+          <td><span class="badge badge-code">Codigo</span></td>
+        </tr>
+        <tr>
+          <td style="color:var(--accent-blue); font-weight:700;">7</td>
+          <td>No responde cobertura de obra social (OSDE/ISSN/resto)</td>
+          <td><span class="badge badge-critical">CRITICA</span></td>
+          <td><span class="badge badge-mixed">Codigo+DB</span></td>
+        </tr>
+        <tr>
+          <td style="color:var(--accent-blue); font-weight:700;">8</td>
+          <td>"Laura Delgado" o "Laura" sin titulo "Dra."</td>
+          <td><span class="badge badge-media">MEDIA</span></td>
+          <td><span class="badge badge-code">Codigo</span></td>
+        </tr>
+        <tr>
+          <td style="color:var(--accent-blue); font-weight:700;">9</td>
+          <td>Respuesta vaga sobre descuento de consulta</td>
+          <td><span class="badge badge-media">MEDIA</span></td>
+          <td><span class="badge badge-db">Codigo+FAQ</span></td>
+        </tr>
+        <tr>
+          <td style="color:var(--accent-blue); font-weight:700;">10</td>
+          <td>Pregunta si quiere turnos despues de que ya los pidio</td>
+          <td><span class="badge badge-alta">ALTA</span></td>
+          <td><span class="badge badge-code">Codigo</span></td>
+        </tr>
+        <tr>
+          <td style="color:var(--accent-blue); font-weight:700;">11</td>
+          <td>Sin texto aprobado para pregunta de presupuesto</td>
+          <td><span class="badge badge-media">MEDIA</span></td>
+          <td><span class="badge badge-db">Codigo+FAQ</span></td>
+        </tr>
+        <tr>
+          <td style="color:var(--accent-blue); font-weight:700;">12</td>
+          <td>Deteccion emocional debil + criterio de derivacion</td>
+          <td><span class="badge badge-media">MEDIA</span></td>
+          <td><span class="badge badge-code">Codigo</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <footer class="slide-footer">
+    <span class="slide-number">02 / 10</span>
+    <span class="footer-brand">Clinica Dra. Laura Delgado — Uso interno</span>
+  </footer>
+</div>
+
+<!-- ============================================================
+     SLIDE 3 — ESCENARIOS 1-4
+     ============================================================ -->
+<div class="slide" data-slide="3">
+  <div style="display:flex; flex-direction:column; height:100%;">
+    <div class="label" style="margin-bottom:16px;">Escenarios de prueba</div>
+    <h2 class="title-section" style="margin-bottom:24px;">Escenarios 1 — 4</h2>
+    <div class="grid-2" style="flex:1; align-content:start;">
+      <div class="scenario">
+        <div class="scenario-num">01</div>
+        <div class="scenario-content">
+          <div class="scenario-title">Saludo inicial (Bug 1)</div>
+          <div class="scenario-input">Input: "Hola"</div>
+          <div class="scenario-expected">Esperado: Paula saluda + presenta precio con explicacion completa de que incluye la evaluacion + pitch de la clinica.</div>
+          <div class="scenario-forbidden">NO dice "decime que turno necesitas"</div>
+        </div>
+      </div>
+      <div class="scenario">
+        <div class="scenario-num">02</div>
+        <div class="scenario-content">
+          <div class="scenario-title">Tono al pedir datos (Bug 2)</div>
+          <div class="scenario-input">Input: "Quiero turno para implantes" / (ofrece turnos) / "El martes"</div>
+          <div class="scenario-expected">Esperado: Confirma "Perfecto, te agendo el martes..." y pide datos con tono profesional.</div>
+          <div class="scenario-forbidden">NO dice "dale, pasamelos y sigo"</div>
+        </div>
+      </div>
+      <div class="scenario">
+        <div class="scenario-num">03</div>
+        <div class="scenario-content">
+          <div class="scenario-title">Confirma turno + no re-ofrece (Bug 3)</div>
+          <div class="scenario-input">Input: (seguir del escenario 2, dar nombre y DNI)</div>
+          <div class="scenario-expected">Esperado: Confirma turno, manda direccion, sena, anamnesis.</div>
+          <div class="scenario-forbidden">NO vuelve a ofrecer turnos despues de confirmar</div>
+        </div>
+      </div>
+      <div class="scenario">
+        <div class="scenario-num">04</div>
+        <div class="scenario-content">
+          <div class="scenario-title">Miedo al tratamiento (Bug 4)</div>
+          <div class="scenario-input">Input: "Me da miedo hacerme un implante"</div>
+          <div class="scenario-expected">Esperado: Valida el miedo, normaliza, ofrece evaluacion.</div>
+          <div class="scenario-forbidden">NO menciona "anestesia sin aguja"</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <footer class="slide-footer">
+    <span class="slide-number">03 / 10</span>
+    <span class="footer-brand">Clinica Dra. Laura Delgado — Uso interno</span>
+  </footer>
+</div>
+
+<!-- ============================================================
+     SLIDE 4 — ESCENARIOS 5-8
+     ============================================================ -->
+<div class="slide" data-slide="4">
+  <div style="display:flex; flex-direction:column; height:100%;">
+    <div class="label" style="margin-bottom:16px;">Escenarios de prueba</div>
+    <h2 class="title-section" style="margin-bottom:24px;">Escenarios 5 — 8</h2>
+    <div class="grid-2" style="flex:1; align-content:start;">
+      <div class="scenario">
+        <div class="scenario-num">05</div>
+        <div class="scenario-content">
+          <div class="scenario-title">Repeticion de CTA (Bug 5)</div>
+          <div class="scenario-input">Input: "Cuanto sale un implante?" / (responde) / "Y la consulta?" / (responde) / "Es cara"</div>
+          <div class="scenario-expected">Esperado: Responde cada pregunta sin repetir ofrecimiento.</div>
+          <div class="scenario-forbidden">NO repite "te ayudo a coordinar" mas de 2 veces</div>
+        </div>
+      </div>
+      <div class="scenario">
+        <div class="scenario-num">06</div>
+        <div class="scenario-content">
+          <div class="scenario-title">Tono asertivo (Bug 6)</div>
+          <div class="scenario-input">Input: "Me dijeron que no tengo hueso"</div>
+          <div class="scenario-expected">Esperado: Termina con "Te ayudo a coordinar una consulta."</div>
+          <div class="scenario-forbidden">NO dice "Si queres, te ayudo..."</div>
+        </div>
+      </div>
+      <div class="scenario">
+        <div class="scenario-num">07</div>
+        <div class="scenario-content">
+          <div class="scenario-title">OSDE + implantes (Bug 7)</div>
+          <div class="scenario-input">Input: "Tengo OSDE. Me cubre implantes?"</div>
+          <div class="scenario-expected">Esperado: "Los implantes no tienen cobertura de obra social. La consulta de evaluacion si esta cubierta. El presupuesto del tratamiento se entrega en esa primera consulta."</div>
+          <div class="scenario-forbidden">NO ignora la pregunta de cobertura</div>
+        </div>
+      </div>
+      <div class="scenario">
+        <div class="scenario-num">08</div>
+        <div class="scenario-content">
+          <div class="scenario-title">Slot + obra social juntos (Bug 7)</div>
+          <div class="scenario-input">Input: (ofrece Martes 10hs / Jueves 10hs) / "Martes. Tengo OSDE"</div>
+          <div class="scenario-expected">Esperado: Confirma martes + responde sobre OSDE en UN solo mensaje.</div>
+          <div class="scenario-forbidden">NO dice "no queda claro". NO deriva a humano</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <footer class="slide-footer">
+    <span class="slide-number">04 / 10</span>
+    <span class="footer-brand">Clinica Dra. Laura Delgado — Uso interno</span>
+  </footer>
+</div>
+
+<!-- ============================================================
+     SLIDE 5 — ESCENARIOS 9-11
+     ============================================================ -->
+<div class="slide" data-slide="5">
+  <div style="display:flex; flex-direction:column; height:100%;">
+    <div class="label" style="margin-bottom:16px;">Escenarios de prueba</div>
+    <h2 class="title-section" style="margin-bottom:24px;">Escenarios 9 — 11</h2>
+    <div class="grid-3" style="flex:1; align-content:start;">
+      <div class="scenario" style="flex-direction:column;">
+        <div style="display:flex; gap:14px; align-items:center; margin-bottom:12px;">
+          <div class="scenario-num">09</div>
+          <div class="scenario-title">Referencia a la doctora (Bug 8)</div>
+        </div>
+        <div class="scenario-input">Input: "Quien me va a atender?"</div>
+        <div class="scenario-expected" style="margin-top:8px;">Esperado: Dice "la Dra. Laura Delgado" o "la Dra. Delgado".</div>
+        <div class="scenario-forbidden">NUNCA dice "Laura" sola</div>
+      </div>
+      <div class="scenario" style="flex-direction:column;">
+        <div style="display:flex; gap:14px; align-items:center; margin-bottom:12px;">
+          <div class="scenario-num">10</div>
+          <div class="scenario-title">Descuento de consulta (Bug 9)</div>
+        </div>
+        <div class="scenario-input">Input: "La consulta se descuenta del tratamiento?"</div>
+        <div class="scenario-expected" style="margin-top:8px;">Esperado: "La consulta corresponde a una evaluacion completa. Ahi la doctora analiza tu situacion... Te ayudo a coordinar un turno."</div>
+        <div class="scenario-forbidden">NO dice solo "no se descuenta automaticamente"</div>
+      </div>
+      <div class="scenario" style="flex-direction:column;">
+        <div style="display:flex; gap:14px; align-items:center; margin-bottom:12px;">
+          <div class="scenario-num">11</div>
+          <div class="scenario-title">Ya dio datos, no re-preguntar (Bug 10)</div>
+        </div>
+        <div class="scenario-input">Input: "Quiero turno. Juan Perez, DNI 12345678"</div>
+        <div class="scenario-expected" style="margin-top:8px;">Esperado: Muestra turnos directo.</div>
+        <div class="scenario-forbidden">NO pregunta "queres que te pase los turnos?"</div>
+      </div>
+    </div>
+  </div>
+  <footer class="slide-footer">
+    <span class="slide-number">05 / 10</span>
+    <span class="footer-brand">Clinica Dra. Laura Delgado — Uso interno</span>
+  </footer>
+</div>
+
+<!-- ============================================================
+     SLIDE 6 — ESCENARIOS 12-14
+     ============================================================ -->
+<div class="slide" data-slide="6">
+  <div style="display:flex; flex-direction:column; height:100%;">
+    <div class="label" style="margin-bottom:16px;">Escenarios de prueba</div>
+    <h2 class="title-section" style="margin-bottom:24px;">Escenarios 12 — 14</h2>
+    <div class="grid-3" style="flex:1; align-content:start;">
+      <div class="scenario" style="flex-direction:column;">
+        <div style="display:flex; gap:14px; align-items:center; margin-bottom:12px;">
+          <div class="scenario-num">12</div>
+          <div class="scenario-title">Cuanto sale el tratamiento (Bug 11)</div>
+        </div>
+        <div class="scenario-input">Input: "Cuanto sale un implante?"</div>
+        <div class="scenario-expected" style="margin-top:8px;">Esperado: "El presupuesto puede variar bastante segun cada caso... Lo ideal es poder evaluarte... Te ayudo a coordinar un turno con la Dra. Laura Delgado."</div>
+        <div class="scenario-forbidden">NUNCA da un numero de tratamiento</div>
+      </div>
+      <div class="scenario" style="flex-direction:column;">
+        <div style="display:flex; gap:14px; align-items:center; margin-bottom:12px;">
+          <div class="scenario-num">13</div>
+          <div class="scenario-title">Opiniones diferentes (Bug 12)</div>
+        </div>
+        <div class="scenario-input">Input: "Cada dentista me dice algo distinto"</div>
+        <div class="scenario-expected" style="margin-top:8px;">Esperado: "Es bastante comun que puedas recibir opiniones diferentes. Lo ideal es poder evaluar bien tu caso... Te ayudo a coordinar una evaluacion."</div>
+        <div class="scenario-forbidden">NO improvisa. Usa texto aprobado</div>
+      </div>
+      <div class="scenario" style="flex-direction:column;">
+        <div style="display:flex; gap:14px; align-items:center; margin-bottom:12px;">
+          <div class="scenario-num">14</div>
+          <div class="scenario-title">Situacion emocional no cubierta (Bug 12)</div>
+        </div>
+        <div class="scenario-input">Input: (caso emocional/clinico fuera de los flujos F1-F9)</div>
+        <div class="scenario-expected" style="margin-top:8px;">Esperado: Deriva a humano en vez de improvisar una respuesta.</div>
+        <div class="scenario-forbidden">NUNCA inventa respuestas clinicas</div>
+      </div>
+    </div>
+  </div>
+  <footer class="slide-footer">
+    <span class="slide-number">06 / 10</span>
+    <span class="footer-brand">Clinica Dra. Laura Delgado — Uso interno</span>
+  </footer>
+</div>
+
+<!-- ============================================================
+     SLIDE 7 — FLUJO IDEAL COMPLETO
+     ============================================================ -->
+<div class="slide" data-slide="7">
+  <div style="display:flex; flex-direction:column; height:100%;">
+    <div class="label" style="margin-bottom:16px;">Flujo de referencia</div>
+    <h2 class="title-section" style="margin-bottom:28px;">Flujo ideal completo — Implantes con OSDE</h2>
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:40px; flex:1;">
+      <!-- Conversation -->
+      <div style="display:flex; flex-direction:column; gap:16px;">
+        <div class="card" style="border-left: 3px solid var(--accent-green);">
+          <div style="font-size:13px; color:var(--accent-green); font-weight:600; margin-bottom:6px;">PACIENTE</div>
+          <div style="font-size:18px; color:var(--text-primary);">Quiero implantes</div>
+        </div>
+        <div class="card" style="border-left: 3px solid var(--accent-cyan);">
+          <div style="font-size:13px; color:var(--accent-cyan); font-weight:600; margin-bottom:6px;">PAULA</div>
+          <div style="font-size:16px; color:var(--text-secondary); line-height:1.5;">Claro. Lo ideal es realizar primero una evaluacion para ver que opcion es la mas adecuada para vos.<br><br>Tengo estos turnos disponibles:<br>1 — Martes 12/05 — 10 hs<br>2 — Jueves 14/05 — 10 hs<br><br>Cual te queda mejor?</div>
+        </div>
+        <div class="card" style="border-left: 3px solid var(--accent-green);">
+          <div style="font-size:13px; color:var(--accent-green); font-weight:600; margin-bottom:6px;">PACIENTE</div>
+          <div style="font-size:18px; color:var(--text-primary);">Martes. Tengo OSDE</div>
+        </div>
+        <div class="card" style="border-left: 3px solid var(--accent-cyan);">
+          <div style="font-size:13px; color:var(--accent-cyan); font-weight:600; margin-bottom:6px;">PAULA</div>
+          <div style="font-size:16px; color:var(--text-secondary); line-height:1.5;">Perfecto. Te agendo entonces para el martes 12/05 a las 10 hs.<br><br>Si, trabajamos con OSDE. La consulta tiene coseguro y luego vemos especificamente la cobertura segun el tratamiento.<br><br>Te envio la direccion y los datos para confirmar el turno.</div>
+        </div>
+      </div>
+      <!-- Notes -->
+      <div style="display:flex; flex-direction:column; gap:16px;">
+        <div class="card" style="background:rgba(59,130,246,0.08);">
+          <div style="font-size:16px; font-weight:600; color:var(--accent-blue); margin-bottom:10px;">Puntos clave del flujo</div>
+          <div style="font-size:15px; color:var(--text-secondary); line-height:1.7;">
+            <div style="margin-bottom:8px;">1. Ofrece evaluacion + turnos inmediato (sin repetir "te ayudo a coordinar")</div>
+            <div style="margin-bottom:8px;">2. "Martes" con un solo martes disponible = seleccion inequivoca</div>
+            <div style="margin-bottom:8px;">3. Confirma turno + responde sobre OSDE en un solo mensaje</div>
+            <div style="margin-bottom:8px;">4. Usa "la Dra." + apellido (nunca nombre solo)</div>
+            <div>5. Continua con direccion, sena, anamnesis, sin re-ofrecer</div>
+          </div>
+        </div>
+        <div class="card" style="background:rgba(239,68,68,0.06); border-color:rgba(239,68,68,0.15);">
+          <div style="font-size:16px; font-weight:600; color:#f87171; margin-bottom:10px;">Lo que NO debe pasar</div>
+          <div style="font-size:15px; color:var(--text-secondary); line-height:1.7;">
+            <div style="margin-bottom:8px;">/ "Con solo Martes no queda claro cual preferis"</div>
+            <div style="margin-bottom:8px;">/ Derivar a humano por combinar turno + OS</div>
+            <div style="margin-bottom:8px;">/ Ignorar la pregunta de OSDE</div>
+            <div>/ Volver a ofrecer turnos despues de confirmar</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <footer class="slide-footer">
+    <span class="slide-number">07 / 10</span>
+    <span class="footer-brand">Clinica Dra. Laura Delgado — Uso interno</span>
+  </footer>
+</div>
+
+<!-- ============================================================
+     SLIDE 8 — TIPS PARA TESTEAR
+     ============================================================ -->
+<div class="slide" data-slide="8">
+  <div style="display:flex; flex-direction:column; height:100%;">
+    <div class="label" style="margin-bottom:16px;">Metodologia</div>
+    <h2 class="title-section" style="margin-bottom:32px;">Tips para testear</h2>
+    <div class="grid-2" style="flex:1; align-content:start; gap:32px;">
+      <div style="display:flex; flex-direction:column; gap:20px;">
+        <div class="card">
+          <div style="display:flex; gap:16px; align-items:center; margin-bottom:14px;">
+            <div style="width:48px; height:48px; border-radius:10px; background:rgba(59,130,246,0.15); display:flex; align-items:center; justify-content:center; font-size:24px; color:var(--accent-blue); font-weight:700;">1</div>
+            <div style="font-size:20px; font-weight:700;">Conversaciones separadas</div>
+          </div>
+          <div class="body-text" style="font-size:17px;">Cada escenario debe testearse en una conversacion NUEVA. Si se mezclan, el contexto de un test puede afectar otro.</div>
+        </div>
+        <div class="card">
+          <div style="display:flex; gap:16px; align-items:center; margin-bottom:14px;">
+            <div style="width:48px; height:48px; border-radius:10px; background:rgba(6,182,212,0.15); display:flex; align-items:center; justify-content:center; font-size:24px; color:var(--accent-cyan); font-weight:700;">2</div>
+            <div style="font-size:20px; font-weight:700;">Probar en secuencia</div>
+          </div>
+          <div class="body-text" style="font-size:17px;">Ademas de tests individuales, probar flujos encadenados: Escenario 2 (turno) / 3 (datos) / 8 (slot+OS). Esto verifica que el flujo completo funciona.</div>
+        </div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:20px;">
+        <div class="card">
+          <div style="display:flex; gap:16px; align-items:center; margin-bottom:14px;">
+            <div style="width:48px; height:48px; border-radius:10px; background:rgba(16,185,129,0.15); display:flex; align-items:center; justify-content:center; font-size:24px; color:var(--accent-green); font-weight:700;">3</div>
+            <div style="font-size:20px; font-weight:700;">Anotar textualmente</div>
+          </div>
+          <div class="body-text" style="font-size:17px;">Copiar y pegar exactamente lo que Paula responde. No parafrasear. El texto exacto permite comparar contra lo esperado y detectar variaciones.</div>
+        </div>
+        <div class="card">
+          <div style="display:flex; gap:16px; align-items:center; margin-bottom:14px;">
+            <div style="width:48px; height:48px; border-radius:10px; background:rgba(245,158,11,0.15); display:flex; align-items:center; justify-content:center; font-size:24px; color:var(--accent-amber); font-weight:700;">4</div>
+            <div style="font-size:20px; font-weight:700;">Capturas si algo falla</div>
+          </div>
+          <div class="body-text" style="font-size:17px;">Si un escenario no responde como se espera, tomar screenshot del chat completo. La captura exacta es la mejor forma de diagnosticar y corregir.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <footer class="slide-footer">
+    <span class="slide-number">08 / 10</span>
+    <span class="footer-brand">Clinica Dra. Laura Delgado — Uso interno</span>
+  </footer>
+</div>
+
+<!-- ============================================================
+     SLIDE 9 — PENDIENTES DE UI
+     ============================================================ -->
+<div class="slide" data-slide="9">
+  <div style="display:flex; flex-direction:column; height:100%;">
+    <div class="label" style="margin-bottom:16px;">Pendientes de configuracion</div>
+    <h2 class="title-section" style="margin-bottom:28px;">Acciones pendientes desde la UI</h2>
+    <div style="display:flex; flex-direction:column; gap:24px; flex:1;">
+      <div class="card" style="background:rgba(168,85,247,0.06); border-color:rgba(168,85,247,0.15);">
+        <div style="font-size:20px; font-weight:700; color:#c084fc; margin-bottom:16px;">FAQs a crear (seccion Preguntas Frecuentes)</div>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Pregunta</th>
+              <th>Respuesta</th>
+              <th style="width:100px;">Categoria</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style="color:var(--text-primary); font-weight:500;">La consulta se descuenta del tratamiento?</td>
+              <td>La consulta corresponde a una evaluacion completa. Ahi la doctora analiza tu situacion, te orienta sobre las opciones de tratamiento y define cual seria la alternativa mas adecuada para vos. Una vez realizada la evaluacion, se informa el plan y el presupuesto correspondiente.</td>
+              <td><span class="badge badge-db">precios</span></td>
+            </tr>
+            <tr>
+              <td style="color:var(--text-primary); font-weight:500;">Cuanto sale el tratamiento?</td>
+              <td>El presupuesto puede variar bastante segun cada caso y el tipo de rehabilitacion que necesite el paciente. Lo ideal es poder evaluarte y explicarte con claridad cuales serian las opciones mas adecuadas para vos. Te ayudo a coordinar un turno con la Dra. Laura Delgado.</td>
+              <td><span class="badge badge-db">precios</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="card" style="background:rgba(59,130,246,0.06); border-color:rgba(59,130,246,0.15);">
+        <div style="font-size:20px; font-weight:700; color:var(--accent-blue); margin-bottom:16px;">Obras sociales a verificar (seccion Configuracion)</div>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Obra social</th>
+              <th>Estado</th>
+              <th>Verificar</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style="color:var(--text-primary); font-weight:500;">OSDE</td>
+              <td><span class="badge badge-alta">Restringida</span></td>
+              <td>Que implantes NO este marcado como cubierto. Solo consultas y cirugias maxilofaciales.</td>
+            </tr>
+            <tr>
+              <td style="color:var(--text-primary); font-weight:500;">ISSN</td>
+              <td><span class="badge badge-critical">Derivacion</span></td>
+              <td>Que tenga el numero de CIMO: +54 9 299 329-4089 (no "[numero de telefono]").</td>
+            </tr>
+            <tr>
+              <td style="color:var(--text-primary); font-weight:500;">Galeno, Medicus, etc.</td>
+              <td><span class="badge badge-code">Aceptada</span></td>
+              <td>Sin detalle de cobertura por tratamiento. Solo confirmar que se acepta.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <footer class="slide-footer">
+    <span class="slide-number">09 / 10</span>
+    <span class="footer-brand">Clinica Dra. Laura Delgado — Uso interno</span>
+  </footer>
+</div>
+
+<!-- ============================================================
+     SLIDE 10 — CHECKLIST FINAL
+     ============================================================ -->
+<div class="slide" data-slide="10">
+  <div style="display:flex; flex-direction:column; height:100%;">
+    <div class="label" style="margin-bottom:16px;">Checklist</div>
+    <h2 class="title-section" style="margin-bottom:28px;">Checklist de verificacion final</h2>
+    <div class="grid-2" style="flex:1; align-content:start; gap:32px;">
+      <div style="display:flex; flex-direction:column; gap:4px;">
+        <div style="font-size:20px; font-weight:700; margin-bottom:12px; color:var(--accent-cyan);">Comportamiento del agente</div>
+        <div class="check-item"><div class="check-box"></div><div class="body-text" style="font-size:16px;">Saludo incluye precio + explicacion de la evaluacion</div></div>
+        <div class="check-item"><div class="check-box"></div><div class="body-text" style="font-size:16px;">Pide datos con tono profesional (nunca grotesco)</div></div>
+        <div class="check-item"><div class="check-box"></div><div class="body-text" style="font-size:16px;">Confirma turno verbalmente antes de pedir datos</div></div>
+        <div class="check-item"><div class="check-box"></div><div class="body-text" style="font-size:16px;">No menciona anestesia sin aguja</div></div>
+        <div class="check-item"><div class="check-box"></div><div class="body-text" style="font-size:16px;">No repite CTA mas de 2 veces</div></div>
+        <div class="check-item"><div class="check-box"></div><div class="body-text" style="font-size:16px;">CTAs asertivos (sin "si queres")</div></div>
+        <div class="check-item"><div class="check-box"></div><div class="body-text" style="font-size:16px;">Siempre usa "Dra." + apellido</div></div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:4px;">
+        <div style="font-size:20px; font-weight:700; margin-bottom:12px; color:var(--accent-cyan);">Obras sociales y contenido</div>
+        <div class="check-item"><div class="check-box"></div><div class="body-text" style="font-size:16px;">Responde cobertura OSDE correctamente</div></div>
+        <div class="check-item"><div class="check-box"></div><div class="body-text" style="font-size:16px;">Resuelve slot + OS en un solo mensaje</div></div>
+        <div class="check-item"><div class="check-box"></div><div class="body-text" style="font-size:16px;">Responde sobre descuento con texto aprobado</div></div>
+        <div class="check-item"><div class="check-box"></div><div class="body-text" style="font-size:16px;">No re-pregunta por turnos si ya dio datos</div></div>
+        <div class="check-item"><div class="check-box"></div><div class="body-text" style="font-size:16px;">Presupuesto: responde sin dar numeros</div></div>
+        <div class="check-item"><div class="check-box"></div><div class="body-text" style="font-size:16px;">Situaciones emocionales: texto aprobado o derivar</div></div>
+        <div class="check-item"><div class="check-box"></div><div class="body-text" style="font-size:16px;">FAQs de precios cargadas en el sistema</div></div>
+      </div>
+    </div>
+  </div>
+  <footer class="slide-footer">
+    <span class="slide-number">10 / 10</span>
+    <span class="footer-brand">Clinica Dra. Laura Delgado — Uso interno</span>
+  </footer>
+</div>
+
+</div><!-- /scale-wrapper -->
+</div><!-- /slideshow -->
+
+<!-- Navigation -->
+<div class="nav-controls">
+  <button class="nav-btn" id="prev-btn">&#8592;</button>
+  <div class="nav-dots" id="nav-dots"></div>
+  <button class="nav-btn" id="next-btn">&#8594;</button>
+</div>
+<button class="export-btn" onclick="window.print()">Exportar PDF</button>
+
+<script>
+  function scaleSlides() {
+    const w = document.getElementById('scale-wrapper');
+    const sx = window.innerWidth / 1920, sy = window.innerHeight / 1080;
+    const s = Math.min(sx, sy);
+    w.style.transform = `scale(${s})`;
+    w.style.left = `${(window.innerWidth - 1920 * s) / 2}px`;
+    w.style.top = `${(window.innerHeight - 1080 * s) / 2}px`;
+  }
+  window.addEventListener('resize', scaleSlides); scaleSlides();
+
+  const slides = document.querySelectorAll('.slide');
+  const dots = document.getElementById('nav-dots');
+  let cur = 0;
+  slides.forEach((_, i) => {
+    const d = document.createElement('div');
+    d.className = 'nav-dot' + (i === 0 ? ' active' : '');
+    d.addEventListener('click', () => go(i));
+    dots.appendChild(d);
+  });
+  function go(n) {
+    slides[cur].classList.remove('active');
+    dots.children[cur].classList.remove('active');
+    cur = (n + slides.length) % slides.length;
+    slides[cur].classList.add('active');
+    dots.children[cur].classList.add('active');
+  }
+  document.getElementById('prev-btn').addEventListener('click', () => go(cur - 1));
+  document.getElementById('next-btn').addEventListener('click', () => go(cur + 1));
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') go(cur + 1);
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') go(cur - 1);
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,149 @@
+{
+  "services": [
+    {
+      "type": "postgres",
+      "data": {
+        "projectName": "dentalforgepruebas",
+        "serviceName": "postgres",
+        "image": "pgvector/pgvector:pg17",
+        "password": "__RELLENAR_PASSWORD_PG__"
+      }
+    },
+    {
+      "type": "redis",
+      "data": {
+        "projectName": "dentalforgepruebas",
+        "serviceName": "redis",
+        "image": "redis:7",
+        "password": "__RELLENAR_PASSWORD_REDIS__"
+      }
+    },
+    {
+      "type": "app",
+      "data": {
+        "projectName": "dentalforgepruebas",
+        "serviceName": "orchestrator",
+        "source": {
+          "type": "git",
+          "repo": "https://github.com/adriangmrraa/clinicforge",
+          "ref": "main",
+          "path": "/orchestrator_service"
+        },
+        "build": {
+          "type": "dockerfile"
+        },
+        "env": "OPENAI_API_KEY=__RELLENAR__\nPOSTGRES_DSN=postgres://postgres:__RELLENAR_PASSWORD_PG__@dentalforgepruebas_postgres:5432/postgres?sslmode=disable\nREDIS_URL=redis://default:__RELLENAR_PASSWORD_REDIS__@dentalforgepruebas_redis:6379\nCEO_ACCESS_KEY=__RELLENAR__\nCEO_SECRET_KEY=__RELLENAR__\nCORS_ALLOWED_ORIGINS=__RELLENAR_URL_FRONTEND__\nFRONTEND_URL=__RELLENAR_URL_FRONTEND__\nPLATFORM_URL=__RELLENAR_URL_FRONTEND__\nMETA_GRAPH_API_VERSION=v21.0\nMETA_API_TIMEOUT=10\nMETA_CACHE_TTL=172800\nMETA_ADS_TOKEN=__RELLENAR__\nMETA_APP_ID=__RELLENAR__\nMETA_APP_SECRET=__RELLENAR__\nMETA_REDIRECT_URI=__RELLENAR_URL_ORCHESTRATOR__/admin/marketing/meta-auth/callback\nMETA_SERVICE_URL=http://metaservice:8000\nGOOGLE_CREDENTIALS=__RELLENAR_JSON_ESCAPADO__\nENVIRONMENT=production\nLOG_LEVEL=info\nORCHESTRATOR_PORT=8000\nPLATFORM_UI_PORT=3000\nCREDENTIALS_FERNET_KEY=__RELLENAR__\nSMTP_HOST=__RELLENAR__\nSMTP_PORT=465\nSMTP_USER=__RELLENAR__\nSMTP_PASS=__RELLENAR__\nSMTP_SENDER=__RELLENAR__\nWHATSAPP_SERVICE_URL=http://whatsapp:8002\nBFF_SERVICE_URL=http://bff_service:8001\nINTERNAL_API_TOKEN=__RELLENAR__\nADMIN_TOKEN=__RELLENAR__\nJWT_SECRET_KEY=__RELLENAR__\nCSP_EXTRA_DOMAINS=\nENCRYPTION_KEY=__RELLENAR__\nMEDIA_PROXY_SECRET=__RELLENAR__",
+        "deploy": {
+          "replicas": 1,
+          "command": null,
+          "zeroDowntime": true
+        },
+        "domains": [],
+        "mounts": [
+          {
+            "type": "volume",
+            "name": "orchestrator_uploads",
+            "mountPath": "/app/uploads"
+          },
+          {
+            "type": "volume",
+            "name": "orchestrator_media",
+            "mountPath": "/app/media"
+          }
+        ]
+      }
+    },
+    {
+      "type": "app",
+      "data": {
+        "projectName": "dentalforgepruebas",
+        "serviceName": "bff_service",
+        "source": {
+          "type": "git",
+          "repo": "https://github.com/adriangmrraa/clinicforge",
+          "ref": "main",
+          "path": "/bff_service"
+        },
+        "build": {
+          "type": "dockerfile"
+        },
+        "env": "POSTGRES_DSN=postgres://postgres:__RELLENAR_PASSWORD_PG__@dentalforgepruebas_postgres:5432/postgres?sslmode=disable\nREDIS_URL=redis://default:__RELLENAR_PASSWORD_REDIS__@dentalforgepruebas_redis:6379\nORCHESTRATOR_SERVICE_URL=http://orchestrator:8000\nWHATSAPP_SERVICE_URL=http://whatsapp:8002\nALLOWED_ORIGINS=__RELLENAR_URL_FRONTEND__\nINTERNAL_API_TOKEN=__RELLENAR__\nADMIN_TOKEN=__RELLENAR__\nJWT_SECRET_KEY=__RELLENAR__\nLOG_LEVEL=INFO",
+        "deploy": {
+          "replicas": 1,
+          "command": null,
+          "zeroDowntime": true
+        },
+        "domains": []
+      }
+    },
+    {
+      "type": "app",
+      "data": {
+        "projectName": "dentalforgepruebas",
+        "serviceName": "frontend",
+        "source": {
+          "type": "git",
+          "repo": "https://github.com/adriangmrraa/clinicforge",
+          "ref": "main",
+          "path": "/frontend_react"
+        },
+        "build": {
+          "type": "dockerfile"
+        },
+        "env": "VITE_API_URL=__RELLENAR_URL_BFF__\nVITE_BFF_URL=__RELLENAR_URL_BFF__\nVITE_WS_URL=__RELLENAR_WSS_ORCHESTRATOR__\nNODE_ENV=production\nVITE_APP_NAME=ClinicForge\nVITE_FACEBOOK_APP_ID=__RELLENAR__\nVITE_META_CONFIG_ID=__RELLENAR__",
+        "deploy": {
+          "replicas": 1,
+          "command": null,
+          "zeroDowntime": true
+        },
+        "domains": []
+      }
+    },
+    {
+      "type": "app",
+      "data": {
+        "projectName": "dentalforgepruebas",
+        "serviceName": "whatsapp",
+        "source": {
+          "type": "git",
+          "repo": "https://github.com/adriangmrraa/clinicforge",
+          "ref": "main",
+          "path": "/whatsapp_service"
+        },
+        "build": {
+          "type": "dockerfile"
+        },
+        "env": "YCLOUD_API_KEY=__RELLENAR__\nYCLOUD_WEBHOOK_SECRET=__RELLENAR__\nORCHESTRATOR_SERVICE_URL=http://orchestrator:8000\nINTERNAL_API_TOKEN=__RELLENAR__\nLOG_LEVEL=INFO\nREDIS_URL=redis://default:__RELLENAR_PASSWORD_REDIS__@dentalforgepruebas_redis:6379",
+        "deploy": {
+          "replicas": 1,
+          "command": null,
+          "zeroDowntime": true
+        },
+        "domains": []
+      }
+    },
+    {
+      "type": "app",
+      "data": {
+        "projectName": "dentalforgepruebas",
+        "serviceName": "metaservice",
+        "source": {
+          "type": "git",
+          "repo": "https://github.com/adriangmrraa/clinicforge",
+          "ref": "main",
+          "path": "/meta_service"
+        },
+        "build": {
+          "type": "dockerfile"
+        },
+        "env": "META_GRAPH_API_VERSION=v21.0\nMETA_API_TIMEOUT=10\nMETA_CACHE_TTL=172800\nMETA_ADS_TOKEN=__RELLENAR__\nMETA_APP_ID=__RELLENAR__\nMETA_APP_SECRET=__RELLENAR__\nMETA_VERIFY_TOKEN=__RELLENAR__\nORCHESTRATOR_URL=http://orchestrator:8000\nINTERNAL_SECRET_KEY=__RELLENAR__\nINTERNAL_API_TOKEN=__RELLENAR__\nADMIN_TOKEN=__RELLENAR__\nJWT_SECRET_KEY=__RELLENAR__\nPORT=8000",
+        "deploy": {
+          "replicas": 1,
+          "command": null,
+          "zeroDowntime": true
+        },
+        "domains": []
+      }
+    }
+  ]
+}

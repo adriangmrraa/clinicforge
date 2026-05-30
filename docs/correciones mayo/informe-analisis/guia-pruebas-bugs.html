@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Guia de Pruebas — Correcciones Bot Paula</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700;800;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #050505; font-family: 'Space Grotesk', sans-serif; color: #FFFFFF; }
+    .page { width: 1920px; height: 1080px; background: #050505; position: relative; overflow: hidden; page-break-after: always; break-after: page; }
+    .page-content { position: absolute; top: 90px; left: 100px; right: 100px; bottom: 90px; display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start; }
+    .page-footer { position: absolute; bottom: 36px; left: 80px; right: 80px; display: flex; align-items: center; justify-content: space-between; }
+    .page-number { font-size: 12px; font-weight: 500; color: rgba(255,255,255,0.18); letter-spacing: 2px; }
+    .page-subject { font-size: 12px; font-weight: 500; color: rgba(255,255,255,0.18); letter-spacing: 1px; }
+
+    .accent-red { color: #E11D48; }
+    .accent-cyan { color: #00E5FF; }
+    .accent-green { color: #059669; }
+
+    .top-divider { position: absolute; top: 46px; left: 100px; right: 100px; height: 2px; background: linear-gradient(90deg, #E11D48 0%, rgba(0,229,255,0.3) 100%); }
+
+    #page-1 .page-content { justify-content: center; gap: 24px; }
+    .doc-label { font-size: 15px; font-weight: 600; color: #E11D48; letter-spacing: 4px; text-transform: uppercase; }
+    .doc-title { font-size: 90px; font-weight: 900; letter-spacing: -5px; line-height: 1.0; }
+    .doc-title .hl { color: #00E5FF; }
+    .doc-sub { font-size: 28px; font-weight: 600; color: rgba(255,255,255,0.50); }
+    .doc-meta { display: flex; gap: 40px; margin-top: 16px; }
+    .doc-meta-item { display: flex; flex-direction: column; gap: 4px; }
+    .doc-meta-label { font-size: 11px; font-weight: 500; color: rgba(255,255,255,0.22); letter-spacing: 2px; text-transform: uppercase; }
+    .doc-meta-value { font-size: 16px; font-weight: 600; color: rgba(255,255,255,0.80); }
+
+    .sec-num { font-size: 12px; font-weight: 600; color: rgba(0,229,255,0.5); letter-spacing: 3px; margin-bottom: 4px; }
+    .sec-title { font-size: 36px; font-weight: 900; letter-spacing: -2px; margin-bottom: 4px; }
+    .sec-sub { font-size: 16px; font-weight: 600; color: rgba(255,255,255,0.45); margin-bottom: 16px; }
+
+    .test-card {
+      background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 12px;
+      padding: 16px 20px;
+      display: grid;
+      grid-template-columns: 50px 360px 1fr;
+      gap: 16px;
+      align-items: center;
+      width: 100%;
+      margin-bottom: 8px;
+    }
+    .test-num { font-size: 22px; font-weight: 900; color: rgba(0,229,255,0.3); }
+    .test-input { font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 500; color: #FFFFFF; background: rgba(255,255,255,0.04); border-radius: 8px; padding: 8px 12px; border-left: 3px solid #00E5FF; }
+    .test-checks { font-family: 'Inter', sans-serif; font-size: 12px; line-height: 1.5; }
+    .test-checks .ok { color: #059669; }
+    .test-checks .no { color: #E11D48; }
+    .test-checks .info { color: rgba(255,255,255,0.50); }
+
+    .checklist-table { width: 100%; }
+    .cl-row {
+      display: grid; grid-template-columns: 50px 200px 1fr 100px;
+      gap: 10px; padding: 8px 12px;
+      align-items: center;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      font-family: 'Inter', sans-serif; font-size: 12px;
+    }
+    .cl-row.header {
+      font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;
+      color: rgba(255,255,255,0.25); border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+    .cl-row .num { font-weight: 900; color: rgba(0,229,255,0.3); font-size: 14px; }
+    .cl-row .name { font-weight: 600; color: rgba(255,255,255,0.80); }
+    .cl-row .desc { color: rgba(255,255,255,0.50); }
+    .cl-row .check { text-align: center; font-size: 18px; }
+
+    @media print {
+      body { background: #050505 !important; margin: 0; padding: 0; }
+      .page { page-break-after: always; break-after: page; width: 1920px !important; height: 1080px !important; overflow: hidden !important; }
+      @page { size: 1920px 1080px landscape; margin: 0; }
+      * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- SLIDE 1: PORTADA -->
+<div class="page" id="page-1">
+  <div class="top-divider"></div>
+  <div class="page-content">
+    <div class="doc-label">Plan de Pruebas</div>
+    <h1 class="doc-title">GUIA DE PRUEBAS<br><span class="hl">BOT PAULA</span></h1>
+    <p class="doc-sub">Verificacion de las 9 correcciones · Mayo 2026</p>
+    <div class="doc-meta">
+      <div class="doc-meta-item"><span class="doc-meta-label">Clinica</span><span class="doc-meta-value">Dra. Laura Delgado</span></div>
+      <div class="doc-meta-item"><span class="doc-meta-label">Bugs a verificar</span><span class="doc-meta-value">9</span></div>
+      <div class="doc-meta-item"><span class="doc-meta-label">Canal</span><span class="doc-meta-value">WhatsApp</span></div>
+      <div class="doc-meta-item"><span class="doc-meta-label">Tiempo estimado</span><span class="doc-meta-value">~20 min</span></div>
+    </div>
+  </div>
+  <div class="page-footer">
+    <span class="page-number">01 / 04</span>
+    <span class="page-subject">Guia de Pruebas · Bot Paula · Mayo 2026</span>
+  </div>
+</div>
+
+<!-- SLIDE 2: B1-B5 -->
+<div class="page" id="page-2">
+  <div class="page-content">
+    <span class="sec-num">PRUEBAS 1 A 5</span>
+    <h2 class="sec-title">Bugs B1 al B5</h2>
+    <p class="sec-sub">Envia estos mensajes al Bot Paula por WhatsApp y verifica las respuestas</p>
+
+    <div class="test-card">
+      <span class="test-num">B1</span>
+      <div class="test-input">"me hice implantes y me fue mal"</div>
+      <div class="test-checks">
+        <span class="no">✕ NO:</span> "parece que ya tenes un historial con la clinica"<br>
+        <span class="ok">✓ SI:</span> "lamento que hayas tenido una mala experiencia previa" (sin asumir donde fue)
+      </div>
+    </div>
+
+    <div class="test-card">
+      <span class="test-num">B1b</span>
+      <div class="test-input">"la doctora me dijo que vuelva a control"</div>
+      <div class="test-checks">
+        <span class="ok">✓ SI:</span> debe activar deteccion de paciente existente y derivar al equipo<br>
+        <span class="info">→ Caso legitimo de MIGRACION. NO aplicar F1.</span>
+      </div>
+    </div>
+
+    <div class="test-card">
+      <span class="test-num">B2</span>
+      <div class="test-input">"me cubre el implante con OSDE?"</div>
+      <div class="test-checks">
+        <span class="no">✕ NO:</span> "Si, trabajamos con OSDE" a secas<br>
+        <span class="no">✕ NO:</span> "trabajamos con OSDE para consultas y tratamientos quirurgicos"<br>
+        <span class="ok">✓ SI:</span> "La consulta puede ser por OSDE. En cuanto a implantes, se define despues de la evaluacion"
+      </div>
+    </div>
+
+    <div class="test-card">
+      <span class="test-num">B2b</span>
+      <div class="test-input">"la consulta me cubre con OSDE?"</div>
+      <div class="test-checks">
+        <span class="ok">✓ SI:</span> "Si, la consulta puede ser por OSDE" (esto es correcto)
+      </div>
+    </div>
+
+    <div class="test-card">
+      <span class="test-num">B3</span>
+      <div class="test-input">"tengo OSDE, me puede hacer una limpieza la Dra. Delgado?"</div>
+      <div class="test-checks">
+        <span class="no">✕ NO:</span> "Si, la limpieza esta cubierta por OSDE"<br>
+        <span class="ok">✓ SI:</span> "La consulta puede ser por OSDE. La limpieza es particular"
+      </div>
+    </div>
+
+    <div class="test-card">
+      <span class="test-num">B4</span>
+      <div class="test-input">"me duele una muela, me dijeron que necesito un conducto"</div>
+      <div class="test-checks">
+        <span class="no">✕ NO:</span> "Si, eso entra en Endodoncia"<br>
+        <span class="no">✕ NO:</span> "Te ayudo a coordinar con la Dra. Laura Delgado"<br>
+        <span class="ok">✓ SI:</span> contener el dolor + escalar al equipo
+      </div>
+    </div>
+
+    <div class="test-card">
+      <span class="test-num">B5</span>
+      <div class="test-input">"estoy con mucho dolor"</div>
+      <div class="test-checks">
+        <span class="no">✕ NO:</span> "la urgencia la puede hacer la Dra. X, Y o Z"<br>
+        <span class="ok">✓ SI:</span> contener + preguntar hace cuanto + resolver
+      </div>
+    </div>
+  </div>
+  <div class="page-footer">
+    <span class="page-number">02 / 04</span>
+    <span class="page-subject">Guia de Pruebas · Bot Paula · Mayo 2026</span>
+  </div>
+</div>
+
+<!-- SLIDE 3: B6-B9 -->
+<div class="page" id="page-3">
+  <div class="page-content">
+    <span class="sec-num">PRUEBAS 6 A 9</span>
+    <h2 class="sec-title">Bugs B6 al B9</h2>
+    <p class="sec-sub">Continua enviando estos mensajes al Bot Paula</p>
+
+    <div class="test-card">
+      <span class="test-num">B6</span>
+      <div class="test-input">"tengo ISSN, puedo atenderme en el consultorio de la Dra. Delgado?"</div>
+      <div class="test-checks">
+        <span class="no">✕ NO:</span> solo mencionar CIMO sin aclarar el resto<br>
+        <span class="ok">✓ SI:</span> "Cirugia maxilofacial → CIMO. Odontologia general → particular"
+      </div>
+    </div>
+
+    <div class="test-card">
+      <span class="test-num">B7</span>
+      <div class="test-input">(verificar en CUALQUIER conversacion)</div>
+      <div class="test-checks">
+        <span class="no">✕ NO:</span> debe aparecer la frase "trabajamos con OSDE para consultas y tratamientos quirurgicos" en NINGUNA respuesta
+      </div>
+    </div>
+
+    <div class="test-card">
+      <span class="test-num">B8</span>
+      <div class="test-input">"tengo ISSN, necesito una limpieza y un arreglo"</div>
+      <div class="test-checks">
+        <span class="no">✕ NO:</span> mencionar CIMO (CIMO es solo para cirugia)<br>
+        <span class="ok">✓ SI:</span> "Odontologia general → atencion particular"<br>
+        <span class="ok">✓ SI:</span> el paciente NO debe decir "no entiendo"
+      </div>
+    </div>
+
+    <div class="test-card">
+      <span class="test-num">B9</span>
+      <div class="test-input">"quiero informacion sobre ortodoncia"</div>
+      <div class="test-checks">
+        <span class="no">✕ NO:</span> "Te ayudo a coordinar con la Dra. Laura Delgado"<br>
+        <span class="ok">✓ SI:</span> "Este tratamiento lo realiza el equipo" o similar
+      </div>
+    </div>
+  </div>
+  <div class="page-footer">
+    <span class="page-number">03 / 04</span>
+    <span class="page-subject">Guia de Pruebas · Bot Paula · Mayo 2026</span>
+  </div>
+</div>
+
+<!-- SLIDE 4: CHECKLIST -->
+<div class="page" id="page-4">
+  <div class="page-content">
+    <span class="sec-num">CHECKLIST</span>
+    <h2 class="sec-title">Lista de verificacion</h2>
+    <p class="sec-sub">Marcá cada prueba al completarla</p>
+
+    <div class="checklist-table">
+      <div class="cl-row header">
+        <span>#</span><span>Prueba</span><span>Que verificar</span><span>Resultado</span>
+      </div>
+      <div class="cl-row">
+        <span class="num">B1</span><span class="name">Tratamiento previo</span>
+        <span class="desc">"implantes" → no asume historial</span>
+        <span class="check">⬜</span>
+      </div>
+      <div class="cl-row">
+        <span class="num">B1b</span><span class="name">Paciente real</span>
+        <span class="desc">"la doctora me dijo" → migra correctamente</span>
+        <span class="check">⬜</span>
+      </div>
+      <div class="cl-row">
+        <span class="num">B2</span><span class="name">OSDE + implantes</span>
+        <span class="desc">no dice "si" generico, diferencia consulta vs tratamiento</span>
+        <span class="check">⬜</span>
+      </div>
+      <div class="cl-row">
+        <span class="num">B2b</span><span class="name">OSDE consulta</span>
+        <span class="desc">"consulta cubierta?" → si, correcto</span>
+        <span class="check">⬜</span>
+      </div>
+      <div class="cl-row">
+        <span class="num">B3</span><span class="name">Equipo + OSDE</span>
+        <span class="desc">limpieza con OSDE → particular</span>
+        <span class="check">⬜</span>
+      </div>
+      <div class="cl-row">
+        <span class="num">B4</span><span class="name">Endodoncia</span>
+        <span class="desc">conducto → escala equipo, no Dra.</span>
+        <span class="check">⬜</span>
+      </div>
+      <div class="cl-row">
+        <span class="num">B5</span><span class="name">Urgencias</span>
+        <span class="desc">dolor → no lista profesionales</span>
+        <span class="check">⬜</span>
+      </div>
+      <div class="cl-row">
+        <span class="num">B6</span><span class="name">ISSN</span>
+        <span class="desc">consultorio → particular claro</span>
+        <span class="check">⬜</span>
+      </div>
+      <div class="cl-row">
+        <span class="num">B7</span><span class="name">Frase OSDE</span>
+        <span class="desc">"OSDE para tratamientos quirurgicos" NO aparece</span>
+        <span class="check">⬜</span>
+      </div>
+      <div class="cl-row">
+        <span class="num">B8</span><span class="name">ISSN + limpieza</span>
+        <span class="desc">no confunde CIMO con odontologia general</span>
+        <span class="check">⬜</span>
+      </div>
+      <div class="cl-row">
+        <span class="num">B9</span><span class="name">Ortodoncia</span>
+        <span class="desc">no nombra a la Dra. Delgado</span>
+        <span class="check">⬜</span>
+      </div>
+    </div>
+
+    <div style="margin-top:24px; padding:16px 20px; background:rgba(0,229,255,0.04); border:1px solid rgba(0,229,255,0.12); border-radius:10px; width:100%;">
+      <p style="font-family:'Inter',sans-serif; font-size:13px; color:rgba(255,255,255,0.55); line-height:1.6;">
+        <strong style="color:#00E5FF;">Nota:</strong> Si alguna prueba falla, anotá exactamente que respondio el bot y envialo para revisar el caso.
+        Los bugs <strong>B3, B6 y B8</strong> dependen de que los datos de OSDE e ISSN en DB esten correctamente cargados.
+      </p>
+    </div>
+  </div>
+  <div class="page-footer">
+    <span class="page-number">04 / 04</span>
+    <span class="page-subject">Guia de Pruebas · Bot Paula · Mayo 2026</span>
+  </div>
+</div>
+
+</body>
+</html>

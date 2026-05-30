@@ -1,0 +1,6 @@
+Leé docs/SECURITY_AUDIT_2026-04-11.md y                                    docs/OPENCODE_SECURITY_REMEDIATION_PROMPT.md. Ejecutá los 3 packs de
+  remediación en orden (Pack 1 primero, luego 2, luego 3). Después de cada
+  pack corré las verificaciones indicadas — no avances al siguiente pack si
+   alguna falla. Un commit por pack con conventional commits
+  (fix(security): ...). No agregues features, solo corregí
+  vulnerabilidades.

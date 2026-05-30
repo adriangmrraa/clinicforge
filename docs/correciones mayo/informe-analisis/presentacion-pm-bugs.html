@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Resumen de Correcciones — Bot Paula | Clínica Dra. Laura Delgado</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700;800;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #050505; font-family: 'Space Grotesk', sans-serif; color: #FFFFFF; }
+
+    .page {
+      width: 1920px; height: 1080px;
+      background: #050505;
+      position: relative;
+      overflow: hidden;
+      page-break-after: always;
+      break-after: page;
+    }
+    .page-content {
+      position: absolute;
+      top: 100px; left: 100px; right: 100px; bottom: 100px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      justify-content: flex-start;
+    }
+
+    .page-footer {
+      position: absolute;
+      bottom: 40px; left: 80px; right: 80px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .page-number {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 13px; font-weight: 500;
+      color: rgba(255,255,255,0.20);
+      letter-spacing: 2px;
+    }
+    .page-subject {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 13px; font-weight: 500;
+      color: rgba(255,255,255,0.20);
+      letter-spacing: 1px;
+    }
+
+    .accent-red { color: #E11D48; }
+    .accent-cyan { color: #00E5FF; }
+    .accent-green { color: #059669; }
+
+    /* Slide 1 - Portada */
+    .top-divider {
+      position: absolute;
+      top: 50px; left: 100px; right: 100px;
+      height: 2px;
+      background: linear-gradient(90deg, #E11D48 0%, rgba(0,229,255,0.3) 100%);
+    }
+    #page-1 .page-content { justify-content: center; gap: 30px; }
+    .doc-label {
+      font-size: 16px; font-weight: 600; color: #E11D48;
+      letter-spacing: 4px; text-transform: uppercase;
+    }
+    .doc-title { font-size: 100px; font-weight: 900; letter-spacing: -5px; line-height: 1.0; }
+    .doc-title .hl { color: #00E5FF; }
+    .doc-sub { font-size: 32px; font-weight: 600; color: rgba(255,255,255,0.50); }
+    .doc-meta { display: flex; gap: 50px; margin-top: 20px; }
+    .doc-meta-item { display: flex; flex-direction: column; gap: 6px; }
+    .doc-meta-label { font-size: 12px; font-weight: 500; color: rgba(255,255,255,0.25); letter-spacing: 2px; text-transform: uppercase; }
+    .doc-meta-value { font-size: 18px; font-weight: 600; color: rgba(255,255,255,0.80); }
+
+    /* Headers genéricos */
+    .sec-num { font-size: 13px; font-weight: 600; color: rgba(0,229,255,0.5); letter-spacing: 3px; margin-bottom: 4px; }
+    .sec-title { font-size: 42px; font-weight: 900; letter-spacing: -2px; margin-bottom: 6px; }
+    .sec-sub { font-size: 18px; font-weight: 600; color: rgba(255,255,255,0.45); margin-bottom: 20px; }
+
+    /* Cards de bugs */
+    .intro-grid {
+      display: grid; grid-template-columns: 1fr 1fr 1fr;
+      gap: 16px; width: 100%;
+    }
+    .intro-card {
+      background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 12px; padding: 20px 22px;
+    }
+    .intro-card .num { font-size: 28px; font-weight: 900; color: rgba(0,229,255,0.3); margin-bottom: 6px; }
+    .intro-card h3 { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+    .intro-card .badge {
+      display: inline-block;
+      font-size: 10px; font-weight: 700; letter-spacing: 1px;
+      padding: 3px 10px; border-radius: 4px; margin-bottom: 8px;
+    }
+    .badge-prompt { background: rgba(0,229,255,0.15); color: #00E5FF; border: 1px solid rgba(0,229,255,0.2); }
+    .badge-db { background: rgba(5,150,105,0.15); color: #059669; border: 1px solid rgba(5,150,105,0.2); }
+    .badge-both { background: rgba(225,29,72,0.15); color: #E11D48; border: 1px solid rgba(225,29,72,0.2); }
+    .intro-card p { font-size: 13px; font-weight: 400; color: rgba(255,255,255,0.50); line-height: 1.4; }
+
+    /* Slide de detalle de bug - antes/después */
+    .bug-detail {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 30px; width: 100%;
+    }
+    .bug-col { display: flex; flex-direction: column; gap: 14px; }
+    .bug-col h3 { font-size: 18px; font-weight: 700; }
+    .chat-bubble {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px; padding: 14px 18px;
+      font-family: 'Inter', sans-serif;
+      font-size: 14px; font-weight: 400;
+      color: rgba(255,255,255,0.80);
+      line-height: 1.5;
+    }
+    .chat-bubble .patient { color: #00E5FF; font-weight: 600; }
+    .chat-bubble .bot-bad { color: #E11D48; font-weight: 600; }
+    .chat-bubble .bot-good { color: #059669; font-weight: 600; }
+    .chat-bubble .divider { border-top: 1px dashed rgba(255,255,255,0.10); margin: 8px 0; }
+
+    .fix-label {
+      display: inline-block;
+      font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+      padding: 4px 12px; border-radius: 4px; margin-bottom: 4px;
+    }
+    .fix-label.where { background: rgba(0,229,255,0.12); color: #00E5FF; border: 1px solid rgba(0,229,255,0.2); }
+    .fix-label.what { background: rgba(5,150,105,0.12); color: #059669; border: 1px solid rgba(5,150,105,0.2); }
+
+    .fix-list { width: 100%; }
+    .fix-item {
+      display: grid; grid-template-columns: 80px 1fr;
+      gap: 12px; padding: 8px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      font-family: 'Inter', sans-serif;
+      font-size: 13px;
+    }
+    .fix-item:last-child { border-bottom: none; }
+    .fix-item .loc { font-weight: 600; color: rgba(255,255,255,0.50); }
+    .fix-item .desc { color: rgba(255,255,255,0.70); }
+
+    /* Resumen final */
+    .summary-table { width: 100%; }
+    .sum-row {
+      display: grid; grid-template-columns: 50px 150px 1fr 120px;
+      gap: 12px; padding: 10px 14px;
+      align-items: center;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      font-family: 'Inter', sans-serif;
+      font-size: 13px;
+    }
+    .sum-row.header {
+      font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;
+      color: rgba(255,255,255,0.30); border-bottom: 1px solid rgba(255,255,255,0.10);
+    }
+    .sum-row .num { font-weight: 900; color: rgba(0,229,255,0.4); font-size: 16px; }
+    .sum-row .name { font-weight: 600; color: rgba(255,255,255,0.80); }
+    .sum-row .desc { color: rgba(255,255,255,0.55); }
+    .sum-row .status { font-weight: 700; font-size: 11px; text-align: center; }
+    .status-done { color: #059669; }
+    .status-verify { color: #f59e0b; }
+
+    @media print {
+      body { background: #050505 !important; margin: 0; padding: 0; }
+      .page { page-break-after: always; break-after: page; width: 1920px !important; height: 1080px !important; overflow: hidden !important; }
+      @page { size: 1920px 1080px landscape; margin: 0; }
+      * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ===== SLIDE 1: PORTADA ===== -->
+<div class="page" id="page-1">
+  <div class="top-divider"></div>
+  <div class="page-content">
+    <div class="doc-label">Informe de Correcciones</div>
+    <h1 class="doc-title">BOT <span class="hl">PAULA</span><br>CORRECCIONES MAYO 2026</h1>
+    <p class="doc-sub">Clínica Dra. Laura Delgado · 9 bugs resueltos</p>
+    <div class="doc-meta">
+      <div class="doc-meta-item">
+        <span class="doc-meta-label">Pruebas realizadas</span>
+        <span class="doc-meta-value">14–15 de Mayo 2026</span>
+      </div>
+      <div class="doc-meta-item">
+        <span class="doc-meta-label">Responsable</span>
+        <span class="doc-meta-value">Dra. Maria Laura Delgado</span>
+      </div>
+      <div class="doc-meta-item">
+        <span class="doc-meta-label">Bugs detectados</span>
+        <span class="doc-meta-value accent-red">9</span>
+      </div>
+      <div class="doc-meta-item">
+        <span class="doc-meta-label">Commits en producción</span>
+        <span class="doc-meta-value accent-cyan">4</span>
+      </div>
+    </div>
+  </div>
+  <div class="page-footer">
+    <span class="page-number">01 / 08</span>
+    <span class="page-subject">Correcciones Bot Paula · Mayo 2026</span>
+  </div>
+</div>
+
+<!-- ===== SLIDE 2: OVERVIEW - 9 BUGS ===== -->
+<div class="page" id="page-2">
+  <div class="page-content">
+    <span class="sec-num">PANORAMA GENERAL</span>
+    <h2 class="sec-title">9 bugs detectados en 9 pruebas</h2>
+    <p class="sec-sub">Agrupados en 3 areas criticas de correccion</p>
+    <div class="intro-grid">
+
+      <div class="intro-card">
+        <div class="num">01</div>
+        <span class="badge badge-prompt">PROMPT</span>
+        <h3>Tratamiento previo fallido</h3>
+        <p>El bot asumia que cualquier tratamiento previo habia sido en la clinica, cuando podia haber sido en otro lado.</p>
+      </div>
+
+      <div class="intro-card">
+        <div class="num">02</div>
+        <span class="badge badge-both">PROMPT + DB</span>
+        <h3>OSDE + implantes</h3>
+        <p>El bot decia "Si, trabajamos con OSDE" generando expectativa falsa de que los implantes estaban cubiertos.</p>
+      </div>
+
+      <div class="intro-card">
+        <div class="num">03</div>
+        <span class="badge badge-prompt">PROMPT</span>
+        <h3>Equipo no recibe OSDE</h3>
+        <p>El bot no sabia que el equipo de la clinica NO recibe OSDE, solo la Dra. Delgado en cirugia maxilofacial.</p>
+      </div>
+
+      <div class="intro-card">
+        <div class="num">04</div>
+        <span class="badge badge-prompt">PROMPT</span>
+        <h3>Endodoncia agenda directo</h3>
+        <p>Paciente pedia conducto y el bot agendaba con la Dra. Delgado en vez de escalar al equipo.</p>
+      </div>
+
+      <div class="intro-card">
+        <div class="num">05</div>
+        <span class="badge badge-prompt">PROMPT</span>
+        <h3>Urgencias lista profesionales</h3>
+        <p>Ante dolor, el bot listaba "la urgencia la puede hacer X, Y o Z" en vez de contener y escalar.</p>
+      </div>
+
+      <div class="intro-card">
+        <div class="num">06</div>
+        <span class="badge badge-both">PROMPT + DB</span>
+        <h3>ISSN evasivo</h3>
+        <p>Cuando preguntaban por ISSN, el bot respondia de forma confusa sin aclarar que es particular.</p>
+      </div>
+
+      <div class="intro-card">
+        <div class="num">07</div>
+        <span class="badge badge-prompt">PROMPT</span>
+        <h3>Frase generica "OSDE"</h3>
+        <p>El bot repetia "trabajamos con OSDE para consultas y tratamientos quirurgicos" como frase generica.</p>
+      </div>
+
+      <div class="intro-card">
+        <div class="num">08</div>
+        <span class="badge badge-both">PROMPT + DB</span>
+        <h3>ISSN + limpieza confuso</h3>
+        <p>Paciente decia "no entiendo" 3 veces. El bot mezclaba CIMO con odontologia general.</p>
+      </div>
+
+      <div class="intro-card">
+        <div class="num">09</div>
+        <span class="badge badge-prompt">PROMPT</span>
+        <h3>Ortodoncia nombra Dra.</h3>
+        <p>Para ortodoncia, el bot mencionaba a la Dra. Delgado cuando el tratamiento lo hace el equipo.</p>
+      </div>
+
+    </div>
+  </div>
+  <div class="page-footer">
+    <span class="page-number">02 / 08</span>
+    <span class="page-subject">Correcciones Bot Paula · Mayo 2026</span>
+  </div>
+</div>
+
+<!-- ===== SLIDE 3: BUG 1 - TRATAMIENTO PREVIO ===== -->
+<div class="page" id="page-3">
+  <div class="page-content">
+    <span class="sec-num">CORRECCION 1 DE 3</span>
+    <h2 class="sec-title">Tratamiento previo fallido</h2>
+    <p class="sec-sub">Bug B1: El bot asumia que el paciente se habia atendido en la clinica</p>
+
+    <div class="bug-detail">
+      <div class="bug-col">
+        <h3 style="color:#E11D48;">Antes</h3>
+        <div class="chat-bubble">
+          <span class="patient">Paciente:</span> "me hice implantes y me fue mal"<br>
+          <span class="bot-bad">Paula:</span> "Entiendo, parece que ya tenes un historial con la clinica..."<br><br>
+          <span style="color:rgba(255,255,255,0.3);font-size:13px;">El paciente tuvo que corregir: "no, no me entendiste, fue en otro lado"</span>
+        </div>
+        <span class="fix-label where">DONDE</span>
+        <div class="fix-list">
+          <div class="fix-item"><span class="loc">main.py</span><span class="desc">Seccion MIGRACION (linea 9464)</span></div>
+        </div>
+      </div>
+      <div class="bug-col">
+        <h3 style="color:#059669;">Despues</h3>
+        <div class="chat-bubble">
+          <span class="patient">Paciente:</span> "me hice implantes y me fue mal"<br>
+          <span class="bot-good">Paula:</span> "Entiendo, lamento que hayas tenido una mala experiencia previa. En estos casos lo mejor es evaluar bien que ocurrio y que opciones reales hay antes de avanzar. ¿Queres que coordinemos una evaluacion?"
+        </div>
+        <span class="fix-label what">QUE SE HIZO</span>
+        <div class="fix-list">
+          <div class="fix-item"><span class="loc">Gate</span><span class="desc">Se agrego un bloque de PRIORIDAD ANTES de Migracion: si el tratamiento fue en otro lado → F1 (Mala experiencia). Si dice "con la Dra." → Migracion.</span></div>
+          <div class="fix-item"><span class="loc">F1</span><span class="desc">Triggers ampliados: "me hice [tratamiento] y me fue mal", "en otro lugar", etc.</span></div>
+          <div class="fix-item"><span class="loc">Respuesta</span><span class="desc">Se incorporo la respuesta modelo aprobada por la Dra. Laura Delgado.</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="page-footer">
+    <span class="page-number">03 / 08</span>
+    <span class="page-subject">Correcciones Bot Paula · Mayo 2026</span>
+  </div>
+</div>
+
+<!-- ===== SLIDE 4: BUG 2+3+6+7+8 - OBRAS SOCIALES ===== -->
+<div class="page" id="page-4">
+  <div class="page-content">
+    <span class="sec-num">CORRECCION 2 DE 3</span>
+    <h2 class="sec-title">Cobertura de obras sociales</h2>
+    <p class="sec-sub">Bugs B2, B3, B6, B7, B8: OSDE e ISSN no se informaban correctamente</p>
+
+    <div class="bug-detail">
+      <div class="bug-col">
+        <h3 style="color:#E11D48;">Antes: 5 bugs</h3>
+        <div class="chat-bubble" style="margin-bottom:8px;">
+          <span class="patient">Paciente:</span> "me cubre el implante con OSDE?"<br>
+          <span class="bot-bad">Paula:</span> "Si, trabajamos con OSDE para consultas y tratamientos quirurgicos 😊"<br>
+          <span class="divider"></span>
+          <span style="color:rgba(255,255,255,0.3);font-size:13px;">↑ El paciente escucha "SI" cuando OSDE NO cubre implantes</span>
+        </div>
+        <div class="chat-bubble">
+          <span class="patient">Paciente:</span> "tengo ISSN, necesito una limpieza"<br>
+          <span class="bot-bad">Paula:</span> "Los tratamientos quirurgicos se realizan a traves de CIMO..."<br>
+          <span class="divider"></span>
+          <span style="color:rgba(255,255,255,0.3);font-size:13px;">↑ Confunde CIMO con limpieza. Paciente dice "no entiendo" 3 veces</span>
+        </div>
+      </div>
+      <div class="bug-col">
+        <h3 style="color:#059669;">Despues: 3 cambios</h3>
+
+        <span class="fix-label what">CAMBIO 1 — Reglas de prompt corregidas</span>
+        <div class="fix-list" style="margin-bottom:10px;">
+          <div class="fix-item"><span class="loc">10015</span><span class="desc">Respuesta "accepted" ahora diferencia si el paciente pregunto por un tratamiento especifico</span></div>
+          <div class="fix-item"><span class="loc">10025</span><span class="desc">"PROHIBIDO confirmar que cubre" reemplazado por "PERMITIDO informar si hay datos en el prompt"</span></div>
+          <div class="fix-item"><span class="loc">10029</span><span class="desc">Anti-ejemplo "OSDE para tratamientos quirurgicos" eliminado del prompt</span></div>
+          <div class="fix-item"><span class="loc">10019</span><span class="desc">Regla "restricted" ahora cruza con bloque OBRAS SOCIALES del prompt</span></div>
+        </div>
+
+        <span class="fix-label what">CAMBIO 2 — Datos de OS e ISSN en DB</span>
+        <div class="fix-list" style="margin-bottom:10px;">
+          <div class="fix-item"><span class="loc">OSDE</span><span class="desc">24 tratamientos cargados con covered: true/false. Template de respuesta general.</span></div>
+          <div class="fix-item"><span class="loc">ISSN</span><span class="desc">Template nuevo: cirugia → CIMO, odontologia general → particular. Con telefono de CIMO.</span></div>
+        </div>
+
+        <span class="fix-label where">RESPUESTA ACTUAL</span>
+        <div class="chat-bubble">
+          <span class="patient">Paciente:</span> "me cubre el implante con OSDE?"<br>
+          <span class="bot-good">Paula:</span> "La consulta de evaluacion puede ser por OSDE 😊 En cuanto a los implantes, eso se define despues de la evaluacion, segun cobertura, particular o reintegro."
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="page-footer">
+    <span class="page-number">04 / 08</span>
+    <span class="page-subject">Correcciones Bot Paula · Mayo 2026</span>
+  </div>
+</div>
+
+<!-- ===== SLIDE 5: BUGS 4+5+9 - DERIVACIONES ===== -->
+<div class="page" id="page-5">
+  <div class="page-content">
+    <span class="sec-num">CORRECCION 3 DE 3</span>
+    <h2 class="sec-title">Derivaciones al equipo</h2>
+    <p class="sec-sub">Bugs B4, B5, B9: El bot hardcodeaba a la Dra. Delgado en vez de usar las reglas de derivacion</p>
+
+    <div class="bug-detail">
+      <div class="bug-col">
+        <h3 style="color:#E11D48;">Antes: 3 bugs</h3>
+        <div class="chat-bubble" style="margin-bottom:8px;">
+          <span class="patient">Paciente:</span> "me duele, me dijeron que necesito un conducto"<br>
+          <span class="bot-bad">Paula:</span> "La urgencia la puede hacer la Dra. Laura Delgado, Elizabeth o Eli..."<br>
+          <span class="divider"></span>
+          <span style="color:rgba(255,255,255,0.3);font-size:13px;">B4: Agenda endodoncia con Dra. en vez de escalar al equipo</span>
+        </div>
+        <div class="chat-bubble">
+          <span class="patient">Paciente:</span> "quiero info de ortodoncia"<br>
+          <span class="bot-bad">Paula:</span> "Te ayudo a coordinar un turno con la Dra. Laura Delgado"<br>
+          <span class="divider"></span>
+          <span style="color:rgba(255,255,255,0.3);font-size:13px;">B9: Ortodoncia la hace SOLO Elizabeth, no la Dra.</span>
+        </div>
+      </div>
+      <div class="bug-col">
+        <h3 style="color:#059669;">Despues</h3>
+        <span class="fix-label what">QUE SE HIZO (4 cambios en prompt)</span>
+        <div class="fix-list" style="margin-bottom:10px;">
+          <div class="fix-item"><span class="loc">F1 CTA</span><span class="desc">"con la Dra. Laura Delgado" reemplazado por "El equipo te va a indicar el profesional"</span></div>
+          <div class="fix-item"><span class="loc">F8b CTA</span><span class="desc">Idem: CTA generico sin mencionar profesional</span></div>
+          <div class="fix-item"><span class="loc">F2</span><span class="desc">Prohibido listar profesionales. Si endodoncia/caries → escalar al equipo</span></div>
+          <div class="fix-item"><span class="loc">Prohib 15</span><span class="desc">Prohibido decir "Si, hacemos [tratamiento]" sin verificar con list_services + derivar</span></div>
+        </div>
+
+        <span class="fix-label where">COMO FUNCIONA AHORA</span>
+        <div class="chat-bubble">
+          <span class="patient">Paciente:</span> "necesito un conducto"<br>
+          <span class="bot-good">Paula:</span> "Entiendo. Te paso con el equipo para que evaluen tu caso y te asignen el profesional mas adecuado."<br>
+          <span class="divider"></span>
+          <span style="color:rgba(255,255,255,0.3);font-size:13px;">El PASO 3 del flujo de agendamiento asigna el profesional segun las reglas de derivacion cargadas en DB.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="page-footer">
+    <span class="page-number">05 / 08</span>
+    <span class="page-subject">Correcciones Bot Paula · Mayo 2026</span>
+  </div>
+</div>
+
+<!-- ===== SLIDE 6: ARQUITECTURA - DONDE SE HICIERON LOS CAMBIOS ===== -->
+<div class="page" id="page-6">
+  <div class="page-content">
+    <span class="sec-num">ARQUITECTURA DE CAMBIOS</span>
+    <h2 class="sec-title">Donde se toco cada cosa</h2>
+    <p class="sec-sub">3 capas afectadas: Prompt del agente, Base de datos, Reglas de derivacion (sin cambios en frontend)</p>
+
+    <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:24px; width:100%;">
+      <div style="background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.06); border-radius:14px; padding:24px;">
+        <div style="font-size:36px; font-weight:900; color:#00E5FF; margin-bottom:10px;">01</div>
+        <h3 style="font-size:20px; font-weight:700; margin-bottom:12px;">System Prompt</h3>
+        <p style="font-family:'Inter',sans-serif; font-size:13px; color:rgba(255,255,255,0.55); line-height:1.5; margin-bottom:14px;">
+          4 commits en <strong>main.py</strong>. Solo cambios de texto en el prompt. Sin tocar logica ni herramientas.
+        </p>
+        <div style="font-family:'Inter',sans-serif; font-size:12px; color:rgba(255,255,255,0.45); line-height:1.6;">
+          • Gate de prioridad (B1)<br>
+          • 4 reglas de cobertura OS (B2/B7)<br>
+          • 2 CTAs sin hardcode (B4/B5/B9)<br>
+          • Prohibicion 15 nueva
+        </div>
+      </div>
+
+      <div style="background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.06); border-radius:14px; padding:24px;">
+        <div style="font-size:36px; font-weight:900; color:#059669; margin-bottom:10px;">02</div>
+        <h3 style="font-size:20px; font-weight:700; margin-bottom:12px;">Base de Datos</h3>
+        <p style="font-family:'Inter',sans-serif; font-size:13px; color:rgba(255,255,255,0.55); line-height:1.5; margin-bottom:14px;">
+          2 tablas actualizadas con datos correctos. Sin nuevas migraciones.
+        </p>
+        <div style="font-family:'Inter',sans-serif; font-size:12px; color:rgba(255,255,255,0.45); line-height:1.6;">
+          • OSDE: 24 tratamientos con covered true/false<br>
+          • OSDE: template de respuesta general<br>
+          • ISSN: template con CIMO + particular<br>
+          • ISSN: cobertura x tratamiento
+        </div>
+      </div>
+
+      <div style="background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.06); border-radius:14px; padding:24px;">
+        <div style="font-size:36px; font-weight:900; color:#E11D48; margin-bottom:10px;">03</div>
+        <h3 style="font-size:20px; font-weight:700; margin-bottom:12px;">Reglas de Derivacion</h3>
+        <p style="font-family:'Inter',sans-serif; font-size:13px; color:rgba(255,255,255,0.55); line-height:1.5; margin-bottom:14px;">
+          Sin cambios. Ya estaban cargadas en DB via UI. Solo se elimino el hardcode del prompt que las bypassaba.
+        </p>
+        <div style="font-family:'Inter',sans-serif; font-size:12px; color:rgba(255,255,255,0.45); line-height:1.6;">
+          • Regla 1: Cirugia/implantes → Dra. Delgado<br>
+          • Regla 2: Tratamientos generales → Equipo<br>
+          • Regla 3: Paciente existente → Dra. Delgado
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="page-footer">
+    <span class="page-number">06 / 08</span>
+    <span class="page-subject">Correcciones Bot Paula · Mayo 2026</span>
+  </div>
+</div>
+
+<!-- ===== SLIDE 7: RESUMEN - TABLA ===== -->
+<div class="page" id="page-7">
+  <div class="page-content">
+    <span class="sec-num">RESUMEN</span>
+    <h2 class="sec-title">Estado final de cada bug</h2>
+    <p class="sec-sub">9 bugs, 3 SDDs completos, 4 commits, 0 cambios en frontend</p>
+
+    <div class="summary-table">
+      <div class="sum-row header">
+        <span>#</span><span>Bug</span><span>Solucion</span><span>Estado</span>
+      </div>
+      <div class="sum-row">
+        <span class="num">B1</span><span class="name">Tratamiento previo</span>
+        <span class="desc">Gate prioridad + F1 + respuesta modelo</span>
+        <span class="status status-done">Resuelto</span>
+      </div>
+      <div class="sum-row">
+        <span class="num">B2</span><span class="name">OSDE + implantes</span>
+        <span class="desc">4 reglas de prompt + datos DB</span>
+        <span class="status status-done">Resuelto</span>
+      </div>
+      <div class="sum-row">
+        <span class="num">B3</span><span class="name">Equipo no recibe OS</span>
+        <span class="desc">Cubierto por reglas de prompt + coverage DB</span>
+        <span class="status status-verify">Verificar</span>
+      </div>
+      <div class="sum-row">
+        <span class="num">B4</span><span class="name">Endodoncia a Dra.</span>
+        <span class="desc">F1/F8b CTA generico + F2 escala equipo</span>
+        <span class="status status-done">Resuelto</span>
+      </div>
+      <div class="sum-row">
+        <span class="num">B5</span><span class="name">Urgencias lista prof.</span>
+        <span class="desc">F2: prohibido listar profesionales</span>
+        <span class="status status-done">Resuelto</span>
+      </div>
+      <div class="sum-row">
+        <span class="num">B6</span><span class="name">ISSN evasivo</span>
+        <span class="desc">Template DB actualizado + regla external_derivation</span>
+        <span class="status status-verify">Verificar</span>
+      </div>
+      <div class="sum-row">
+        <span class="num">B7</span><span class="name">Frase generica OSDE</span>
+        <span class="desc">Anti-ejemplo eliminado del prompt</span>
+        <span class="status status-done">Resuelto</span>
+      </div>
+      <div class="sum-row">
+        <span class="num">B8</span><span class="name">ISSN + limpieza</span>
+        <span class="desc">Template DB con ambos caminos claros</span>
+        <span class="status status-verify">Verificar</span>
+      </div>
+      <div class="sum-row">
+        <span class="num">B9</span><span class="name">Ortodoncia Dra.</span>
+        <span class="desc">Prohibicion 15 + reglas derivacion</span>
+        <span class="status status-done">Resuelto</span>
+      </div>
+    </div>
+  </div>
+  <div class="page-footer">
+    <span class="page-number">07 / 08</span>
+    <span class="page-subject">Correcciones Bot Paula · Mayo 2026</span>
+  </div>
+</div>
+
+<!-- ===== SLIDE 8: CIERRE ===== -->
+<div class="page" id="page-8">
+  <div class="top-divider"></div>
+  <div class="page-content" style="justify-content:center; gap:30px;">
+    <div style="font-size:14px; font-weight:600; color:rgba(0,229,255,0.5); letter-spacing:4px; text-transform:uppercase;">Conclusion</div>
+    <h2 style="font-size:72px; font-weight:900; letter-spacing:-4px; line-height:1.05;">
+      El bot ahora responde<br>
+      <span style="color:#00E5FF;">segun los datos reales</span>
+    </h2>
+    <p style="font-family:'Inter',sans-serif; font-size:20px; font-weight:400; color:rgba(255,255,255,0.55); max-width:1200px; line-height:1.6;">
+      Sin hardcodeos. Las reglas de derivacion, cobertura de obras sociales y asignacion de profesionales<br>
+      estan centralizadas en la base de datos y se reflejan automaticamente en el comportamiento del bot.
+    </p>
+    <div style="display:flex; gap:40px; margin-top:20px;">
+      <div><div style="font-size:40px; font-weight:900; color:#E11D48;">9</div><div style="font-size:14px; color:rgba(255,255,255,0.40);">bugs resueltos</div></div>
+      <div><div style="font-size:40px; font-weight:900; color:#00E5FF;">4</div><div style="font-size:14px; color:rgba(255,255,255,0.40);">commits en main</div></div>
+      <div><div style="font-size:40px; font-weight:900; color:#059669;">3</div><div style="font-size:14px; color:rgba(255,255,255,0.40);">SDDs completos</div></div>
+      <div><div style="font-size:40px; font-weight:900; color:rgba(255,255,255,0.30);">0</div><div style="font-size:14px; color:rgba(255,255,255,0.40);">cambios en frontend</div></div>
+    </div>
+  </div>
+  <div class="page-footer">
+    <span class="page-number">08 / 08</span>
+    <span class="page-subject">Correcciones Bot Paula · Mayo 2026</span>
+  </div>
+</div>
+
+</body>
+</html>

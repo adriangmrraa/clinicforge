@@ -1,0 +1,882 @@
+[
+  {
+    "id": 1,
+    "tenant_id": 1,
+    "category": "Estrategia ventas - Alta prioridad",
+    "question": "Que pasa si el paciente dice que no tiene hueso o fue rechazado para implantes?",
+    "answer": "Es más común de lo que parece.\nHoy existen distintas alternativas para rehabilitar incluso en casos con poca cantidad de hueso. Trabajamos con protocolos avanzados como CIMA y RISA, adaptados a cada situación.\nPor eso, lo más importante es evaluar tu caso, ya que muchas veces hay opciones que no fueron consideradas previamente.",
+    "sort_order": 0,
+    "created_at": "2026-03-31T23:27:47.102306+00:00",
+    "updated_at": "2026-04-04T21:29:37.008591+00:00"
+  },
+  {
+    "id": 2,
+    "tenant_id": 1,
+    "category": "General",
+    "question": "Dónde queda el consultorio?",
+    "answer": "Estamos en Salta 147, Neuquén Capital.\nPodemos enviarte la ubicación para que te resulte más fácil llegar.",
+    "sort_order": 1,
+    "created_at": "2026-04-01T00:24:31.263572+00:00",
+    "updated_at": "2026-04-04T21:42:44.451512+00:00"
+  },
+  {
+    "id": 3,
+    "tenant_id": 1,
+    "category": "General",
+    "question": "Cuál es el horario de atención?",
+    "answer": "Trabajamos con turnos programados en distintos días y horarios.\nPodemos ofrecerte las opciones disponibles según tu disponibilidad.",
+    "sort_order": 2,
+    "created_at": "2026-04-01T00:24:31.263572+00:00",
+    "updated_at": "2026-04-04T21:43:19.220023+00:00"
+  },
+  {
+    "id": 4,
+    "tenant_id": 1,
+    "category": "General",
+    "question": "Tienen estacionamiento?",
+    "answer": "En la zona hay distintas opciones de estacionamiento cercanas al consultorio.",
+    "sort_order": 3,
+    "created_at": "2026-04-01T00:24:31.263572+00:00",
+    "updated_at": "2026-04-04T21:43:49.636956+00:00"
+  },
+  {
+    "id": 6,
+    "tenant_id": 1,
+    "category": "General",
+    "question": "Atienden sin turno previo?",
+    "answer": "Trabajamos con turnos programados para poder dedicarle el tiempo necesario a cada paciente.\nPodemos ofrecerte las opciones disponibles según tu disponibilidad.",
+    "sort_order": 5,
+    "created_at": "2026-04-01T00:24:31.263572+00:00",
+    "updated_at": "2026-04-04T21:44:54.152092+00:00"
+  },
+  {
+    "id": 7,
+    "tenant_id": 1,
+    "category": "Precios y Costos",
+    "question": "Cuánto sale la consulta?",
+    "answer": "La consulta tiene un valor de $60.000 con impuestos incluidos.\nEn caso de abonar sin impuestos, el valor es de $50.000.\nSi tenés obra social, puede corresponder un coseguro según tu cobertura.\nEs una instancia clave, donde realizamos una evaluación completa y definimos un plan de tratamiento claro para tu caso.",
+    "sort_order": 1,
+    "created_at": "2026-04-01T00:24:31.263572+00:00",
+    "updated_at": "2026-04-04T22:36:51.312381+00:00"
+  },
+  {
+    "id": 8,
+    "tenant_id": 1,
+    "category": "Precios y Costos",
+    "question": "La primera consulta tiene costo?",
+    "answer": "Sí, la primera consulta tiene un costo.\nEn esa instancia se evalúa tu caso y se define un plan de tratamiento personalizado.",
+    "sort_order": 2,
+    "created_at": "2026-04-01T00:24:31.263572+00:00",
+    "updated_at": "2026-04-04T22:03:33.384957+00:00"
+  },
+  {
+    "id": 9,
+    "tenant_id": 1,
+    "category": "Precios y Costos",
+    "question": "Hacen presupuestos?",
+    "answer": "Sí, en la consulta se evalúa tu caso y se te indica el plan de tratamiento con el presupuesto correspondiente.",
+    "sort_order": 3,
+    "created_at": "2026-04-01T00:24:31.263572+00:00",
+    "updated_at": "2026-04-04T22:04:10.127916+00:00"
+  },
+  {
+    "id": 10,
+    "tenant_id": 1,
+    "category": "Medios de Pago",
+    "question": "Qué medios de pago aceptan?",
+    "answer": "Podés abonar en efectivo o por transferencia.\nAl coordinar tu turno, te explicamos las opciones disponibles para que te resulte más cómodo.",
+    "sort_order": 1,
+    "created_at": "2026-04-01T00:24:31.263572+00:00",
+    "updated_at": "2026-04-04T21:54:22.412627+00:00"
+  },
+  {
+    "id": 11,
+    "tenant_id": 1,
+    "category": "Medios de Pago",
+    "question": "Aceptan tarjeta?",
+    "answer": "Actualmente trabajamos con efectivo o transferencia.\nAl coordinar tu turno, te informamos las opciones disponibles.",
+    "sort_order": 2,
+    "created_at": "2026-04-01T00:24:31.263572+00:00",
+    "updated_at": "2026-04-04T21:54:54.152542+00:00"
+  },
+  {
+    "id": 12,
+    "tenant_id": 1,
+    "category": "Medios de Pago",
+    "question": "Puedo pagar con transferencia?",
+    "answer": "Sí, podés abonar por transferencia.\nAl momento de coordinar tu turno, te facilitamos los datos bancarios",
+    "sort_order": 3,
+    "created_at": "2026-04-01T00:24:31.263572+00:00",
+    "updated_at": "2026-04-04T21:55:31.554079+00:00"
+  },
+  {
+    "id": 13,
+    "tenant_id": 1,
+    "category": "Financiación",
+    "question": "Se puede pagar en cuotas o financiar el tratamiento?",
+    "answer": "Sí, podemos organizar un plan de pago según el tratamiento.\nLa idea es adaptarlo a cada caso para que puedas avanzar de forma más cómoda.\nLo definimos en la consulta, según tu situación.",
+    "sort_order": 1,
+    "created_at": "2026-04-01T00:24:31.263572+00:00",
+    "updated_at": "2026-04-04T21:33:27.503256+00:00"
+  },
+  {
+    "id": 15,
+    "tenant_id": 1,
+    "category": "Obras Sociales",
+    "question": "Aceptan obra social?",
+    "answer": "Sí, trabajamos con varias obras sociales.\nLa consulta puede incluir un coseguro, según la cobertura.\nSi nos indicás tu obra social, podemos orientarte de forma más precisa.",
+    "sort_order": 1,
+    "created_at": "2026-04-01T00:24:31.263572+00:00",
+    "updated_at": "2026-04-04T21:58:41.322805+00:00"
+  },
+  {
+    "id": 16,
+    "tenant_id": 1,
+    "category": "Obras Sociales",
+    "question": "Trabajan con OSDE?",
+    "answer": "Sí, trabajamos con OSDE en casos de cirugía.\nPodemos orientarte según tu caso y cobertura.",
+    "sort_order": 2,
+    "created_at": "2026-04-01T00:24:31.263572+00:00",
+    "updated_at": "2026-04-04T21:59:21.974666+00:00"
+  },
+  {
+    "id": 17,
+    "tenant_id": 1,
+    "category": "Obras Sociales",
+    "question": "Trabajan con ISSN?",
+    "answer": "Sí, en CIMO (Centro Integral de Medicina del Oeste) se atiende con ISSN para consultas de cirugía maxilofacial.",
+    "sort_order": 3,
+    "created_at": "2026-04-01T00:24:31.263572+00:00",
+    "updated_at": "2026-04-04T18:47:25.768978+00:00"
+  },
+  {
+    "id": 18,
+    "tenant_id": 1,
+    "category": "Obras Sociales",
+    "question": "Qué es el coseguro?",
+    "answer": "Es un monto que se abona en la consulta, además de lo que cubre tu obra social.",
+    "sort_order": 4,
+    "created_at": "2026-04-01T00:24:31.263572+00:00",
+    "updated_at": "2026-04-04T22:01:20.674422+00:00"
+  },
+  {
+    "id": 19,
+    "tenant_id": 1,
+    "category": "Obras Sociales",
+    "question": "Necesito autorización previa?",
+    "answer": "Depende del tratamiento que necesites y se evalúa luego de la consulta.\nPrimero realizamos la evaluación y te indicamos los pasos a seguir.",
+    "sort_order": 5,
+    "created_at": "2026-04-01T00:24:31.263572+00:00",
+    "updated_at": "2026-04-04T22:02:05.033106+00:00"
+  },
+  {
+    "id": 20,
+    "tenant_id": 1,
+    "category": "Coseguros",
+    "question": "Cuánto es el coseguro?",
+    "answer": "El valor del coseguro depende de tu obra social y del tipo de tratamiento.\nPara darte el monto exacto, lo confirmamos al evaluar tu caso en consulta.",
+    "sort_order": 1,
+    "created_at": "2026-04-01T00:24:31.263572+00:00",
+    "updated_at": "2026-04-04T21:14:21.652385+00:00"
+  },
+  {
+    "id": 21,
+    "tenant_id": 1,
+    "category": "Coseguros",
+    "question": "El coseguro es siempre el mismo?",
+    "answer": "El coseguro puede variar según tu obra social y el tratamiento a realizar.\nPor eso, el valor se confirma en cada caso en la consulta.",
+    "sort_order": 2,
+    "created_at": "2026-04-01T00:24:31.263572+00:00",
+    "updated_at": "2026-04-04T21:15:00.892963+00:00"
+  },
+  {
+    "id": 22,
+    "tenant_id": 1,
+    "category": "Implantes y Prótesis",
+    "question": "Hacen implantes dentales?",
+    "answer": "Sí, realizamos tratamientos con implantes dentales adaptados a cada caso.\nTrabajamos con protocolos avanzados como CIMA y RISA, que permiten planificar soluciones incluso en situaciones complejas.\nAdemás, contamos con distintas opciones de anestesia —desde anestesia local hasta sedación o anestesia general en quirófano— para que el tratamiento sea lo más cómodo posible.",
+    "sort_order": 1,
+    "created_at": "2026-04-01T00:24:31.263572+00:00",
+    "updated_at": "2026-04-04T21:50:16.166735+00:00"
+  },
+  {
+    "id": 23,
+    "tenant_id": 1,
+    "category": "Implantes y Prótesis",
+    "question": "Cuánto dura un implante?",
+    "answer": "Un implante está pensado para ser una solución a largo plazo.\nCon una correcta planificación, colocación y mantenimiento, puede durar muchos años.\nEn la consulta evaluamos tu caso y te explicamos cómo mantenerlo en las mejores condiciones.",
+    "sort_order": 2,
+    "created_at": "2026-04-01T00:24:31.263572+00:00",
+    "updated_at": "2026-04-04T21:51:17.030926+00:00"
+  },
+  {
+    "id": 24,
+    "tenant_id": 1,
+    "category": "Implantes y Prótesis",
+    "question": "Duele ponerse un implante?",
+    "answer": "El procedimiento se realiza con anestesia, por lo que no vas a sentir dolor durante la intervención.\nAdemás, según el caso, contamos con opciones como sedación o anestesia general en quirófano, para que el tratamiento sea lo más cómodo posible.",
+    "sort_order": 3,
+    "created_at": "2026-04-01T00:24:31.263572+00:00",
+    "updated_at": "2026-04-04T22:32:52.402258+00:00"
+  },
+  {
+    "id": 25,
+    "tenant_id": 1,
+    "category": "Implantes y Prótesis",
+    "question": "Cuánto tiempo lleva el tratamiento de implantes?",
+    "answer": "El tiempo varía según cada caso.\nEn muchos tratamientos se trabaja por etapas, por lo que el proceso puede llevar algunos meses.\nDesde el inicio se planifica todo el tratamiento para que sepas qué esperar en cada etapa y puedas transitarlo con tranquilidad.",
+    "sort_order": 4,
+    "created_at": "2026-04-01T00:24:31.263572+00:00",
+    "updated_at": "2026-04-04T21:52:28.059204+00:00"
+  },
+  {
+    "id": 26,
+    "tenant_id": 1,
+    "category": "Implantes y Prótesis",
+    "question": "Hacen prótesis?",
+    "answer": "Sí, realizamos distintos tipos de prótesis dentales, tanto fijas como removibles, según cada caso.\nLa idea es evaluar tu situación y definir la mejor opción para lograr función, estética y comodidad.",
+    "sort_order": 5,
+    "created_at": "2026-04-01T00:24:31.263572+00:00",
+    "updated_at": "2026-04-04T21:53:05.427098+00:00"
+  },
+  {
+    "id": 27,
+    "tenant_id": 1,
+    "category": "Estética Dental",
+    "question": "Hacen blanqueamiento?",
+    "answer": "Sí, realizamos blanqueamiento dental profesional con Blanqueamiento Diamante, con resultados visibles desde la primera sesión.\nEs un tratamiento seguro, que permite lograr una sonrisa más luminosa y natural, sin generar la sensibilidad típica de otros métodos.",
+    "sort_order": 1,
+    "created_at": "2026-04-01T00:24:31.263572+00:00",
+    "updated_at": "2026-04-04T21:27:03.827893+00:00"
+  },
+  {
+    "id": 28,
+    "tenant_id": 1,
+    "category": "Estética Dental",
+    "question": "Qué tratamientos estéticos ofrecen?",
+    "answer": "Trabajamos distintos tratamientos estéticos como Blanqueamiento Diamante, carillas, coronas estéticas y armonización orofacial.\nLa idea es evaluar tu caso y recomendarte lo que mejor se adapte a lo que estás buscando.",
+    "sort_order": 2,
+    "created_at": "2026-04-01T00:24:31.263572+00:00",
+    "updated_at": "2026-04-04T21:27:52.278577+00:00"
+  },
+  {
+    "id": 29,
+    "tenant_id": 1,
+    "category": "Estética Dental",
+    "question": "Hacen endolifting?",
+    "answer": "Sí, la Dra. realiza endolifting, un tratamiento mínimamente invasivo que mejora la firmeza y calidad de la piel.\nSi estás evaluándolo, lo ideal es una consulta para ver tu caso y definir si es adecuado para vos.",
+    "sort_order": 3,
+    "created_at": "2026-04-01T00:24:31.263572+00:00",
+    "updated_at": "2026-04-04T21:30:23.301996+00:00"
+  },
+  {
+    "id": 30,
+    "tenant_id": 1,
+    "category": "Cirugía",
+    "question": "Hacen extracción de muelas de juicio?",
+    "answer": "Sí, realizamos extracciones de muelas de juicio.\nCada caso se evalúa previamente para definir la mejor forma de hacerlo y que el procedimiento sea lo más seguro y cómodo posible.\nSi ya tenés una radiografía, podés traerla; y si no, la vemos en consulta.",
+    "sort_order": 1,
+    "created_at": "2026-04-01T00:24:31.263572+00:00",
+    "updated_at": "2026-04-04T21:12:49.958066+00:00"
+  },
+  {
+    "id": 31,
+    "tenant_id": 1,
+    "category": "Cirugía",
+    "question": "Hacen cirugía maxilofacial?",
+    "answer": "Sí, la Dra. Delgado es especialista en cirugía maxilofacial.\nRealizamos distintos procedimientos, abordando cada caso de forma personalizada según la necesidad del paciente.\nSi estás evaluando este tipo de tratamiento, podemos orientarte en una consulta para definir la mejor opción.",
+    "sort_order": 2,
+    "created_at": "2026-04-01T00:24:31.263572+00:00",
+    "updated_at": "2026-04-04T21:13:29.173208+00:00"
+  },
+  {
+    "id": 32,
+    "tenant_id": 1,
+    "category": "Primera Consulta",
+    "question": "Qué hago en la primera consulta?",
+    "answer": "Se realiza una evaluación completa, se establece el diagnóstico y se define el plan de tratamiento más adecuado para tu caso.\nTambién es el momento para resolver tus dudas con tranquilidad.",
+    "sort_order": 1,
+    "created_at": "2026-04-01T00:24:31.263572+00:00",
+    "updated_at": "2026-04-04T22:05:13.887394+00:00"
+  },
+  {
+    "id": 33,
+    "tenant_id": 1,
+    "category": "Primera Consulta",
+    "question": "Tengo que llevar algo?",
+    "answer": "Si tenés radiografías o estudios previos, podés traerlos.\nEn caso de no tenerlos, te indicamos lo necesario en la consulta.",
+    "sort_order": 2,
+    "created_at": "2026-04-01T00:24:31.263572+00:00",
+    "updated_at": "2026-04-04T22:07:02.195190+00:00"
+  },
+  {
+    "id": 34,
+    "tenant_id": 1,
+    "category": "Primera Consulta",
+    "question": "Cuánto dura la primera consulta?",
+    "answer": "La consulta dura aproximadamente 30 a 40 minutos.\nEs el tiempo necesario para poder evaluar bien tu caso y explicarte todo con claridad",
+    "sort_order": 3,
+    "created_at": "2026-04-01T00:24:31.263572+00:00",
+    "updated_at": "2026-04-04T22:07:41.598798+00:00"
+  },
+  {
+    "id": 35,
+    "tenant_id": 1,
+    "category": "Emergencias",
+    "question": "Tengo una emergencia dental",
+    "answer": "Entendemos que es una situación urgente.\nPodemos ayudarte a coordinar un turno lo antes posible para evaluarte y darte una solución.",
+    "sort_order": 1,
+    "created_at": "2026-04-01T00:24:31.263572+00:00",
+    "updated_at": "2026-04-04T21:22:53.173428+00:00"
+  },
+  {
+    "id": 36,
+    "tenant_id": 1,
+    "category": "Emergencias",
+    "question": "Me duele mucho un diente",
+    "answer": "El dolor dental puede tener distintas causas y es importante evaluarlo lo antes posible.\nPodemos ayudarte a coordinar un turno cercano para ver qué está pasando y aliviar el dolor.",
+    "sort_order": 2,
+    "created_at": "2026-04-01T00:24:31.263572+00:00",
+    "updated_at": "2026-04-04T21:23:29.120371+00:00"
+  },
+  {
+    "id": 37,
+    "tenant_id": 1,
+    "category": "Emergencias",
+    "question": "Se me cayó un diente / corona",
+    "answer": "Tranquilo/a, es importante actuar rápido.\nSi es un diente natural, conservalo en leche o suero.\nSi es una corona, guardala.\nPodemos ayudarte a coordinar un turno lo antes posible para evaluar la situación.",
+    "sort_order": 3,
+    "created_at": "2026-04-01T00:24:31.263572+00:00",
+    "updated_at": "2026-04-04T21:24:33.404058+00:00"
+  },
+  {
+    "id": 38,
+    "tenant_id": 1,
+    "category": "Cuidados Post-tratamiento",
+    "question": "Qué cuidados debo tener después de una extracción?",
+    "answer": "Después de una extracción, es importante seguir algunas indicaciones para una buena recuperación.\nDurante las primeras 24 hs, evitá enjuagarte, aplicá frío externo si hay inflamación y seguí la medicación indicada.\nSi notás algo fuera de lo normal, podés escribirnos y te acompañamos en el proceso.",
+    "sort_order": 1,
+    "created_at": "2026-04-01T00:24:31.263572+00:00",
+    "updated_at": "2026-04-04T21:16:56.007973+00:00"
+  },
+  {
+    "id": 39,
+    "tenant_id": 1,
+    "category": "Cuidados Post-tratamiento",
+    "question": "Qué cuidados debo tener después del blanqueamiento?",
+    "answer": "Después del Blanqueamiento Diamante, durante las primeras 48–72 hs es importante evitar alimentos y bebidas con color (como café, vino, té, entre otros) y no fumar.\nEstos cuidados ayudan a mantener el resultado por más tiempo.",
+    "sort_order": 2,
+    "created_at": "2026-04-01T00:24:31.263572+00:00",
+    "updated_at": "2026-04-04T21:17:24.761760+00:00"
+  },
+  {
+    "id": 40,
+    "tenant_id": 1,
+    "category": "Diferenciadores",
+    "question": "Por qué elegir esta clínica?",
+    "answer": "Cada tratamiento se planifica de forma personalizada, teniendo en cuenta tanto la salud como la estética.\nBuscamos que el paciente se sienta acompañado en todo momento, combinando experiencia, tecnología y un enfoque cuidado en cada detalle.",
+    "sort_order": 1,
+    "created_at": "2026-04-01T00:24:31.263572+00:00",
+    "updated_at": "2026-04-04T21:19:01.688995+00:00"
+  },
+  {
+    "id": 41,
+    "tenant_id": 1,
+    "category": "Diferenciadores",
+    "question": "Qué experiencia tiene la Dra.?",
+    "answer": "La Dra. se especializa en rehabilitación oral con implantes y prótesis, incluyendo casos complejos.\nTrabaja cada tratamiento de forma personalizada, buscando que el proceso sea predecible, cómodo y con un resultado funcional y estético.",
+    "sort_order": 2,
+    "created_at": "2026-04-01T00:24:31.263572+00:00",
+    "updated_at": "2026-04-04T21:22:24.285874+00:00"
+  },
+  {
+    "id": 42,
+    "tenant_id": 1,
+    "category": "Tecnología",
+    "question": "Qué tecnología usan?",
+    "answer": "Trabajamos con tecnología 3D que nos permite planificar cada caso con precisión desde el inicio.\nEsto nos permite realizar tratamientos más seguros, predecibles y adaptados a cada paciente.",
+    "sort_order": 1,
+    "created_at": "2026-04-01T00:24:31.263572+00:00",
+    "updated_at": "2026-04-04T22:23:59.717422+00:00"
+  },
+  {
+    "id": 44,
+    "tenant_id": 1,
+    "category": "Ventajas Competitivas",
+    "question": "Qué los diferencia de otras clínicas?",
+    "answer": "Cada tratamiento se planifica de forma personalizada, integrando diagnóstico, función y estética.\nLa Dra. se especializa en rehabilitación oral con implantes y prótesis, abordando desde casos simples hasta situaciones complejas.\nEl uso de planificación digital 3D permite lograr tratamientos más precisos, seguros y predecibles.",
+    "sort_order": 1,
+    "created_at": "2026-04-01T00:24:31.263572+00:00",
+    "updated_at": "2026-04-04T22:24:32.393492+00:00"
+  },
+  {
+    "id": 55,
+    "tenant_id": 1,
+    "category": "Script - Implantes",
+    "question": "Paciente consulta por implantes",
+    "answer": "Trabajamos rehabilitación con implantes de forma personalizada, según cada caso.\nPrimero evaluamos la cantidad de hueso, la zona a tratar y el tipo de rehabilitación más adecuado.\nEn muchos casos, es posible realizar tratamientos incluso en situaciones complejas.\nUtilizamos distintos protocolos como CIMA y RISA para lograr resultados funcionales y estéticos.\nPodemos orientarte según tu caso y explicarte las opciones disponibles.",
+    "sort_order": 1,
+    "created_at": "2026-04-01T07:02:31.369670+00:00",
+    "updated_at": "2026-04-04T22:14:24.567774+00:00"
+  },
+  {
+    "id": 56,
+    "tenant_id": 1,
+    "category": "Script - Prótesis",
+    "question": "Paciente consulta por prótesis",
+    "answer": "Cada caso de prótesis es diferente, ya que depende del estado de la boca, la cantidad de piezas a rehabilitar y el tipo de tratamiento indicado.\nEn la consulta realizamos una evaluación completa para definir la mejor opción y brindarte un plan de tratamiento claro.",
+    "sort_order": 2,
+    "created_at": "2026-04-01T07:02:31.376480+00:00",
+    "updated_at": "2026-04-04T22:21:49.869301+00:00"
+  },
+  {
+    "id": 57,
+    "tenant_id": 1,
+    "category": "Script - Cirugía",
+    "question": "Paciente consulta por muelas de juicio o tercer molar",
+    "answer": "En estos casos, lo importante es evaluar la posición del diente y si está generando algún problema.\nCuando hay dolor, inflamación o dificultad para abrir la boca, es recomendable evaluarlo a tiempo.\nPodemos orientarte según lo que estés sintiendo y definir el próximo paso.",
+    "sort_order": 3,
+    "created_at": "2026-04-01T07:02:31.377166+00:00",
+    "updated_at": "2026-04-04T22:11:54.239294+00:00"
+  },
+  {
+    "id": 58,
+    "tenant_id": 1,
+    "category": "Script - ATM",
+    "question": "Paciente consulta por ATM (dolor mandibular, ruidos, tensión)",
+    "answer": "Lo que describís es bastante frecuente y puede manifestarse como dolor, ruidos o tensión en la mandíbula.\nLo ideal es evaluarlo para entender el origen y definir el tratamiento adecuado.\nSi nos contás qué síntomas estás teniendo, podemos orientarte.",
+    "sort_order": 4,
+    "created_at": "2026-04-01T07:02:31.377777+00:00",
+    "updated_at": "2026-04-04T22:10:28.395416+00:00"
+  },
+  {
+    "id": 59,
+    "tenant_id": 1,
+    "category": "Script - Armonización",
+    "question": "Paciente consulta por armonización facial",
+    "answer": "La armonización facial se trabaja de forma personalizada, buscando resultados naturales y armónicos según cada rostro.\nSi nos contás qué te gustaría mejorar, podemos orientarte y evaluar la mejor forma de abordarlo.",
+    "sort_order": 5,
+    "created_at": "2026-04-01T07:02:31.378733+00:00",
+    "updated_at": "2026-04-04T22:08:18.223210+00:00"
+  },
+  {
+    "id": 60,
+    "tenant_id": 1,
+    "category": "Script - Endolifting",
+    "question": "Paciente consulta por endolifting",
+    "answer": "El endolifting es un tratamiento que se indica de forma personalizada, según la zona y el resultado que se busca.\nPrimero realizamos una evaluación para determinar si es la opción adecuada en tu caso.\nSi nos contás qué te gustaría mejorar, podemos orientarte.",
+    "sort_order": 6,
+    "created_at": "2026-04-01T07:02:31.379225+00:00",
+    "updated_at": "2026-04-04T22:12:44.707993+00:00"
+  },
+  {
+    "id": 61,
+    "tenant_id": 1,
+    "category": "Script - General",
+    "question": "Paciente consulta por odontología general",
+    "answer": "Podemos ayudarte desde el equipo odontológico según lo que necesites.\nLo ideal es realizar una evaluación para entender tu caso y definir el tratamiento adecuado.",
+    "sort_order": 7,
+    "created_at": "2026-04-01T07:02:31.379731+00:00",
+    "updated_at": "2026-04-04T22:13:17.843328+00:00"
+  },
+  {
+    "id": 62,
+    "tenant_id": 1,
+    "category": "Script - Ortodoncia",
+    "question": "Paciente consulta por ortodoncia",
+    "answer": "Los tratamientos de ortodoncia se realizan a través del equipo, según cada caso.\nPrimero evaluamos tu situación y a partir de eso indicamos la mejor opción para lograr un resultado funcional y estético.\nPodemos orientarte según lo que estés buscando.",
+    "sort_order": 8,
+    "created_at": "2026-04-01T07:02:31.380167+00:00",
+    "updated_at": "2026-04-04T22:16:29.969923+00:00"
+  },
+  {
+    "id": 63,
+    "tenant_id": 1,
+    "category": "Script -\n  Endodoncia",
+    "question": "Paciente consulta por endodoncia o conducto",
+    "answer": "Sí, este tipo de tratamiento lo realiza el equipo odontológico.\nSi estás con dolor o molestia, es importante evaluarlo a tiempo para evitar que avance.\nSi querés, contame qué estás sintiendo y te orientamos para coordinar con el profesional indicado.",
+    "sort_order": 9,
+    "created_at": "2026-04-01T07:02:31.380616+00:00",
+    "updated_at": "2026-04-04T19:12:27.649181+00:00"
+  },
+  {
+    "id": 64,
+    "tenant_id": 1,
+    "category": "Script - Precio",
+    "question": "Paciente pregunta precio de implantes o tratamiento complejo",
+    "answer": "Entiendo que quieras tener una referencia.\nEn tratamientos como implantes, cada caso es distinto, ya que depende de la cantidad de hueso, la zona a tratar y el tipo de rehabilitación.\nPor eso, la consulta es clave: ahí evaluamos tu caso y te explicamos las opciones de tratamiento junto con el presupuesto correspondiente.",
+    "sort_order": 10,
+    "created_at": "2026-04-01T07:02:31.381116+00:00",
+    "updated_at": "2026-04-04T22:19:28.761147+00:00"
+  },
+  {
+    "id": 65,
+    "tenant_id": 1,
+    "category": "Script\n   - Precio",
+    "question": "Paciente pregunta precio de tratamiento del equipo",
+    "answer": "El valor depende del tipo de tratamiento y de las características de cada caso.\nLa consulta es la instancia donde realizamos la evaluación y definimos el plan de tratamiento con claridad.",
+    "sort_order": 11,
+    "created_at": "2026-04-01T07:02:31.382857+00:00",
+    "updated_at": "2026-04-04T22:18:55.903740+00:00"
+  },
+  {
+    "id": 66,
+    "tenant_id": 1,
+    "category": "Script - Miedo",
+    "question": "Paciente tiene miedo o ansiedad al dentista",
+    "answer": "Es algo más frecuente de lo que parece, y lo tenemos muy en cuenta.\nTrabajamos para que el tratamiento sea lo más cómodo posible, con distintas opciones de anestesia, incluyendo anestesia local, sedación o anestesia general en quirófano.\nLa idea es que puedas transitarlo con tranquilidad y confianza.",
+    "sort_order": 12,
+    "created_at": "2026-04-01T07:02:31.383262+00:00",
+    "updated_at": "2026-04-04T22:15:13.440133+00:00"
+  },
+  {
+    "id": 67,
+    "tenant_id": 1,
+    "category": "Script - Obra Social",
+    "question": "Paciente pregunta por obra social",
+    "answer": "Depende del tratamiento y de tu cobertura.\nTrabajamos con algunas obras sociales, y en los casos sin convenio directo, la atención se realiza de forma particular con posibilidad de reintegro.\nPodemos orientarte según tu caso.",
+    "sort_order": 13,
+    "created_at": "2026-04-01T07:02:31.383987+00:00",
+    "updated_at": "2026-04-04T22:15:57.252654+00:00"
+  },
+  {
+    "id": 68,
+    "tenant_id": 1,
+    "category": "Script - Paciente Lejano",
+    "question": "Paciente vive lejos o en otra localidad",
+    "answer": "Muchos pacientes se atienden con nosotros desde otras localidades.\nEn una primera instancia podemos orientarte a distancia y, según tu caso, indicarte cómo organizar el tratamiento para optimizar tiempos y traslados.",
+    "sort_order": 14,
+    "created_at": "2026-04-01T07:02:31.384702+00:00",
+    "updated_at": "2026-04-04T22:18:17.644531+00:00"
+  },
+  {
+    "id": 69,
+    "tenant_id": 1,
+    "category": "Coseguros",
+    "question": "¿El coseguro se paga en efectivo?",
+    "answer": "Podés abonar el coseguro en efectivo o por transferencia.\nCuando coordinamos tu turno, te confirmamos los detalles para tu comodidad.",
+    "sort_order": 3,
+    "created_at": "2026-04-04T10:13:39.766775+00:00",
+    "updated_at": "2026-04-04T21:16:21.702639+00:00"
+  },
+  {
+    "id": 71,
+    "tenant_id": 1,
+    "category": "General",
+    "question": "¿La Dra. trabaja los fines de semana?",
+    "answer": "Los turnos se organizan de lunes a viernes.\nPodemos ofrecerte distintas opciones dentro de la semana según tu disponibilidad.",
+    "sort_order": 6,
+    "created_at": "2026-04-04T10:13:39.772399+00:00",
+    "updated_at": "2026-04-04T21:45:47.027138+00:00"
+  },
+  {
+    "id": 72,
+    "tenant_id": 1,
+    "category": "General",
+    "question": "¿Atiende en varias sedes?",
+    "answer": "Sí, la Dra. atiende en distintas sedes según el tipo de tratamiento:\n• Salta 147 (consultorio principal)\n• Córdoba 431 (Centro maxilofacial)\n• CIMO (Centro Integral de Medicina del Oeste, para cirugía maxilofacial)\nLa sede se define según el tratamiento y la disponibilidad.",
+    "sort_order": 7,
+    "created_at": "2026-04-04T10:13:39.773199+00:00",
+    "updated_at": "2026-04-04T21:46:40.449248+00:00"
+  },
+  {
+    "id": 74,
+    "tenant_id": 1,
+    "category": "General",
+    "question": "¿Trabajan con todas las obras sociales?",
+    "answer": "Trabajamos con algunas obras sociales.\nEn los casos en los que no hay convenio directo, la atención se realiza de forma particular y luego podés gestionar el reintegro con tu cobertura.\nSi tenés una obra social específica, podemos orientarte según tu caso.",
+    "sort_order": 0,
+    "created_at": "2026-04-04T18:51:06.806106+00:00",
+    "updated_at": "2026-04-04T21:34:18.765549+00:00"
+  },
+  {
+    "id": 75,
+    "tenant_id": 1,
+    "category": "Obras Sociales",
+    "question": "¿Trabajan con todas las obras sociales?",
+    "answer": "Trabajamos con algunas obras sociales.\nEn los casos en los que no hay convenio directo, la atención se realiza de forma particular y luego podés gestionar el reintegro con tu cobertura.\nSi querés, contame tu obra social y te orientamos.",
+    "sort_order": 0,
+    "created_at": "2026-04-04T18:52:08.335413+00:00",
+    "updated_at": "2026-04-04T21:59:38.015212+00:00"
+  },
+  {
+    "id": 76,
+    "tenant_id": 1,
+    "category": "Obras Sociales",
+    "question": "¿Trabajan con Swiss Medical?",
+    "answer": "No trabajamos con convenio directo.\nLa atención se realiza de forma particular y luego podés gestionar el reintegro con tu cobertura.\nPodemos orientarte según tu caso.",
+    "sort_order": 0,
+    "created_at": "2026-04-04T18:53:13.077344+00:00",
+    "updated_at": "2026-04-04T21:58:10.017256+00:00"
+  },
+  {
+    "id": 77,
+    "tenant_id": 1,
+    "category": "Implantes y Prótesis",
+    "question": "Tengo prótesis removible, ¿puedo pasar a algo fijo?",
+    "answer": "Sí, en muchos casos es posible pasar de una prótesis removible a una solución fija.\nHoy existen opciones que permiten lograr mayor estabilidad, comodidad y una sensación mucho más natural al comer y hablar.\nLo ideal es evaluar tu caso para ver qué alternativa es la más adecuada para vos.",
+    "sort_order": 0,
+    "created_at": "2026-04-04T19:40:46.714963+00:00",
+    "updated_at": "2026-04-04T21:47:11.374217+00:00"
+  },
+  {
+    "id": 78,
+    "tenant_id": 1,
+    "category": "Implantes y Prótesis",
+    "question": "¿Voy a estar sin dientes durante el tratamiento?",
+    "answer": "En la mayoría de los casos, planificamos el tratamiento para que no tengas que estar sin dientes.\nUtilizamos soluciones provisorias o carga inmediata, que permiten mantener la estética y la función durante el proceso.",
+    "sort_order": 0,
+    "created_at": "2026-04-04T19:41:23.562851+00:00",
+    "updated_at": "2026-04-04T22:33:28.627517+00:00"
+  },
+  {
+    "id": 79,
+    "tenant_id": 1,
+    "category": "General",
+    "question": "¿Por qué mi prótesis se mueve o no me resulta cómoda?",
+    "answer": "Puede deberse a distintos factores, como el ajuste, el desgaste o cambios en los tejidos con el tiempo.\nLo ideal es evaluarlo para ver si se puede mejorar o si conviene otra alternativa que te brinde mayor estabilidad y comodidad.",
+    "sort_order": 0,
+    "created_at": "2026-04-04T19:41:49.391190+00:00",
+    "updated_at": "2026-04-04T21:34:59.239916+00:00"
+  },
+  {
+    "id": 80,
+    "tenant_id": 1,
+    "category": "Blanqueamiento",
+    "question": "¿Duele el blanqueamiento?",
+    "answer": "La mayoría de los pacientes llega con esa duda… y se sorprende.\nTrabajamos con Blanqueamiento Diamante, una tecnología que minimiza la sensibilidad, por lo que el tratamiento suele ser cómodo, incluso en personas que tuvieron malas experiencias.\nSi querés, podemos evaluar tu caso y explicarte qué podés esperar 😊",
+    "sort_order": 0,
+    "created_at": "2026-04-04T19:43:23.137285+00:00",
+    "updated_at": "2026-04-04T20:49:10.773218+00:00"
+  },
+  {
+    "id": 81,
+    "tenant_id": 1,
+    "category": "Blanqueamiento",
+    "question": "¿Cuánto dura el blanqueamiento?",
+    "answer": "El resultado del Blanqueamiento Diamante puede durar bastante tiempo, aunque depende de cada paciente y de sus hábitos (café, vino, tabaco, etc.).\nJustamente esta tecnología busca lograr un resultado más estable y natural en el tiempo.\nEn la consulta te explicamos cómo mantenerlo y, si hace falta, cómo reforzarlo para prolongar el efecto 😊",
+    "sort_order": 0,
+    "created_at": "2026-04-04T19:44:11.183924+00:00",
+    "updated_at": "2026-04-04T20:50:47.212121+00:00"
+  },
+  {
+    "id": 82,
+    "tenant_id": 1,
+    "category": "Blanqueamiento",
+    "question": "¿Se nota realmente el cambio?",
+    "answer": "Sí, el cambio suele ser visible y mejora mucho la estética de la sonrisa.\nCon Blanqueamiento Diamante se logra un resultado más uniforme, natural y luminoso.",
+    "sort_order": 0,
+    "created_at": "2026-04-04T19:44:36.202309+00:00",
+    "updated_at": "2026-04-04T19:46:58.493651+00:00"
+  },
+  {
+    "id": 83,
+    "tenant_id": 1,
+    "category": "General",
+    "question": "¿Cómo manejan el dolor o la anestesia?",
+    "answer": "Trabajamos con un sistema de anestesia sin aguja, que hace el procedimiento mucho más cómodo y reduce la percepción de dolor.\nAdemás, según cada caso, los tratamientos pueden realizarse con anestesia local o, cuando es necesario, bajo sedación o anestesia general en quirófano.",
+    "sort_order": 0,
+    "created_at": "2026-04-04T19:59:42.121214+00:00",
+    "updated_at": "2026-04-04T21:36:00.491178+00:00"
+  },
+  {
+    "id": 84,
+    "tenant_id": 1,
+    "category": "General",
+    "question": "Tengo miedo al tratamiento / al dentista",
+    "answer": "Es totalmente normal sentir miedo o ansiedad.\nMuchos pacientes llegan así y, cuando entienden el proceso y se sienten acompañados, lo viven de forma mucho más tranquila.\nAdemás, contamos con distintas opciones para que la experiencia sea lo más cómoda posible, como anestesia sin aguja, sedación o anestesia general en quirófano según el caso.",
+    "sort_order": 0,
+    "created_at": "2026-04-04T20:01:25.570651+00:00",
+    "updated_at": "2026-04-04T21:37:04.863682+00:00"
+  },
+  {
+    "id": 85,
+    "tenant_id": 1,
+    "category": "Blanqueamiento",
+    "question": "¿Soy candidato para blanqueamiento?”",
+    "answer": "No todos los pacientes son candidatos directos a un blanqueamiento.\nPara realizar un Blanqueamiento Diamante primero evaluamos la salud dental y el tipo de pigmentación, ya que no todos los casos responden de la misma manera.\nEsa evaluación es lo que nos permite lograr resultados naturales y seguros.\nSi querés, podemos ver tu caso y orientarte 😊",
+    "sort_order": 0,
+    "created_at": "2026-04-04T20:51:30.897466+00:00",
+    "updated_at": "2026-04-04T20:52:32.908027+00:00"
+  },
+  {
+    "id": 86,
+    "tenant_id": 1,
+    "category": "Blanqueamiento",
+    "question": "¿Cuánto cuesta el blanqueamiento?",
+    "answer": "El valor del Blanqueamiento Diamante es de 400 mil pesos e incluye la evaluación profesional, la limpieza previa y el kit de mantenimiento.\nMás que un blanqueamiento convencional, es un tratamiento completo pensado para lograr un resultado seguro y duradero.\nSi querés, podemos explicarte en detalle cómo se realiza y qué resultado podés esperar 😊",
+    "sort_order": 0,
+    "created_at": "2026-04-04T20:53:25.820361+00:00",
+    "updated_at": "2026-04-04T20:53:49.845627+00:00"
+  },
+  {
+    "id": 87,
+    "tenant_id": 1,
+    "category": "Blanqueamiento",
+    "question": "¿Se nota el cambio?",
+    "answer": "Sí, el cambio suele ser visible desde la primera sesión.\nCon Blanqueamiento Diamante buscamos una sonrisa más luminosa y natural, no un blanco artificial.\nSi querés, podemos orientarte según tu caso 😊",
+    "sort_order": 0,
+    "created_at": "2026-04-04T20:55:51.072295+00:00",
+    "updated_at": "2026-04-04T20:55:51.072295+00:00"
+  },
+  {
+    "id": 88,
+    "tenant_id": 1,
+    "category": "Blanqueamiento",
+    "question": "¿Cuánto dura la sesión?",
+    "answer": "El tratamiento con Blanqueamiento Diamante se realiza en una sola sesión en consultorio y suele durar alrededor de 30 a 40 minutos.\nEs un procedimiento rápido y controlado.",
+    "sort_order": 0,
+    "created_at": "2026-04-04T20:56:08.936552+00:00",
+    "updated_at": "2026-04-04T20:56:08.936552+00:00"
+  },
+  {
+    "id": 89,
+    "tenant_id": 1,
+    "category": "Blanqueamiento",
+    "question": "¿Voy a quedar con los dientes muy blancos?",
+    "answer": "El objetivo del Blanqueamiento Diamante no es exagerar el blanco, sino lograr un resultado armónico con tu rostro y natural.\nCada caso se planifica de forma individual.",
+    "sort_order": 0,
+    "created_at": "2026-04-04T20:56:31.252188+00:00",
+    "updated_at": "2026-04-04T20:56:31.252188+00:00"
+  },
+  {
+    "id": 90,
+    "tenant_id": 1,
+    "category": "Blanqueamiento",
+    "question": "¿Puedo hacerlo si tengo sensibilidad?",
+    "answer": "Sí, en muchos casos.\nEl Blanqueamiento Diamante está diseñado para minimizar la sensibilidad, por lo que incluso pacientes con antecedentes suelen tolerarlo bien.\nDe todas formas, siempre evaluamos cada caso antes para asegurar un tratamiento seguro y cómodo.",
+    "sort_order": 0,
+    "created_at": "2026-04-04T20:56:52.418420+00:00",
+    "updated_at": "2026-04-04T21:37:52.485585+00:00"
+  },
+  {
+    "id": 91,
+    "tenant_id": 1,
+    "category": "Blanqueamiento",
+    "question": "¿Hay que hacer mantenimiento?",
+    "answer": "Con el tiempo, el color puede modificarse según los hábitos (como café, vino o tabaco).\nPor eso, después del Blanqueamiento Diamante indicamos cuidados y, si es necesario, refuerzos para mantener el resultado por más tiempo.",
+    "sort_order": 0,
+    "created_at": "2026-04-04T20:57:13.113767+00:00",
+    "updated_at": "2026-04-04T21:38:38.988048+00:00"
+  },
+  {
+    "id": 92,
+    "tenant_id": 1,
+    "category": "Blanqueamiento",
+    "question": "¿Por qué es diferente a otros blanqueamientos?",
+    "answer": "El Blanqueamiento Diamante utiliza luz fría y ultrasonido, lo que permite activar el gel sin generar calor ni agresión sobre el diente.\nA diferencia de otros métodos, no se basa en ácidos, sino en peróxidos controlados, logrando un resultado más seguro, uniforme y con mucha menor sensibilidad.",
+    "sort_order": 0,
+    "created_at": "2026-04-04T20:58:36.492792+00:00",
+    "updated_at": "2026-04-04T21:40:23.570909+00:00"
+  },
+  {
+    "id": 93,
+    "tenant_id": 1,
+    "category": "Blanqueamiento",
+    "question": "¿Vale la pena hacerse un blanqueamiento?",
+    "answer": "Si buscás mejorar la estética de tu sonrisa de forma rápida y cuidada, sí.\nEl Blanqueamiento Diamante permite lograr un cambio visible en poco tiempo, manteniendo un resultado natural y sin generar la sensibilidad que suelen provocar otros métodos.\nEs uno de los tratamientos más elegidos cuando se quiere verse mejor sin procedimientos invasivos.",
+    "sort_order": 0,
+    "created_at": "2026-04-04T20:59:32.415582+00:00",
+    "updated_at": "2026-04-04T20:59:32.415582+00:00"
+  },
+  {
+    "id": 94,
+    "tenant_id": 1,
+    "category": "Implantes y Prótesis",
+    "question": "¿Voy a poder comer normal con implantes?",
+    "answer": "Sí, uno de los principales objetivos de los implantes es recuperar la función al masticar.\nEn la mayoría de los casos, los pacientes vuelven a comer con normalidad y mayor seguridad que con prótesis removibles.\nLa idea es que puedas volver a disfrutar de la comida con comodidad.",
+    "sort_order": 0,
+    "created_at": "2026-04-04T21:10:52.175511+00:00",
+    "updated_at": "2026-04-04T21:49:45.634975+00:00"
+  },
+  {
+    "id": 95,
+    "tenant_id": 1,
+    "category": "General",
+    "question": "Paciente listo pero no decidido",
+    "answer": "Si te parece, podemos hacer una evaluación y ver tu caso en detalle para explicarte bien las opciones y el plan más adecuado para vos.\n¿Preferís turno por la mañana o por la tarde?",
+    "sort_order": 0,
+    "created_at": "2026-04-04T22:39:23.848389+00:00",
+    "updated_at": "2026-04-04T22:39:23.848389+00:00"
+  },
+  {
+    "id": 96,
+    "tenant_id": 1,
+    "category": "General",
+    "question": "Paciente que ya preguntó bastante",
+    "answer": "En tu caso, lo ideal sería evaluarlo bien para poder darte un diagnóstico claro y explicarte las opciones según lo que necesites.\nSi querés, vemos disponibilidad y coordinamos un turno.",
+    "sort_order": 0,
+    "created_at": "2026-04-04T22:39:46.665368+00:00",
+    "updated_at": "2026-04-04T22:39:46.665368+00:00"
+  },
+  {
+    "id": 97,
+    "tenant_id": 1,
+    "category": "General",
+    "question": "Dolor / problema activo",
+    "answer": "Por lo que me comentás, sería importante evaluarlo para ver bien qué está pasando y poder indicarte el tratamiento adecuado.\nSi querés, podemos coordinar un turno y lo vemos con tranquilidad.",
+    "sort_order": 0,
+    "created_at": "2026-04-04T22:40:07.806998+00:00",
+    "updated_at": "2026-04-04T22:40:07.806998+00:00"
+  },
+  {
+    "id": 98,
+    "tenant_id": 1,
+    "category": "General",
+    "question": "“Lo estoy pensando”",
+    "answer": "Entiendo que lo estés evaluando.\nMuchas veces, tener un diagnóstico claro ayuda a tomar una decisión con más seguridad.\nSi querés, podemos coordinar una consulta y ves todo con tranquilidad.",
+    "sort_order": 0,
+    "created_at": "2026-04-04T22:40:27.758041+00:00",
+    "updated_at": "2026-04-04T22:40:27.758041+00:00"
+  },
+  {
+    "id": 99,
+    "tenant_id": 1,
+    "category": "General",
+    "question": "Cuando preguntan valor de tratamiento",
+    "answer": "Para poder darte un valor preciso, primero necesitamos evaluar tu caso, ya que cada tratamiento es distinto.\nSi te parece, coordinamos una consulta y te explico todo en detalle.",
+    "sort_order": 0,
+    "created_at": "2026-04-04T22:41:08.464940+00:00",
+    "updated_at": "2026-04-04T22:41:08.464940+00:00"
+  },
+  {
+    "id": 100,
+    "tenant_id": 1,
+    "category": "General",
+    "question": "Script – Cierre premium",
+    "answer": "La evaluación es el primer paso para entender bien tu caso y poder indicarte la mejor opción.\nSi te parece, coordinamos un turno y lo vemos con calma.",
+    "sort_order": 0,
+    "created_at": "2026-04-04T22:41:40.137398+00:00",
+    "updated_at": "2026-04-04T22:41:40.137398+00:00"
+  },
+  {
+    "id": 101,
+    "tenant_id": 1,
+    "category": "General",
+    "question": "Paciente decidido",
+    "answer": "Perfecto, coordinamos entonces.\n¿Qué día te queda más cómodo?",
+    "sort_order": 0,
+    "created_at": "2026-04-04T22:41:58.740428+00:00",
+    "updated_at": "2026-04-04T22:41:58.740428+00:00"
+  },
+  {
+    "id": 102,
+    "tenant_id": 1,
+    "category": "General",
+    "question": "Objeción precio (“es caro”)",
+    "answer": "En este tipo de tratamientos, el valor depende del diagnóstico y de lo que realmente necesites.\nMás que pensar en un costo estándar, lo importante es evaluar bien el caso para definir una solución funcional, estética y duradera.",
+    "sort_order": 0,
+    "created_at": "2026-04-04T22:42:27.365825+00:00",
+    "updated_at": "2026-04-04T22:42:27.365825+00:00"
+  },
+  {
+    "id": 103,
+    "tenant_id": 1,
+    "category": "General",
+    "question": "Objeción “lo voy a pensar”",
+    "answer": "Perfecto, es importante sentirse seguro antes de tomar una decisión.\nMuchas veces, tener un diagnóstico claro ayuda a evaluar mejor las opciones.\nCuando quieras, podemos verlo en consulta y resolver todas tus dudas.",
+    "sort_order": 0,
+    "created_at": "2026-04-04T22:42:56.242523+00:00",
+    "updated_at": "2026-04-04T22:42:56.242523+00:00"
+  }
+]

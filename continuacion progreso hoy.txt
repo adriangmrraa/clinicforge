@@ -1,0 +1,358 @@
+
+> No. Ahora tengo error en que el agente de ia tora solo, y multiagentes y redes
+sociales me estan tomando los turnos mal. Ofrece horarios donde no puede la
+profesional designada , debe tener en cuenta tanto horarios d profesional como
+horarios de la clinica, y a evecs falla, da turnos en horarios mal, a veces tiene la
+manana libre toda la manana libre, pero sigue diciendo que no tiene slots disponibles,
+ y como que s epierde. yo le jhago pruebas mirando lo que tengo cargado en ambos
+modales, de profesional horarios y de clinicas horarios y veo los fallor, me entiendes
+ hermano?
+
+● Te entiendo PERFECTAMENTE. El check_availability es el corazón del sistema de turnos
+  y si está fallando ahí, todo lo demás se rompe en cascada. Dejame ir directo al
+  código de disponibilidad.
+
+  Searched for 2 patterns, read 1 file (ctrl+o to expand)
+
+● Ahora necesito ver la función generate_free_slots y is_time_in_working_hours — ahí es
+   donde probablemente está el bug:
+
+  Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+● Ahora veo el problema. Mirá la lógica en línea 1884-1905:
+
+  # Verificar si el profesional atiende este día
+  prof_closed = False
+  if clean_name and active_professionals:  # ← BUG: solo chequea si se pasó clean_name!
+
+  BUG #1 CRÍTICO: La verificación de si el profesional trabaja ese día SOLO se hace
+  cuando el paciente pide un profesional por nombre (if clean_name). Si el profesional
+  se asigna por forced_prof_id (assigned_professional) o por derivation_filter_prof_id,
+   el chequeo de horarios del profesional SE SALTA COMPLETAMENTE. El día se considera
+  válido aunque el profesional no trabaje.
+
+  BUG #2: En la línea 2096, cuando se construye el busy_map, si
+  day_config.get("enabled") es False o no tiene slots, el código dice "no restrictions
+  → available full clinic hours". Eso está MAL — si el profesional tiene enabled: false
+   para ese día, DEBERÍA estar totalmente ocupado, no completamente libre.
+
+  BUG #3: En pick_representative_slots (multi-día), probablemente tiene el mismo
+  problema al buscar slots en otros días.
+
+  Veamos pick_representative_slots:
+
+  Searched for 2 patterns, read 1 file (ctrl+o to expand)
+
+● Ahora veamos _get_slots_for_extra_day — ahí está el problema del multi-día:
+
+  Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+● Encontré los 3 bugs. Ahora aplico los fixes:
+
+  BUG #1: En check_availability línea 1884, la verificación de horarios del profesional
+   solo corre cuando se pasa clean_name. Pero cuando el profesional viene por
+  forced_prof_id o derivation_filter_prof_id, el auto-advance salta profesionales
+  cerrados.
+
+  BUG #2: En la línea 2103-2122 y 1128-1139, cuando el profesional tiene enabled: false
+   para el día, NO se marca nada como ocupado → queda "libre" en horario clínica.
+  Debería marcarse TODO el día como ocupado.
+
+  BUG #3: En _get_slots_for_extra_day, el mismo problema — profesional con día disabled
+   = "libre".
+
+● Update(orchestrator_service\main.py)
+  ⎿  Added 6 lines, removed 3 lines
+      1882                  continue
+      1883
+      1884              # Verificar si el profesional atiende este día
+      1885 +            # Check ALL filtered professionals, not just when clean_name is provided.
+      1886 +            # When forced_prof_id or derivation_filter_prof_id is set, we also have
+      1887 +            # a single professional that must be checked.
+      1888              prof_closed = False
+      1886 -            if clean_name and active_professionals:
+      1889 +            if len(active_professionals) == 1:
+      1890                  prof = active_professionals[0]
+      1891                  wh = prof.get("working_hours")
+      1892                  if isinstance(wh, str):
+     ...
+      1896                          wh = {}
+      1897                  if not isinstance(wh, dict):
+      1898                      wh = {}
+      1896 -                day_config = wh.get(day_name_en, {"enabled": False, "slots": []})
+      1897 -                if not day_config.get("enabled"):
+      1899 +                day_config = wh.get(day_name_en, {})
+      1900 +                if day_config and not day_config.get("enabled", True):
+      1901                      prof_closed = True
+      1902
+      1903              if prof_closed:
+
+
+
+
+
+● Ahora el BUG #2 — cuando el profesional tiene el día disabled, debe marcarse como
+  TOTALMENTE OCUPADO:
+
+● Update(orchestrator_service\main.py)
+  ⎿  Added 15 lines, removed 3 lines
+      2102                  f"📅 DIAG prof={prof_id} ({prof.get('first_name')}) day={day_name_en} "
+      2103                  f"day_config={day_config} wh_keys={list(wh.keys()) if wh else 'empty'}"
+      2104              )
+      2105 -            # Solo marcar como ocupados los horarios fuera de working_hours cuando el día tiene slots configurados
+      2105 +            # Mark non-working hours as busy. If the professional's day is explicitly
+      2106 +            # disabled, mark the ENTIRE day as busy so they get zero slots.
+      2107              if day_config.get("enabled") and day_config.get("slots"):
+      2108                  check_time = datetime.combine(target_date, datetime.min.time()).replace(
+      2109                      hour=8, minute=0
+     ...
+      2119                      logger.info(
+      2120                          f"📅 DIAG prof={prof_id} non_working_hours={_non_working}"
+      2121                      )
+      2122 +            elif day_config.get("enabled") is False:
+      2123 +                # Professional explicitly disabled for this day → mark ALL hours as busy
+      2124 +                check_time = datetime.combine(target_date, datetime.min.time()).replace(
+      2125 +                    hour=6, minute=0
+      2126 +                )
+      2127 +                while check_time.hour < 23:
+      2128 +                    busy_map[prof_id].add(check_time.strftime("%H:%M"))
+      2129 +                    check_time += timedelta(minutes=15)
+      2130 +                logger.info(
+      2131 +                    f"📅 DIAG prof={prof_id} day DISABLED → marked fully busy"
+      2132 +                )
+      2133              else:
+      2134 +                # No working_hours config at all → professional available during clinic hours
+      2135                  logger.info(
+      2123 -                    f"📅 DIAG prof={prof_id} no working_hours restriction → available full clinic hours"
+      2136 +                    f"📅 DIAG prof={prof_id} no working_hours config → available full clinic hours"
+      2137                  )
+      2125 -            # Si enabled=False o slots=[], no añadimos ocupación → profesional disponible en horario clínica
+      2138
+      2139          # Agregar bloqueos de GCal (granularidad 15 min)
+      2140          global_busy = set()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+● Ahora el mismo fix en _get_slots_for_extra_day:
+
+● Update(orchestrator_service\main.py)
+  ⎿  Added 11 lines, removed 5 lines
+      1125                  wh = {}
+      1126          if not isinstance(wh, dict):
+      1127              wh = {}
+      1128 -        day_config = wh.get(day_name_en, {"enabled": False, "slots": []})
+      1128 +        day_config = wh.get(day_name_en, {})
+      1129          if day_config.get("enabled") and day_config.get("slots"):
+      1130              check_time = datetime.combine(target_date, datetime.min.time()).replace(
+      1131                  hour=8, minute=0
+      1132              )
+      1133 -            for _ in range(24):
+      1133 +            while check_time.hour < 20:
+      1134                  h_m = check_time.strftime("%H:%M")
+      1135                  if not is_time_in_working_hours(h_m, day_config):
+      1136                      busy_map[prof["id"]].add(h_m)
+      1137 -                check_time += timedelta(minutes=30)
+      1138 -                if check_time.hour >= 20:
+      1139 -                    break
+      1137 +                check_time += timedelta(minutes=15)
+      1138 +        elif day_config.get("enabled") is False:
+      1139 +            # Professional explicitly disabled for this day → mark ALL hours as busy
+      1140 +            check_time = datetime.combine(target_date, datetime.min.time()).replace(
+      1141 +                hour=6, minute=0
+      1142 +            )
+      1143 +            while check_time.hour < 23:
+      1144 +                busy_map[prof["id"]].add(check_time.strftime("%H:%M"))
+      1145 +                check_time += timedelta(minutes=15)
+      1146
+      1147      global_busy = set()
+      1148      for b in gcal_blocks:
+
+
+
+
+
+
+● Ahora hay otro problema que noté: en _get_slots_for_extra_day la granularidad del
+  busy_map es de 30 minutos pero generate_free_slots chequea cada 15 minutos. Eso deja
+  huecos. Ya lo arreglé arriba cambiando timedelta(minutes=30) a timedelta(minutes=15).
+
+  También necesito verificar que _get_slots_for_extra_day NO ignora forced_prof_id ni
+  derivation_filter_prof_id — actualmente solo filtra por professional_name, no por las
+   asignaciones automáticas. Veamos el caller:
+
+  La función pick_representative_slots pasa professional_name a
+  _get_slots_for_extra_day, pero cuando el profesional viene por forced_prof_id o
+  derivation_filter_prof_id, el professional_name puede ser None → la búsqueda
+  multi-día ignora el filtro y busca TODOS los profesionales. Esto es un bug de
+  filtrado.
+
+  Read 1 file (ctrl+o to expand)
+
+● El problema es que pick_representative_slots recibe professional_name (que puede ser
+  None cuando el profesional se asignó automáticamente). Necesito pasar el nombre
+  resuelto. Veamos qué profesional se resolvió:
+
+  Después del auto-advance, active_professionals contiene los profesionales filtrados.
+  Si hay un forced_prof_id o derivation_filter_prof_id, ya se filtró a 1 profesional.
+  Puedo pasar el nombre de ese profesional a pick_representative_slots.
+
+  Read 1 file (ctrl+o to expand)
+
+● Update(orchestrator_service\main.py)
+  ⎿  Added 10 lines, removed 1 line
+      2366                      f"📅 search_range capped to {max_search_days} days (treatment priority={treatment_priority!r})"
+      2367                  )
+      2368
+      2369 +        # Resolve effective professional name for multi-day search.
+      2370 +        # When the professional was assigned via forced_prof_id or derivation rule
+      2371 +        # (not by name), professional_name is None. Pass the resolved name so
+      2372 +        # _get_slots_for_extra_day filters to the correct professional.
+      2373 +        _effective_prof_name = professional_name
+      2374 +        if not _effective_prof_name and len(active_professionals) == 1:
+      2375 +            _p = active_professionals[0]
+      2376 +            _effective_prof_name = f"{_p['first_name']} {_p.get('last_name') or ''}".strip()
+      2377 +
+      2378          # Seleccionar 2-3 opciones representativas (con multi-día si hace falta)
+      2379          options, total_today = await pick_representative_slots(
+      2380              available_slots,
+     ...
+      2382              tenant_id,
+      2383              tenant_wh,
+      2384              tenant_row,
+      2376 -            professional_name=professional_name,
+      2385 +            professional_name=_effective_prof_name,
+      2386              treatment_name=treatment_name,
+      2387              duration=duration,
+      2388              max_options=3,
+
+
+
+
+
+
+
+
+● Ahora commit y push:
+
+● Bash(cd "/c/Users/Asus/Documents/estabilizacion/Laura Delgado/clinicforge" && git add
+      orchestrator_service/main.py && git diff --cached --stat)
+  ⎿   orchestrator_service/main.py | 54 ++++++++++++++++++++++++++++++++++----------
+      1 file changed, 42 insertions(+), 12 deletions(-)
+
+
+● Bash(cd "/c/Users/Asus/Documents/estabilizacion/Laura Delgado/clinicforge" && git commit -m
+       "$(cat <<'EOF'
+      fix: check_availability ignoring professional working hour…)
+  ⎿  [main 227ec00] fix: check_availability ignoring professional working hours in 3 cases
+      1 file changed, 42 insertions(+), 12 deletions(-)
+     To https://github.com/adriangmrraa/clinicforge
+        2619be7..227ec00  main -> main
+
+● Pusheado → 227ec00.
+
+  Hermano, estos eran 4 bugs encadenados en check_availability. Te lo resumo:
+
+  Bug 1 — Auto-advance ignoraba horarios del profesional asignado
+  El loop que salta días cerrados SOLO chequeaba al profesional cuando el paciente lo
+  pedía por nombre. Si venía por assigned_professional_id o regla de derivación → nunca
+  verificaba → ofrecía turnos en días que el profesional NO trabaja.
+
+  Bug 2 — Profesional con día disabled = "libre"
+  Si un profesional tiene enabled: false para un día (ej: no trabaja los miércoles), el
+  busy_map quedaba VACÍO para ese profesional → generate_free_slots lo veía como
+  disponible en TODO el horario clínica. Ahora marca las 17 horas del día como ocupadas.
+
+  Bug 3 — Granularidad 30 min vs 15 min en días extra
+  _get_slots_for_extra_day marcaba ocupación cada 30 minutos, pero generate_free_slots
+  verifica cada 15. Resultado: huecos fantasma de 15 minutos que parecían libres.
+  Corregido a 15 min.
+
+  Bug 4 — Búsqueda multi-día sin filtro de profesional
+  Cuando el profesional se asignaba automáticamente (no por nombre),
+  pick_representative_slots pasaba professional_name=None → _get_slots_for_extra_day
+  buscaba TODOS los profesionales → ofrecía slots de otros profesionales en días
+  siguientes.
+
+  Estos 4 explican exactamente lo que describís: "ofrece horarios donde no puede la
+  profesional", "tiene la mañana libre pero dice que no hay slots", "a veces falla".
+
+
+✻ Baked for 3m 48s
+
+> en la pagina de chats, en el contexto clinoco, quiero que aparezca un boton para
+agregar turno para un familiar de esa persona, lo mismo que seria el proceso que lo
+hace la ia, pero desde la ui, te pido esto ya que la ia tuvo problemas al hacerlo, se
+alargo al conversacion y el mensaje que era para el hijo quedo muy atras, se fue del
+contexto aparentemente y le volvio a pedir los datos, justo es una persona mayor
+queriendo sacar para su hija o hijo no recuerdo. Y ahora quiero cargarlo manual,
+porque la ai no puedo hacerlo, y necesito cargar manual, ademas ya queda esa funcion
+que es util digamos, pero ademas de eso, lanza otros agentes para ver porque no
+funciono esta vez elk agendamiento del hijo, ceso de que parece que se alargo la
+conversacion y perdio el contexto, ahi yya hay algo de logica para guardar pedacitos
+de contexto como ese ya como cache digamos, si es para elhijo el turno debe guardarse,
+ luego el dia y demas ya se guarda creo, analizalo
+
+● Son dos cosas: una feature de UI para cargar turno de familiar manual, y un bug de
+  contexto en la IA. Dejame investigar ambas en paralelo.
+
+● 2 Explore agents finished (ctrl+o to expand)
+   ├─ Investigate chat context panel UI · 25 tool uses · 60.5k tokens
+   │  ⎿  Done
+   └─ Investigate AI context loss for child booking · 36 tool uses · 66.8k tokens
+      ⎿  Done
+
+● Perfecto. Encontré la causa raíz del problema de contexto Y tengo todo lo que
+  necesito para el botón de UI.
+
+  La causa raíz del problema de la IA con hijos/menores son 3 cosas encadenadas:
+
+  1. Solo 20 mensajes de historial → "quiero para mi hijo" se cae del contexto
+  2. Lead context IGNORA bookings de menores → is_minor nunca se cachea en Redis
+  3. Compresión trunca mensajes viejos a 80 chars → pierde la keyword "hijo"
+
+  Voy a hacer los dos fixes en paralelo: el bug de contexto de menores y el botón de
+  UI.
+
+  Searched for 1 pattern, read 2 files (ctrl+o to expand)
+
+● Ahora busco dónde se llama lead_context.merge para bookings de menores:
+
+  Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+● Ahora aplico los 3 fixes de contexto:
+
+  Fix 1: Subir límite de historial de 20 a 40
+  Fix 2: Cachear booking_type=minor y minor_name en lead context
+  Fix 3: Mejorar compresión para preservar keywords clave
+
+● Update(orchestrator_service\services\buffer_task.py)
+  ⎿  Added 1 line, removed 1 line
+      1247          # 4. Fetching Recent History (Spec 23)
+      1248          # Re-fetch AFTER transcription wait to get updated content_attributes
+      1249          db_history_dicts = await db.get_chat_history(
+      1250 -            external_user_id, limit=20, tenant_id=tenant_id
+      1250 +            external_user_id, limit=40, tenant_id=tenant_id
+      1251          )
+      1252
+      1253          # --- WAIT FOR VISION if recent images lack description ---
+  ⎿  You've hit your limit · resets 1pm (America/Buenos_Aires)
+
+✻ Brewed for 5m 2s
+
+● Background command "find /c/Users/Asus/Documents/estabilizacion/Laura\ Delgado/clinicforge -name "*.py" -type f -exec grep -l "def get_chat_history\|async def
+get_chat_history" {} \;" completed (exit code 0)
+  ⎿  You've hit your limit · resets 1pm (America/Buenos_Aires)

@@ -1,0 +1,15 @@
+Las reglas de derivación determinan a qué profesional se asigna cada paciente según el tipo de tratamiento. Se evalúan en orden de prioridad.
+
+#	Nombre de la regla	Condición del paciente	Categorías de tratamiento	Derivar a	Editar
+1	Cirugía e implantes → Dra. Delgado	Cualquier paciente	Cirugía, Implantes, Rehabilitación oral, Estética avanzada, Endolifting, cirugia_compleja, cirugia_simple, blanqueamiento_dental, carilla_tratamiento, estetica_facial_avanzada, estetica_facial_simple, implante_complejo_cima, implante_guiado_tomo, implante_simple_risa, rehabilitacion_integral, rehabilitacion_compleja, injerto_regeneracion_osea	Profesional específico	
+
+
+
+2	Tratamientos generales → Equipo	Paciente nuevo	Limpieza, Arreglos, Conductos, Ortodoncia, Blanqueamiento, Exodoncia	Equipo (sin filtro)	
+
+
+
+3	Paciente existente → Dra. Delgado	Paciente existente	*	Profesional específico	
+
+
+

@@ -1,0 +1,67 @@
+asi esta al inciio: 
+
+
+Maria Laura Delgado
+Lead
+WhatsApp
+[AUDIO]
+
+10m
+M
+Mabel 🌹
+Lead
+WhatsApp
+Si, para el 5 de junio a las 15hrs
+
+13m
+H
+Hector Adrian Argañaraz Gamarra
+Paciente
+WhatsApp
+ok
+
+13m
+S
+Sofia Tarruella
+Paciente
+WhatsApp
+[Media]
+
+29m
+
+
+
+y despues de navegar de determinada forma entre las conversaicones, osea abrir una de paciente y luego otra de lead, se cambia: 
+
+M
+Maria Laura Delgado
+Paciente
+WhatsApp
+[AUDIO]
+
+11m
+M
+Mabel 🌹
+Paciente
+WhatsApp
+Si, para el 5 de junio a las 15hrs
+
+13m
+H
+Hector Adrian Argañaraz Gamarra
+Paciente
+WhatsApp
+ok
+
+14m
+S
+Sofia Tarruella
+Paciente
+WhatsApp
+[Media]
+
+29m
+
+
+
+PERO CUANDO ACTUALIZO LA PAGINA, O CAMBIO DE PAGINA Y VUELVO AQUI  A CHATS, digamos que aparece como estaba , osea bien como debe ser, pero si hago lo mismo de navegar entre ellas, y voy a una de paciente y leugo a la d lead de Mabel por ejemplo, se cambia a paciente sin ella ser paciente, entiendes? aunque no persista, confunde 

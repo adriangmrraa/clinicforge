@@ -1,0 +1,635 @@
+- generic [ref=e1]:
+  - generic [ref=e124]:
+    - complementary [ref=e126]:
+      - generic [ref=e128]:
+        - img "Logo" [ref=e130]
+        - generic [ref=e131]: Clínica Dra. Laura Delgado
+      - navigation [ref=e132]:
+        - button "Dashboard" [ref=e134] [cursor=pointer]:
+          - generic [ref=e137]:
+            - img [ref=e139]
+            - generic [ref=e142]: Dashboard
+        - generic [ref=e144]:
+          - button "Agenda" [active] [ref=e145] [cursor=pointer]:
+            - generic [ref=e148]:
+              - img [ref=e150]
+              - generic [ref=e152]: Agenda
+          - generic:
+            - paragraph: Agenda
+            - paragraph: Agenda interactiva de turnos por profesional y sede
+        - button "Pacientes" [ref=e154] [cursor=pointer]:
+          - generic [ref=e157]:
+            - img [ref=e159]
+            - generic [ref=e164]: Pacientes
+        - button "Conversaciones" [ref=e166] [cursor=pointer]:
+          - generic [ref=e169]:
+            - img [ref=e171]
+            - generic [ref=e173]: Conversaciones
+        - button "Personal" [ref=e175] [cursor=pointer]:
+          - generic [ref=e178]:
+            - img [ref=e180]
+            - generic [ref=e183]: Personal
+        - button "Sedes (Clínicas)" [ref=e185] [cursor=pointer]:
+          - generic [ref=e188]:
+            - img [ref=e190]
+            - generic [ref=e194]: Sedes (Clínicas)
+        - button "Estrategia" [ref=e196] [cursor=pointer]:
+          - generic [ref=e199]:
+            - img [ref=e201]
+            - generic [ref=e203]: Estrategia
+        - button "Tokens y Métricas" [ref=e205] [cursor=pointer]:
+          - generic [ref=e208]:
+            - img [ref=e210]
+            - generic [ref=e212]: Tokens y Métricas
+        - button "Tratamientos" [ref=e214] [cursor=pointer]:
+          - generic [ref=e217]:
+            - img [ref=e219]
+            - generic [ref=e222]: Tratamientos
+        - button "Mi Perfil" [ref=e224] [cursor=pointer]:
+          - generic [ref=e227]:
+            - img [ref=e229]
+            - generic [ref=e232]: Mi Perfil
+        - button "Marketing Hub" [ref=e234] [cursor=pointer]:
+          - generic [ref=e237]:
+            - img [ref=e239]
+            - generic [ref=e242]: Marketing Hub
+        - button "ROI Dashboard" [ref=e244] [cursor=pointer]:
+          - generic [ref=e247]:
+            - img [ref=e249]
+            - generic [ref=e252]: ROI Dashboard
+        - button "Leads Forms Meta" [ref=e254] [cursor=pointer]:
+          - generic [ref=e257]:
+            - img [ref=e259]
+            - generic [ref=e264]: Leads Forms Meta
+        - button "Automatizaciones" [ref=e266] [cursor=pointer]:
+          - generic [ref=e269]:
+            - img [ref=e271]
+            - generic [ref=e273]: Automatizaciones
+        - button "HSM & Automatización" [ref=e275] [cursor=pointer]:
+          - generic [ref=e278]:
+            - img [ref=e280]
+            - generic [ref=e282]: HSM & Automatización
+        - button "Configuración" [ref=e284] [cursor=pointer]:
+          - generic [ref=e287]:
+            - img [ref=e289]
+            - generic [ref=e292]: Configuración
+        - button "Cerrar Sesión" [ref=e293] [cursor=pointer]:
+          - generic [ref=e295]:
+            - img [ref=e297]
+            - generic [ref=e300]: Cerrar Sesión
+      - generic [ref=e302]:
+        - generic [ref=e303]: c
+        - generic [ref=e304]:
+          - paragraph [ref=e305]: consultoriolauradelgado@gmail.com
+          - paragraph [ref=e306]: ceo
+    - main [ref=e307]:
+      - generic [ref=e308]:
+        - heading "Clínica Dra. Laura Delgado" [level=1] [ref=e310]
+        - generic [ref=e311]:
+          - button "Guia de la pagina" [ref=e313] [cursor=pointer]:
+            - img [ref=e314]
+          - img [ref=e319]
+          - combobox [ref=e323] [cursor=pointer]:
+            - option "Clínica Dra. Laura Delgado" [selected]
+            - option "Dentalogic centro"
+            - option "Prueba"
+          - generic [ref=e325]: C
+      - generic [ref=e524]:
+        - generic [ref=e526]:
+          - generic [ref=e527]:
+            - generic [ref=e528]:
+              - heading "Agenda" [level=1] [ref=e529]
+              - paragraph [ref=e530]: Gestión de turnos y citas
+              - paragraph [ref=e531]: 24 turnos en pantalla • 13 de abr de 2026 – 20 de abr de 2026
+            - generic [ref=e532]:
+              - img [ref=e533]
+              - combobox [ref=e537] [cursor=pointer]:
+                - option "Todos los Profesionales" [selected]
+                - option "Dr. Laura Delgado"
+                - option "Dr. Elizabeth Ester"
+          - generic [ref=e539]:
+            - generic [ref=e542]: Ventas IA
+            - generic [ref=e545]: Nova
+            - generic [ref=e548]: Manual
+            - generic [ref=e551]: GCal
+        - generic [ref=e555]:
+          - generic [ref=e556]:
+            - generic [ref=e557]:
+              - generic [ref=e558]:
+                - button "Previous Semana" [ref=e559] [cursor=pointer]:
+                  - img [ref=e560]: 
+                - button "Next Semana" [ref=e561] [cursor=pointer]:
+                  - img [ref=e562]: 
+              - button "Hoy" [disabled] [ref=e563]
+            - heading "13 – 19 abr 2026" [level=2] [ref=e565]
+            - generic [ref=e567]:
+              - button "Día" [ref=e568] [cursor=pointer]
+              - button "Semana" [pressed] [ref=e569] [cursor=pointer]
+              - button "Mes" [ref=e570] [cursor=pointer]
+              - button "Lista" [ref=e571] [cursor=pointer]
+              - button "Lista" [ref=e572] [cursor=pointer]
+          - generic "13 – 19 abr 2026" [ref=e573]:
+            - grid [ref=e575]:
+              - rowgroup [ref=e576]:
+                - row "13 de abril de 2026 14 de abril de 2026 15 de abril de 2026 16 de abril de 2026 17 de abril de 2026 18 de abril de 2026 19 de abril de 2026" [ref=e581]:
+                  - columnheader "13 de abril de 2026" [ref=e582]:
+                    - generic "13 de abril de 2026" [ref=e584]: lun 13/4
+                  - columnheader "14 de abril de 2026" [ref=e585]:
+                    - generic "14 de abril de 2026" [ref=e587]: mar 14/4
+                  - columnheader "15 de abril de 2026" [ref=e588]:
+                    - generic "15 de abril de 2026" [ref=e590]: mié 15/4
+                  - columnheader "16 de abril de 2026" [ref=e591]:
+                    - generic "16 de abril de 2026" [ref=e593]: jue 16/4
+                  - columnheader "17 de abril de 2026" [ref=e594]:
+                    - generic "17 de abril de 2026" [ref=e596]: vie 17/4
+                  - columnheader "18 de abril de 2026" [ref=e597]:
+                    - generic "18 de abril de 2026" [ref=e599]: sáb 18/4
+                  - columnheader "19 de abril de 2026" [ref=e600]:
+                    - generic "19 de abril de 2026" [ref=e602]: dom 19/4
+              - rowgroup [ref=e603]:
+                - row [ref=e609]:
+                  - generic [ref=e611]: Todo el día
+                  - gridcell [ref=e612]
+                  - gridcell [ref=e615]
+                  - gridcell [ref=e618]
+                  - gridcell [ref=e621]
+                  - gridcell [ref=e624]
+                  - gridcell [ref=e627]
+                  - gridcell [ref=e630]
+                - generic [ref=e635]:
+                  - table [ref=e637]:
+                    - rowgroup [ref=e640]:
+                      - row [ref=e641]:
+                        - cell [ref=e642]:
+                          - generic [ref=e644]: "5"
+                        - cell [ref=e645]
+                      - row [ref=e646]:
+                        - cell [ref=e647]
+                        - cell [ref=e648]
+                      - row [ref=e649]:
+                        - cell [ref=e650]
+                        - cell [ref=e651]
+                      - row [ref=e652]:
+                        - cell [ref=e653]
+                        - cell [ref=e654]
+                      - row [ref=e655]:
+                        - cell [ref=e656]:
+                          - generic [ref=e658]: "6"
+                        - cell [ref=e659]
+                      - row [ref=e660]:
+                        - cell [ref=e661]
+                        - cell [ref=e662]
+                      - row [ref=e663]:
+                        - cell [ref=e664]
+                        - cell [ref=e665]
+                      - row [ref=e666]:
+                        - cell [ref=e667]
+                        - cell [ref=e668]
+                      - row [ref=e669]:
+                        - cell [ref=e670]:
+                          - generic [ref=e672]: "7"
+                        - cell [ref=e673]
+                      - row [ref=e674]:
+                        - cell [ref=e675]
+                        - cell [ref=e676]
+                      - row [ref=e677]:
+                        - cell [ref=e678]
+                        - cell [ref=e679]
+                      - row [ref=e680]:
+                        - cell [ref=e681]
+                        - cell [ref=e682]
+                      - row [ref=e683]:
+                        - cell [ref=e684]:
+                          - generic [ref=e686]: "8"
+                        - cell [ref=e687]
+                      - row [ref=e688]:
+                        - cell [ref=e689]
+                        - cell [ref=e690]
+                      - row [ref=e691]:
+                        - cell [ref=e692]
+                        - cell [ref=e693]
+                      - row [ref=e694]:
+                        - cell [ref=e695]
+                        - cell [ref=e696]
+                      - row [ref=e697]:
+                        - cell [ref=e698]:
+                          - generic [ref=e700]: "9"
+                        - cell [ref=e701]
+                      - row [ref=e702]:
+                        - cell [ref=e703]
+                        - cell [ref=e704]
+                      - row [ref=e705]:
+                        - cell [ref=e706]
+                        - cell [ref=e707]
+                      - row [ref=e708]:
+                        - cell [ref=e709]
+                        - cell [ref=e710]
+                      - row [ref=e711]:
+                        - cell [ref=e712]:
+                          - generic [ref=e714]: "10"
+                        - cell [ref=e715]
+                      - row [ref=e716]:
+                        - cell [ref=e717]
+                        - cell [ref=e718]
+                      - row [ref=e719]:
+                        - cell [ref=e720]
+                        - cell [ref=e721]
+                      - row [ref=e722]:
+                        - cell [ref=e723]
+                        - cell [ref=e724]
+                      - row [ref=e725]:
+                        - cell [ref=e726]:
+                          - generic [ref=e728]: "11"
+                        - cell [ref=e729]
+                      - row [ref=e730]:
+                        - cell [ref=e731]
+                        - cell [ref=e732]
+                      - row [ref=e733]:
+                        - cell [ref=e734]
+                        - cell [ref=e735]
+                      - row [ref=e736]:
+                        - cell [ref=e737]
+                        - cell [ref=e738]
+                      - row [ref=e739]:
+                        - cell [ref=e740]:
+                          - generic [ref=e742]: "12"
+                        - cell [ref=e743]
+                      - row [ref=e744]:
+                        - cell [ref=e745]
+                        - cell [ref=e746]
+                      - row [ref=e747]:
+                        - cell [ref=e748]
+                        - cell [ref=e749]
+                      - row [ref=e750]:
+                        - cell [ref=e751]
+                        - cell [ref=e752]
+                      - row [ref=e753]:
+                        - cell [ref=e754]:
+                          - generic [ref=e756]: "13"
+                        - cell [ref=e757]
+                      - row [ref=e758]:
+                        - cell [ref=e759]
+                        - cell [ref=e760]
+                      - row [ref=e761]:
+                        - cell [ref=e762]
+                        - cell [ref=e763]
+                      - row [ref=e764]:
+                        - cell [ref=e765]
+                        - cell [ref=e766]
+                      - row [ref=e767]:
+                        - cell [ref=e768]:
+                          - generic [ref=e770]: "14"
+                        - cell [ref=e771]
+                      - row [ref=e772]:
+                        - cell [ref=e773]
+                        - cell [ref=e774]
+                      - row [ref=e775]:
+                        - cell [ref=e776]
+                        - cell [ref=e777]
+                      - row [ref=e778]:
+                        - cell [ref=e779]
+                        - cell [ref=e780]
+                      - row [ref=e781]:
+                        - cell [ref=e782]:
+                          - generic [ref=e784]: "15"
+                        - cell [ref=e785]
+                      - row [ref=e786]:
+                        - cell [ref=e787]
+                        - cell [ref=e788]
+                      - row [ref=e789]:
+                        - cell [ref=e790]
+                        - cell [ref=e791]
+                      - row [ref=e792]:
+                        - cell [ref=e793]
+                        - cell [ref=e794]
+                      - row [ref=e795]:
+                        - cell [ref=e796]:
+                          - generic [ref=e798]: "16"
+                        - cell [ref=e799]
+                      - row [ref=e800]:
+                        - cell [ref=e801]
+                        - cell [ref=e802]
+                      - row [ref=e803]:
+                        - cell [ref=e804]
+                        - cell [ref=e805]
+                      - row [ref=e806]:
+                        - cell [ref=e807]
+                        - cell [ref=e808]
+                      - row [ref=e809]:
+                        - cell [ref=e810]:
+                          - generic [ref=e812]: "17"
+                        - cell [ref=e813]
+                      - row [ref=e814]:
+                        - cell [ref=e815]
+                        - cell [ref=e816]
+                      - row [ref=e817]:
+                        - cell [ref=e818]
+                        - cell [ref=e819]
+                      - row [ref=e820]:
+                        - cell [ref=e821]
+                        - cell [ref=e822]
+                      - row [ref=e823]:
+                        - cell [ref=e824]:
+                          - generic [ref=e826]: "18"
+                        - cell [ref=e827]
+                      - row [ref=e828]:
+                        - cell [ref=e829]
+                        - cell [ref=e830]
+                      - row [ref=e831]:
+                        - cell [ref=e832]
+                        - cell [ref=e833]
+                      - row [ref=e834]:
+                        - cell [ref=e835]
+                        - cell [ref=e836]
+                      - row [ref=e837]:
+                        - cell [ref=e838]:
+                          - generic [ref=e840]: "19"
+                        - cell [ref=e841]
+                      - row [ref=e842]:
+                        - cell [ref=e843]
+                        - cell [ref=e844]
+                      - row [ref=e845]:
+                        - cell [ref=e846]
+                        - cell [ref=e847]
+                      - row [ref=e848]:
+                        - cell [ref=e849]
+                        - cell [ref=e850]
+                      - row [ref=e851]:
+                        - cell [ref=e852]:
+                          - generic [ref=e854]: "20"
+                        - cell [ref=e855]
+                      - row [ref=e856]:
+                        - cell [ref=e857]
+                        - cell [ref=e858]
+                      - row [ref=e859]:
+                        - cell [ref=e860]
+                        - cell [ref=e861]
+                      - row [ref=e862]:
+                        - cell [ref=e863]
+                        - cell [ref=e864]
+                  - row [ref=e868]:
+                    - gridcell "11:00 - 11:45 Gastón Bleckmann Consulta General 14:00 - 14:45 Norma Moguillansky Consulta General Dr. Laura 18:30 - 19:15 María Laura Consulta General Dr. Laura" [ref=e871]:
+                      - generic [ref=e872]:
+                        - generic:
+                          - 'generic "Gastón Bleckmann - consulta_general 📍 Origen: Nova 📞 2995706439 📝 Paciente particular. DNI 36372297. Cel 2995706439. Agenda vieja migrada." [ref=e874] [cursor=pointer]':
+                            - generic [ref=e876]:
+                              - generic [ref=e877]:
+                                - generic [ref=e878]: 11:00 - 11:45
+                                - img [ref=e880]
+                              - generic [ref=e883]: Gastón Bleckmann
+                              - generic [ref=e886]: Consulta General
+                          - 'generic "Norma Moguillansky - consulta_general 📍 Origen: Ventas IA 📞 +5492994013115 👨‍⚕️ Dr. Laura" [ref=e888] [cursor=pointer]':
+                            - generic [ref=e890]:
+                              - generic [ref=e891]:
+                                - generic [ref=e892]: 14:00 - 14:45
+                                - img [ref=e894]
+                              - generic [ref=e897]: Norma Moguillansky
+                              - generic [ref=e898]:
+                                - generic [ref=e900]: Consulta General
+                                - generic [ref=e901]:
+                                  - img [ref=e902]
+                                  - generic [ref=e905]: Dr. Laura
+                          - 'generic "María Laura - consulta_general 📍 Origen: Ventas IA 📞 +5492994706975 👨‍⚕️ Dr. Laura" [ref=e907] [cursor=pointer]':
+                            - generic [ref=e909]:
+                              - generic [ref=e910]:
+                                - generic [ref=e911]: 18:30 - 19:15
+                                - img [ref=e913]
+                              - generic [ref=e916]: María Laura
+                              - generic [ref=e917]:
+                                - generic [ref=e919]: Consulta General
+                                - generic [ref=e920]:
+                                  - img [ref=e921]
+                                  - generic [ref=e924]: Dr. Laura
+                    - gridcell "11:00 - 11:45 Emanuel Manssini Cirugía Simple 11:30 - 12:15 wilma vazquez Consulta Urgencia Dr. Laura 6:00 - 7:15 Rmanuel Gerardo Lillo Cirugía Compleja 7:30 - 8:15 Leonardo Mastrangelo Cirugía Simple 9:30 - 10:00 nerviosa rubio Kinast consultation 10:00 - 11:00 CARLOS SEBASTIAN MIEREZ Restauración Compleja Dr. Laura 12:15 - 13:00 Sonia Arévalo Consulta General Dr. Laura 13:30 - 14:15 Norma Moguillansky Consulta General Dr. Laura 14:15 - 14:45 Vero Millahual Consulta Urgencia Dr. Laura 15:30 - 15:50 joaquin perez checkup" [ref=e926]:
+                      - generic [ref=e927]:
+                        - generic:
+                          - 'generic "Emanuel Manssini - cirugia_simple 📍 Origen: Nova 📞 +542995905410 📝 Primera vez particular. DNI 36307639. Cel 2994638091. Consulta de cirugía. Duración solicitada: 30 min." [ref=e929] [cursor=pointer]':
+                            - generic [ref=e931]:
+                              - generic [ref=e932]:
+                                - generic [ref=e933]: 11:00 - 11:45
+                                - img [ref=e935]
+                              - generic [ref=e938]: Emanuel Manssini
+                              - generic [ref=e941]: Cirugía Simple
+                          - 'generic "wilma vazquez - consulta_urgencia 📍 Origen: Manual 📞 +54 9 299 511-0595 👨‍⚕️ Dr. Laura 📝 patients.initial_appointment_notes" [ref=e943] [cursor=pointer]':
+                            - generic [ref=e945]:
+                              - generic [ref=e946]:
+                                - generic [ref=e947]: 11:30 - 12:15
+                                - img [ref=e949]
+                              - generic [ref=e952]: wilma vazquez
+                              - generic [ref=e953]:
+                                - generic [ref=e955]: Consulta Urgencia
+                                - generic [ref=e956]:
+                                  - img [ref=e957]
+                                  - generic [ref=e960]: Dr. Laura
+                          - 'generic "Rmanuel Gerardo Lillo - cirugia_compleja 📍 Origen: Nova 📞 2994638091 📝 Primera vez particular. DNI 36307639. Cel 2994638091. Paciente corregido: Emanuel Gerardo Lillo. Consulta de cirugía compleja." [ref=e962] [cursor=pointer]':
+                            - generic [ref=e964]:
+                              - generic [ref=e965]:
+                                - generic [ref=e966]: 6:00 - 7:15
+                                - img [ref=e968]
+                              - generic [ref=e971]: Rmanuel Gerardo Lillo
+                              - generic [ref=e974]: Cirugía Compleja
+                          - 'generic "Leonardo Mastrangelo - cirugia_simple 📍 Origen: Nova 📞 2995450010 📝 Consulta de cirugía. Cel 299-545-0010." [ref=e976] [cursor=pointer]':
+                            - generic [ref=e978]:
+                              - generic [ref=e979]:
+                                - generic [ref=e980]: 7:30 - 8:15
+                                - img [ref=e982]
+                              - generic [ref=e985]: Leonardo Mastrangelo
+                              - generic [ref=e988]: Cirugía Simple
+                          - 'generic "nerviosa rubio Kinast - consultation 📍 Origen: Nova 📞 2995941732 📝 Paciente nerviosa rubio Kinast. DNI 92410573. Cel 2995941732. Duración solicitada 45 min." [ref=e990] [cursor=pointer]':
+                            - generic [ref=e992]:
+                              - generic [ref=e993]:
+                                - generic [ref=e994]: 9:30 - 10:00
+                                - img [ref=e996]
+                              - generic [ref=e999]: nerviosa rubio Kinast
+                              - generic [ref=e1002]: consultation
+                          - 'generic "CARLOS SEBASTIAN MIEREZ - restauracion_compleja 📍 Origen: Manual 📞 +542996124941 👨‍⚕️ Dr. Laura" [ref=e1004] [cursor=pointer]':
+                            - generic [ref=e1006]:
+                              - generic [ref=e1007]:
+                                - generic [ref=e1008]: 10:00 - 11:00
+                                - img [ref=e1010]
+                              - generic [ref=e1013]: CARLOS SEBASTIAN MIEREZ
+                              - generic [ref=e1014]:
+                                - generic [ref=e1016]: Restauración Compleja
+                                - generic [ref=e1017]:
+                                  - img [ref=e1018]
+                                  - generic [ref=e1021]: Dr. Laura
+                          - 'generic "Sonia Arévalo - consulta_general 📍 Origen: Ventas IA 📞 +5492994600395 👨‍⚕️ Dr. Laura" [ref=e1023] [cursor=pointer]':
+                            - generic [ref=e1025]:
+                              - generic [ref=e1026]:
+                                - generic [ref=e1027]: 12:15 - 13:00
+                                - img [ref=e1029]
+                              - generic [ref=e1032]: Sonia Arévalo
+                              - generic [ref=e1033]:
+                                - generic [ref=e1035]: Consulta General
+                                - generic [ref=e1036]:
+                                  - img [ref=e1037]
+                                  - generic [ref=e1040]: Dr. Laura
+                          - 'generic "Norma Moguillansky - consulta_general 📍 Origen: Ventas IA 📞 +5492994013115 👨‍⚕️ Dr. Laura" [ref=e1042] [cursor=pointer]':
+                            - generic [ref=e1044]:
+                              - generic [ref=e1045]:
+                                - generic [ref=e1046]: 13:30 - 14:15
+                                - img [ref=e1048]
+                              - generic [ref=e1051]: Norma Moguillansky
+                              - generic [ref=e1052]:
+                                - generic [ref=e1054]: Consulta General
+                                - generic [ref=e1055]:
+                                  - img [ref=e1056]
+                                  - generic [ref=e1059]: Dr. Laura
+                          - 'generic "Vero Millahual - consulta_urgencia 📍 Origen: Nova 📞 +5492994556842 👨‍⚕️ Dr. Laura 📝 Paciente refiere: ''se me quebró una muela, tengo como un hueco. Necesito que me vea antes que me duela, no puedo comer''. Reprogramado desde 16/04 10:00 a 14/04 10:00 por pedido del paciente." [ref=e1061] [cursor=pointer]':
+                            - generic [ref=e1063]:
+                              - generic [ref=e1064]:
+                                - generic [ref=e1065]: 14:15 - 14:45
+                                - img [ref=e1067]
+                              - generic [ref=e1070]: Vero Millahual
+                              - generic [ref=e1071]:
+                                - generic [ref=e1073]: Consulta Urgencia
+                                - generic [ref=e1074]:
+                                  - img [ref=e1075]
+                                  - generic [ref=e1078]: Dr. Laura
+                          - 'generic "joaquin perez - checkup 📍 Origen: Nova 📞 +54 9 299 528-3426 📝 Turno solicitado por el usuario" [ref=e1080] [cursor=pointer]':
+                            - generic [ref=e1082]:
+                              - generic [ref=e1083]:
+                                - generic [ref=e1084]: 15:30 - 15:50
+                                - img [ref=e1086]
+                              - generic [ref=e1089]: joaquin perez
+                              - generic [ref=e1092]: checkup
+                    - gridcell "13:00 - 13:45 Antonella morales clozza Consulta General Dr. Laura 15:00 - 15:45 Katia Paula Cirugía Simple Dr. Laura 16:00 - 16:45 Carolina Basgal Cirugía Simple Dr. Laura" [ref=e1094]:
+                      - generic [ref=e1095]:
+                        - generic:
+                          - 'generic "Antonella morales clozza - consulta_general 📍 Origen: Ventas IA 📞 +5492984224086 👨‍⚕️ Dr. Laura" [ref=e1097] [cursor=pointer]':
+                            - generic [ref=e1099]:
+                              - generic [ref=e1100]:
+                                - generic [ref=e1101]: 13:00 - 13:45
+                                - img [ref=e1103]
+                              - generic [ref=e1106]: Antonella morales clozza
+                              - generic [ref=e1107]:
+                                - generic [ref=e1109]: Consulta General
+                                - generic [ref=e1110]:
+                                  - img [ref=e1111]
+                                  - generic [ref=e1114]: Dr. Laura
+                          - 'generic "Katia Paula - cirugia_simple 📍 Origen: Nova 📞 +5492995183451 👨‍⚕️ Dr. Laura 📝 Escaneo ATM y extracción piezas 2.8 y 3.8. Sede Cordoba. Doctora Laura Delgado." [ref=e1116] [cursor=pointer]':
+                            - generic [ref=e1118]:
+                              - generic [ref=e1119]:
+                                - generic [ref=e1120]: 15:00 - 15:45
+                                - img [ref=e1122]
+                              - generic [ref=e1125]: Katia Paula
+                              - generic [ref=e1126]:
+                                - generic [ref=e1128]: Cirugía Simple
+                                - generic [ref=e1129]:
+                                  - img [ref=e1130]
+                                  - generic [ref=e1133]: Dr. Laura
+                          - 'generic "Carolina Basgal - cirugia_simple 📍 Origen: Nova 📞 +5492995926748 👨‍⚕️ Dr. Laura 📝 retiro de puntos. control rx post operación" [ref=e1135] [cursor=pointer]':
+                            - generic [ref=e1137]:
+                              - generic [ref=e1138]:
+                                - generic [ref=e1139]: 16:00 - 16:45
+                                - img [ref=e1141]
+                              - generic [ref=e1144]: Carolina Basgal
+                              - generic [ref=e1145]:
+                                - generic [ref=e1147]: Cirugía Simple
+                                - generic [ref=e1148]:
+                                  - img [ref=e1149]
+                                  - generic [ref=e1152]: Dr. Laura
+                    - gridcell "9:00 - 10:30 Analia Riquelme Cirugía Simple Dr. Laura 11:00 - 11:45 Alicia Landriani Control / Revisión Dr. Laura 12:00 - 12:30 Antonella Clozza Consulta General Dr. Laura 16:00 - 16:45 Denise Belén Barccos Control / Revisión Dr. Laura" [ref=e1154]:
+                      - generic [ref=e1155]:
+                        - generic:
+                          - 'generic "Analia Riquelme - cirugia_simple 📍 Origen: Manual 📞 +542995928150 👨‍⚕️ Dr. Laura" [ref=e1157] [cursor=pointer]':
+                            - generic [ref=e1159]:
+                              - generic [ref=e1160]:
+                                - generic [ref=e1161]: 9:00 - 10:30
+                                - img [ref=e1163]
+                              - generic [ref=e1166]: Analia Riquelme
+                              - generic [ref=e1167]:
+                                - generic [ref=e1169]: Cirugía Simple
+                                - generic [ref=e1170]:
+                                  - img [ref=e1171]
+                                  - generic [ref=e1174]: Dr. Laura
+                          - 'generic "Alicia Landriani - control_revision 📍 Origen: Nova 📞 +542994098781 👨‍⚕️ Dr. Laura 📝 Turno de control" [ref=e1176] [cursor=pointer]':
+                            - generic [ref=e1178]:
+                              - generic [ref=e1179]:
+                                - generic [ref=e1180]: 11:00 - 11:45
+                                - img [ref=e1182]
+                              - generic [ref=e1185]: Alicia Landriani
+                              - generic [ref=e1186]:
+                                - generic [ref=e1188]: Control / Revisión
+                                - generic [ref=e1189]:
+                                  - img [ref=e1190]
+                                  - generic [ref=e1193]: Dr. Laura
+                          - 'generic "Antonella Clozza - consulta_general 📍 Origen: Manual 📞 +542984224086 👨‍⚕️ Dr. Laura" [ref=e1195] [cursor=pointer]':
+                            - generic [ref=e1197]:
+                              - generic [ref=e1198]:
+                                - generic [ref=e1199]: 12:00 - 12:30
+                                - img [ref=e1201]
+                              - generic [ref=e1204]: Antonella Clozza
+                              - generic [ref=e1205]:
+                                - generic [ref=e1207]: Consulta General
+                                - generic [ref=e1208]:
+                                  - img [ref=e1209]
+                                  - generic [ref=e1212]: Dr. Laura
+                          - 'generic "Denise Belén Barccos - control_revision 📍 Origen: Manual 📞 +5492995388419 👨‍⚕️ Dr. Laura 📝 turno para control de incrustación. Molestia al comer en la intersección." [ref=e1214] [cursor=pointer]':
+                            - generic [ref=e1216]:
+                              - generic [ref=e1217]:
+                                - generic [ref=e1218]: 16:00 - 16:45
+                                - img [ref=e1220]
+                              - generic [ref=e1223]: Denise Belén Barccos
+                              - generic [ref=e1224]:
+                                - generic [ref=e1226]: Control / Revisión
+                                - generic [ref=e1227]:
+                                  - img [ref=e1228]
+                                  - generic [ref=e1231]: Dr. Laura
+                    - gridcell "10:00 - 11:30 CARLOS SEBASTIAN MIEREZ Cirugía Simple Dr. Elizabeth 11:30 - 12:00 Sebastian Acheveria Consulta General Dr. Elizabeth 18:30 - 19:15 Roxana Jara Consulta General Dr. Laura" [ref=e1233]:
+                      - generic [ref=e1234]:
+                        - generic:
+                          - 'generic "CARLOS SEBASTIAN MIEREZ - cirugia_simple 📍 Origen: Manual 📞 +542996124941 👨‍⚕️ Dr. Elizabeth 📝 Operatorias" [ref=e1236] [cursor=pointer]':
+                            - generic [ref=e1238]:
+                              - generic [ref=e1239]:
+                                - generic [ref=e1240]: 10:00 - 11:30
+                                - img [ref=e1242]
+                              - generic [ref=e1245]: CARLOS SEBASTIAN MIEREZ
+                              - generic [ref=e1246]:
+                                - generic [ref=e1248]: Cirugía Simple
+                                - generic [ref=e1249]:
+                                  - img [ref=e1250]
+                                  - generic [ref=e1253]: Dr. Elizabeth
+                          - 'generic "Sebastian Acheveria - consulta_general 📍 Origen: Manual 📞 299001235648 👨‍⚕️ Dr. Elizabeth 📝 patients.initial_appointment_notes" [ref=e1255] [cursor=pointer]':
+                            - generic [ref=e1257]:
+                              - generic [ref=e1258]:
+                                - generic [ref=e1259]: 11:30 - 12:00
+                                - img [ref=e1261]
+                              - generic [ref=e1264]: Sebastian Acheveria
+                              - generic [ref=e1265]:
+                                - generic [ref=e1267]: Consulta General
+                                - generic [ref=e1268]:
+                                  - img [ref=e1269]
+                                  - generic [ref=e1272]: Dr. Elizabeth
+                          - 'generic "Roxana Jara - consulta_general 📍 Origen: Ventas IA 📞 +5492996300077 👨‍⚕️ Dr. Laura" [ref=e1274] [cursor=pointer]':
+                            - generic [ref=e1276]:
+                              - generic [ref=e1277]:
+                                - generic [ref=e1278]: 18:30 - 19:15
+                                - img [ref=e1280]
+                              - generic [ref=e1283]: Roxana Jara
+                              - generic [ref=e1284]:
+                                - generic [ref=e1286]: Consulta General
+                                - generic [ref=e1287]:
+                                  - img [ref=e1288]
+                                  - generic [ref=e1291]: Dr. Laura
+                    - gridcell "10:30 - 11:00 Cynthia Reyes Control Ortodoncia Dr. Elizabeth" [ref=e1293]:
+                      - 'generic "Cynthia Reyes - control_ortodoncia 📍 Origen: Manual 📞 299 589-1350 👨‍⚕️ Dr. Elizabeth 📝 patients.initial_appointment_notes" [ref=e1296] [cursor=pointer]':
+                        - generic [ref=e1298]:
+                          - generic [ref=e1299]:
+                            - generic [ref=e1300]: 10:30 - 11:00
+                            - img [ref=e1302]
+                          - generic [ref=e1305]: Cynthia Reyes
+                          - generic [ref=e1306]:
+                            - generic [ref=e1308]: Control Ortodoncia
+                            - generic [ref=e1309]:
+                              - img [ref=e1310]
+                              - generic [ref=e1313]: Dr. Elizabeth
+                    - gridcell [ref=e1315]
+    - generic [ref=e1319]:
+      - generic [ref=e1320]: 🎯
+      - paragraph [ref=e1321]: 🟢 Pagado 🟡 Parcial 🔴 Pendiente — Tocá un turno para ver facturación.
+      - button [ref=e1322] [cursor=pointer]:
+        - img [ref=e1323]
+    - button [ref=e519] [cursor=pointer]:
+      - img [ref=e520]
+  - generic [ref=e522]: "0"
