@@ -552,16 +552,14 @@ export const NovaWidget: React.FC = () => {
 
         // --- Shared audio processing callback (resample + PCM16) ---
         const processAudio = (input: Float32Array) => {
-          // Gate checks with debug logging
-          if (micPausedRef.current) {
-            return;
-          }
-          if (novaPlayingRef.current) {
-            return;
-          }
-          if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-            return;
-          }
+          if (micPausedRef.current) return;
+          if (novaPlayingRef.current) return;
+          if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+
+          // Noise gate: skip frames below ambient threshold
+          let sum = 0;
+          for (let i = 0; i < input.length; i++) sum += Math.abs(input[i]);
+          if (sum / input.length < 0.002) return;
 
           const ratio = nativeSampleRate / 24000;
           const newLength = Math.floor(input.length / ratio);
@@ -590,6 +588,10 @@ export const NovaWidget: React.FC = () => {
                   const input = inputs[0];
                   if (!input || !input[0] || !input[0].length) return true;
                   const samples = input[0];
+                  // Noise gate
+                  let sum = 0;
+                  for (let i = 0; i < samples.length; i++) sum += Math.abs(samples[i]);
+                  if (sum / samples.length < 0.002) return true;
                   const ratio = this._ratio;
                   const newLength = Math.floor(samples.length / ratio);
                   const pcm16 = new Int16Array(newLength);
@@ -671,21 +673,17 @@ export const NovaWidget: React.FC = () => {
               }]);
             } else if (msg.role === 'assistant') {
               transcriptBufferRef.current += msg.text;
-              // Mostrar en vivo en el chat actualizando el último mensaje de assistant
-              const currentId = assistantMsgIdRef.current;
+              // Mostrar en vivo en el chat: actualizar o crear mensaje
               setMessages(prev => {
-                const last = prev[prev.length - 1];
-                if (last && last.role === 'assistant' && currentId && last.id === currentId) {
+                const idx = prev.length - 1;
+                if (idx >= 0 && prev[idx].role === 'assistant' && prev[idx].id.endsWith('_nova')) {
                   const updated = [...prev];
-                  updated[updated.length - 1] = { ...last, text: transcriptBufferRef.current };
+                  updated[idx] = { ...updated[idx], text: transcriptBufferRef.current };
                   return updated;
-                } else {
-                  const newId = msgId();
-                  assistantMsgIdRef.current = newId;
-                  return [...prev, {
-                    id: newId, role: 'assistant', text: transcriptBufferRef.current, timestamp: Date.now(),
-                  }];
                 }
+                return [...prev, {
+                  id: `${msgId()}_nova`, role: 'assistant', text: transcriptBufferRef.current, timestamp: Date.now(),
+                }];
               });
             }
           }
@@ -717,22 +715,19 @@ export const NovaWidget: React.FC = () => {
               novaPlayingWatchdogRef.current = null;
             }
             if (transcriptBufferRef.current) {
-              // Actualizar el último mensaje con el texto final si ya existe
-              const currentId = assistantMsgIdRef.current;
               setMessages(prev => {
-                const last = prev[prev.length - 1];
-                if (last && last.role === 'assistant' && currentId && last.id === currentId) {
+                const idx = prev.length - 1;
+                if (idx >= 0 && prev[idx].role === 'assistant' && prev[idx].id.endsWith('_nova')) {
                   const updated = [...prev];
-                  updated[updated.length - 1] = { ...last, text: transcriptBufferRef.current };
+                  updated[idx] = { ...updated[idx], text: transcriptBufferRef.current };
                   return updated;
                 }
                 return [...prev, {
-                  id: msgId(), role: 'assistant', text: transcriptBufferRef.current, timestamp: Date.now(),
+                  id: `${msgId()}_nova`, role: 'assistant', text: transcriptBufferRef.current, timestamp: Date.now(),
                 }];
               });
               transcriptBufferRef.current = '';
             }
-            assistantMsgIdRef.current = null;
             // Forzar paso a listening — la respuesta terminó
             novaPlayingRef.current = false;
             setIsThinking(false);
@@ -748,21 +743,19 @@ export const NovaWidget: React.FC = () => {
               novaPlayingWatchdogRef.current = null;
             }
             if (transcriptBufferRef.current) {
-              const currentId = assistantMsgIdRef.current;
               setMessages(prev => {
-                const last = prev[prev.length - 1];
-                if (last && last.role === 'assistant' && currentId && last.id === currentId) {
+                const idx = prev.length - 1;
+                if (idx >= 0 && prev[idx].role === 'assistant' && prev[idx].id.endsWith('_nova')) {
                   const updated = [...prev];
-                  updated[updated.length - 1] = { ...last, text: transcriptBufferRef.current };
+                  updated[idx] = { ...updated[idx], text: transcriptBufferRef.current };
                   return updated;
                 }
                 return [...prev, {
-                  id: msgId(), role: 'assistant', text: transcriptBufferRef.current, timestamp: Date.now(),
+                  id: `${msgId()}_nova`, role: 'assistant', text: transcriptBufferRef.current, timestamp: Date.now(),
                 }];
               });
               transcriptBufferRef.current = '';
             }
-            assistantMsgIdRef.current = null;
             novaPlayingRef.current = false;
             cancelPlayback();
             setIsThinking(false);
