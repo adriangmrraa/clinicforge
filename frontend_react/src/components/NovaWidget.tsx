@@ -550,101 +550,30 @@ export const NovaWidget: React.FC = () => {
 
         const source = captureCtx.createMediaStreamSource(stream);
 
-        // --- Whisper transcription pipeline ---
-        // Acumulamos ~2s de audio y lo enviamos a Whisper para transcribir.
-        // El texto transcripto se envía como input_text a OpenAI Realtime.
-        let _whisperBuffer: number[] = [];
-        let _lastWhisperTime = Date.now();
-        const _WHISPER_INTERVAL_MS = 2000; // enviar cada 2s
-        let _whisperCount = 0;
-
+        // --- Shared audio processing callback (resample + PCM16 to OpenAI) ---
+        let _audioChunkCount = 0;
+        let _audioBuffer: number[] = [];
+        const _MIN_AUDIO_SAMPLES = 480; // 20ms at 24000Hz
         const processAudio = (rawInput: Float32Array) => {
           if (micPausedRef.current) return;
           if (novaPlayingRef.current) return;
           if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
 
-          // Acumular samples
+          // Acumular samples (ya están a 24000Hz)
           for (let i = 0; i < rawInput.length; i++) {
-            _whisperBuffer.push(Math.max(-1, Math.min(1, rawInput[i])));
+            _audioBuffer.push(Math.max(-1, Math.min(1, rawInput[i])));
           }
-
-          // Enviar a Whisper cada ~2s si hay suficiente audio
-          const now = Date.now();
-          if (now - _lastWhisperTime >= _WHISPER_INTERVAL_MS && _whisperBuffer.length > 24000) {
-            _lastWhisperTime = now;
-            _whisperCount++;
-            const audioToSend = _whisperBuffer;
-            _whisperBuffer = [];
-            console.log(`[Nova Voice] Sending to Whisper: #${_whisperCount} samples=${audioToSend.length} (${(audioToSend.length/24000).toFixed(1)}s)`);
-            transcribeWithWhisper(audioToSend);
+          if (_audioBuffer.length < _MIN_AUDIO_SAMPLES) return;
+          _audioChunkCount++;
+          const pcm16 = new Int16Array(_audioBuffer.length);
+          for (let i = 0; i < _audioBuffer.length; i++) {
+            pcm16[i] = Math.max(-32768, Math.min(32767, _audioBuffer[i] * 32768));
           }
-        };
-
-        const transcribeWithWhisper = async (samples: number[]) => {
-          try {
-            // Convertir Float32 a PCM16 WAV
-            const pcm16 = new Int16Array(samples.length);
-            for (let i = 0; i < samples.length; i++) {
-              pcm16[i] = Math.max(-32768, Math.min(32767, samples[i] * 32768));
-            }
-
-            // Crear WAV blob (16-bit mono 24000Hz)
-            const wavHeader = new ArrayBuffer(44);
-            const dv = new DataView(wavHeader);
-            dv.setUint32(0, 0x52494646, false); // RIFF
-            dv.setUint32(4, 36 + pcm16.length * 2, true);
-            dv.setUint32(8, 0x57415645, false); // WAVE
-            dv.setUint32(12, 0x666D7420, false); // fmt
-            dv.setUint32(16, 16, true);
-            dv.setUint16(20, 1, true); // PCM
-            dv.setUint16(22, 1, true); // mono
-            dv.setUint32(24, 24000, true); // sample rate
-            dv.setUint32(28, 24000 * 2, true); // byte rate
-            dv.setUint16(32, 2, true); // block align
-            dv.setUint16(34, 16, true); // bits per sample
-            dv.setUint32(36, 0x64617461, false); // data
-            dv.setUint32(40, pcm16.length * 2, true);
-
-            const wavBlob = new Blob([wavHeader, pcm16.buffer], { type: 'audio/wav' });
-
-            // Enviar a Whisper via el backend proxy
-            const formData = new FormData();
-            formData.append('file', wavBlob, 'audio.wav');
-            formData.append('model', 'whisper-1');
-            formData.append('language', 'es');
-
-            const token = localStorage.getItem('access_token') || '';
-            const resp = await fetch(`${BACKEND_URL}/api/whisper/transcribe`, {
-              method: 'POST',
-              headers: { 'Authorization': `Bearer ${token}` },
-              body: formData,
-            });
-
-            if (!resp.ok) {
-              console.warn('[Nova Voice] Whisper API error:', resp.status);
-              return;
-            }
-
-            const data = await resp.json();
-            const text = data.text || data.transcript || '';
-            if (!text.trim()) return;
-
-            console.log(`[Nova Voice] Whisper transcript: "${text}"`);
-
-            // Mostrar en el chat lo que el usuario dijo
-            setMessages(prev => [...prev, {
-              id: 'user_' + Date.now(), role: 'user', text: text, timestamp: Date.now(),
-            }]);
-
-            // Enviar el texto a OpenAI Realtime como input_text
-            if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-              wsRef.current.send(JSON.stringify({
-                type: 'text_message',
-                text: text,
-              }));
-            }
-          } catch (err) {
-            console.error('[Nova Voice] Whisper error:', err);
+          _audioBuffer = [];
+          wsRef.current!.send(pcm16.buffer);
+          if (_audioChunkCount % 100 === 0) {
+            const avg = pcm16.reduce((a,b)=>a+Math.abs(b),0) / pcm16.length;
+            console.log(`[Nova Voice] Audio sent: ${_audioChunkCount} chunks, pcmLen=${pcm16.length}, avgLevel=${avg.toFixed(2)}`);
           }
         };
 
