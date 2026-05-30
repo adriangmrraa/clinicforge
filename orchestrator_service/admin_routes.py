@@ -16789,6 +16789,13 @@ async def generate_liquidation_pdf_endpoint(
     except HTTPException:
         raise
     except Exception as e:
+        import traceback
+        tb = traceback.format_exc()
+        # Find the exact line that failed
+        for line in tb.split('\n'):
+            if 'liquidation_pdf_service' in line or 'admin_routes' in line:
+                if 'Error' not in line:
+                    logger.error("EP-FC-12 TRACEBACK: %s", line.strip())
         logger.error("EP-FC-12 ERROR: %s", str(e), exc_info=True)
         raise HTTPException(status_code=500, detail="Error interno del servidor")
 

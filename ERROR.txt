@@ -1,106 +1,11 @@
-bff service logs: 
+logs del orchesdtrator cuando quise descargar el pdf y mandar mail: 
 
-BFF Service running on port 80
-Proxying to Orchestrator at: http://orchestrator:8000
-Socket.IO WebSocket proxy enabled on /socket.io
-CORS allowed origins: https://dentalforgepruebas-frontend.gvdlcu.easypanel.host
-[Proxy] Forwarding POST /admin/liquidations/42/send-email -> http://orchestrator:8000/admin/liquidations/42/send-email
-[Proxy] Forwarding GET /admin/liquidations/42/pdf -> http://orchestrator:8000/admin/liquidations/42/pdf
-[Proxy] Binary response: status=500 type=application/json size=39 bytes
-[Proxy] Forwarding PATCH /admin/liquidations/42 -> http://orchestrator:8000/admin/liquidations/42
-[Proxy] Forwarding GET /admin/liquidations/42 -> http://orchestrator:8000/admin/liquidations/42
-
-
-----------
-
-orchestrator logs: 
-
- "\ud83d\udcda sync_all_tenants_faq_embeddings: starting..."}
-{"event": "pgvector extension detected \u2014 RAG semantic search enabled"}
-{"event": "\ud83e\udd16 No Telegram bots configured"}
-{"event": "\ud83e\udd16 Telegram bots initialized"}
-INFO:     Application startup complete.
-INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
-{"event": "\ud83d\udcda sync_all_tenants_faq_embeddings: processing 1 tenants"}
-{"event": "\ud83d\udcda sync_tenant_faq_embeddings(tenant=1): FAQs=88, existing embeddings=88"}
-{"event": "\ud83d\udcda sync_tenant_faq_embeddings(tenant=1): 0 FAQs need embedding"}
-{"event": "\ud83d\udcda sync_tenant_faq_embeddings(tenant=1): created 0, failed 0"}
-{"event": "\ud83d\udcda sync_all_tenants_faq_embeddings: COMPLETE \u2014 0 embeddings created total"}
-{"event": "rag_all_embedding_sync_complete: 0 embeddings created"}
-{"event": "nova_analysis: tenant 1 using model 'gpt-5.4-mini' (JSON mode enabled)"}
-{"event": "\ud83d\udcca Service tokens tracked: nova_daily_analysis | gpt-5.4-mini | 735 tokens | $0.000910"}
-{"event": "nova_analysis_tenant_1_cached (Cl\u00ednica Dra. Laura Delgado)"}
-{"event": "nova_analysis: tenant 1 using model 'gpt-5.4-mini' (JSON mode enabled)"}
-INFO:     10.11.0.23:60390 - "WebSocket /socket.io/?EIO=4&transport=websocket" [accepted]
-INFO:     connection open
-{"event": "\ud83d\udd0c Client connected: 6l4aSuwEGwwpZfpfAAAB \u2192 room tenant:1"}
-INFO:     10.11.0.23:60396 - "WebSocket /socket.io/?EIO=4&transport=websocket" [accepted]
-INFO:     connection open
-{"event": "\ud83d\udd0c Client connected: 63HOWqzeqzOv-2hSAAAD \u2192 room tenant:1"}
-{"event": "[weekly_backup] Waiting for Telegram bots to initialize..."}
-{"event": "=== EP-FC-04: GET /admin/liquidations/42 ==="}
-{"event": "EP-FC-04: liquidation_id=42, tenant_id=1"}
-{"event": "EP-FC-04 OK: liquidation_id=42, status=None"}
-{"event": "=== EP-FC-04: GET /admin/liquidations/42 ==="}
-{"event": "EP-FC-04: liquidation_id=42, tenant_id=1"}
-{"event": "EP-FC-04 OK: liquidation_id=42, status=None"}
-{"event": "\ud83d\udcca Service tokens tracked: nova_daily_analysis | gpt-5.4-mini | 777 tokens | $0.000992"}
-{"event": "nova_analysis_consolidated_cached"}
-{"event": "=== EP-FC-04: GET /admin/liquidations/42 ==="}
-{"event": "EP-FC-04: liquidation_id=42, tenant_id=1"}
-{"event": "EP-FC-04 OK: liquidation_id=42, status=None"}
-{"event": "=== EP-FC-04: GET /admin/liquidations/42 ==="}
-{"event": "EP-FC-04: liquidation_id=42, tenant_id=1"}
-{"event": "EP-FC-04 OK: liquidation_id=42, status=None"}
-{"event": "[weekly_backup] Waiting for Telegram bots to initialize..."}
-{"event": "=== EP-FC-04: GET /admin/liquidations/42 ==="}
-{"event": "EP-FC-04: liquidation_id=42, tenant_id=1"}
-{"event": "EP-FC-04 OK: liquidation_id=42, status=None"}
-{"event": "[weekly_backup] Waiting for Telegram bots to initialize..."}
-{"event": "[weekly_backup] Waiting for Telegram bots to initialize..."}
-{"event": "[weekly_backup] Waiting for Telegram bots to initialize..."}
-{"event": "=== EP-FC-02: POST /admin/liquidations/generate-bulk ==="}
-{"event": "EP-FC-02: tenant_id=1, body={\"period_start\":\"2026-01-01\",\"period_end\":\"2026-12-31\"}"}
-{"event": "generate_liquidation: zombie placeholder 4 found for prof 3, period 2026-01-01-2026-12-31. Deleting and regenerating."}
-{"event": "generate_bulk_liquidations: error for professional 3: could not determine data type of parameter $2", "exc_info": ["<class 'asyncpg.exceptions.IndeterminateDatatypeError'>", "IndeterminateDatatypeError('could not determine data type of parameter $2')", "<traceback object at 0x7a8d1877dd80>"]}
-{"event": "generate_liquidation: zombie placeholder 5 found for prof 4, period 2026-01-01-2026-12-31. Deleting and regenerating."}
-{"event": "generate_bulk_liquidations: error for professional 4: could not determine data type of parameter $2", "exc_info": ["<class 'asyncpg.exceptions.IndeterminateDatatypeError'>", "IndeterminateDatatypeError('could not determine data type of parameter $2')", "<traceback object at 0x7a8d1877e100>"]}
-{"event": "generate_liquidation: zombie placeholder 6 found for prof 22, period 2026-01-01-2026-12-31. Deleting and regenerating."}
-{"event": "generate_bulk_liquidations: error for professional 22: could not determine data type of parameter $2", "exc_info": ["<class 'asyncpg.exceptions.IndeterminateDatatypeError'>", "IndeterminateDatatypeError('could not determine data type of parameter $2')", "<traceback object at 0x7a8d1877ddc0>"]}
-{"event": "EP-FC-02 OK: generated_count=0, skipped_count=0"}
-INFO:     connection closed
-{"event": "\ud83d\udd0c Client disconnected: 63HOWqzeqzOv-2hSAAAD"}
-{"event": "[weekly_backup] Waiting for Telegram bots to initialize..."}
-INFO:     10.11.0.23:54858 - "WebSocket /socket.io/?EIO=4&transport=websocket" [accepted]
-INFO:     connection open
-{"event": "=== EP-FC-03: GET /admin/liquidations ==="}
-{"event": "EP-FC-03: tenant_id=1, professional_id=None, status=None, period_start=2026-05-01, period_end=2026-05-31, page=1, page_size=20"}
-{"event": "EP-FC-03 OK: count=0"}
-{"event": "\ud83d\udd0c Client connected: XfujgrPPrMeI9-8DAAAF \u2192 room tenant:1"}
-{"event": "=== EP-FC-04: GET /admin/liquidations/42 ==="}
-{"event": "EP-FC-04: liquidation_id=42, tenant_id=1"}
-{"event": "EP-FC-04 OK: liquidation_id=42, status=None"}
-{"event": "[weekly_backup] Waiting for Telegram bots to initialize..."}
-{"event": "=== EP-FC-12: GET /admin/liquidations/42/pdf ==="}
-{"event": "EP-FC-12: liquidation_id=42, tenant_id=1"}
-{"event": "EP-FC-12 ERROR: column \"liquidation_id\" does not exist", "exc_info": ["<class 'asyncpg.exceptions.UndefinedColumnError'>", "UndefinedColumnError('column \"liquidation_id\" does not exist')", "<traceback object at 0x7a8d18583080>"]}
 {"event": "[weekly_backup] Waiting for Telegram bots to initialize..."}
 {"event": "=== EP-FC-13: POST /admin/liquidations/42/send-email ==="}
 {"event": "EP-FC-13: liquidation_id=42, tenant_id=1, to_email=gamarraadrian200@gmail.com"}
-{"event": "EP-FC-13 ERROR: column \"liquidation_id\" does not exist", "exc_info": ["<class 'asyncpg.exceptions.UndefinedColumnError'>", "UndefinedColumnError('column \"liquidation_id\" does not exist')", "<traceback object at 0x7a8d1859b240>"]}
+{"event": "EP-FC-13 ERROR: 'str' object has no attribute 'get'", "exc_info": ["<class 'AttributeError'>", "AttributeError(\"'str' object has no attribute 'get'\")", "<traceback object at 0x7437a6d8a180>"]}
 {"event": "[weekly_backup] Waiting for Telegram bots to initialize..."}
-{"event": "[weekly_backup] Waiting for Telegram bots to initialize..."}
-{"event": "[weekly_backup] Waiting for Telegram bots to initialize..."}
-{"event": "[weekly_backup] No active Telegram bots after waiting, skipping"}
-{"event": "=== EP-FC-13: POST /admin/liquidations/42/send-email ==="}
-{"event": "EP-FC-13: liquidation_id=42, tenant_id=1, to_email=gamarraadrian200@gmail.com"}
-{"event": "EP-FC-13 ERROR: column \"liquidation_id\" does not exist", "exc_info": ["<class 'asyncpg.exceptions.UndefinedColumnError'>", "UndefinedColumnError('column \"liquidation_id\" does not exist')", "<traceback object at 0x7a8d18599640>"]}
 {"event": "=== EP-FC-12: GET /admin/liquidations/42/pdf ==="}
 {"event": "EP-FC-12: liquidation_id=42, tenant_id=1"}
-{"event": "EP-FC-12 ERROR: column \"liquidation_id\" does not exist", "exc_info": ["<class 'asyncpg.exceptions.UndefinedColumnError'>", "UndefinedColumnError('column \"liquidation_id\" does not exist')", "<traceback object at 0x7a8d185c0e40>"]}
-{"event": "=== EP-FC-05: PATCH /admin/liquidations/42 ==="}
-{"event": "EP-FC-05: liquidation_id=42, tenant_id=1, new_status=approved"}
-{"event": "EP-FC-05 ERROR: 'str' object has no attribute 'get'", "exc_info": ["<class 'AttributeError'>", "AttributeError(\"'str' object has no attribute 'get'\")", "<traceback object at 0x7a8d185c1300>"]}
-{"event": "=== EP-FC-04: GET /admin/liquidations/42 ==="}
-{"event": "EP-FC-04: liquidation_id=42, tenant_id=1"}
-{"event": "EP-FC-04 OK: liquidation_id=42, status=None"}
+{"event": "EP-FC-12 ERROR: 'str' object has no attribute 'get'", "exc_info": ["<class 'AttributeError'>", "AttributeError(\"'str' object has no attribute 'get'\")", "<traceback object at 0x7437a6d9ca40>"]}
+{"event": "[weekly_backup] Waiting for Telegram bots to initialize..."}
