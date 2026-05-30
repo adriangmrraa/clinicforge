@@ -31,9 +31,12 @@ MODEL_PRICING = {
     # --- GPT-4o (legacy) ---
     "gpt-4o-mini": {"provider": "openai", "input": Decimal("0.00015"), "output": Decimal("0.00060"), "context": 128000, "type": "text", "description": "GPT-4o Mini — Legacy economico"},
     "gpt-4o": {"provider": "openai", "input": Decimal("0.00250"), "output": Decimal("0.01000"), "context": 128000, "type": "text", "description": "GPT-4o Legacy"},
-    # --- Realtime (voice) ---
-    "gpt-4o-mini-realtime-preview": {"provider": "openai", "input": Decimal("0.00060"), "output": Decimal("0.00240"), "context": 128000, "type": "realtime", "description": "Realtime Mini — Voz"},
-    "gpt-4o-realtime-preview": {"provider": "openai", "input": Decimal("0.00500"), "output": Decimal("0.02000"), "context": 128000, "type": "realtime", "description": "Realtime Premium — Voz"},
+    # --- Realtime (voice) - GA models ---
+    "gpt-realtime-2": {"provider": "openai", "input": Decimal("0.00060"), "output": Decimal("0.00240"), "context": 128000, "type": "realtime", "description": "Realtime v2 GA — Voz (RECOMENDADO)"},
+    "gpt-realtime": {"provider": "openai", "input": Decimal("0.00060"), "output": Decimal("0.00240"), "context": 128000, "type": "realtime", "description": "Realtime v1 GA — Voz"},
+    # --- Realtime (voice) - Beta (deprecated, kept for backward compat) ---
+    "gpt-4o-mini-realtime-preview": {"provider": "openai", "input": Decimal("0.00060"), "output": Decimal("0.00240"), "context": 128000, "type": "realtime", "description": "Realtime Mini Beta — Voz (deprecated)"},
+    "gpt-4o-realtime-preview": {"provider": "openai", "input": Decimal("0.00500"), "output": Decimal("0.02000"), "context": 128000, "type": "realtime", "description": "Realtime Premium Beta — Voz (deprecated)"},
 
     # ============ DEEPSEEK ============
     "deepseek-chat": {"provider": "deepseek", "input": Decimal("0.00028"), "output": Decimal("0.00042"), "context": 128000, "type": "text", "description": "DeepSeek V4 Chat — Muy barato, excelente"},

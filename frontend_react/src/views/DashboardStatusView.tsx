@@ -110,9 +110,12 @@ const AVAILABLE_MODELS = [
   // === OpenAI — Legacy ===
   { id: 'gpt-4o', label: 'GPT-4o Legacy (128K ctx)', tier: 'standard', type: 'text', provider: 'openai' },
   { id: 'gpt-4o-mini', label: 'GPT-4o Mini Legacy (128K ctx)', tier: 'economy', type: 'text', provider: 'openai' },
-  // === OpenAI — Realtime (voice) ===
-  { id: 'gpt-4o-mini-realtime-preview', label: 'Realtime Mini — Voz economica', tier: 'economy', type: 'realtime', provider: 'openai' },
-  { id: 'gpt-4o-realtime-preview', label: 'Realtime Premium — Voz', tier: 'premium', type: 'realtime', provider: 'openai' },
+  // === OpenAI — Realtime (voice) GA ===
+  { id: 'gpt-realtime-2', label: 'Realtime v2 GA — Voz (RECOMENDADO)', tier: 'economy', type: 'realtime', provider: 'openai' },
+  { id: 'gpt-realtime', label: 'Realtime v1 GA — Voz', tier: 'economy', type: 'realtime', provider: 'openai' },
+  // === OpenAI — Realtime (voice) Beta (deprecated) ===
+  { id: 'gpt-4o-mini-realtime-preview', label: 'Realtime Mini Beta — Voz (deprecated)', tier: 'economy', type: 'realtime', provider: 'openai' },
+  { id: 'gpt-4o-realtime-preview', label: 'Realtime Premium Beta — Voz (deprecated)', tier: 'premium', type: 'realtime', provider: 'openai' },
   // === DeepSeek ===
   { id: 'deepseek-chat', label: 'DeepSeek V4 Chat — Muy barato, excelente', tier: 'economy', type: 'text', provider: 'deepseek' },
   { id: 'deepseek-reasoner', label: 'DeepSeek V4 Reasoner — Razonamiento profundo', tier: 'standard', type: 'text', provider: 'deepseek' },

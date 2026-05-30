@@ -12101,7 +12101,7 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
         import websockets
 
         api_key = os.getenv("OPENAI_API_KEY")
-        nova_voice_model = "gpt-4o-mini-realtime-preview"
+        nova_voice_model = "gpt-realtime-2"
         tenant_id_nova = config.get("tenant_id", 1)
         try:
             _voice_model_row = await db.pool.fetchrow(
@@ -12131,29 +12131,37 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
             openai_url,
             additional_headers={
                 "Authorization": f"Bearer {api_key}",
-                "OpenAI-Beta": "realtime=v1",
             },
         ) as openai_ws:
-            # Send session update
+            # Send session update (GA format — see OpenAI Realtime migration docs)
+            _nova_voice = os.getenv("NOVA_VOICE", "coral")
             await openai_ws.send(
                 json_mod.dumps(
                     {
                         "type": "session.update",
                         "session": {
-                            "modalities": ["text", "audio"],
+                            "type": "realtime",
                             "instructions": config.get("system_prompt", ""),
-                            "voice": os.getenv("NOVA_VOICE", "coral"),
-                            "input_audio_format": "pcm16",
-                            "output_audio_format": "pcm16",
+                            "voice": _nova_voice,
+                            "output_modalities": ["audio"],
+                            "audio": {
+                                "input": {
+                                    "format": {"type": "audio/pcm", "rate": 24000},
+                                    "turn_detection": {
+                                        "type": "server_vad",
+                                        "threshold": 0.5,
+                                        "prefix_padding_ms": 800,
+                                        "silence_duration_ms": 5000,
+                                    },
+                                },
+                                "output": {
+                                    "format": {"type": "audio/pcm"},
+                                    "voice": _nova_voice,
+                                },
+                            },
                             "input_audio_transcription": {"model": "whisper-1"},
                             "tools": _voice_tools,
                             "tool_choice": "auto",
-                            "turn_detection": {
-                                "type": "server_vad",
-                                "threshold": 0.5,
-                                "prefix_padding_ms": 800,
-                                "silence_duration_ms": 5000,
-                            },
                         },
                     }
                 )
@@ -12164,7 +12172,7 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
             )
             prompt_len = len(config.get("system_prompt", ""))
             logger.info(
-                f"🎙️ NOVA: prompt={prompt_len} chars, modalities=[text,audio], voice={os.getenv('NOVA_VOICE', 'coral')}"
+                f"🎙️ NOVA: prompt={prompt_len} chars, output_modalities=[audio], voice={_nova_voice}"
             )
             logger.info(f"🎙️ NOVA: Waiting for OpenAI events...")
 
