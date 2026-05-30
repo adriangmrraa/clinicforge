@@ -11,6 +11,7 @@ import { OdontogramLegend } from './odontogram/OdontogramLegend';
 import { OdontogramTabs, type DentitionType } from './odontogram/OdontogramTabs';
 import SymbolSelectorModal from './odontogram/SymbolSelectorModal';
 import { OdontogramState, normalizeLegacyStateId, getStateById, STATE_FILLS } from '../constants/odontogramStates';
+import StateConditionModal, { DentalCondition } from './odontogram/StateConditionModal';
 
 // ── Types ──
 interface SurfaceStates { occlusal: string; vestibular: string; lingual: string; mesial: string; distal: string; }
@@ -117,6 +118,9 @@ export default function Odontogram({ patientId, recordId, initialData, onSave, r
   const [selectedTooth, setSelectedTooth] = useState<number | null>(null);
   const [selectedSurface, setSelectedSurface] = useState<SurfaceName | null>(null);
   const [showModal, setShowModal] = useState(false);
+  const [showConditionModal, setShowConditionModal] = useState(false);
+  const [pendingState, setPendingState] = useState<OdontogramState | null>(null);
+  const [conditionModalState, setConditionModalState] = useState<OdontogramState | null>(null);
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -201,12 +205,30 @@ export default function Odontogram({ patientId, recordId, initialData, onSave, r
 
   const handleStateSelect = (odState: OdontogramState) => {
     if (!selectedTooth || !selectedSurface) return;
+    setPendingState(odState);
+    setConditionModalState(odState);
+    setShowModal(false);
+    setShowConditionModal(true);
+  };
+
+  const handleConditionApply = (condition: DentalCondition, color: string) => {
+    if (!selectedTooth || !selectedSurface || !pendingState) return;
     setTeeth(prev => prev.map(tooth => {
       if (tooth.id !== selectedTooth) return tooth;
-      const ns = { ...tooth.surfaces }; ns[selectedSurface!] = odState.id;
+      const ns = { ...tooth.surfaces }; ns[selectedSurface!] = pendingState.id;
       return { ...tooth, state: computeToothState(ns), surfaces: ns };
     }));
-    markChanged(selectedTooth); setShowModal(false); setSelectedSurface(null);
+    markChanged(selectedTooth);
+    setShowConditionModal(false);
+    setSelectedSurface(null);
+    setPendingState(null);
+    setConditionModalState(null);
+  };
+
+  const handleConditionBack = () => {
+    setShowConditionModal(false);
+    setConditionModalState(null);
+    setShowModal(true);
   };
 
   const handleSave = async () => {
@@ -483,10 +505,18 @@ export default function Odontogram({ patientId, recordId, initialData, onSave, r
       )}
 
       {/* Modal */}
+      {/* Primer modal: seleccionar estado */}
       <SymbolSelectorModal isOpen={showModal}
         onClose={() => { setShowModal(false); setSelectedSurface(null); }}
         onSelect={handleStateSelect} currentStateId={currentSurfaceState}
         surfaceName={selectedSurface ? t(`odontogram.surfaces.${selectedSurface}`) : undefined} />
+
+      {/* Segundo modal: elegir condición (bueno/malo/indefinido) */}
+      <StateConditionModal
+        isOpen={showConditionModal}
+        selectedState={conditionModalState}
+        onBack={handleConditionBack}
+        onApply={handleConditionApply} />
     </div>
   );
 }
