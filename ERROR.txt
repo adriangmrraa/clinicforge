@@ -1,11 +1,20 @@
 logs del orchesdtrator cuando quise descargar el pdf y mandar mail: 
 
 {"event": "[weekly_backup] Waiting for Telegram bots to initialize..."}
+INFO:     10.11.0.23:41462 - "WebSocket /socket.io/?EIO=4&transport=websocket" [accepted]
+INFO:     connection open
+{"event": "\ud83d\udd0c Client connected: Rd0xMQIJVDhmpTCKAAAH \u2192 room tenant:1"}
+{"event": "\ud83d\udd0d ROI Debug: Tenant=1, TokenFound=True, Range=lifetime"}
+{"event": "[weekly_backup] Waiting for Telegram bots to initialize..."}
 {"event": "=== EP-FC-13: POST /admin/liquidations/42/send-email ==="}
 {"event": "EP-FC-13: liquidation_id=42, tenant_id=1, to_email=gamarraadrian200@gmail.com"}
-{"event": "EP-FC-13 ERROR: 'str' object has no attribute 'get'", "exc_info": ["<class 'AttributeError'>", "AttributeError(\"'str' object has no attribute 'get'\")", "<traceback object at 0x7437a6d8a180>"]}
+{"event": "EP-FC-13 ERROR: 'str' object has no attribute 'get'", "exc_info": ["<class 'AttributeError'>", "AttributeError(\"'str' object has no attribute 'get'\")", "<traceback object at 0x710fba9e3f00>"]}
 {"event": "[weekly_backup] Waiting for Telegram bots to initialize..."}
 {"event": "=== EP-FC-12: GET /admin/liquidations/42/pdf ==="}
 {"event": "EP-FC-12: liquidation_id=42, tenant_id=1"}
-{"event": "EP-FC-12 ERROR: 'str' object has no attribute 'get'", "exc_info": ["<class 'AttributeError'>", "AttributeError(\"'str' object has no attribute 'get'\")", "<traceback object at 0x7437a6d9ca40>"]}
+{"event": "EP-FC-12 TRACEBACK: File \"/app/admin_routes.py\", line 16761, in generate_liquidation_pdf_endpoint"}
+{"event": "EP-FC-12 TRACEBACK: File \"/app/services/liquidation_pdf_service.py\", line 609, in generate_liquidation_pdf"}
+{"event": "EP-FC-12 TRACEBACK: File \"/app/services/liquidation_pdf_service.py\", line 445, in gather_liquidation_pdf_data"}
+{"event": "EP-FC-12 ERROR: 'str' object has no attribute 'get'", "exc_info": ["<class 'AttributeError'>", "AttributeError(\"'str' object has no attribute 'get'\")", "<traceback object at 0x710fbab22b00>"]}
+{"event": "[weekly_backup] Waiting for Telegram bots to initialize..."}
 {"event": "[weekly_backup] Waiting for Telegram bots to initialize..."}

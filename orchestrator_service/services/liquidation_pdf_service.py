@@ -441,7 +441,11 @@ async def gather_liquidation_pdf_data(
     status = record["status"] or "draft"
 
     # ── Notes text ───────────────────────────────────────────────────────────
-    notes_data = record["notes"] or {}
+    notes_data = record["notes"]
+    if isinstance(notes_data, str):
+        import json
+        notes_data = json.loads(notes_data) if notes_data else {}
+    notes_data = notes_data or {}
     notes_text = notes_data.get("text", "") or ""
 
     # ── Generated at ─────────────────────────────────────────────────────────
