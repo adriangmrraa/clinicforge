@@ -648,6 +648,7 @@ export const NovaWidget: React.FC = () => {
           if (!novaPlayingRef.current) {
             novaPlayingRef.current = true;
             micPausedRef.current = true;
+            setIsThinking(false);
             setVoiceState('speaking');
           }
           // Renew watchdog on each audio chunk
@@ -659,13 +660,8 @@ export const NovaWidget: React.FC = () => {
         // Text = JSON control message
         try {
           const msg = JSON.parse(evt.data as string);
-          console.log('[Nova Voice] WS message:', msg.type, msg);
 
-          // DEBUG: mostrar cualquier transcript o texto que llegue
-          if (msg.type === 'transcript' || msg.type === 'response.output_audio_transcript.done') {
-            console.log('[Nova Voice] TRANSCRIPT:', msg);
-          }
-
+          // Acumular transcript de assistant
           if (msg.type === 'transcript') {
             if (msg.role === 'user') {
               transcriptBufferRef.current = '';
@@ -677,8 +673,8 @@ export const NovaWidget: React.FC = () => {
             }
           }
 
+          // Nova terminó de generar audio (aún puede estar reproduciéndose)
           if (msg.type === 'nova_audio_done') {
-            // Clear watchdog — Nova finished speaking
             if (novaPlayingWatchdogRef.current) {
               clearTimeout(novaPlayingWatchdogRef.current);
               novaPlayingWatchdogRef.current = null;
@@ -687,17 +683,18 @@ export const NovaWidget: React.FC = () => {
             const remainingMs = ctx
               ? Math.max(0, (nextPlayTimeRef.current - ctx.currentTime) * 1000)
               : 0;
+            // Esperar a que termine la reproducción + 300ms de margen
             setTimeout(() => {
               novaPlayingRef.current = false;
-              // Only un-pause mic if user didn't manually pause it
+              setIsThinking(false);
               if (!micPausedRef.current) {
                 setVoiceState('listening');
               }
             }, remainingMs + 300);
           }
 
+          // Respuesta completada (con o sin interrupción)
           if (msg.type === 'response_done') {
-            // Clear watchdog — response complete
             if (novaPlayingWatchdogRef.current) {
               clearTimeout(novaPlayingWatchdogRef.current);
               novaPlayingWatchdogRef.current = null;
@@ -708,23 +705,21 @@ export const NovaWidget: React.FC = () => {
               }]);
               transcriptBufferRef.current = '';
             }
-            setTimeout(() => {
-              novaPlayingRef.current = false;
+            // Si no hay audio reproduciéndose, pasar a listening
+            if (!novaPlayingRef.current) {
               setIsThinking(false);
-              // Only un-pause mic if user didn't manually pause it
               if (!micPausedRef.current) {
                 setVoiceState('listening');
               }
-            }, 500);
+            }
           }
 
+          // Usuario empezó a hablar — interrumpir reproducción
           if (msg.type === 'user_speech_started') {
-            // Clear watchdog — user is speaking, Nova stopped
             if (novaPlayingWatchdogRef.current) {
               clearTimeout(novaPlayingWatchdogRef.current);
               novaPlayingWatchdogRef.current = null;
             }
-            // Flush accumulated transcript before cancelling
             if (transcriptBufferRef.current) {
               setMessages(prev => [...prev, {
                 id: msgId(), role: 'assistant', text: transcriptBufferRef.current, timestamp: Date.now(),
@@ -732,9 +727,9 @@ export const NovaWidget: React.FC = () => {
               transcriptBufferRef.current = '';
             }
             novaPlayingRef.current = false;
-            // Don't override manual pause
+            cancelPlayback();
+            setIsThinking(false);
             if (!micPausedRef.current) {
-              cancelPlayback();
               setVoiceState('listening');
             }
           }
@@ -744,13 +739,6 @@ export const NovaWidget: React.FC = () => {
             console.error('[Nova Voice] Server error:', errMsg);
             setToastMessage(`Nova: ${errMsg}`);
             setToastVisible(true);
-          }
-
-          // Fallback: si el mensaje tiene un transcript directo, mostrarlo
-          if (msg.transcript && !msg.type?.startsWith('response.')) {
-            setMessages(prev => [...prev, {
-              id: msgId(), role: 'assistant', text: msg.transcript, timestamp: Date.now(),
-            }]);
           }
         } catch {
           // Ignore parse errors
