@@ -584,7 +584,6 @@ export const NovaWidget: React.FC = () => {
               class CaptureProcessor extends AudioWorkletProcessor {
                 constructor() {
                   super();
-                  this._nativeRate = sampleRate;
                   this._ratio = sampleRate / 24000;
                 }
                 process(inputs) {
@@ -593,15 +592,14 @@ export const NovaWidget: React.FC = () => {
                   const samples = input[0];
                   const ratio = this._ratio;
                   const newLength = Math.floor(samples.length / ratio);
-                  const resampled = new Float32Array(newLength);
+                  const pcm16 = new Int16Array(newLength);
                   for (let i = 0; i < newLength; i++) {
-                    resampled[i] = samples[Math.floor(i * ratio)];
+                    const s = samples[Math.floor(i * ratio)];
+                    pcm16[i] = Math.max(-32768, Math.min(32767, s * 32768));
                   }
-                  const pcm16 = new Int16Array(resampled.length);
-                  for (let i = 0; i < resampled.length; i++) {
-                    pcm16[i] = Math.max(-32768, Math.min(32767, resampled[i] * 32768));
-                  }
-                  this.port.postMessage(pcm16.buffer, [pcm16.buffer]);
+                  // Clone buffer before transfer so we can keep processing
+                  const buf = pcm16.buffer.slice(0);
+                  this.port.postMessage(buf, [buf]);
                   return true;
                 }
               }
@@ -614,7 +612,8 @@ export const NovaWidget: React.FC = () => {
             const workletNode = new AudioWorkletNode(captureCtx, 'capture-processor');
             source.connect(workletNode);
             workletNode.port.onmessage = (e) => {
-              processAudio(new Float32Array(e.data));
+              // e.data is an ArrayBuffer containing PCM16 Int16 data
+              processAudio(new Float32Array(new Int16Array(e.data)));
             };
             processorRef.current = workletNode;
             workletSupported = true;
