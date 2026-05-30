@@ -647,7 +647,6 @@ export const NovaWidget: React.FC = () => {
         if (evt.data instanceof ArrayBuffer) {
           if (!novaPlayingRef.current) {
             novaPlayingRef.current = true;
-            micPausedRef.current = true;
             setIsThinking(false);
             setVoiceState('speaking');
           }
@@ -660,6 +659,7 @@ export const NovaWidget: React.FC = () => {
         // Text = JSON control message
         try {
           const msg = JSON.parse(evt.data as string);
+          console.log('[Nova Voice] Event:', msg.type, 'novaPlaying:', novaPlayingRef.current, 'state:', voiceState);
 
           // Acumular transcript de assistant
           if (msg.type === 'transcript') {
@@ -693,7 +693,7 @@ export const NovaWidget: React.FC = () => {
             }, remainingMs + 300);
           }
 
-          // Respuesta completada (con o sin interrupción)
+          // Respuesta completada
           if (msg.type === 'response_done') {
             if (novaPlayingWatchdogRef.current) {
               clearTimeout(novaPlayingWatchdogRef.current);
@@ -705,12 +705,11 @@ export const NovaWidget: React.FC = () => {
               }]);
               transcriptBufferRef.current = '';
             }
-            // Si no hay audio reproduciéndose, pasar a listening
-            if (!novaPlayingRef.current) {
-              setIsThinking(false);
-              if (!micPausedRef.current) {
-                setVoiceState('listening');
-              }
+            // Forzar paso a listening — la respuesta terminó
+            novaPlayingRef.current = false;
+            setIsThinking(false);
+            if (!micPausedRef.current) {
+              setVoiceState('listening');
             }
           }
 
