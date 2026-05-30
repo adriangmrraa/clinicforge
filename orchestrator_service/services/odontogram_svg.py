@@ -296,8 +296,9 @@ def render_odontogram_svg(odontogram_data: Optional[dict]) -> str:
             used_states.add(st)
         for sk in SURFACE_KEYS:
             ss = _surface_state(td.get("surfaces", {}).get(sk, {}))
-            if ss != "healthy":
-                used_states.add(ss)
+            ssv = ss["state"] if isinstance(ss, dict) else ss
+            if ssv != "healthy":
+                used_states.add(ssv)
 
     is_empty = len(used_states) == 0
 
