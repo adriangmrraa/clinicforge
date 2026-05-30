@@ -680,24 +680,28 @@ export const NovaWidget: React.FC = () => {
             if (msg.role === 'user') {
               transcriptBufferRef.current = '';
               setMessages(prev => [...prev, {
-                id: msgId(), role: 'user', text: msg.text, timestamp: Date.now(),
+                id: 'user_' + Date.now(), role: 'user', text: msg.text, timestamp: Date.now(),
               }]);
             } else if (msg.role === 'assistant') {
               transcriptBufferRef.current += msg.text;
+              const currentText = transcriptBufferRef.current;
               setMessages(prev => {
-                // Buscar el último mensaje de assistant para actualizarlo en vivo
-                let lastAsstIdx = -1;
+                // Buscar si ya hay un mensaje de assistant pendiente (el último)
+                let asstMsg = null;
+                let asstIdx = -1;
                 for (let i = prev.length - 1; i >= 0; i--) {
-                  if (prev[i].role === 'assistant') { lastAsstIdx = i; break; }
+                  if (prev[i].role === 'assistant') { asstMsg = prev[i]; asstIdx = i; break; }
                 }
-                assistantMsgIndexRef.current = lastAsstIdx;
-                if (lastAsstIdx >= 0) {
+                // Si el último mensaje de assistant no tiene texto completo (está en progreso),
+                // actualizarlo. Si ya tiene texto completo (es de una respuesta anterior), crear nuevo.
+                if (asstMsg && asstMsg.id.startsWith('nova_stream_')) {
                   const updated = [...prev];
-                  updated[lastAsstIdx] = { ...updated[lastAsstIdx], text: transcriptBufferRef.current };
+                  updated[asstIdx] = { ...updated[asstIdx], text: currentText };
                   return updated;
                 }
+                // Crear nuevo mensaje de assistant en streaming
                 return [...prev, {
-                  id: msgId(), role: 'assistant', text: transcriptBufferRef.current, timestamp: Date.now(),
+                  id: 'nova_stream_' + Date.now(), role: 'assistant', text: currentText, timestamp: Date.now(),
                 }];
               });
             }
@@ -732,21 +736,21 @@ export const NovaWidget: React.FC = () => {
               novaPlayingWatchdogRef.current = null;
             }
             if (transcriptBufferRef.current) {
+              const finalText = transcriptBufferRef.current;
+              transcriptBufferRef.current = '';
               setMessages(prev => {
-                let lastAsstIdx = -1;
                 for (let i = prev.length - 1; i >= 0; i--) {
-                  if (prev[i].role === 'assistant') { lastAsstIdx = i; break; }
+                  if (prev[i].role === 'assistant' && prev[i].id.startsWith('nova_stream_')) {
+                    const updated = [...prev];
+                    updated[i] = { ...updated[i], id: 'nova_' + Date.now(), text: finalText };
+                    return updated;
+                  }
                 }
-                if (lastAsstIdx >= 0) {
-                  const updated = [...prev];
-                  updated[lastAsstIdx] = { ...updated[lastAsstIdx], text: transcriptBufferRef.current };
-                  return updated;
-                }
+                // Si no encontramos stream, crear mensaje final
                 return [...prev, {
-                  id: msgId(), role: 'assistant', text: transcriptBufferRef.current, timestamp: Date.now(),
+                  id: 'nova_' + Date.now(), role: 'assistant', text: finalText, timestamp: Date.now(),
                 }];
               });
-              transcriptBufferRef.current = '';
             }
             // Forzar paso a listening — la respuesta terminó
             novaPlayingRef.current = false;
@@ -763,21 +767,20 @@ export const NovaWidget: React.FC = () => {
               novaPlayingWatchdogRef.current = null;
             }
             if (transcriptBufferRef.current) {
+              const finalText = transcriptBufferRef.current;
+              transcriptBufferRef.current = '';
               setMessages(prev => {
-                let lastAsstIdx = -1;
                 for (let i = prev.length - 1; i >= 0; i--) {
-                  if (prev[i].role === 'assistant') { lastAsstIdx = i; break; }
-                }
-                if (lastAsstIdx >= 0) {
-                  const updated = [...prev];
-                  updated[lastAsstIdx] = { ...updated[lastAsstIdx], text: transcriptBufferRef.current };
-                  return updated;
+                  if (prev[i].role === 'assistant' && prev[i].id.startsWith('nova_stream_')) {
+                    const updated = [...prev];
+                    updated[i] = { ...updated[i], id: 'nova_' + Date.now(), text: finalText };
+                    return updated;
+                  }
                 }
                 return [...prev, {
-                  id: msgId(), role: 'assistant', text: transcriptBufferRef.current, timestamp: Date.now(),
+                  id: 'nova_' + Date.now(), role: 'assistant', text: finalText, timestamp: Date.now(),
                 }];
               });
-              transcriptBufferRef.current = '';
             }
             novaPlayingRef.current = false;
             cancelPlayback();
