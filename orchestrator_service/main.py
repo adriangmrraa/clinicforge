@@ -12142,17 +12142,18 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
                         "session": {
                             "type": "realtime",
                             "instructions": config.get("system_prompt", ""),
-                            "input_audio_format": "pcm16",
-                            "output_audio_format": "pcm16",
                             "output_modalities": ["audio"],
                             "audio": {
                                 "input": {
                                     "format": {"type": "audio/pcm", "rate": 24000},
+                                    "noise_reduction": {"type": "near_field"},
                                     "turn_detection": {
                                         "type": "server_vad",
                                         "threshold": 0.5,
                                         "prefix_padding_ms": 800,
                                         "silence_duration_ms": 5000,
+                                        "interrupt_response": false,
+                                        "create_response": true,
                                     },
                                 },
                                 "output": {
@@ -12160,7 +12161,7 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
                                     "voice": _nova_voice,
                                 },
                             },
-                            "input_audio_transcription": {"model": "whisper-1"},
+                            "input_audio_transcription": {"model": "gpt-4o-transcribe"},
                             "tools": _voice_tools,
                             "tool_choice": "auto",
                         },
