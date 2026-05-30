@@ -556,11 +556,6 @@ export const NovaWidget: React.FC = () => {
           if (novaPlayingRef.current) return;
           if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
 
-          // Noise gate: skip frames below ambient threshold
-          let sum = 0;
-          for (let i = 0; i < input.length; i++) sum += Math.abs(input[i]);
-          if (sum / input.length < 0.002) return;
-
           const ratio = nativeSampleRate / 24000;
           const newLength = Math.floor(input.length / ratio);
           const resampled = new Float32Array(newLength);
@@ -588,10 +583,6 @@ export const NovaWidget: React.FC = () => {
                   const input = inputs[0];
                   if (!input || !input[0] || !input[0].length) return true;
                   const samples = input[0];
-                  // Noise gate
-                  let sum = 0;
-                  for (let i = 0; i < samples.length; i++) sum += Math.abs(samples[i]);
-                  if (sum / samples.length < 0.002) return true;
                   const ratio = this._ratio;
                   const newLength = Math.floor(samples.length / ratio);
                   const pcm16 = new Int16Array(newLength);
