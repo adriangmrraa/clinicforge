@@ -1,5 +1,8 @@
 FROM python:3.11-slim
 
+# Invalidate Docker cache — forced rebuild 2026-05-30
+ENV CACHEBUST=20260530.1
+
 ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app

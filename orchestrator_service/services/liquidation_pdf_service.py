@@ -350,7 +350,7 @@ async def gather_liquidation_pdf_data(
         """
         SELECT amount, payment_method, payment_date, reference_number
         FROM professional_payouts
-        WHERE liquidation_id = $1 AND tenant_id = $2
+        WHERE liquidation_record_id = $1 AND tenant_id = $2
         ORDER BY payment_date DESC
         """,
         liquidation_id,
