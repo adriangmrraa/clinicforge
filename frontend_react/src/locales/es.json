@@ -1336,7 +1336,19 @@
       "notes": "Notas",
       "notes_placeholder": "Observaciones adicionales...",
       "apply": "Aplicar",
-      "cancel": "Cancelar"
+      "cancel": "Cancelar",
+      "back": "Volver",
+      "condition": "Condición",
+      "selectCondition": "Seleccionar condición",
+      "selectColor": "Seleccionar color"
+    },
+    "conditions": {
+      "good": "Bueno",
+      "bad": "Malo",
+      "undefined": "Indefinido",
+      "bueno": "Bueno",
+      "malo": "Malo",
+      "indefinido": "Indefinido"
     },
     "piece": "Pieza",
     "change_state": "Cambiar estado",
