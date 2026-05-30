@@ -343,22 +343,30 @@ export default function Odontogram({ patientId, recordId, initialData, onSave, r
             </button>
           </div>
 
-          {/* Zoomed tooth + surface buttons */}
+          {/* Helper: extract state string from SurfaceDetail or string */}
+          {(() => {
+            const surfVal = (sd: any): string => (typeof sd === 'object' && sd !== null ? sd.state : String(sd));
+            const surfColor = (sd: any): string | null => (typeof sd === 'object' && sd !== null ? sd.color : null);
+            const col = (hex: string, a: string) => hex + a;
+            return (
           <div className="flex items-center gap-3">
             <div className="shrink-0">
               <svg viewBox="0 0 120 120" className="w-[88px] h-[88px] sm:w-28 sm:h-28">
-                {SURFACE_KEYS.map(sk => (
-                  <SurfacePath key={sk} pathD={getPathForSurface(selectedTooth!, sk, ZOOM_PATHS)} surfaceName={sk}
-                    state={selectedToothData.surfaces[sk]} isSelected={false}
-                    onClick={() => handleSurfaceSelect(sk)} />
-                ))}
+                {SURFACE_KEYS.map(sk => {
+                  const sv = surfVal(selectedToothData.surfaces[sk]);
+                  const sc = surfColor(selectedToothData.surfaces[sk]) || undefined;
+                  return (
+                    <SurfacePath key={sk} pathD={getPathForSurface(selectedTooth!, sk, ZOOM_PATHS)} surfaceName={sk}
+                      state={sv} color={sc} isSelected={false}
+                      onClick={() => handleSurfaceSelect(sk)} />
+                  );
+                })}
                 <line x1="22" y1="22" x2="45" y2="45" stroke="#06060e" strokeWidth="2.5" opacity="0.9" />
                 <line x1="98" y1="22" x2="75" y2="45" stroke="#06060e" strokeWidth="2.5" opacity="0.9" />
                 <line x1="98" y1="98" x2="75" y2="75" stroke="#06060e" strokeWidth="2.5" opacity="0.9" />
                 <line x1="22" y1="98" x2="45" y2="75" stroke="#06060e" strokeWidth="2.5" opacity="0.9" />
                 <circle cx="60" cy="60" r="21" fill="none" stroke="#06060e" strokeWidth="2" opacity="0.85" />
                 <circle cx="60" cy="60" r="54" fill="none" stroke="rgba(255,255,255,0.10)" strokeWidth="1" />
-                {/* Surface labels on the zoomed tooth — DLD-73: swap M/D for Q1/Q4 */}
                 <text x="60" y="63" textAnchor="middle" className="fill-white/15 text-[7px] font-bold select-none pointer-events-none">O</text>
                 <text x="60" y="18" textAnchor="middle" className="fill-white/12 text-[6px] select-none pointer-events-none">V</text>
                 <text x="60" y="108" textAnchor="middle" className="fill-white/12 text-[6px] select-none pointer-events-none">L</text>
@@ -369,26 +377,36 @@ export default function Odontogram({ patientId, recordId, initialData, onSave, r
 
             <div className="flex-1 grid grid-cols-1 gap-1">
               {SURFACE_KEYS.map(sk => {
-                const surfState = selectedToothData.surfaces[sk];
-                const info = getStateById(surfState);
-                const isHealthy = surfState === 'healthy';
+                const sv = surfVal(selectedToothData.surfaces[sk]);
+                const sc = surfColor(selectedToothData.surfaces[sk]);
+                const info = getStateById(sv);
+                const isHealthy = sv === 'healthy';
+                const displayColor = sc || info?.defaultColor || '#f0f0f0';
+                const fillBg = isHealthy ? 'bg-white/[0.03]' : undefined;
+                const fillCol = isHealthy ? 'text-white/15' : undefined;
                 return (
                   <button key={sk} onClick={() => handleSurfaceSelect(sk)}
                     className={`flex items-center gap-2 px-2.5 py-[7px] rounded-lg border transition-all duration-150 touch-manipulation active:scale-[0.97] ${
                       isHealthy ? 'bg-white/[0.02] border-white/[0.05] active:bg-white/[0.05]' : 'active:brightness-125'
-                    }`}
-                    style={!isHealthy && info ? { backgroundColor: info.defaultColor+'0D', borderColor: info.defaultColor+'20' } : undefined}>
-                    <span className={`w-5 h-5 rounded flex items-center justify-center text-[9px] font-bold shrink-0 ${isHealthy ? 'text-white/15 bg-white/[0.03]' : ''}`}
-                      style={!isHealthy && info ? { backgroundColor: info.defaultColor+'20', color: info.defaultColor } : undefined}>
+                    } ${!isHealthy ? 'border-transparent' : ''}`}
+                    style={!isHealthy ? { backgroundColor: col(displayColor, '12'), borderColor: col(displayColor, '25') } : undefined}>
+                    <span className={`w-6 h-6 rounded flex items-center justify-center text-xs font-bold shrink-0 ${fillBg || ''} ${fillCol || ''}`}
+                      style={!isHealthy ? { backgroundColor: col(displayColor, '25'), color: displayColor } : undefined}>
                       {info?.symbol || '○'}
                     </span>
-                    <span className="text-[10px] sm:text-[11px] text-white/50 font-medium">{t(`odontogram.surfaces.${sk}`)}</span>
-                    {!isHealthy && <span className="text-[8px] text-white/25 ml-auto truncate max-w-[70px]">{t(`odontogram.states.${surfState}`, surfState)}</span>}
+                    <span className="text-xs sm:text-sm text-white/50 font-semibold">{t(`odontogram.surfaces.${sk}`)}</span>
+                    {!isHealthy && (
+                      <span className="text-[9px] text-white/30 ml-auto truncate max-w-[90px] font-medium"
+                        style={{ color: displayColor }}>
+                        {t(`odontogram.states.${sv}`, sv)}
+                      </span>
+                    )}
                   </button>
                 );
               })}
             </div>
           </div>
+          );})()}
         </div>
       </div>
     );
