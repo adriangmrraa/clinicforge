@@ -551,13 +551,12 @@ export const NovaWidget: React.FC = () => {
         const source = captureCtx.createMediaStreamSource(stream);
 
         // --- Whisper transcription pipeline ---
-        // Acumulamos audio en un buffer. Cuando detectamos silencio (~1.5s),
-        // enviamos el buffer a Whisper para transcribirlo y mandamos el texto a OpenAI Realtime.
+        // Acumulamos ~2s de audio y lo enviamos a Whisper para transcribir.
+        // El texto transcripto se envía como input_text a OpenAI Realtime.
         let _whisperBuffer: number[] = [];
-        let _silenceFrames = 0;
-        const _SILENCE_THRESHOLD = 0.005; // umbral de silencio
-        const _SILENCE_FRAMES_MAX = 70;   // ~1.5s de silencio (70 frames de 20ms)
-        const _WHISPER_API = `${BACKEND_URL}/api/whisper/transcribe`;
+        let _lastWhisperTime = Date.now();
+        const _WHISPER_INTERVAL_MS = 2000; // enviar cada 2s
+        let _whisperCount = 0;
 
         const processAudio = (rawInput: Float32Array) => {
           if (micPausedRef.current) return;
@@ -569,24 +568,14 @@ export const NovaWidget: React.FC = () => {
             _whisperBuffer.push(Math.max(-1, Math.min(1, rawInput[i])));
           }
 
-          // Detectar silencio en este frame
-          let sum = 0;
-          for (let i = 0; i < rawInput.length; i++) sum += Math.abs(rawInput[i]);
-          const avg = sum / rawInput.length;
-
-          if (avg < _SILENCE_THRESHOLD) {
-            _silenceFrames++;
-          } else {
-            _silenceFrames = 0;
-          }
-
-          // Si hay suficiente silencio Y tenemos audio acumulado -> transcribir
-          if (_silenceFrames >= _SILENCE_FRAMES_MAX && _whisperBuffer.length > 24000) {
+          // Enviar a Whisper cada ~2s si hay suficiente audio
+          const now = Date.now();
+          if (now - _lastWhisperTime >= _WHISPER_INTERVAL_MS && _whisperBuffer.length > 24000) {
+            _lastWhisperTime = now;
+            _whisperCount++;
             const audioToSend = _whisperBuffer;
             _whisperBuffer = [];
-            _silenceFrames = 0;
-
-            // Transcribir con Whisper en background
+            console.log(`[Nova Voice] Sending to Whisper: #${_whisperCount} samples=${audioToSend.length} (${(audioToSend.length/24000).toFixed(1)}s)`);
             transcribeWithWhisper(audioToSend);
           }
         };
