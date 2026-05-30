@@ -559,9 +559,9 @@ export const NovaWidget: React.FC = () => {
           if (novaPlayingRef.current) return;
           if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
 
-          // Acumular samples (ya están a 24000Hz)
+          // Acumular samples con gain 0.1 (el rawInput puede venir saturado)
           for (let i = 0; i < rawInput.length; i++) {
-            _audioBuffer.push(Math.max(-1, Math.min(1, rawInput[i])));
+            _audioBuffer.push(Math.max(-1, Math.min(1, rawInput[i])) * 0.1);
           }
           if (_audioBuffer.length < _MIN_AUDIO_SAMPLES) return;
           _audioChunkCount++;
@@ -592,10 +592,9 @@ export const NovaWidget: React.FC = () => {
                   const input = inputs[0];
                   if (!input || !input[0] || !input[0].length) return true;
                   const samples = input[0];
-                  // Acumular samples directamente (ya están a 24000Hz)
+                  // Acumular samples con gain 0.1 (el rawInput puede venir saturado)
                   for (let i = 0; i < samples.length; i++) {
-                    const s = Math.max(-1, Math.min(1, samples[i]));
-                    this._buffer.push(s * 0.1);
+                    this._buffer.push(Math.max(-1, Math.min(1, samples[i])) * 0.1);
                   }
                   if (this._buffer.length >= this._MIN_SAMPLES) {
                     const len = this._buffer.length;
