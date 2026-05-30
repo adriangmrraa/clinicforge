@@ -16887,10 +16887,9 @@ async def send_liquidation_email_endpoint(
         email_html = render_liquidation_email_html(data)
 
         # 5. Send email
-        email_svc = EmailService()
         try:
             await asyncio.to_thread(
-                lambda: email_svc.send_liquidation_email(
+                lambda: email_service.send_liquidation_email(
                     to_email=to_email,
                     pdf_path=pdf_path,
                     professional_name=data["professional"]["full_name"],
