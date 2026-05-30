@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from '../../context/LanguageContext';
 import { SurfacePath } from './SurfacePath';
-import { type SurfaceName } from './ToothSVG';
+import { type SurfaceName, type SurfaceDetail } from './ToothSVG';
 import { STATE_FILLS } from '../../constants/odontogramStates';
 import { getPathForSurface } from './utils';
 
@@ -22,7 +22,7 @@ const SURFACES: SurfaceName[] = ['occlusal', 'vestibular', 'lingual', 'mesial', 
 interface MobileToothZoomProps {
   toothId: number;
   toothState: string;
-  surfaceStates?: Record<SurfaceName, string>;
+  surfaceStates?: Record<SurfaceName, SurfaceDetail>;
   selectedSurface: SurfaceName | null;
   onSurfaceClick: (surface: SurfaceName) => void;
   onClose: () => void;
@@ -64,8 +64,11 @@ export function MobileToothZoom({
     setTimeout(onClose, 200);
   };
 
-  const getSurfaceState = (surface: SurfaceName): string => {
-    return surfaceStates?.[surface] || toothState;
+  const getSurfaceDetail = (surface: SurfaceName): { state: string; color?: string } => {
+    const sd = surfaceStates?.[surface];
+    if (typeof sd === 'object' && sd !== null) return { state: sd.state, color: sd.color || undefined };
+    if (typeof sd === 'string') return { state: sd };
+    return { state: toothState };
   };
 
   const fills = STATE_FILLS[toothState] || STATE_FILLS['healthy'];
@@ -94,16 +97,20 @@ export function MobileToothZoom({
 
       {/* Zoomed SVG */}
       <svg viewBox="0 0 120 120" className="w-[140px] h-[140px] mx-auto">
-        {SURFACES.map(surface => (
-          <SurfacePath
-            key={surface}
-            pathD={getPathForSurface(toothId, surface, ZOOM_SURFACE_PATHS)}
-            surfaceName={surface}
-            state={getSurfaceState(surface)}
-            isSelected={selectedSurface === surface}
-            onClick={() => onSurfaceClick(surface)}
-          />
-        ))}
+        {SURFACES.map(surface => {
+          const sd = getSurfaceDetail(surface);
+          return (
+            <SurfacePath
+              key={surface}
+              pathD={getPathForSurface(toothId, surface, ZOOM_SURFACE_PATHS)}
+              surfaceName={surface}
+              state={sd.state}
+              color={sd.color}
+              isSelected={selectedSurface === surface}
+              onClick={() => onSurfaceClick(surface)}
+            />
+          );
+        })}
         {/* Structural dividers */}
         <line x1="22" y1="22" x2="45" y2="45" stroke="#06060e" strokeWidth="3" opacity="0.9" />
         <line x1="98" y1="22" x2="75" y2="45" stroke="#06060e" strokeWidth="3" opacity="0.9" />

@@ -192,7 +192,10 @@ export default function Odontogram({ patientId, recordId, initialData, onSave, r
   const usedStates = new Set<string>();
   [...permanentTeeth,...deciduousTeeth].forEach(tooth => {
     if (tooth.state !== 'healthy') usedStates.add(tooth.state);
-    Object.values(tooth.surfaces).forEach(s => { if (s !== 'healthy') usedStates.add(s); });
+    Object.values(tooth.surfaces).forEach(s => {
+      const sv = typeof s === 'object' && s !== null ? s.state : String(s);
+      if (sv !== 'healthy') usedStates.add(sv);
+    });
   });
 
   // Handlers

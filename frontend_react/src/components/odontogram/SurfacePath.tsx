@@ -20,7 +20,7 @@ export function SurfacePath({
 }: SurfacePathProps) {
   const fills = STATE_FILLS[state] || STATE_FILLS['healthy'];
   const fill = color || fills.fill;
-  const stroke = fills.stroke;
+  const stroke = color || fills.stroke;
   const isAbsent = state === 'ausente' || state === 'indicacion_extraccion' || state === 'missing' || state === 'extraction';
 
   return (
