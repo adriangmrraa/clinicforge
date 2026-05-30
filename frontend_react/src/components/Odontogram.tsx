@@ -256,9 +256,11 @@ export default function Odontogram({ patientId, recordId, initialData, onSave, r
 
   const handleReset = () => {
     if (readOnly) return;
-    if (activeDentition === 'permanent') setPermanentTeeth(buildDefaultTeeth(ALL_PERMANENT));
-    else setDeciduousTeeth(buildDefaultTeeth(ALL_DECIDUOUS));
+    const fresh = buildDefaultTeeth(activeDentition === 'permanent' ? ALL_PERMANENT : ALL_DECIDUOUS);
+    if (activeDentition === 'permanent') setPermanentTeeth(fresh as ToothState[]);
+    else setDeciduousTeeth(fresh as ToothState[]);
     setSelectedTooth(null); setSelectedSurface(null);
+    setHasChanges(true);
   };
 
   // Render helpers
