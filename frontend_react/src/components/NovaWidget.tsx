@@ -551,11 +551,13 @@ export const NovaWidget: React.FC = () => {
         const source = captureCtx.createMediaStreamSource(stream);
 
         // --- Shared audio processing callback (resample + PCM16) ---
+        let _audioChunkCount = 0;
         const processAudio = (input: Float32Array) => {
           if (micPausedRef.current) return;
           if (novaPlayingRef.current) return;
           if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
 
+          _audioChunkCount++;
           const ratio = nativeSampleRate / 24000;
           const newLength = Math.floor(input.length / ratio);
           const resampled = new Float32Array(newLength);
@@ -567,6 +569,9 @@ export const NovaWidget: React.FC = () => {
             pcm16[i] = Math.max(-32768, Math.min(32767, resampled[i] * 32768));
           }
           wsRef.current!.send(pcm16.buffer);
+          if (_audioChunkCount % 100 === 0) {
+            console.log(`[Nova Voice] Audio sent: ${_audioChunkCount} chunks, sampleRate=${nativeSampleRate}, frameLen=${input.length}, pcmLen=${pcm16.length}, avgLevel=${(input.reduce((a,b)=>a+Math.abs(b),0)/input.length).toFixed(5)}`);
+          }
         };
 
         // --- Try AudioWorkletNode first (modern, non-deprecated) ---
