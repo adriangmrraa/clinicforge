@@ -627,7 +627,7 @@ export const NovaWidget: React.FC = () => {
             processAudio(e.inputBuffer.getChannelData(0));
           };
           source.connect(processor);
-          processor.connect(captureCtx.destination);
+          // NO conectar a destination — evitar retroalimentación acústica
         }
       };
 
@@ -658,7 +658,6 @@ export const NovaWidget: React.FC = () => {
         // Text = JSON control message
         try {
           const msg = JSON.parse(evt.data as string);
-          console.log('[Nova Voice] Event:', msg.type, 'novaPlaying:', novaPlayingRef.current, 'state:', voiceState);
 
           // Transcript en vivo de assistant
           if (msg.type === 'transcript') {
@@ -684,7 +683,7 @@ export const NovaWidget: React.FC = () => {
             }
           }
 
-          // Nova terminó de generar audio (aún puede estar reproduciéndose)
+          // Nova terminó de generar audio
           if (msg.type === 'nova_audio_done') {
             if (novaPlayingWatchdogRef.current) {
               clearTimeout(novaPlayingWatchdogRef.current);
@@ -694,14 +693,16 @@ export const NovaWidget: React.FC = () => {
             const remainingMs = ctx
               ? Math.max(0, (nextPlayTimeRef.current - ctx.currentTime) * 1000)
               : 0;
-            // Esperar a que termine la reproducción + 300ms de margen
-            setTimeout(() => {
-              novaPlayingRef.current = false;
-              setIsThinking(false);
-              if (!micPausedRef.current) {
-                setVoiceState('listening');
+            const _timeout = setTimeout(() => {
+              if (novaPlayingWatchdogRef.current === _timeout || !novaPlayingWatchdogRef.current) {
+                novaPlayingRef.current = false;
+                setIsThinking(false);
+                if (!micPausedRef.current) {
+                  setVoiceState('listening');
+                }
               }
             }, remainingMs + 300);
+            novaPlayingWatchdogRef.current = _timeout;
           }
 
           // Respuesta completada
