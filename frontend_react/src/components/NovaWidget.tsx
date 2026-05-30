@@ -529,10 +529,10 @@ export const NovaWidget: React.FC = () => {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
 
-      const captureCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const captureCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
       captureCtxRef.current = captureCtx;
       if (captureCtx.state === 'suspended') captureCtx.resume().catch(() => {});
-      const nativeSampleRate = captureCtx.sampleRate;
+      const nativeSampleRate = 24000;
 
       // Build WS URL
       const wsBase = BACKEND_URL.replace(/^http/, 'ws');
@@ -559,11 +559,9 @@ export const NovaWidget: React.FC = () => {
           if (novaPlayingRef.current) return;
           if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
 
-          const ratio = nativeSampleRate / 24000;
-          const newLength = Math.floor(rawInput.length / ratio);
-          // Acumular samples resampleados con gain bajo para evitar saturación
-          for (let i = 0; i < newLength; i++) {
-            const s = Math.max(-1, Math.min(1, rawInput[Math.floor(i * ratio)]));
+          // Acumular samples directamente (ya están a 24000Hz)
+          for (let i = 0; i < rawInput.length; i++) {
+            const s = Math.max(-1, Math.min(1, rawInput[i]));
             _audioBuffer.push(s * 0.1);
           }
           // Solo enviar cuando tengamos al menos 20ms acumulados
@@ -589,7 +587,6 @@ export const NovaWidget: React.FC = () => {
               class CaptureProcessor extends AudioWorkletProcessor {
                 constructor() {
                   super();
-                  this._ratio = sampleRate / 24000;
                   this._buffer = [];
                   this._MIN_SAMPLES = 480; // 20ms at 24000Hz
                 }
@@ -597,11 +594,9 @@ export const NovaWidget: React.FC = () => {
                   const input = inputs[0];
                   if (!input || !input[0] || !input[0].length) return true;
                   const samples = input[0];
-                  const ratio = this._ratio;
-                  const newLength = Math.floor(samples.length / ratio);
-                  // Acumular samples hasta tener al menos 20ms (gain bajo para evitar saturación)
-                  for (let i = 0; i < newLength; i++) {
-                    const s = Math.max(-1, Math.min(1, samples[Math.floor(i * ratio)]));
+                  // Acumular samples directamente (ya están a 24000Hz)
+                  for (let i = 0; i < samples.length; i++) {
+                    const s = Math.max(-1, Math.min(1, samples[i]));
                     this._buffer.push(s * 0.1);
                   }
                   if (this._buffer.length >= this._MIN_SAMPLES) {
