@@ -467,10 +467,8 @@ export const NovaWidget: React.FC = () => {
   }, []);
 
   const cancelPlayback = useCallback(() => {
-    if (playbackCtxRef.current && playbackCtxRef.current.state !== 'closed') {
-      try { playbackCtxRef.current.close(); } catch (_) { /* ignore */ }
-    }
-    playbackCtxRef.current = null;
+    // Don't close the AudioContext — just reset scheduling cursor
+    // Closing it causes issues when the next response comes quickly
     nextPlayTimeRef.current = 0;
     novaPlayingRef.current = false;
     // Never override manual mic pause from here
@@ -719,6 +717,13 @@ export const NovaWidget: React.FC = () => {
             if (novaPlayingWatchdogRef.current) {
               clearTimeout(novaPlayingWatchdogRef.current);
               novaPlayingWatchdogRef.current = null;
+            }
+            // Flush accumulated transcript before cancelling
+            if (transcriptBufferRef.current) {
+              setMessages(prev => [...prev, {
+                id: msgId(), role: 'assistant', text: transcriptBufferRef.current, timestamp: Date.now(),
+              }]);
+              transcriptBufferRef.current = '';
             }
             novaPlayingRef.current = false;
             // Don't override manual pause
