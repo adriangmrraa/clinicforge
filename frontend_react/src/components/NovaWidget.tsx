@@ -729,7 +729,10 @@ export const NovaWidget: React.FC = () => {
           }
 
           if (msg.type === 'error') {
-            console.error('[Nova Voice] Server error:', msg.message);
+            const errMsg = msg.message || 'Error desconocido';
+            console.error('[Nova Voice] Server error:', errMsg);
+            setToastMessage(`Nova: ${errMsg}`);
+            setToastVisible(true);
           }
         } catch {
           // Ignore parse errors

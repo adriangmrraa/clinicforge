@@ -12147,6 +12147,7 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
                                 "input": {
                                     "format": {"type": "audio/pcm", "rate": 24000},
                                     "noise_reduction": {"type": "near_field"},
+                                    "transcription": {"model": "gpt-4o-transcribe"},
                                     "turn_detection": {
                                         "type": "server_vad",
                                         "threshold": 0.5,
@@ -12161,7 +12162,6 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
                                     "voice": _nova_voice,
                                 },
                             },
-                            "input_audio_transcription": {"model": "gpt-4o-transcribe"},
                             "tools": _voice_tools,
                             "tool_choice": "auto",
                         },
@@ -12323,6 +12323,14 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
                         elif etype == "input_audio_buffer.speech_started":
                             await websocket.send_text(
                                 json_mod.dumps({"type": "user_speech_started"})
+                            )
+
+                        elif etype == "error":
+                            error_msg = event.get("error", {}).get("message", "Unknown error")
+                            error_code = event.get("error", {}).get("code", "unknown")
+                            logger.error(f"🎙️ NOVA EVENT: OpenAI error: {error_code} — {error_msg}")
+                            await websocket.send_text(
+                                json_mod.dumps({"type": "error", "code": error_code, "message": error_msg})
                             )
 
                         elif etype == "response.done":
