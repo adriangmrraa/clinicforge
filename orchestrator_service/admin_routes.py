@@ -15715,6 +15715,8 @@ async def generate_liquidation(
     Idempotent: returns existing record if one already exists.
     Returns 201 for new records, 200 for existing.
     """
+    logger.info("=== EP-FC-01: POST /admin/liquidations/generate ===")
+    logger.info("EP-FC-01: tenant_id=%s, body=%s", tenant_id, body.model_dump_json())
     # Validate dates
     try:
         period_start = date.fromisoformat(body.period_start)
@@ -15770,10 +15772,14 @@ async def generate_liquidation(
             is_new = diff < 60
 
         status_code = 201 if is_new else 200
+
+        logger.info("EP-FC-01 OK: professional_id=%s, liquidation_id=%s, is_new=%s", body.professional_id, record.get("id"), is_new)
         return JSONResponse(content=record, status_code=status_code)
 
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error generating liquidation: {e}", exc_info=True)
+        logger.error("EP-FC-01 ERROR: %s", str(e), exc_info=True)
         raise HTTPException(status_code=500, detail="Error interno del servidor")
 
 
@@ -15795,6 +15801,8 @@ async def generate_bulk_liquidations(
     EP-FC-02: Generates liquidations for ALL active professionals in the period.
     Returns { generated_count, skipped_count, liquidations: [...] }.
     """
+    logger.info("=== EP-FC-02: POST /admin/liquidations/generate-bulk ===")
+    logger.info("EP-FC-02: tenant_id=%s, body=%s", tenant_id, body.model_dump_json())
     # Validate dates
     try:
         period_start = date.fromisoformat(body.period_start)
@@ -15825,10 +15833,12 @@ async def generate_bulk_liquidations(
             period_end=period_end,
             generated_by_email=user_data.email or "admin",
         )
+
+        logger.info("EP-FC-02 OK: generated_count=%s, skipped_count=%s", result.get("generated_count"), result.get("skipped_count"))
         return JSONResponse(content=result, status_code=201)
 
     except Exception as e:
-        logger.error(f"Error generating bulk liquidations: {e}", exc_info=True)
+        logger.error("EP-FC-02 ERROR: %s", str(e), exc_info=True)
         raise HTTPException(status_code=500, detail="Error interno del servidor")
 
 
@@ -15853,6 +15863,9 @@ async def list_liquidations(
     """
     EP-FC-03: Paginated list of liquidation records with optional filters.
     """
+    logger.info("=== EP-FC-03: GET /admin/liquidations ===")
+    logger.info("EP-FC-03: tenant_id=%s, professional_id=%s, status=%s, period_start=%s, period_end=%s, page=%s, page_size=%s",
+                tenant_id, professional_id, status, period_start, period_end, page, page_size)
     # Parse optional dates
     parsed_start = None
     parsed_end = None
@@ -15887,10 +15900,12 @@ async def list_liquidations(
             limit=limit,
             offset=offset,
         )
+
+        logger.info("EP-FC-03 OK: count=%s", len(result.get("items", [])) if isinstance(result, dict) else "?")
         return result
 
     except Exception as e:
-        logger.error(f"Error listing liquidations: {e}", exc_info=True)
+        logger.error("EP-FC-03 ERROR: %s", str(e), exc_info=True)
         raise HTTPException(status_code=500, detail="Error interno del servidor")
 
 
@@ -15910,6 +15925,8 @@ async def get_liquidation_detail(
     """
     EP-FC-04: Returns full liquidation detail including treatment groups and payouts.
     """
+    logger.info("=== EP-FC-04: GET /admin/liquidations/%s ===", liquidation_id)
+    logger.info("EP-FC-04: liquidation_id=%s, tenant_id=%s", liquidation_id, tenant_id)
     try:
         detail = await liquidation_service.get_liquidation_detail(
             pool=db.pool,
@@ -15917,16 +15934,19 @@ async def get_liquidation_detail(
             liquidation_id=liquidation_id,
         )
         if not detail:
+            logger.warning("EP-FC-04 NOT FOUND: liquidation_id=%s, tenant_id=%s", liquidation_id, tenant_id)
             raise HTTPException(
                 status_code=404,
                 detail=f"Liquidación {liquidation_id} no encontrada.",
             )
+
+        logger.info("EP-FC-04 OK: liquidation_id=%s, status=%s", liquidation_id, detail.get("status"))
         return detail
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error getting liquidation detail: {e}", exc_info=True)
+        logger.error("EP-FC-04 ERROR: %s", str(e), exc_info=True)
         raise HTTPException(status_code=500, detail="Error interno del servidor")
 
 
@@ -15949,8 +15969,12 @@ async def update_liquidation_status(
     EP-FC-05: Updates liquidation status with validation of allowed transitions.
     Valid transitions: draft→generated→approved→paid
     """
+    logger.info("=== EP-FC-05: PATCH /admin/liquidations/%s ===", liquidation_id)
+    logger.info("EP-FC-05: liquidation_id=%s, tenant_id=%s, new_status=%s", liquidation_id, tenant_id, body.status)
+
     valid_statuses = ("draft", "generated", "approved", "paid")
     if body.status not in valid_statuses:
+        logger.warning("EP-FC-05 INVALID STATUS: %s", body.status)
         raise HTTPException(
             status_code=400,
             detail=f"Status inválido. Valores permitidos: {', '.join(valid_statuses)}.",
@@ -15966,18 +15990,22 @@ async def update_liquidation_status(
             notes=body.notes,
         )
         if not result:
+            logger.warning("EP-FC-05 NOT FOUND: liquidation_id=%s, tenant_id=%s", liquidation_id, tenant_id)
             raise HTTPException(
                 status_code=404,
                 detail=f"Liquidación {liquidation_id} no encontrada.",
             )
+
+        logger.info("EP-FC-05 OK: liquidation_id=%s, new_status=%s", liquidation_id, body.status)
         return result
 
     except ValueError as e:
+        logger.warning("EP-FC-05 VALIDATION ERROR: %s", str(e))
         raise HTTPException(status_code=400, detail=str(e))
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error updating liquidation status: {e}", exc_info=True)
+        logger.error("EP-FC-05 ERROR: %s", str(e), exc_info=True)
         raise HTTPException(status_code=500, detail="Error interno del servidor")
 
 
@@ -16000,8 +16028,13 @@ async def create_payout(
     EP-FC-06: Creates a professional payout record.
     Auto-updates liquidation status to 'paid' if total payouts >= payout_amount.
     """
+    logger.info("=== EP-FC-06: POST /admin/liquidations/%s/payout ===", liquidation_id)
+    logger.info("EP-FC-06: liquidation_id=%s, tenant_id=%s, amount=%s, payment_method=%s",
+                liquidation_id, tenant_id, body.amount, body.payment_method)
+
     # Validate amount
     if body.amount <= 0:
+        logger.warning("EP-FC-06 INVALID AMOUNT: %s", body.amount)
         raise HTTPException(
             status_code=400,
             detail="El monto debe ser mayor a 0.",
@@ -16010,6 +16043,7 @@ async def create_payout(
     # Validate payment method
     valid_methods = ["transfer", "cash", "check"]
     if body.payment_method not in valid_methods:
+        logger.warning("EP-FC-06 INVALID METHOD: %s", body.payment_method)
         raise HTTPException(
             status_code=400,
             detail=f"Método de pago inválido. Valores permitidos: {', '.join(valid_methods)}.",
@@ -16019,6 +16053,7 @@ async def create_payout(
     try:
         payment_date = date.fromisoformat(body.payment_date)
     except ValueError:
+        logger.warning("EP-FC-06 INVALID DATE: %s", body.payment_date)
         raise HTTPException(
             status_code=400,
             detail="Formato de payment_date inválido. Usar YYYY-MM-DD.",
@@ -16036,14 +16071,17 @@ async def create_payout(
             notes=body.notes,
             user_email=user_data.email or "admin",
         )
+
+        logger.info("EP-FC-06 OK: payout_id=%s, amount=%s", payout.get("id"), body.amount)
         return JSONResponse(content=payout, status_code=201)
 
     except ValueError as e:
+        logger.warning("EP-FC-06 VALIDATION ERROR: %s", str(e))
         raise HTTPException(status_code=400, detail=str(e))
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error creating payout: {e}", exc_info=True)
+        logger.error("EP-FC-06 ERROR: %s", str(e), exc_info=True)
         raise HTTPException(status_code=500, detail="Error interno del servidor")
 
 
@@ -16063,6 +16101,8 @@ async def get_liquidation_payouts(
     """
     EP-FC-07: Returns all payouts associated with a liquidation.
     """
+    logger.info("=== EP-FC-07: GET /admin/liquidations/%s/payouts ===", liquidation_id)
+    logger.info("EP-FC-07: liquidation_id=%s, tenant_id=%s", liquidation_id, tenant_id)
     try:
         # First verify the liquidation belongs to this tenant
         record = await db.pool.fetchrow(
@@ -16074,6 +16114,7 @@ async def get_liquidation_payouts(
             tenant_id,
         )
         if not record:
+            logger.warning("EP-FC-07 NOT FOUND: liquidation_id=%s, tenant_id=%s", liquidation_id, tenant_id)
             raise HTTPException(
                 status_code=404,
                 detail=f"Liquidación {liquidation_id} no encontrada.",
@@ -16111,12 +16152,13 @@ async def get_liquidation_payouts(
                 }
             )
 
+        logger.info("EP-FC-07 OK: payout_count=%s", len(result))
         return result
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error getting payouts: {e}", exc_info=True)
+        logger.error("EP-FC-07 ERROR: %s", str(e), exc_info=True)
         raise HTTPException(status_code=500, detail="Error interno del servidor")
 
 
@@ -16144,6 +16186,8 @@ async def get_financial_dashboard(
     - Top treatments
     - Pending collections
     """
+    logger.info("=== EP-FC-08: GET /admin/financial-dashboard ===")
+    logger.info("EP-FC-08: tenant_id=%s, period_start=%s, period_end=%s", tenant_id, period_start, period_end)
     # Validate dates
     try:
         p_start = date.fromisoformat(period_start)
@@ -16209,7 +16253,7 @@ async def get_financial_dashboard(
             period_end=p_end,
         )
 
-        return {
+        result = {
             "summary": summary,
             "revenue_by_professional": revenue_by_professional,
             "revenue_by_treatment": revenue_by_treatment,
@@ -16219,8 +16263,12 @@ async def get_financial_dashboard(
             "pending_collections": pending_collections,
         }
 
+        logger.info("EP-FC-08 OK: total_revenue=%s, total_payouts=%s",
+                    summary.get("total_revenue"), summary.get("total_payouts"))
+        return result
+
     except Exception as e:
-        logger.error(f"Error getting financial dashboard: {e}", exc_info=True)
+        logger.error("EP-FC-08 ERROR: %s", str(e), exc_info=True)
         raise HTTPException(status_code=500, detail="Error interno del servidor")
 
 
@@ -16241,6 +16289,8 @@ async def get_professional_commissions(
     EP-FC-09: Returns commission configuration for a professional.
     Now includes clinic_pct and change history.
     """
+    logger.info("=== EP-FC-09: GET /admin/professionals/%s/commissions ===", professional_id)
+    logger.info("EP-FC-09: professional_id=%s, tenant_id=%s", professional_id, tenant_id)
     # Verify professional exists and belongs to tenant
     prof = await db.pool.fetchrow(
         """
@@ -16266,10 +16316,15 @@ async def get_professional_commissions(
         config["professional_name"] = (
             f"{prof['first_name']} {prof['last_name']}".strip()
         )
+
+        logger.info("EP-FC-09 OK: professional_id=%s, default_commission_pct=%s",
+                    professional_id, config.get("default_commission_pct"))
         return config
 
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error getting commission config: {e}", exc_info=True)
+        logger.error("EP-FC-09 ERROR: %s", str(e), exc_info=True)
         raise HTTPException(status_code=500, detail="Error interno del servidor")
 
 
@@ -16337,6 +16392,9 @@ async def upsert_professional_commissions(
     Now supports clinic_pct, effective_date, and saves change history.
     Validates commission_pct + clinic_pct = 100 for all entries.
     """
+    logger.info("=== EP-FC-10: PUT /admin/professionals/%s/commissions ===", professional_id)
+    logger.info("EP-FC-10: professional_id=%s, tenant_id=%s, body=%s",
+                professional_id, tenant_id, body.model_dump_json())
     # Validate each individual % is in range
     for label, val in [("default_commission_pct", body.default_commission_pct),
                         ("default_clinic_pct", body.default_clinic_pct)]:
@@ -16417,12 +16475,15 @@ async def upsert_professional_commissions(
             effective_date=effective_date,
             changed_by=changed_by,
         )
+
+        logger.info("EP-FC-10 OK: professional_id=%s, default_commission_pct=%s",
+                    professional_id, body.default_commission_pct)
         return result
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error upserting commission config: {e}", exc_info=True)
+        logger.error("EP-FC-10 ERROR: %s", str(e), exc_info=True)
         raise HTTPException(status_code=500, detail="Error interno del servidor")
 
 
@@ -16444,6 +16505,8 @@ async def get_reconciliation(
     EP-FC-11: Compares patient payments vs professional payouts and detects discrepancies.
     Discrepancies = paid appointments not included in any liquidation record.
     """
+    logger.info("=== EP-FC-11: GET /admin/reconciliation ===")
+    logger.info("EP-FC-11: tenant_id=%s, period_start=%s, period_end=%s", tenant_id, period_start, period_end)
     # Validate dates
     try:
         p_start = date.fromisoformat(period_start)
@@ -16583,7 +16646,7 @@ async def get_reconciliation(
                     }
                 )
 
-        return {
+        result = {
             "period_start": period_start,
             "period_end": period_end,
             "total_patient_payments": round(total_patient_payments, 2),
@@ -16593,8 +16656,12 @@ async def get_reconciliation(
             "discrepancy_count": len(discrepancies),
         }
 
+        logger.info("EP-FC-11 OK: total_patient_payments=%s, total_professional_payouts=%s, discrepancy_count=%s",
+                    round(total_patient_payments, 2), round(total_professional_payouts, 2), len(discrepancies))
+        return result
+
     except Exception as e:
-        logger.error(f"Error in reconciliation: {e}", exc_info=True)
+        logger.error("EP-FC-11 ERROR: %s", str(e), exc_info=True)
         raise HTTPException(status_code=500, detail="Error interno del servidor")
 
 
@@ -16612,16 +16679,28 @@ async def ignore_reconciliation_discrepancy(
     current_user=Depends(verify_admin_token),
     tenant_id: int = Depends(get_resolved_tenant_id),
 ):
+    logger.info("=== EP-FC-11b: PATCH /admin/reconciliation/%s/ignore ===", appointment_id)
+    logger.info("EP-FC-11b: appointment_id=%s, tenant_id=%s", appointment_id, tenant_id)
+
     if current_user["role"] != "ceo":
+        logger.warning("EP-FC-11b FORBIDDEN: role=%s, user=%s", current_user.get("role"), current_user.get("email"))
         raise HTTPException(status_code=403, detail="Acceso restringido")
 
-    await liquidation_service.ignore_reconciliation_discrepancy(
-        pool=db.pool,
-        tenant_id=tenant_id,
-        appointment_id=appointment_id,
-        ignored_by=current_user.get("email") or current_user.get("sub", ""),
-    )
-    return {"success": True, "message": "Discrepancia ignorada"}
+    try:
+        await liquidation_service.ignore_reconciliation_discrepancy(
+            pool=db.pool,
+            tenant_id=tenant_id,
+            appointment_id=appointment_id,
+            ignored_by=current_user.get("email") or current_user.get("sub", ""),
+        )
+        logger.info("EP-FC-11b OK: appointment_id=%s", appointment_id)
+        return {"success": True, "message": "Discrepancia ignorada"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("EP-FC-11b ERROR: %s", str(e), exc_info=True)
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
 
 
 # =============================================================================
@@ -16640,66 +16719,78 @@ async def generate_liquidation_pdf_endpoint(
     resolved_tenant_id: int = Depends(get_resolved_tenant_id),
 ):
     """Genera y sirve el PDF de una liquidación profesional con caché en disco."""
-    from services.liquidation_pdf_service import (
-        generate_liquidation_pdf,
-        gather_liquidation_pdf_data,
-    )
-
-    # Verify the liquidation exists and belongs to tenant
-    record = await db.pool.fetchrow(
-        "SELECT id, status, professional_id FROM liquidation_records WHERE id = $1 AND tenant_id = $2",
-        liquidation_id,
-        resolved_tenant_id,
-    )
-    if not record:
-        raise HTTPException(
-            status_code=404,
-            detail="Liquidación no encontrada",
+    logger.info("=== EP-FC-12: GET /admin/liquidations/%s/pdf ===", liquidation_id)
+    logger.info("EP-FC-12: liquidation_id=%s, tenant_id=%s", liquidation_id, resolved_tenant_id)
+    try:
+        from services.liquidation_pdf_service import (
+            generate_liquidation_pdf,
+            gather_liquidation_pdf_data,
         )
 
-    # Check if cached PDF exists and is still valid
-    pdf_path = f"/app/uploads/liquidations/{resolved_tenant_id}/{liquidation_id}.pdf"
-    use_cache = False
-    if os.path.exists(pdf_path):
-        # Check if the PDF was generated after the last status change
-        pdf_mtime = os.path.getmtime(pdf_path)
-        # Compare with the record's created_at (or updated_at if available)
-        record_ts = record.get("created_at")
-        if record_ts:
-            if hasattr(record_ts, "timestamp"):
-                record_epoch = record_ts.timestamp()
-            else:
-                record_epoch = 0
-            if pdf_mtime >= record_epoch:
-                use_cache = True
-
-    if not use_cache:
-        # Generate fresh PDF
-        pdf_path = await generate_liquidation_pdf(
-            db.pool, liquidation_id, resolved_tenant_id
+        # Verify the liquidation exists and belongs to tenant
+        record = await db.pool.fetchrow(
+            "SELECT id, status, professional_id FROM liquidation_records WHERE id = $1 AND tenant_id = $2",
+            liquidation_id,
+            resolved_tenant_id,
         )
-        if not pdf_path:
+        if not record:
+            logger.warning("EP-FC-12 NOT FOUND: liquidation_id=%s, tenant_id=%s", liquidation_id, resolved_tenant_id)
             raise HTTPException(
                 status_code=404,
-                detail="Error generando PDF de liquidación",
+                detail="Liquidación no encontrada",
             )
 
-    # Build filename
-    data = await gather_liquidation_pdf_data(
-        db.pool, liquidation_id, resolved_tenant_id
-    )
-    if data:
-        prof_name = data["professional"]["full_name"].replace(" ", "_")
-        period_label = data["period"]["label"].replace(" ", "_")
-        filename = f"Liquidacion_{prof_name}_{period_label}.pdf"
-    else:
-        filename = f"Liquidacion_{liquidation_id}.pdf"
+        # Check if cached PDF exists and is still valid
+        pdf_path = f"/app/uploads/liquidations/{resolved_tenant_id}/{liquidation_id}.pdf"
+        use_cache = False
+        if os.path.exists(pdf_path):
+            # Check if the PDF was generated after the last status change
+            pdf_mtime = os.path.getmtime(pdf_path)
+            # Compare with the record's created_at (or updated_at if available)
+            record_ts = record.get("created_at")
+            if record_ts:
+                if hasattr(record_ts, "timestamp"):
+                    record_epoch = record_ts.timestamp()
+                else:
+                    record_epoch = 0
+                if pdf_mtime >= record_epoch:
+                    use_cache = True
 
-    return FileResponse(
-        pdf_path,
-        media_type="application/pdf",
-        filename=filename,
-    )
+        if not use_cache:
+            # Generate fresh PDF
+            pdf_path = await generate_liquidation_pdf(
+                db.pool, liquidation_id, resolved_tenant_id
+            )
+            if not pdf_path:
+                logger.error("EP-FC-12 PDF GENERATION FAILED: liquidation_id=%s", liquidation_id)
+                raise HTTPException(
+                    status_code=404,
+                    detail="Error generando PDF de liquidación",
+                )
+
+        # Build filename
+        data = await gather_liquidation_pdf_data(
+            db.pool, liquidation_id, resolved_tenant_id
+        )
+        if data:
+            prof_name = data["professional"]["full_name"].replace(" ", "_")
+            period_label = data["period"]["label"].replace(" ", "_")
+            filename = f"Liquidacion_{prof_name}_{period_label}.pdf"
+        else:
+            filename = f"Liquidacion_{liquidation_id}.pdf"
+
+        logger.info("EP-FC-12 OK: liquidation_id=%s, use_cache=%s, filename=%s", liquidation_id, use_cache, filename)
+        return FileResponse(
+            pdf_path,
+            media_type="application/pdf",
+            filename=filename,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("EP-FC-12 ERROR: %s", str(e), exc_info=True)
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
 
 
 # =============================================================================
@@ -16724,110 +16815,125 @@ async def send_liquidation_email_endpoint(
     resolved_tenant_id: int = Depends(get_resolved_tenant_id),
 ):
     """Envía el PDF de liquidación por email al profesional."""
-    from services.liquidation_pdf_service import (
-        generate_liquidation_pdf,
-        gather_liquidation_pdf_data,
-        render_liquidation_email_html,
-    )
-
-    # 1. Verify liquidation exists and belongs to tenant
-    record = await db.pool.fetchrow(
-        """
-        SELECT lr.*, p.email AS professional_email
-        FROM liquidation_records lr
-        JOIN professionals p ON p.id = lr.professional_id AND p.tenant_id = lr.tenant_id
-        WHERE lr.id = $1 AND lr.tenant_id = $2
-        """,
-        liquidation_id,
-        resolved_tenant_id,
-    )
-    if not record:
-        raise HTTPException(
-            status_code=404,
-            detail="Liquidación no encontrada",
-        )
-
-    # 2. Determine recipient email
-    to_email = body.to_email
-    if not to_email:
-        to_email = record.get("professional_email")
-        if not to_email:
-            raise HTTPException(
-                status_code=422,
-                detail="No se encontró email del profesional. Proporcione to_email.",
-            )
-
-    # 3. Generate PDF (reuse cache if available)
-    pdf_path = await generate_liquidation_pdf(
-        db.pool, liquidation_id, resolved_tenant_id
-    )
-    if not pdf_path:
-        raise HTTPException(
-            status_code=500,
-            detail="Error generando PDF para envío",
-        )
-
-    # 4. Gather data for email body
-    data = await gather_liquidation_pdf_data(
-        db.pool, liquidation_id, resolved_tenant_id
-    )
-    if not data:
-        raise HTTPException(
-            status_code=404,
-            detail="Datos de liquidación no encontrados",
-        )
-
-    # Render email HTML body
-    email_html = render_liquidation_email_html(data)
-
-    # 5. Send email
-    email_svc = EmailService()
+    logger.info("=== EP-FC-13: POST /admin/liquidations/%s/send-email ===", liquidation_id)
+    logger.info("EP-FC-13: liquidation_id=%s, tenant_id=%s, to_email=%s",
+                liquidation_id, resolved_tenant_id, body.to_email)
     try:
-        await asyncio.to_thread(
-            lambda: email_svc.send_liquidation_email(
-                to_email=to_email,
-                pdf_path=pdf_path,
-                professional_name=data["professional"]["full_name"],
-                clinic_name=data["clinic"]["name"],
-                period_label=data["period"]["label"],
-                payout_amount=data["summary"]["payout_amount"],
-                html_body=email_html,
+        from services.liquidation_pdf_service import (
+            generate_liquidation_pdf,
+            gather_liquidation_pdf_data,
+            render_liquidation_email_html,
+        )
+
+        # 1. Verify liquidation exists and belongs to tenant
+        record = await db.pool.fetchrow(
+            """
+            SELECT lr.*, p.email AS professional_email
+            FROM liquidation_records lr
+            JOIN professionals p ON p.id = lr.professional_id AND p.tenant_id = lr.tenant_id
+            WHERE lr.id = $1 AND lr.tenant_id = $2
+            """,
+            liquidation_id,
+            resolved_tenant_id,
+        )
+        if not record:
+            logger.warning("EP-FC-13 NOT FOUND: liquidation_id=%s, tenant_id=%s", liquidation_id, resolved_tenant_id)
+            raise HTTPException(
+                status_code=404,
+                detail="Liquidación no encontrada",
             )
+
+        # 2. Determine recipient email
+        to_email = body.to_email
+        if not to_email:
+            to_email = record.get("professional_email")
+            if not to_email:
+                logger.warning("EP-FC-13 NO EMAIL: liquidation_id=%s", liquidation_id)
+                raise HTTPException(
+                    status_code=422,
+                    detail="No se encontró email del profesional. Proporcione to_email.",
+                )
+
+        # 3. Generate PDF (reuse cache if available)
+        pdf_path = await generate_liquidation_pdf(
+            db.pool, liquidation_id, resolved_tenant_id
         )
-    except Exception as e:
-        logger.error(f"Error sending liquidation email: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error enviando email: {str(e)}",
+        if not pdf_path:
+            logger.error("EP-FC-13 PDF GENERATION FAILED: liquidation_id=%s", liquidation_id)
+            raise HTTPException(
+                status_code=500,
+                detail="Error generando PDF para envío",
+            )
+
+        # 4. Gather data for email body
+        data = await gather_liquidation_pdf_data(
+            db.pool, liquidation_id, resolved_tenant_id
+        )
+        if not data:
+            logger.error("EP-FC-13 DATA NOT FOUND: liquidation_id=%s", liquidation_id)
+            raise HTTPException(
+                status_code=404,
+                detail="Datos de liquidación no encontrados",
+            )
+
+        # Render email HTML body
+        email_html = render_liquidation_email_html(data)
+
+        # 5. Send email
+        email_svc = EmailService()
+        try:
+            await asyncio.to_thread(
+                lambda: email_svc.send_liquidation_email(
+                    to_email=to_email,
+                    pdf_path=pdf_path,
+                    professional_name=data["professional"]["full_name"],
+                    clinic_name=data["clinic"]["name"],
+                    period_label=data["period"]["label"],
+                    payout_amount=data["summary"]["payout_amount"],
+                    html_body=email_html,
+                )
+            )
+        except Exception as e:
+            logger.error("EP-FC-13 EMAIL SEND FAILED: %s", str(e), exc_info=True)
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error enviando email: {str(e)}",
+            )
+
+        # 6. Log email send in audit trail
+        existing_notes = record.get("notes") or {}
+        audit_trail = existing_notes.get("audit_trail", [])
+        audit_trail.append(
+            {
+                "action": "email_sent",
+                "to": to_email,
+                "by": user_data.email if hasattr(user_data, "email") else "admin",
+                "at": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+        existing_notes["audit_trail"] = audit_trail
+        await db.pool.execute(
+            """
+            UPDATE liquidation_records
+            SET notes = $1
+            WHERE id = $2 AND tenant_id = $3
+            """,
+            existing_notes,
+            liquidation_id,
+            resolved_tenant_id,
         )
 
-    # 6. Log email send in audit trail
-    existing_notes = record.get("notes") or {}
-    audit_trail = existing_notes.get("audit_trail", [])
-    audit_trail.append(
-        {
-            "action": "email_sent",
-            "to": to_email,
-            "by": user_data.email if hasattr(user_data, "email") else "admin",
-            "at": datetime.now(timezone.utc).isoformat(),
+        logger.info("EP-FC-13 OK: liquidation_id=%s, to=%s", liquidation_id, to_email)
+        return {
+            "success": True,
+            "message": f"Liquidación enviada a {to_email}",
         }
-    )
-    existing_notes["audit_trail"] = audit_trail
-    await db.pool.execute(
-        """
-        UPDATE liquidation_records
-        SET notes = $1
-        WHERE id = $2 AND tenant_id = $3
-        """,
-        existing_notes,
-        liquidation_id,
-        resolved_tenant_id,
-    )
 
-    return {
-        "success": True,
-        "message": f"Liquidación enviada a {to_email}",
-    }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("EP-FC-13 ERROR: %s", str(e), exc_info=True)
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
 
 
 # ---------------------------------------------------------------------------
