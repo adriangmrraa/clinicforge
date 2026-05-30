@@ -13,6 +13,7 @@ import os
 from datetime import datetime, date
 from decimal import Decimal
 from typing import Optional
+from fastapi import HTTPException
 
 logger = logging.getLogger(__name__)
 
@@ -51,37 +52,91 @@ class LiquidationService:
         Generates a persistent liquidation snapshot for a professional in a given period.
         Idempotent: returns existing record if one already exists for the same key.
         """
-        # 1. Check idempotency
-        existing = await pool.fetchrow(
+        # 1. Check idempotency — use INSERT ON CONFLICT to prevent race conditions
+        #    First, try to insert a "placeholder" row; if it conflicts, return existing
+        placeholder = await pool.fetchrow(
             """
-            SELECT * FROM liquidation_records
-            WHERE tenant_id = $1
-              AND professional_id = $2
-              AND period_start = $3
-              AND period_end = $4
+            INSERT INTO liquidation_records (
+                tenant_id, professional_id, period_start, period_end,
+                total_billed, total_paid, total_pending,
+                commission_pct, commission_amount, payout_amount,
+                status, generated_by, notes
+            ) VALUES ($1, $2, $3, $4, 0, 0, 0, 0, 0, 0, 'generated', 'system', '{}')
+            ON CONFLICT (tenant_id, professional_id, period_start, period_end)
+            DO NOTHING
+            RETURNING id
             """,
             tenant_id,
             professional_id,
             period_start,
             period_end,
         )
-        if existing:
-            logger.info(
-                "generate_liquidation: existing record %s for prof %s, period %s-%s",
-                existing["id"],
+
+        if placeholder is None:
+            # Record already exists — fetch and check if it's a valid record
+            existing = await pool.fetchrow(
+                """
+                SELECT * FROM liquidation_records
+                WHERE tenant_id = $1
+                  AND professional_id = $2
+                  AND period_start = $3
+                  AND period_end = $4
+                """,
+                tenant_id,
                 professional_id,
                 period_start,
                 period_end,
             )
-            return dict(existing)
+            if existing:
+                # Check for zombie placeholder (crash between INSERT and UPDATE)
+                if float(existing["total_billed"] or 0) == 0 and existing["generated_by"] == "system":
+                    logger.warning(
+                        "generate_liquidation: zombie placeholder %s found for prof %s, "
+                        "period %s-%s. Deleting and regenerating.",
+                        existing["id"],
+                        professional_id,
+                        period_start,
+                        period_end,
+                    )
+                    await pool.execute(
+                        "DELETE FROM liquidation_records WHERE id = $1",
+                        existing["id"],
+                    )
+                    # Fall through to generate fresh
+                else:
+                    logger.info(
+                        "generate_liquidation: existing record %s for prof %s, period %s-%s",
+                        existing["id"],
+                        professional_id,
+                        period_start,
+                        period_end,
+                    )
+                    return dict(existing)
 
-        # 2. Get professional commissions
-        commission_pct, per_treatment_map = await self._get_commission_config(
-            pool, tenant_id, professional_id
-        )
+        placeholder_id = placeholder["id"] if placeholder else None
 
-        # 3. Query appointments in the period for this professional
-        #    Reusing the query pattern from analytics_service.get_professionals_liquidation
+        # If we deleted a zombie, we need a fresh placeholder
+        if placeholder_id is None:
+            new_placeholder = await pool.fetchrow(
+                """
+                INSERT INTO liquidation_records (
+                    tenant_id, professional_id, period_start, period_end,
+                    total_billed, total_paid, total_pending,
+                    commission_pct, commission_amount, payout_amount,
+                    status, generated_by, notes
+                ) VALUES ($1, $2, $3, $4, 0, 0, 0, 0, 0, 0, 'generated', 'system', '{}')
+                RETURNING id
+                """,
+                tenant_id,
+                professional_id,
+                period_start,
+                period_end,
+            )
+            placeholder_id = new_placeholder["id"] if new_placeholder else None
+
+        # 3. Query ONLY PAID appointments in the period for this professional
+        #    DLD-91: "Solo se liquidan tratamientos cobrados."
+        #    Each appointment uses point-in-time commission lookup via get_commission_config_at_date
         appt_rows = await pool.fetch(
             """
             SELECT
@@ -102,6 +157,7 @@ class LiquidationService:
               AND a.appointment_datetime >= $3
               AND a.appointment_datetime < ($4::date + INTERVAL '1 day')
               AND a.status != 'deleted'
+              AND a.payment_status = 'paid'
             ORDER BY a.appointment_datetime
             """,
             tenant_id,
@@ -110,84 +166,45 @@ class LiquidationService:
             period_end,
         )
 
-        # 4. Query plan payments for appointments linked to treatment plans
-        plan_ids = set()
-        for row in appt_rows:
-            if row.get("plan_item_id"):
-                # We need to resolve the plan_id from plan_item
-                pass
-
-        # Fetch plan_ids from appointments that have plan_item_id
-        plan_item_ids = [
-            r["appointment_id"] for r in appt_rows if r.get("plan_item_id")
-        ]
-        if plan_item_ids:
-            plan_rows = await pool.fetch(
-                """
-                SELECT DISTINCT tpi.plan_id
-                FROM appointments a
-                JOIN treatment_plan_items tpi ON tpi.id = a.plan_item_id AND tpi.tenant_id = $1
-                WHERE a.id = ANY($2) AND a.tenant_id = $1
-                """,
-                tenant_id,
-                plan_item_ids,
-            )
-            plan_ids = {str(r["plan_id"]) for r in plan_rows}
-
-        # Query plan payments
-        plan_paid_map = {}
-        if plan_ids:
-            plan_payment_rows = await pool.fetch(
-                """
-                SELECT plan_id, COALESCE(SUM(amount), 0) AS total_paid
-                FROM treatment_plan_payments
-                WHERE tenant_id = $1 AND plan_id = ANY($2)
-                GROUP BY plan_id
-                """,
-                tenant_id,
-                list(plan_ids),
-            )
-            plan_paid_map = {
-                str(r["plan_id"]): float(r["total_paid"]) for r in plan_payment_rows
-            }
-
-        # 5. Calculate totals
+        # 4. Calculate totals with point-in-time commission lookup
         total_billed = Decimal("0")
         total_paid = Decimal("0")
         total_commission = Decimal("0")
+        treatments_without_commission = []
 
         for row in appt_rows:
-            appt_status = row["appointment_status"] or ""
-            excluded = appt_status in ("cancelled", "no_show")
-            if excluded:
-                continue
-
             billing = Decimal(str(row["billing_amount"] or 0))
             treatment_code = row["treatment_code"] or ""
-            pstatus = row["payment_status"] or "pending"
+            appt_date = row["appointment_datetime"].date() if row["appointment_datetime"] else period_start
 
-            # Determine commission for this appointment
-            if treatment_code in per_treatment_map:
-                appt_commission_pct = per_treatment_map[treatment_code]
+            # Point-in-time commission lookup for THIS appointment's date
+            config_at_date = await self.get_commission_config_at_date(
+                pool, tenant_id, professional_id, appt_date
+            )
+
+            # Determine commission % for this treatment on this date
+            per_treatment = config_at_date.get("per_treatment", {})
+            if treatment_code in per_treatment:
+                appt_commission_pct = per_treatment[treatment_code]["commission_pct"]
             else:
-                appt_commission_pct = commission_pct
+                appt_commission_pct = config_at_date["default_commission_pct"]
+
+            if config_at_date["source"] == "default_zero":
+                treatments_without_commission.append(treatment_code)
 
             appt_commission = billing * (
                 Decimal(str(appt_commission_pct)) / Decimal("100")
             )
             total_commission += appt_commission
             total_billed += billing
-
-            if pstatus == "paid":
-                total_paid += billing
-
-        # Add plan payments to total_paid
-        for plan_id, paid_amount in plan_paid_map.items():
-            total_paid += Decimal(str(paid_amount))
+            # All appointments are paid (filtered above)
+            total_paid += billing
 
         total_pending = total_billed - total_paid
         if total_pending < 0:
             total_pending = Decimal("0")
+
+        total_commission_pct = float(total_commission / total_billed * 100) if total_billed > 0 else 0.0
 
         commission_amount = total_commission
         payout_amount = commission_amount  # payout is what the professional receives
@@ -202,14 +219,14 @@ class LiquidationService:
             }
         ]
 
+        # Update the placeholder row with real data
         record = await pool.fetchrow(
             """
-            INSERT INTO liquidation_records (
-                tenant_id, professional_id, period_start, period_end,
-                total_billed, total_paid, total_pending,
-                commission_pct, commission_amount, payout_amount,
-                status, generated_by, notes
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'generated', $11, $12)
+            UPDATE liquidation_records SET
+                total_billed = $5, total_paid = $6, total_pending = $7,
+                commission_pct = $8, commission_amount = $9, payout_amount = $10,
+                generated_by = $11, notes = $12
+            WHERE id = $13 AND tenant_id = $1
             RETURNING *
             """,
             tenant_id,
@@ -219,11 +236,12 @@ class LiquidationService:
             float(total_billed),
             float(total_paid),
             float(total_pending),
-            float(commission_pct),
+            total_commission_pct,
             float(commission_amount),
             float(payout_amount),
             generated_by_email,
             {"audit_trail": audit_trail},
+            placeholder_id,
         )
 
         logger.info(
@@ -232,7 +250,7 @@ class LiquidationService:
             record["id"],
             professional_id,
             total_billed,
-            commission_pct,
+            total_commission_pct,
             payout_amount,
         )
 
@@ -392,6 +410,7 @@ class LiquidationService:
               AND a.appointment_datetime >= $3
               AND a.appointment_datetime < ($4::date + INTERVAL '1 day')
               AND a.status != 'deleted'
+              AND a.payment_status = 'paid'
             ORDER BY pat.id, a.appointment_type, a.appointment_datetime
             """,
             tenant_id,
@@ -719,11 +738,12 @@ class LiquidationService:
         Updates liquidation status with audit trail.
         Validates status transitions: draft→generated→approved→paid
         """
-        # 1. Fetch liquidation record
+        # 1. Fetch liquidation record with row lock (prevents race conditions)
         record = await pool.fetchrow(
             """
             SELECT * FROM liquidation_records
             WHERE id = $1 AND tenant_id = $2
+            FOR UPDATE
             """,
             liquidation_id,
             tenant_id,
@@ -733,6 +753,22 @@ class LiquidationService:
             return None
 
         current_status = record["status"]
+
+        # 1.5 BLOCK: If approving, check all treatments have commission configured
+        if new_status == "approved":
+            missing = await self._check_treatments_without_commission(
+                pool, tenant_id, liquidation_id, record
+            )
+            if missing:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"No se puede aprobar la liquidación. "
+                        f"Hay tratamientos sin comisión configurada: "
+                        f"{', '.join(missing)}. "
+                        f"Configurá las comisiones en /finanzas → Liquidaciones."
+                    ),
+                )
 
         # 2. Validate status transition
         allowed = _VALID_TRANSITIONS.get(current_status, [])
@@ -857,6 +893,91 @@ class LiquidationService:
         return dict(updated)
 
     # ------------------------------------------------------------------
+    # Helper: _check_treatments_without_commission
+    # ------------------------------------------------------------------
+    async def _check_treatments_without_commission(
+        self, pool, tenant_id: int, liquidation_id: int, record=None
+    ) -> list:
+        """
+        Checks if any treatments in the liquidation have no commission config.
+        Returns list of treatment names without commission. Empty list = all good.
+        Blocks approval if not empty.
+        """
+        if record is None:
+            record = await pool.fetchrow(
+                "SELECT * FROM liquidation_records WHERE id = $1 AND tenant_id = $2",
+                liquidation_id,
+                tenant_id,
+            )
+            if not record:
+                return []
+
+        professional_id = record["professional_id"]
+        period_start = record["period_start"]
+        period_end = record["period_end"]
+
+        # Get all distinct treatments in the liquidation's period
+        treatment_rows = await pool.fetch(
+            """
+            SELECT DISTINCT tt.code, tt.name
+            FROM appointments a
+            LEFT JOIN treatment_types tt ON tt.code = a.appointment_type AND tt.tenant_id = $1
+            WHERE a.tenant_id = $1
+              AND a.professional_id = $2
+              AND a.appointment_datetime::date >= $3
+              AND a.appointment_datetime::date <= $4
+              AND a.status != 'deleted'
+              AND a.payment_status = 'paid'
+              AND tt.code IS NOT NULL
+            """,
+            tenant_id,
+            professional_id,
+            period_start,
+            period_end,
+        )
+
+        missing = []
+        for row in treatment_rows:
+            code = row["code"]
+            name = row["name"] or code
+
+            # Check EVERY appointment for this treatment — not just the first one
+            # (commission config may have changed mid-period)
+            appt_dates = await pool.fetch(
+                """
+                SELECT DISTINCT a.appointment_datetime::date AS appt_date
+                FROM appointments a
+                WHERE a.tenant_id = $1
+                  AND a.professional_id = $2
+                  AND a.appointment_type = $3
+                  AND a.appointment_datetime::date >= $4
+                  AND a.appointment_datetime::date <= $5
+                  AND a.status != 'deleted'
+                  AND a.payment_status = 'paid'
+                ORDER BY a.appointment_datetime::date
+                """,
+                tenant_id,
+                professional_id,
+                code,
+                period_start,
+                period_end,
+            )
+
+            any_missing = False
+            for date_row in appt_dates:
+                config = await self.get_commission_config_at_date(
+                    pool, tenant_id, professional_id, date_row["appt_date"]
+                )
+                if config["source"] == "default_zero":
+                    any_missing = True
+                    break
+
+            if any_missing:
+                missing.append(name)
+
+        return missing
+
+    # ------------------------------------------------------------------
     # Method 6: create_payout
     # ------------------------------------------------------------------
     async def create_payout(
@@ -938,9 +1059,21 @@ class LiquidationService:
         payout_amount = float(record["payout_amount"])
 
         # 4. Auto-update status to 'paid' if fully covered
+        #    Prevent overpayment: new payout cannot exceed remaining balance
+        remaining = payout_amount - total_payouts
+        if amount > remaining and remaining > 0:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"El monto del pago (${amount:.2f}) excede "
+                    f"el saldo restante (${remaining:.2f}). "
+                    f"Total a pagar: ${payout_amount:.2f}, ya pagado: ${total_payouts:.2f}."
+                ),
+            )
+
         auto_paid = False
         current_notes = record["notes"] or {}
-        if total_payouts >= payout_amount and record["status"] != "paid":
+        if total_payouts + amount >= payout_amount and record["status"] != "paid":
             now = datetime.utcnow()
             audit_trail = current_notes.get("audit_trail", [])
             audit_trail.append(
@@ -1015,10 +1148,11 @@ class LiquidationService:
     ) -> dict:
         """
         Returns commission configuration for a professional.
+        Now includes clinic_pct and change history.
         """
         rows = await pool.fetch(
             """
-            SELECT commission_pct, treatment_code
+            SELECT commission_pct, clinic_pct, treatment_code
             FROM professional_commissions
             WHERE tenant_id = $1 AND professional_id = $2
             ORDER BY treatment_code NULLS FIRST
@@ -1028,24 +1162,33 @@ class LiquidationService:
         )
 
         default_commission_pct = 0.0
+        default_clinic_pct = 100.0
         per_treatment = []
 
         for row in rows:
             if row["treatment_code"] is None:
                 default_commission_pct = float(row["commission_pct"])
+                default_clinic_pct = float(row["clinic_pct"])
             else:
                 per_treatment.append(
                     {
                         "treatment_code": row["treatment_code"],
                         "commission_pct": float(row["commission_pct"]),
+                        "clinic_pct": float(row["clinic_pct"]),
                     }
                 )
 
         result = {
             "professional_id": professional_id,
             "default_commission_pct": default_commission_pct,
+            "default_clinic_pct": default_clinic_pct,
             "per_treatment": per_treatment,
         }
+
+        # Include change history
+        result["history"] = await self.get_commission_history(
+            pool, tenant_id, professional_id
+        )
 
         # If no config at all, add warning
         if not rows:
@@ -1063,7 +1206,7 @@ class LiquidationService:
         return result
 
     # ------------------------------------------------------------------
-    # Method 8: upsert_commission_config
+    # Method 8: upsert_commission_config (with history + clinic_pct)
     # ------------------------------------------------------------------
     async def upsert_commission_config(
         self,
@@ -1071,47 +1214,157 @@ class LiquidationService:
         tenant_id: int,
         professional_id: int,
         default_commission_pct: float,
-        per_treatment: list,
+        default_clinic_pct: float = 0.0,
+        per_treatment: list = None,
+        effective_date: date = None,
+        changed_by: str = None,
     ) -> dict:
         """
-        Upserts commission configuration for a professional.
+        Upserts commission configuration with history tracking.
+        Saves previous values to commission_history BEFORE modifying.
+        Validates commission_pct + clinic_pct = 100 for all entries.
         """
-        # 1. Upsert default commission (treatment_code IS NULL)
+        if per_treatment is None:
+            per_treatment = []
+        if effective_date is None:
+            effective_date = datetime.now().date()
+
+        # Validate default sum = 100
+        if abs((default_commission_pct + default_clinic_pct) - 100.0) > 0.01:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"La suma del % profesional ({default_commission_pct}) y "
+                    f"% clínica ({default_clinic_pct}) debe ser 100."
+                ),
+            )
+
+        # Validate each per-treatment sum
+        for entry in per_treatment:
+            cp = entry.get("commission_pct", 0)
+            clp = entry.get("clinic_pct", 0)
+            if abs((cp + clp) - 100.0) > 0.01:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"Para {entry.get('treatment_code', 'unknown')}: "
+                        f"la suma del % profesional ({cp}) y % clínica ({clp}) debe ser 100."
+                    ),
+                )
+
+        # Helper: record commission change in history
+        async def _record_history(treatment_code, old_pct, old_clinic, new_pct, new_clinic):
+            await pool.execute(
+                """
+                INSERT INTO commission_history (
+                    tenant_id, professional_id, treatment_code,
+                    old_commission_pct, new_commission_pct,
+                    old_clinic_pct, new_clinic_pct,
+                    changed_by, effective_date
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                """,
+                tenant_id,
+                professional_id,
+                treatment_code,
+                old_pct,
+                new_pct,
+                old_clinic,
+                new_clinic,
+                changed_by,
+                effective_date,
+            )
+
+        # 1. Read OLD default values before upsert
+        old_default = await pool.fetchrow(
+            """
+            SELECT commission_pct, clinic_pct FROM professional_commissions
+            WHERE tenant_id = $1 AND professional_id = $2 AND treatment_code IS NULL
+            """,
+            tenant_id,
+            professional_id,
+        )
+
+        # 2. Upsert default commission
         await pool.execute(
             """
             INSERT INTO professional_commissions (
-                tenant_id, professional_id, commission_pct, treatment_code
-            ) VALUES ($1, $2, $3, NULL)
+                tenant_id, professional_id, commission_pct, clinic_pct, treatment_code
+            ) VALUES ($1, $2, $3, $4, NULL)
             ON CONFLICT (tenant_id, professional_id, treatment_code)
-            DO UPDATE SET commission_pct = $3, updated_at = NOW()
+            DO UPDATE SET commission_pct = $3, clinic_pct = $4, updated_at = NOW()
             """,
             tenant_id,
             professional_id,
             default_commission_pct,
+            default_clinic_pct,
         )
 
-        # 2. Upsert per-treatment overrides
+        # 3. Record history for default if it changed
+        if old_default:
+            old_pct = float(old_default["commission_pct"])
+            old_clinic = float(old_default["clinic_pct"])
+            if abs(old_pct - default_commission_pct) > 0.01 or abs(old_clinic - default_clinic_pct) > 0.01:
+                await _record_history(
+                    None, old_pct, old_clinic,
+                    default_commission_pct, default_clinic_pct,
+                )
+        else:
+            # First time creating config
+            await _record_history(
+                None, None, None,
+                default_commission_pct, default_clinic_pct,
+            )
+
+        # 4. Upsert per-treatment overrides
         new_treatment_codes = set()
         for entry in per_treatment:
             treatment_code = entry["treatment_code"]
             commission_pct = entry["commission_pct"]
+            clinic_pct = entry.get("clinic_pct", 100.0 - commission_pct)
             new_treatment_codes.add(treatment_code)
+
+            # Read old override before upsert
+            old_override = await pool.fetchrow(
+                """
+                SELECT commission_pct, clinic_pct FROM professional_commissions
+                WHERE tenant_id = $1 AND professional_id = $2 AND treatment_code = $3
+                """,
+                tenant_id,
+                professional_id,
+                treatment_code,
+            )
 
             await pool.execute(
                 """
                 INSERT INTO professional_commissions (
-                    tenant_id, professional_id, commission_pct, treatment_code
-                ) VALUES ($1, $2, $3, $4)
+                    tenant_id, professional_id, commission_pct, clinic_pct, treatment_code
+                ) VALUES ($1, $2, $3, $4, $5)
                 ON CONFLICT (tenant_id, professional_id, treatment_code)
-                DO UPDATE SET commission_pct = $3, updated_at = NOW()
+                DO UPDATE SET commission_pct = $3, clinic_pct = $4, updated_at = NOW()
                 """,
                 tenant_id,
                 professional_id,
                 commission_pct,
+                clinic_pct,
                 treatment_code,
             )
 
-        # 3. Delete existing per-treatment entries NOT in the new list
+            # Record history for override
+            if old_override:
+                old_op = float(old_override["commission_pct"])
+                old_oc = float(old_override["clinic_pct"])
+                if abs(old_op - commission_pct) > 0.01 or abs(old_oc - clinic_pct) > 0.01:
+                    await _record_history(
+                        treatment_code, old_op, old_oc,
+                        commission_pct, clinic_pct,
+                    )
+            else:
+                await _record_history(
+                    treatment_code, None, None,
+                    commission_pct, clinic_pct,
+                )
+
+        # 5. Delete existing per-treatment entries NOT in the new list
         existing_rows = await pool.fetch(
             """
             SELECT treatment_code FROM professional_commissions
@@ -1124,6 +1377,25 @@ class LiquidationService:
         codes_to_delete = existing_codes - new_treatment_codes
 
         if codes_to_delete:
+            # Record history for deleted overrides
+            for code in codes_to_delete:
+                deleted_row = await pool.fetchrow(
+                    """
+                    SELECT commission_pct, clinic_pct FROM professional_commissions
+                    WHERE tenant_id = $1 AND professional_id = $2 AND treatment_code = $3
+                    """,
+                    tenant_id,
+                    professional_id,
+                    code,
+                )
+                if deleted_row:
+                    await _record_history(
+                        code,
+                        float(deleted_row["commission_pct"]),
+                        float(deleted_row["clinic_pct"]),
+                        0.0, 100.0,  # deleted = defaults to 0/100
+                    )
+
             await pool.execute(
                 """
                 DELETE FROM professional_commissions
@@ -1136,22 +1408,183 @@ class LiquidationService:
                 list(codes_to_delete),
             )
 
-        # 4. Return updated config
+        # 6. Return updated config
         return await self.get_commission_config(pool, tenant_id, professional_id)
 
     # ------------------------------------------------------------------
+    # Method 9: get_commission_config_at_date (point-in-time lookup)
+    # ------------------------------------------------------------------
+    async def get_commission_config_at_date(
+        self, pool, tenant_id: int, professional_id: int, target_date: date
+    ) -> dict:
+        """
+        Returns commission config for a professional AS IT WAS on target_date.
+        Uses commission_history for point-in-time lookup with fallback chain.
+
+        Algorithm:
+        1. Search commission_history for most recent entry <= target_date
+        2. If no history, use current professional_commissions value
+        3. If no config exists, return 0%/100% with source='default_zero'
+        """
+        # Step 1: Look up default commission in history
+        history_default = await pool.fetchrow(
+            """
+            SELECT new_commission_pct, new_clinic_pct
+            FROM commission_history
+            WHERE tenant_id = $1
+              AND professional_id = $2
+              AND treatment_code IS NULL
+              AND effective_date <= $3
+            ORDER BY effective_date DESC
+            LIMIT 1
+            """,
+            tenant_id,
+            professional_id,
+            target_date,
+        )
+
+        if history_default:
+            default_pct = float(history_default["new_commission_pct"])
+            default_clinic = float(history_default["new_clinic_pct"])
+            source = "history"
+        else:
+            # Step 2: Fallback to current config
+            current = await pool.fetchrow(
+                """
+                SELECT commission_pct, clinic_pct FROM professional_commissions
+                WHERE tenant_id = $1 AND professional_id = $2 AND treatment_code IS NULL
+                """,
+                tenant_id,
+                professional_id,
+            )
+            if current:
+                default_pct = float(current["commission_pct"])
+                default_clinic = float(current["clinic_pct"])
+                source = "current_config"
+            else:
+                # Step 3: No config exists
+                default_pct = 0.0
+                default_clinic = 100.0
+                source = "default_zero"
+
+        # Step 4: Same for per-treatment overrides (point-in-time)
+        history_overrides = await pool.fetch(
+            """
+            SELECT DISTINCT ON (treatment_code) treatment_code,
+                   new_commission_pct, new_clinic_pct
+            FROM commission_history
+            WHERE tenant_id = $1
+              AND professional_id = $2
+              AND treatment_code IS NOT NULL
+              AND effective_date <= $3
+            ORDER BY treatment_code, effective_date DESC, id DESC
+            """,
+            tenant_id,
+            professional_id,
+            target_date,
+        )
+
+        overrides = {}
+        for row in history_overrides:
+            overrides[row["treatment_code"]] = {
+                "commission_pct": float(row["new_commission_pct"]),
+                "clinic_pct": float(row["new_clinic_pct"]),
+            }
+
+        # Also include current overrides not in history (created before history existed)
+        current_overrides = await pool.fetch(
+            """
+            SELECT commission_pct, clinic_pct, treatment_code
+            FROM professional_commissions
+            WHERE tenant_id = $1
+              AND professional_id = $2
+              AND treatment_code IS NOT NULL
+              AND treatment_code NOT IN (
+                  SELECT DISTINCT treatment_code FROM commission_history
+                  WHERE tenant_id = $1
+                    AND professional_id = $2
+                    AND treatment_code IS NOT NULL
+                    AND effective_date <= $3
+              )
+              AND treatment_code IS NOT NULL
+            """,
+            tenant_id,
+            professional_id,
+            target_date,
+        )
+        for row in current_overrides:
+            if row["treatment_code"] not in overrides:
+                overrides[row["treatment_code"]] = {
+                    "commission_pct": float(row["commission_pct"]),
+                    "clinic_pct": float(row["clinic_pct"]),
+                }
+
+        if source == "default_zero":
+            logger.warning(
+                "get_commission_config_at_date: no config for professional %s, "
+                "tenant %s at %s. Using 0%% default.",
+                professional_id,
+                tenant_id,
+                target_date,
+            )
+
+        return {
+            "default_commission_pct": default_pct,
+            "default_clinic_pct": default_clinic,
+            "per_treatment": overrides,
+            "source": source,
+        }
+
+    # ------------------------------------------------------------------
+    # Method 10: get_commission_history
+    # ------------------------------------------------------------------
+    async def get_commission_history(
+        self, pool, tenant_id: int, professional_id: int
+    ) -> list:
+        """
+        Returns full change history for a professional's commissions.
+        Ordered by effective_date DESC, created_at DESC.
+        """
+        rows = await pool.fetch(
+            """
+            SELECT ch.*, p.first_name, p.last_name
+            FROM commission_history ch
+            JOIN professionals p ON p.id = ch.professional_id
+            WHERE ch.tenant_id = $1 AND ch.professional_id = $2
+            ORDER BY ch.effective_date DESC, ch.created_at DESC
+            """,
+            tenant_id,
+            professional_id,
+        )
+
+        history = []
+        for row in rows:
+            entry = {
+                "id": row["id"],
+                "treatment_code": row["treatment_code"],
+                "treatment_name": None,  # Frontend can resolve
+                "old_commission_pct": float(row["old_commission_pct"]) if row["old_commission_pct"] else None,
+                "new_commission_pct": float(row["new_commission_pct"]),
+                "old_clinic_pct": float(row["old_clinic_pct"]) if row["old_clinic_pct"] else None,
+                "new_clinic_pct": float(row["new_clinic_pct"]),
+                "changed_by": row["changed_by"],
+                "effective_date": row["effective_date"].isoformat() if row["effective_date"] else None,
+                "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+            }
+            history.append(entry)
+
+        return history
+
+    # ------------------------------------------------------------------
     # Helper: _get_commission_config (internal, returns tuple)
+    # Kept for backward compatibility — returns current values only
     # ------------------------------------------------------------------
     async def _get_commission_config(
         self, pool, tenant_id: int, professional_id: int
     ) -> tuple:
-        """
-        Internal helper: returns (default_commission_pct, {treatment_code: pct}).
-        Used by generate_liquidation for commission lookup.
-        """
         rows = await pool.fetch(
             """
-            SELECT commission_pct, treatment_code
+            SELECT commission_pct, clinic_pct, treatment_code
             FROM professional_commissions
             WHERE tenant_id = $1 AND professional_id = $2
             """,
@@ -1160,13 +1593,18 @@ class LiquidationService:
         )
 
         default_pct = 0.0
+        default_clinic = 100.0
         overrides = {}
 
         for row in rows:
             if row["treatment_code"] is None:
                 default_pct = float(row["commission_pct"])
+                default_clinic = float(row["clinic_pct"])
             else:
-                overrides[row["treatment_code"]] = float(row["commission_pct"])
+                overrides[row["treatment_code"]] = {
+                    "commission_pct": float(row["commission_pct"]),
+                    "clinic_pct": float(row["clinic_pct"]),
+                }
 
         if not rows:
             logger.warning(
@@ -1176,7 +1614,24 @@ class LiquidationService:
                 tenant_id,
             )
 
-        return default_pct, overrides
+        return default_pct, default_clinic, overrides
+
+    # ------------------------------------------------------------------
+    # Method 9: ignore_reconciliation_discrepancy
+    # ------------------------------------------------------------------
+    async def ignore_reconciliation_discrepancy(
+        self,
+        pool,
+        tenant_id: int,
+        appointment_id: str,
+        ignored_by: str,
+    ):
+        """Marks a reconciliation discrepancy as ignored. Idempotent."""
+        await pool.execute("""
+            INSERT INTO reconciliation_ignored (tenant_id, appointment_id, ignored_by)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (tenant_id, appointment_id) DO NOTHING
+        """)
 
     # ------------------------------------------------------------------
     # Helper: invalidate_liquidation_pdf

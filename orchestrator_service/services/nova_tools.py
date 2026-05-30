@@ -914,7 +914,16 @@ NOVA_TOOLS_SCHEMA: List[Dict[str, Any]] = [
         },
     },
     # -------------------------------------------------------------------------
-    # H2. Odontograma
+    # O13. Ver comisiones (profesional self-service)
+    # -------------------------------------------------------------------------
+    {
+        "type": "function",
+        "name": "ver_comisiones_profesional",
+        "description": "Muestra al profesional su configuracion de comisiones actual. Responde preguntas como: cuanto cobro por mis tratamientos, que porcentaje tengo, cuanto me queda por un tratamiento especifico.",
+        "parameters": {"type": "object", "properties": {}},
+    },
+    # -------------------------------------------------------------------------
+    # N2. PDF Telegram Tools
     # -------------------------------------------------------------------------
     {
         "type": "function",
@@ -3247,6 +3256,54 @@ async def _editar_facturacion_turno(args: Dict, tenant_id: int, user_role: str) 
 
     logger.info(f"Nova: editar_facturacion_turno → {appointment_id}")
     return f"✅ Facturación del turno actualizada: {', '.join(parts)}."
+
+
+async def _ver_comisiones_profesional(
+    tenant_id: int, user_role: str, user_id: str
+) -> str:
+    """Muestra al profesional su configuración de comisiones actual."""
+    if user_role not in ("professional", "ceo"):
+        return _role_error("ver_comisiones_profesional", ["professional", "ceo"])
+
+    prof_id = await _resolve_professional_id(user_id, tenant_id)
+    if not prof_id:
+        return "No tenés un perfil de profesional vinculado."
+
+    from services.liquidation_service import LiquidationService
+
+    service = LiquidationService()
+    config = await service.get_commission_config(db.pool, tenant_id, prof_id)
+
+    if not config.get("per_treatment") and config.get("default_commission_pct", 0) == 0:
+        return (
+            "No tenés comisiones configuradas aún. "
+            "Consultá con la administración."
+        )
+
+    default_pct = config.get("default_commission_pct", 0)
+    default_clinic = config.get("default_clinic_pct", 100.0 - default_pct)
+    parts = [
+        f"Tus comisiones actuales son: {default_pct:.0f}% para vos, "
+        f"{default_clinic:.0f}% para la clínica."
+    ]
+
+    per_treatment = config.get("per_treatment", [])
+    if per_treatment:
+        specifics = []
+        for entry in per_treatment:
+            code = entry.get("treatment_code", "?")
+            pct = entry.get("commission_pct", 0)
+            clinic = entry.get("clinic_pct", 100.0 - pct)
+            specifics.append(f"{code}: {pct:.0f}% vos, {clinic:.0f}% clínica")
+        parts.append(
+            "Y tenés porcentajes específicos para: " + ", ".join(specifics) + "."
+        )
+
+    parts.append(
+        "Recordá que solo se liquidan tratamientos cobrados."
+    )
+
+    return " ".join(parts)
 
 
 async def _gestionar_usuarios(args: Dict, tenant_id: int, user_role: str) -> str:
@@ -6656,6 +6713,10 @@ async def execute_nova_tool(
             return await _sincronizar_turnos_presupuesto(args, tenant_id, user_role)
         elif name == "enviar_email":
             return await _enviar_email_chat(args, tenant_id, user_role)
+
+        # O13. Ver comisiones profesional
+        elif name == "ver_comisiones_profesional":
+            return await _ver_comisiones_profesional(tenant_id, user_role, user_id)
 
         # J. CRUD genérico
         elif name == "obtener_registros":

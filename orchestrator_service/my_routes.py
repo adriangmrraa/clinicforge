@@ -173,6 +173,8 @@ async def get_my_liquidations(
     period_start: Optional[str] = Query(None),
     period_end: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
     professional: dict = Depends(get_professional_from_jwt),
 ):
     """
@@ -238,14 +240,22 @@ async def get_my_liquidations(
         """
         total = await db.pool.fetchval(count_sql, *params)
 
+        # Pagination
+        offset = (page - 1) * page_size
+        params_with_pagination = list(params) + [page_size, offset]
+        pagination_param_idx = param_idx
+        limit_param = f"${pagination_param_idx}"
+        offset_param = f"${pagination_param_idx + 1}"
+
         # Data
         data_sql = f"""
             SELECT lr.*
             FROM liquidation_records lr
             WHERE {where_clause}
             ORDER BY lr.created_at DESC
+            LIMIT {limit_param} OFFSET {offset_param}
         """
-        rows = await db.pool.fetch(data_sql, *params)
+        rows = await db.pool.fetch(data_sql, *params_with_pagination)
 
         liquidations = []
         for row in rows:
@@ -276,10 +286,15 @@ async def get_my_liquidations(
                 }
             )
 
+        total_pages = (total + page_size - 1) // page_size if total > 0 else 0
+
         return JSONResponse(
             content={
                 "liquidations": liquidations,
                 "total": total,
+                "page": page,
+                "page_size": page_size,
+                "total_pages": total_pages,
             }
         )
 

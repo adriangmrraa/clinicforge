@@ -20,7 +20,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID, ARRAY, TIMESTAMP
 from sqlalchemy.orm import relationship, declarative_base
-from sqlalchemy.sql import func
+from sqlalchemy.sql import func, text
 import uuid
 
 Base = declarative_base()
@@ -1849,6 +1849,7 @@ class ProfessionalCommission(Base):
         Integer, ForeignKey("professionals.id", ondelete="CASCADE"), nullable=False
     )
     commission_pct = Column(Numeric(5, 2), nullable=False, server_default="0")
+    clinic_pct = Column(Numeric(5, 2), nullable=False, server_default="0")
     treatment_code = Column(String(100), nullable=True)
     created_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
@@ -1867,6 +1868,60 @@ class ProfessionalCommission(Base):
     )
 
     professional = relationship("Professional", backref="commission_configs")
+    tenant = relationship("Tenant")
+
+
+class CommissionHistory(Base):
+    __tablename__ = "commission_history"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    tenant_id = Column(
+        Integer, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    professional_id = Column(
+        Integer, ForeignKey("professionals.id", ondelete="CASCADE"), nullable=False
+    )
+    treatment_code = Column(String(100), nullable=True)
+    old_commission_pct = Column(Numeric(5, 2), nullable=True)
+    new_commission_pct = Column(Numeric(5, 2), nullable=False)
+    old_clinic_pct = Column(Numeric(5, 2), nullable=True)
+    new_clinic_pct = Column(Numeric(5, 2), nullable=False)
+    changed_by = Column(String(255), nullable=True)
+    effective_date = Column(Date, nullable=False)
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        Index("idx_comm_hist_tenant", "tenant_id"),
+        Index("idx_comm_hist_prof", "professional_id"),
+        Index("idx_comm_hist_effective", "effective_date"),
+        Index("idx_comm_hist_lookup", "tenant_id", "professional_id", text("effective_date DESC")),
+    )
+
+    professional = relationship("Professional")
+    tenant = relationship("Tenant")
+
+
+class ReconciliationIgnored(Base):
+    __tablename__ = "reconciliation_ignored"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    tenant_id = Column(
+        Integer, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    appointment_id = Column(String(36), nullable=False)
+    ignored_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    ignored_by = Column(String(255), nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "appointment_id", name="uq_reconciliation_ignore"
+        ),
+    )
+
     tenant = relationship("Tenant")
 
 

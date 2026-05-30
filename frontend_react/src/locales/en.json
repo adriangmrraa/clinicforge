@@ -2154,7 +2154,14 @@
     "status_partial": "Partial",
     "status_pending": "Pending",
     "toggle_notes": "View clinical notes",
-    "empty_state": "No liquidation data for the selected period"
+    "empty_state": "No liquidation data for the selected period",
+    "filter_by_professional": "Filter by professional",
+    "all_professionals": "All professionals",
+    "summary_by_treatment": "Summary by treatment",
+    "treatment": "Treatment",
+    "quantity": "Quantity",
+    "total_clinic": "Clinic Total",
+    "total_professional": "Professional Total"
   },
   "errorBoundary": {
     "title": "Something went wrong",
@@ -2440,7 +2447,18 @@
     "no_overrides": "No overrides configured",
     "loading": "Loading commissions...",
     "error_loading": "Error loading configuration",
-    "error_saving": "Error saving commissions"
+    "error_saving": "Error saving commissions",
+    "clinic_share": "Clinic Share",
+    "prof_share": "Professional Share",
+    "must_sum_100": "Clinic + professional percentages must add up to 100%",
+    "history_title": "Change History",
+    "effective_date": "Effective Date",
+    "changed_by": "Changed by",
+    "previous_value": "Previous value",
+    "new_value": "New value",
+    "no_history": "No changes recorded",
+    "save_with_effective_date": "Save with effective date",
+    "future_change": "This change applies from {date}"
   },
   "professional_liquidations": {
     "title": "My Liquidations",

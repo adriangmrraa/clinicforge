@@ -14,6 +14,11 @@ import api from '../../api/axios';
 import GlassCard, { CARD_IMAGES } from '../GlassCard';
 import type { ReconciliationData, Discrepancy } from '../../types/finance';
 
+interface ToastMessage {
+  type: 'success' | 'error';
+  message: string;
+}
+
 interface ReconciliationViewProps {
   periodStart: string;
   periodEnd: string;
@@ -25,8 +30,21 @@ export default function ReconciliationView({ periodStart, periodEnd, formatCurre
   const [data, setData] = useState<ReconciliationData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [ignoring, setIgnoring] = useState<string | null>(null);
+  const [ignoring, setIgnoring] = useState<number | null>(null);
   const [confirmIgnore, setConfirmIgnore] = useState<Discrepancy | null>(null);
+  const [toast, setToast] = useState<ToastMessage | null>(null);
+
+  // Auto-dismiss toast
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => setToast(null), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
+
+  const showToast = (type: 'success' | 'error', message: string) => {
+    setToast({ type, message });
+  };
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -53,7 +71,7 @@ export default function ReconciliationView({ periodStart, periodEnd, formatCurre
   const handleIgnore = async (discrepancy: Discrepancy) => {
     setIgnoring(discrepancy.appointment_id);
     try {
-      // Placeholder: in Phase 5 this will call a PATCH endpoint
+      await api.patch(`/admin/reconciliation/${discrepancy.appointment_id}/ignore`);
       setData((prev) => {
         if (!prev) return prev;
         return {
@@ -65,8 +83,10 @@ export default function ReconciliationView({ periodStart, periodEnd, formatCurre
         };
       });
       setConfirmIgnore(null);
-    } catch (err) {
+      showToast('success', t('reconciliation.ignored_success') || 'Discrepancia ignorada');
+    } catch (err: any) {
       console.error('Error ignoring discrepancy:', err);
+      showToast('error', err.response?.data?.detail || 'Error al ignorar discrepancia');
     } finally {
       setIgnoring(null);
     }
@@ -111,6 +131,31 @@ export default function ReconciliationView({ periodStart, periodEnd, formatCurre
 
   return (
     <div className="space-y-6">
+      {/* Toast notification */}
+      {toast && (
+        <div
+          className={`flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium ${
+            toast.type === 'success'
+              ? 'bg-green-500/10 border border-green-500/20 text-green-400'
+              : 'bg-red-500/10 border border-red-500/20 text-red-400'
+          }`}
+        >
+          {toast.type === 'success' ? <CheckCircle size={16} /> : <AlertTriangle size={16} />}
+          {toast.message}
+        </div>
+      )}
+
+      {/* Error banner on refresh failure */}
+      {error && data && (
+        <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-3">
+          <AlertTriangle size={16} className="text-amber-400 shrink-0" />
+          <p className="text-sm text-amber-400">{error}</p>
+          <button onClick={fetchData} className="ml-auto text-xs text-amber-400 underline hover:text-amber-300">
+            {t('finance.retry')}
+          </button>
+        </div>
+      )}
+
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <GlassCard image={CARD_IMAGES.revenue}>
@@ -214,8 +259,9 @@ export default function ReconciliationView({ periodStart, periodEnd, formatCurre
                       <p className="text-sm font-bold text-white">{formatCurrency(d.amount)}</p>
                       <div className="flex gap-2 mt-2">
                         <button
-                          className="px-2.5 py-1 bg-blue-500/10 text-blue-400 rounded-lg text-xs font-medium hover:bg-blue-500/20 transition-colors"
-                          title={t('reconciliation.resolve')}
+                          className="px-2.5 py-1 bg-white/[0.04] text-white/30 rounded-lg text-xs cursor-not-allowed"
+                          title="Próximamente"
+                          disabled
                         >
                           {t('reconciliation.resolve')}
                         </button>

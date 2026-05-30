@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   RefreshCw,
-  Plus,
   Eye,
   CheckCircle,
   DollarSign,
@@ -13,12 +12,26 @@ import {
   AlertTriangle,
   X,
   Loader2,
+  Users,
+  CheckCircle2,
+  XCircle,
 } from 'lucide-react';
 import { useTranslation } from '../../context/LanguageContext';
 import api from '../../api/axios';
 import GlassCard from '../GlassCard';
 import LiquidationStatusBadge from './LiquidationStatusBadge';
 import type { LiquidationRecord, TreatmentGroup, ProfessionalPayout } from '../../types/finance';
+
+interface ProfessionalOption {
+  id: number;
+  name: string;
+}
+
+interface ToastMessage {
+  id: string;
+  type: 'success' | 'error';
+  message: string;
+}
 
 interface LiquidationManagerProps {
   periodStart: string;
@@ -58,6 +71,33 @@ export default function LiquidationManager({ periodStart, periodEnd, formatCurre
   const [emailSending, setEmailSending] = useState(false);
   const [customEmail, setCustomEmail] = useState('');
 
+  const [professionals, setProfessionals] = useState<ProfessionalOption[]>([]);
+  const [professionalFilter, setProfessionalFilter] = useState<number | null>(null);
+
+  const [toast, setToast] = useState<ToastMessage | null>(null);
+
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => setToast(null), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
+
+  useEffect(() => {
+    api
+      .get('/admin/professionals')
+      .then((res) => {
+        const data = res.data || [];
+        setProfessionals(
+          data.map((p: any) => ({
+            id: p.id ?? p.professional_id,
+            name: p.name ?? p.full_name ?? p.professional_name ?? '',
+          }))
+        );
+      })
+      .catch(() => {});
+  }, []);
+
   const fetchLiquidations = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -71,6 +111,9 @@ export default function LiquidationManager({ periodStart, periodEnd, formatCurre
       if (statusFilter !== 'all') {
         params.set('status', statusFilter);
       }
+      if (professionalFilter !== null) {
+        params.set('professional_id', String(professionalFilter));
+      }
       const res = await api.get(`/admin/liquidations?${params}`);
       setLiquidations(res.data.liquidations || res.data);
       setTotalPages(res.data.total_pages || 1);
@@ -81,11 +124,15 @@ export default function LiquidationManager({ periodStart, periodEnd, formatCurre
     } finally {
       setLoading(false);
     }
-  }, [periodStart, periodEnd, page, statusFilter]);
+  }, [periodStart, periodEnd, page, statusFilter, professionalFilter]);
 
   useEffect(() => {
     fetchLiquidations();
   }, [fetchLiquidations]);
+
+  const showToast = (type: 'success' | 'error', message: string) => {
+    setToast({ id: Date.now().toString(), type, message });
+  };
 
   const handleGenerateBulk = async () => {
     setGenerating(true);
@@ -98,11 +145,11 @@ export default function LiquidationManager({ periodStart, periodEnd, formatCurre
       let msg = '';
       if (generated_count > 0) msg += `${generated_count} ${t('liquidation.new_generated')}`;
       if (skipped_count > 0) msg += (msg ? '. ' : '') + `${skipped_count} ${t('liquidation.already_exists')}`;
-      alert(msg || t('liquidation.generated_success'));
+      showToast('success', msg || t('liquidation.generated_success'));
       fetchLiquidations();
     } catch (err: any) {
       console.error('Error generating liquidations:', err);
-      alert(err.response?.data?.detail || 'Error al generar liquidaciones');
+      showToast('error', err.response?.data?.detail || 'Error al generar liquidaciones');
     } finally {
       setGenerating(false);
     }
@@ -132,10 +179,11 @@ export default function LiquidationManager({ periodStart, periodEnd, formatCurre
     try {
       await api.patch(`/admin/liquidations/${id}`, { status: newStatus });
       setConfirmAction(null);
+      showToast('success', newStatus === 'approved' ? t('liquidation.generated_success') : t('liquidation.status_paid'));
       fetchLiquidations();
     } catch (err: any) {
       console.error('Error updating status:', err);
-      alert(err.response?.data?.detail || 'Error al actualizar estado');
+      showToast('error', err.response?.data?.detail || 'Error al actualizar estado');
     } finally {
       setUpdating(null);
     }
@@ -156,9 +204,10 @@ export default function LiquidationManager({ periodStart, periodEnd, formatCurre
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
+      showToast('success', 'PDF descargado correctamente');
     } catch (err: any) {
       console.error('Error downloading PDF:', err);
-      alert(err.response?.data?.detail || 'Error al descargar PDF');
+      showToast('error', err.response?.data?.detail || 'Error al descargar PDF');
     } finally {
       setPdfLoading(null);
     }
@@ -175,10 +224,10 @@ export default function LiquidationManager({ periodStart, periodEnd, formatCurre
       await api.post(`/admin/liquidations/${emailModal.id}/send-email`, payload);
       setEmailModal(null);
       setCustomEmail('');
-      alert(t('liquidation.email_sent_success') || 'Liquidación enviada por email correctamente');
+      showToast('success', t('liquidation.email_sent_success') || 'Liquidación enviada por email correctamente');
     } catch (err: any) {
       console.error('Error sending email:', err);
-      alert(err.response?.data?.detail || 'Error al enviar email');
+      showToast('error', err.response?.data?.detail || 'Error al enviar email');
     } finally {
       setEmailSending(false);
     }
@@ -254,6 +303,25 @@ export default function LiquidationManager({ periodStart, periodEnd, formatCurre
           )}
           {generating ? t('liquidation.generating') : t('finance.generate_liquidations')}
         </button>
+
+        <div className="flex items-center gap-2">
+          <Users size={14} className="text-white/30" />
+          <select
+            value={professionalFilter ?? ''}
+            onChange={(e) => {
+              setProfessionalFilter(e.target.value ? Number(e.target.value) : null);
+              setPage(1);
+            }}
+            className="bg-white/[0.04] border border-white/[0.08] text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500/40 min-w-[180px]"
+          >
+            <option value="">{t('liquidation.all_professionals')}</option>
+            {professionals.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </div>
 
         <div className="flex items-center gap-2 ml-auto">
           <Filter size={14} className="text-white/30" />
@@ -438,7 +506,7 @@ export default function LiquidationManager({ periodStart, periodEnd, formatCurre
                         <tr>
                           <td colSpan={8} className="bg-white/[0.02] px-4 py-4">
                             {/* Summary */}
-                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
                               <div className="bg-white/[0.04] rounded-xl p-3 text-center">
                                 <p className="text-[10px] text-white/30 uppercase">{t('liquidation.total_billed')}</p>
                                 <p className="text-sm font-bold text-white">{formatCurrency(liq.total_billed)}</p>
@@ -457,11 +525,74 @@ export default function LiquidationManager({ periodStart, periodEnd, formatCurre
                                 <p className="text-[10px] text-white/30 uppercase">{t('liquidation.payout')}</p>
                                 <p className="text-sm font-bold text-purple-400">{formatCurrency(liq.payout_amount)}</p>
                               </div>
+                              <div className="bg-white/[0.04] rounded-xl p-3 text-center border border-emerald-500/20">
+                                <p className="text-[10px] text-white/30 uppercase">{t('liquidation.total_clinic')}</p>
+                                <p className="text-sm font-bold text-emerald-400">
+                                  {formatCurrency(liq.total_billed - liq.payout_amount)}
+                                </p>
+                              </div>
                             </div>
 
-                            {/* Treatment Groups */}
+                            {/* Treatment Summary */}
                             {detailData.treatment_groups.length > 0 && (
                               <div className="mb-4">
+                                <h4 className="text-xs font-bold text-white/50 uppercase mb-2">
+                                  {t('liquidation.summary_by_treatment')}
+                                </h4>
+                                <div className="bg-white/[0.02] border border-white/[0.04] rounded-xl overflow-hidden mb-3">
+                                  <table className="w-full text-left border-collapse">
+                                    <thead>
+                                      <tr className="border-b border-white/[0.06]">
+                                        <th className="px-3 py-2 text-[10px] font-bold text-white/30 uppercase">{t('liquidation.treatment')}</th>
+                                        <th className="px-3 py-2 text-[10px] font-bold text-white/30 uppercase text-center">{t('liquidation.quantity')}</th>
+                                        <th className="px-3 py-2 text-[10px] font-bold text-white/30 uppercase text-right">{t('liquidation.total_billed')}</th>
+                                        <th className="px-3 py-2 text-[10px] font-bold text-white/30 uppercase text-right">{t('liquidation.total_professional')}</th>
+                                        <th className="px-3 py-2 text-[10px] font-bold text-white/30 uppercase text-right">{t('liquidation.total_clinic')}</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-white/[0.03]">
+                                      {(() => {
+                                        const byTreatment = detailData.treatment_groups.reduce<Record<string, { code: string; name: string; count: number; total: number }>>((acc, g) => {
+                                          const key = g.treatment_code;
+                                          if (!acc[key]) {
+                                            acc[key] = { code: key, name: g.treatment_name, count: 0, total: 0 };
+                                          }
+                                          acc[key].count += g.sessions?.length || 0;
+                                          acc[key].total += g.total_billed || 0;
+                                          return acc;
+                                        }, {});
+                                        const entries = Object.values(byTreatment);
+                                        const grandTotal = entries.reduce((s, e) => s + e.total, 0);
+                                        return (
+                                          <>
+                                            {entries.map((entry) => {
+                                              const weight = grandTotal > 0 ? entry.total / grandTotal : 0;
+                                              const profShare = liq.commission_amount * weight;
+                                              const clinicShare = entry.total - profShare;
+                                              return (
+                                                <tr key={entry.code} className="hover:bg-white/[0.02]">
+                                                  <td className="px-3 py-2 text-xs text-white/70">{entry.name || entry.code}</td>
+                                                  <td className="px-3 py-2 text-xs text-white/50 text-center">{entry.count}</td>
+                                                  <td className="px-3 py-2 text-xs text-white font-medium text-right">{formatCurrency(entry.total)}</td>
+                                                  <td className="px-3 py-2 text-xs text-purple-400 text-right">{formatCurrency(profShare)}</td>
+                                                  <td className="px-3 py-2 text-xs text-emerald-400 text-right">{formatCurrency(clinicShare)}</td>
+                                                </tr>
+                                              );
+                                            })}
+                                            <tr className="border-t border-white/[0.08] bg-white/[0.03]">
+                                              <td className="px-3 py-2 text-xs font-bold text-white">TOTAL</td>
+                                              <td className="px-3 py-2 text-xs text-white/50 text-center">{entries.reduce((s, e) => s + e.count, 0)}</td>
+                                              <td className="px-3 py-2 text-xs font-bold text-white text-right">{formatCurrency(grandTotal)}</td>
+                                              <td className="px-3 py-2 text-xs font-bold text-purple-400 text-right">{formatCurrency(liq.commission_amount)}</td>
+                                              <td className="px-3 py-2 text-xs font-bold text-emerald-400 text-right">{formatCurrency(grandTotal - liq.commission_amount)}</td>
+                                            </tr>
+                                          </>
+                                        );
+                                      })()}
+                                    </tbody>
+                                  </table>
+                                </div>
+
                                 <h4 className="text-xs font-bold text-white/50 uppercase mb-2">
                                   {t('liquidation.detail_by_patient')}
                                 </h4>
@@ -580,6 +711,26 @@ export default function LiquidationManager({ periodStart, periodEnd, formatCurre
         </div>
       )}
 
+      {/* Toast Notification */}
+      {toast && (
+        <div className="fixed top-4 right-4 z-[100] animate-slide-in">
+          <div className={`flex items-center gap-2 px-4 py-3 rounded-lg shadow-lg text-sm font-medium ${
+            toast.type === 'success'
+              ? 'bg-emerald-600 text-white'
+              : 'bg-red-600 text-white'
+          }`}>
+            {toast.type === 'success' ? <CheckCircle2 size={18} /> : <XCircle size={18} />}
+            <span>{toast.message}</span>
+            <button
+              onClick={() => setToast(null)}
+              className="ml-2 hover:opacity-80"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Email Modal */}
       {emailModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
@@ -648,7 +799,7 @@ function TreatmentGroupDetail({ group, formatCurrency }: { group: TreatmentGroup
         <span className="text-xs text-white/40">
           {group.treatment_name} — {group.sessions.length} {group.sessions.length === 1 ? 'sesión' : 'sesiones'}
         </span>
-        <span className="ml-auto text-sm font-semibold text-white">{formatCurrency(group.total)}</span>
+        <span className="ml-auto text-sm font-semibold text-white">{formatCurrency(group.total_billed || 0)}</span>
       </button>
       {open && (
         <div className="px-3 pb-3 space-y-1">
@@ -657,8 +808,8 @@ function TreatmentGroupDetail({ group, formatCurrency }: { group: TreatmentGroup
               <span className="text-white/40">
                 {new Date(session.date + 'T00:00:00').toLocaleDateString('es-AR')}
               </span>
-              <span className="text-white/50">{session.description}</span>
-              <span className="text-white/60">{formatCurrency(session.amount)}</span>
+              <span className="text-white/50">{session.billing_notes || session.payment_status}</span>
+              <span className="text-white/60">{formatCurrency(session.billing_amount)}</span>
               <span
                 className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
                   session.payment_status === 'paid'

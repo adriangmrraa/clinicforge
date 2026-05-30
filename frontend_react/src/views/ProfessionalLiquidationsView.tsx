@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { FileText, Calendar, TrendingUp, DollarSign, Percent, Download, Loader2, AlertTriangle } from 'lucide-react';
+import { FileText, Calendar, TrendingUp, DollarSign, Percent, Download, Loader2, AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useTranslation } from '../context/LanguageContext';
 import api from '../api/axios';
 import GlassCard from '../components/GlassCard';
@@ -24,6 +24,8 @@ export default function ProfessionalLiquidationsView() {
     payouts: ProfessionalPayout[];
   } | null>(null);
   const [pdfLoading, setPdfLoading] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
 
   // Period filter (default: current month)
   const today = new Date();
@@ -38,23 +40,29 @@ export default function ProfessionalLiquidationsView() {
   const totalCommission = liquidations.reduce((sum, l) => sum + l.commission_amount, 0);
   const totalToCollect = liquidations.reduce((sum, l) => sum + l.payout_amount, 0);
 
-  const fetchLiquidations = useCallback(async () => {
+  const fetchLiquidations = useCallback(async (opts?: { resetPage?: boolean }) => {
     setLoading(true);
     setError(null);
+    const sanitizedPage = opts?.resetPage ? 1 : page;
+    if (opts?.resetPage) setPage(1);
     try {
       const params = new URLSearchParams();
       if (periodStart) params.set('period_start', periodStart);
       if (periodEnd) params.set('period_end', periodEnd);
+      params.set('page', String(sanitizedPage));
+      params.set('page_size', '20');
 
       const res = await api.get(`/my/liquidations?${params}`);
       setLiquidations(res.data.liquidations || []);
+      setPage(res.data.page || 1);
+      setTotalPages(res.data.total_pages || 1);
     } catch (err: any) {
       console.error('Error fetching my liquidations:', err);
       setError(err.response?.data?.detail || 'Error al cargar tus liquidaciones');
     } finally {
       setLoading(false);
     }
-  }, [periodStart, periodEnd]);
+  }, [periodStart, periodEnd, page]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     fetchLiquidations();
@@ -153,7 +161,7 @@ export default function ProfessionalLiquidationsView() {
               />
             </div>
             <button
-              onClick={fetchLiquidations}
+              onClick={() => fetchLiquidations({ resetPage: true })}
               disabled={loading}
               className="ml-auto flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/80 text-white rounded-xl text-sm font-medium transition-colors disabled:opacity-50"
             >
@@ -408,6 +416,29 @@ export default function ProfessionalLiquidationsView() {
                 )}
               </div>
             ))}
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-center gap-3 pt-2">
+                <button
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  disabled={page <= 1}
+                  className="p-2 rounded-lg bg-white/[0.04] border border-white/[0.06] text-white/60 hover:text-white hover:bg-white/[0.08] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                >
+                  <ChevronLeft size={16} />
+                </button>
+                <span className="text-sm text-white/50">
+                  Página {page} de {totalPages}
+                </span>
+                <button
+                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                  disabled={page >= totalPages}
+                  className="p-2 rounded-lg bg-white/[0.04] border border-white/[0.06] text-white/60 hover:text-white hover:bg-white/[0.08] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                >
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

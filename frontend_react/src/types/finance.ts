@@ -50,13 +50,30 @@ export interface CommissionOverride {
   treatment_code: string;
   treatment_name?: string;
   commission_pct: number;
+  clinic_pct: number;
+}
+
+export interface CommissionHistoryEntry {
+  id: number;
+  treatment_code: string | null;
+  treatment_name?: string | null;
+  old_commission_pct: number | null;
+  new_commission_pct: number;
+  old_clinic_pct: number | null;
+  new_clinic_pct: number;
+  changed_by: string | null;
+  effective_date: string;
+  created_at?: string;
 }
 
 export interface ProfessionalCommission {
   professional_id: number;
   professional_name: string;
   default_commission_pct: number;
+  default_clinic_pct: number;
   per_treatment: CommissionOverride[];
+  history?: CommissionHistoryEntry[];
+  warning?: string | null;
 }
 
 // --- Financial Dashboard ---
@@ -157,9 +174,10 @@ export interface ReconciliationData {
 export interface TreatmentSession {
   appointment_id: number;
   date: string;
-  description: string;
-  amount: number;
+  status: string;
+  billing_amount: number;
   payment_status: string;
+  billing_notes?: string | null;
 }
 
 export interface TreatmentGroup {
@@ -168,7 +186,12 @@ export interface TreatmentGroup {
   treatment_code: string;
   treatment_name: string;
   sessions: TreatmentSession[];
-  total: number;
+  total_billed: number;
+  total_paid: number;
+  total_pending: number;
+  type?: string;
+  plan_id?: string | null;
+  session_count?: number;
 }
 
 export interface LiquidationDetail {

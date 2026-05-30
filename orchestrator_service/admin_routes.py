@@ -15691,6 +15691,8 @@ class CreatePayoutBody(BaseModel):
 
 class UpsertCommissionBody(BaseModel):
     default_commission_pct: float
+    default_clinic_pct: float = 0.0
+    effective_date: Optional[str] = None  # YYYY-MM-DD, defaults to today
     per_treatment: Optional[List[dict]] = None
 
 
@@ -16237,7 +16239,7 @@ async def get_professional_commissions(
 ):
     """
     EP-FC-09: Returns commission configuration for a professional.
-    If no config exists, returns 0% with a warning field.
+    Now includes clinic_pct and change history.
     """
     # Verify professional exists and belongs to tenant
     prof = await db.pool.fetchrow(
@@ -16271,6 +16273,49 @@ async def get_professional_commissions(
         raise HTTPException(status_code=500, detail="Error interno del servidor")
 
 
+@router.get(
+    "/professionals/{professional_id}/commissions/history",
+    dependencies=[Depends(verify_admin_token)],
+    tags=["Financial Command Center"],
+    summary="Get commission change history for a professional",
+)
+async def get_professional_commission_history(
+    professional_id: int,
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """
+    Returns the full change history for a professional's commissions.
+    """
+    prof = await db.pool.fetchrow(
+        """
+        SELECT id, first_name, last_name FROM professionals
+        WHERE id = $1 AND tenant_id = $2
+        """,
+        professional_id,
+        tenant_id,
+    )
+    if not prof:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Profesional {professional_id} no encontrado en esta clínica.",
+        )
+
+    try:
+        history = await liquidation_service.get_commission_history(
+            pool=db.pool,
+            tenant_id=tenant_id,
+            professional_id=professional_id,
+        )
+        return {
+            "professional_id": professional_id,
+            "professional_name": f"{prof['first_name']} {prof['last_name']}".strip(),
+            "history": history,
+        }
+    except Exception as e:
+        logger.error(f"Error getting commission history: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
+
+
 # --- EP-FC-10: PUT /admin/professionals/{professional_id}/commissions ---
 
 
@@ -16284,26 +16329,32 @@ async def upsert_professional_commissions(
     professional_id: int,
     body: UpsertCommissionBody,
     tenant_id: int = Depends(get_resolved_tenant_id),
+    user_data: dict = Depends(verify_admin_token),
 ):
+    changed_by = user_data.get("email", "admin")
     """
     EP-FC-10: Creates or updates commission configuration for a professional.
-    Validates percentages (0-100) and treatment codes.
+    Now supports clinic_pct, effective_date, and saves change history.
+    Validates commission_pct + clinic_pct = 100 for all entries.
     """
-    # Validate default commission percentage
-    if not (0 <= body.default_commission_pct <= 100):
-        raise HTTPException(
-            status_code=400,
-            detail="default_commission_pct debe estar entre 0 y 100.",
-        )
+    # Validate each individual % is in range
+    for label, val in [("default_commission_pct", body.default_commission_pct),
+                        ("default_clinic_pct", body.default_clinic_pct)]:
+        if not (0 <= val <= 100):
+            raise HTTPException(
+                status_code=400,
+                detail=f"{label} debe estar entre 0 y 100.",
+            )
 
-    # Validate per-treatment percentages
+    # Validate per-treatment entries
     if body.per_treatment:
         for entry in body.per_treatment:
             pct = entry.get("commission_pct", 0)
-            if not (0 <= pct <= 100):
+            clp = entry.get("clinic_pct", 0)
+            if not (0 <= pct <= 100) or not (0 <= clp <= 100):
                 raise HTTPException(
                     status_code=400,
-                    detail=f"commission_pct para {entry.get('treatment_code', 'unknown')} debe estar entre 0 y 100.",
+                    detail=f"Porcentajes para {entry.get('treatment_code', 'unknown')} deben estar entre 0 y 100.",
                 )
             if not entry.get("treatment_code"):
                 raise HTTPException(
@@ -16344,16 +16395,32 @@ async def upsert_professional_commissions(
             detail=f"Profesional {professional_id} no encontrado en esta clínica.",
         )
 
+    # Parse effective_date
+    effective_date = None
+    if body.effective_date:
+        try:
+            effective_date = datetime.strptime(body.effective_date, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail="effective_date debe tener formato YYYY-MM-DD.",
+            )
+
     try:
         result = await liquidation_service.upsert_commission_config(
             pool=db.pool,
             tenant_id=tenant_id,
             professional_id=professional_id,
             default_commission_pct=body.default_commission_pct,
+            default_clinic_pct=body.default_clinic_pct,
             per_treatment=body.per_treatment or [],
+            effective_date=effective_date,
+            changed_by=changed_by,
         )
         return result
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error upserting commission config: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Error interno del servidor")
@@ -16467,6 +16534,9 @@ async def get_reconciliation(
               AND a.payment_status = 'paid'
               AND a.status NOT IN ('cancelled', 'deleted')
               AND a.billing_amount > 0
+              AND a.id NOT IN (
+                  SELECT appointment_id FROM reconciliation_ignored WHERE tenant_id = $1
+              )
             """,
             tenant_id,
             p_start,
@@ -16526,6 +16596,32 @@ async def get_reconciliation(
     except Exception as e:
         logger.error(f"Error in reconciliation: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Error interno del servidor")
+
+
+# --- EP-FC-11b: PATCH /admin/reconciliation/{appointment_id}/ignore ---
+
+
+@router.patch(
+    "/reconciliation/{appointment_id}/ignore",
+    dependencies=[Depends(verify_admin_token)],
+    tags=["Financial Command Center"],
+    summary="Ignore a reconciliation discrepancy",
+)
+async def ignore_reconciliation_discrepancy(
+    appointment_id: str,
+    current_user=Depends(verify_admin_token),
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    if current_user["role"] != "ceo":
+        raise HTTPException(status_code=403, detail="Acceso restringido")
+
+    await liquidation_service.ignore_reconciliation_discrepancy(
+        pool=db.pool,
+        tenant_id=tenant_id,
+        appointment_id=appointment_id,
+        ignored_by=current_user.get("email") or current_user.get("sub", ""),
+    )
+    return {"success": True, "message": "Discrepancia ignorada"}
 
 
 # =============================================================================

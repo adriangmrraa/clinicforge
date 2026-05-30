@@ -58,7 +58,7 @@ _jinja_env.filters["ars"] = _ars_format
 # ---------------------------------------------------------------------------
 _TRANSLATIONS = {
     "es": {
-        "title": "LIQUIDACIÓN DE HONORARIOS PROFESIONALES",
+        "commission_title": "LIQUIDACIÓN DE COMISIONES",
         "professional": "Profesional",
         "name": "Nombre",
         "specialty": "Especialidad",
@@ -106,7 +106,7 @@ _TRANSLATIONS = {
         "email_footer_auto": "Este email fue enviado automáticamente por",
     },
     "en": {
-        "title": "PROFESSIONAL FEE STATEMENT",
+        "commission_title": "COMMISSION SETTLEMENT",
         "professional": "Professional",
         "name": "Name",
         "specialty": "Specialty",
@@ -154,7 +154,7 @@ _TRANSLATIONS = {
         "email_footer_auto": "This email was sent automatically by",
     },
     "fr": {
-        "title": "RELEVÉ D'HONORAIRES PROFESSIONNELS",
+        "commission_title": "RÈGLEMENT DES COMMISSIONS",
         "professional": "Professionnel",
         "name": "Nom",
         "specialty": "Spécialité",
@@ -456,7 +456,7 @@ async def gather_liquidation_pdf_data(
         "lang": lang,
         "t": t,
         # Template keys (flat for direct access in Jinja2)
-        "t_title": t["title"],
+        "t_title": t["commission_title"],
         "t_professional": t["professional"],
         "t_name": t["name"],
         "t_specialty": t["specialty"],

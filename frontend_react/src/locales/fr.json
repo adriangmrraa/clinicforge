@@ -1921,7 +1921,14 @@
     "status_partial": "Partiel",
     "status_pending": "En attente",
     "toggle_notes": "Voir les notes cliniques",
-    "empty_state": "Aucune donnée de liquidation pour la période sélectionnée"
+    "empty_state": "Aucune donnée de liquidation pour la période sélectionnée",
+    "filter_by_professional": "Filtrer par professionnel",
+    "all_professionals": "Tous les professionnels",
+    "summary_by_treatment": "Résumé par traitement",
+    "treatment": "Traitement",
+    "quantity": "Quantité",
+    "total_clinic": "Total Clinique",
+    "total_professional": "Total Professionnel"
   },
   "errorBoundary": {
     "title": "Quelque chose s'est mal passé",
@@ -2207,7 +2214,18 @@
     "no_overrides": "Aucun remplacement configuré",
     "loading": "Chargement des commissions...",
     "error_loading": "Erreur lors du chargement de la configuration",
-    "error_saving": "Erreur lors de l'enregistrement des commissions"
+    "error_saving": "Erreur lors de l'enregistrement des commissions",
+    "clinic_share": "Part Clinique",
+    "prof_share": "Part Professionnel",
+    "must_sum_100": "Les pourcentages clinique + professionnel doivent totaliser 100%",
+    "history_title": "Historique des changements",
+    "effective_date": "Date d'effet",
+    "changed_by": "Modifié par",
+    "previous_value": "Valeur précédente",
+    "new_value": "Nouvelle valeur",
+    "no_history": "Aucun changement enregistré",
+    "save_with_effective_date": "Enregistrer avec date d'effet",
+    "future_change": "Ce changement s'applique à partir du {date}"
   },
   "professional_liquidations": {
     "title": "Mes Liquidations",
