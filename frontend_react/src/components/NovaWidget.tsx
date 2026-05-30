@@ -668,14 +668,18 @@ export const NovaWidget: React.FC = () => {
               }]);
             } else if (msg.role === 'assistant') {
               transcriptBufferRef.current += msg.text;
-              const idx = assistantMsgIndexRef.current;
               setMessages(prev => {
-                if (idx >= 0 && idx < prev.length && prev[idx].role === 'assistant') {
+                // Buscar el último mensaje de assistant para actualizarlo en vivo
+                let lastAsstIdx = -1;
+                for (let i = prev.length - 1; i >= 0; i--) {
+                  if (prev[i].role === 'assistant') { lastAsstIdx = i; break; }
+                }
+                assistantMsgIndexRef.current = lastAsstIdx;
+                if (lastAsstIdx >= 0) {
                   const updated = [...prev];
-                  updated[idx] = { ...updated[idx], text: transcriptBufferRef.current };
+                  updated[lastAsstIdx] = { ...updated[lastAsstIdx], text: transcriptBufferRef.current };
                   return updated;
                 }
-                assistantMsgIndexRef.current = prev.length;
                 return [...prev, {
                   id: msgId(), role: 'assistant', text: transcriptBufferRef.current, timestamp: Date.now(),
                 }];
@@ -712,14 +716,16 @@ export const NovaWidget: React.FC = () => {
               novaPlayingWatchdogRef.current = null;
             }
             if (transcriptBufferRef.current) {
-              const idx = assistantMsgIndexRef.current;
               setMessages(prev => {
-                if (idx >= 0 && idx < prev.length && prev[idx].role === 'assistant') {
+                let lastAsstIdx = -1;
+                for (let i = prev.length - 1; i >= 0; i--) {
+                  if (prev[i].role === 'assistant') { lastAsstIdx = i; break; }
+                }
+                if (lastAsstIdx >= 0) {
                   const updated = [...prev];
-                  updated[idx] = { ...updated[idx], text: transcriptBufferRef.current };
+                  updated[lastAsstIdx] = { ...updated[lastAsstIdx], text: transcriptBufferRef.current };
                   return updated;
                 }
-                assistantMsgIndexRef.current = prev.length;
                 return [...prev, {
                   id: msgId(), role: 'assistant', text: transcriptBufferRef.current, timestamp: Date.now(),
                 }];
@@ -741,14 +747,16 @@ export const NovaWidget: React.FC = () => {
               novaPlayingWatchdogRef.current = null;
             }
             if (transcriptBufferRef.current) {
-              const idx = assistantMsgIndexRef.current;
               setMessages(prev => {
-                if (idx >= 0 && idx < prev.length && prev[idx].role === 'assistant') {
+                let lastAsstIdx = -1;
+                for (let i = prev.length - 1; i >= 0; i--) {
+                  if (prev[i].role === 'assistant') { lastAsstIdx = i; break; }
+                }
+                if (lastAsstIdx >= 0) {
                   const updated = [...prev];
-                  updated[idx] = { ...updated[idx], text: transcriptBufferRef.current };
+                  updated[lastAsstIdx] = { ...updated[lastAsstIdx], text: transcriptBufferRef.current };
                   return updated;
                 }
-                assistantMsgIndexRef.current = prev.length;
                 return [...prev, {
                   id: msgId(), role: 'assistant', text: transcriptBufferRef.current, timestamp: Date.now(),
                 }];
