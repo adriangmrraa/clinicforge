@@ -12074,6 +12074,33 @@ async def build_nova_system_prompt(
     return await _build(clinic_name, page, user_role, tenant_id)
 
 
+@app.post("/api/whisper/transcribe")
+async def whisper_transcribe(request: Request):
+    """Proxy endpoint for Whisper transcription. Receives audio file, sends to OpenAI, returns text."""
+    from openai import AsyncOpenAI
+    try:
+        form = await request.form()
+        audio_file = form.get("file")
+        if not audio_file:
+            return {"error": "No audio file provided"}
+        model = form.get("model", "whisper-1")
+        language = form.get("language", "es")
+        api_key = os.getenv("OPENAI_API_KEY", "")
+        client = AsyncOpenAI(api_key=api_key)
+        audio_bytes = await audio_file.read()
+        import io
+        transcript = await client.audio.transcriptions.create(
+            model=model,
+            file=io.BytesIO(audio_bytes),
+            language=language,
+            response_format="json",
+        )
+        return {"text": transcript.text}
+    except Exception as e:
+        logger.error(f"🎙️ Whisper transcribe error: {e}")
+        return {"error": str(e), "text": ""}
+
+
 async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
     """Nova voice assistant WebSocket bridge to OpenAI Realtime API (inner handler)."""
     from services.nova_tools import execute_nova_tool, nova_tools_for_voice
