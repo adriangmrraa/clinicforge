@@ -12133,20 +12133,21 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
                 "Authorization": f"Bearer {api_key}",
             },
         ) as openai_ws:
-            # Send session update — gpt-realtime-2 only accepts instructions + tools
-            await openai_ws.send(
-                json_mod.dumps(
-                    {
-                        "type": "session.update",
-                        "session": {
-                            "type": "realtime",
-                            "instructions": config.get("system_prompt", ""),
-                            "tools": _voice_tools,
-                            "tool_choice": "auto",
-                        },
-                    }
-                )
+            # Build session.update payload
+            _session_payload = {
+                "type": "session.update",
+                "session": {
+                    "type": "realtime",
+                    "instructions": config.get("system_prompt", ""),
+                    "tools": _voice_tools,
+                    "tool_choice": "auto",
+                },
+            }
+            # DEBUG: dump completo del session.update para ver qué campos se envían
+            logger.info(
+                f"🎙️ NOVA SESSION UPDATE PAYLOAD: {json_mod.dumps({k: v if k != 'session' else {**v, 'instructions': v['instructions'][:100] + '...'} for k, v in _session_payload.items()}, ensure_ascii=False)}"
             )
+            await openai_ws.send(json_mod.dumps(_session_payload))
             tool_names = [t.get("name", "?") for t in _voice_tools]
             logger.info(
                 f"🎙️ NOVA: session.update sent with {len(_voice_tools)} tools: {tool_names}"
@@ -12229,6 +12230,12 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
                             ):
                                 extra = f" {json_mod.dumps(event, ensure_ascii=False)[:300]}"
                             logger.info(f"🎙️ NOVA EVENT: {etype}{extra}")
+
+                        # DEBUG: dump completo de eventos session.created y session.updated
+                        if etype in ("session.created", "session.updated"):
+                            logger.info(
+                                f"🎙️ NOVA SESSION DUMP: {json_mod.dumps(event, ensure_ascii=False)}"
+                            )
 
                         if etype == "response.audio.delta":
                             audio_b64 = event.get("delta", "")
