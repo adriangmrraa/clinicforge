@@ -12139,6 +12139,14 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
                 "session": {
                     "type": "realtime",
                     "instructions": config.get("system_prompt", ""),
+                    "turn_detection": {
+                        "type": "server_vad",
+                        "threshold": 0.5,
+                        "prefix_padding_ms": 800,
+                        "silence_duration_ms": 5000,
+                        "interrupt_response": False,
+                        "create_response": True,
+                    },
                     "tools": _voice_tools,
                     "tool_choice": "auto",
                 },
