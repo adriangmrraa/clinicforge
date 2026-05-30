@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useTranslation } from '../../context/LanguageContext';
 import { OdontogramState } from '../../constants/odontogramStates';
 import { ChevronLeft, Check } from 'lucide-react';
@@ -39,7 +39,15 @@ export default function StateConditionModal({
 }: StateConditionModalProps) {
   const { t } = useTranslation();
   const [condition, setCondition] = useState<DentalCondition | null>(null);
-  const [color, setColor] = useState<string>(selectedState?.defaultColor || '#f0f0f0');
+  const [color, setColor] = useState<string>('#f0f0f0');
+
+  // Resetear estado cada vez que se abre con un nuevo selectedState
+  useEffect(() => {
+    if (isOpen && selectedState) {
+      setCondition(null);
+      setColor(selectedState.defaultColor);
+    }
+  }, [isOpen, selectedState?.id]);
 
   const handleApply = () => {
     if (condition) {
