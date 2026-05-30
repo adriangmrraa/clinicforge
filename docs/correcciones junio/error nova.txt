@@ -1,0 +1,435 @@
+Dame un segundo que te saco el resumen de la semana.
+Resumen semanal: 3 turnos, ninguno completado ni pendiente, 0 cancelaciones, 0 pacientes nuevos, y facturación en $0.
+Perfecto,
+Te preparo un
+Te saco el
+Te saco el resumen financiero así lo tenés claro.
+Resumen financiero de los últimos 30 días: facturación total $4.185.000 y pagos pendientes $0. Hay planes con saldo pendiente, por ejemplo: Laura González con $550.000 y casos chicos como lucas Puig y Rocio Meza con $50.000 cada uno. También aparecen planes con montos totales en $0 y pendiente negativo, que parecen inconsistencias de carga.
+No llegué a entender ningún contenido por el ruido. Si querés, repetí tu mensaje con un poco más de claridad.
+No se escucha nada claro, solo ruido. Probá grabar de nuevo o escribir el mensaje.
+Te cuento el resumen de la semana en un momento.
+Resumen semanal: 3 turnos en total, 0 completados, 0 pendientes, 0 cancelaciones, 0 pacientes nuevos y facturación en $0.
+Te doy el panorama financiero en
+Te doy el panorama financiero en
+Resumen financ
+Resumen financiero de los últimos 30 días: facturación total de $4.185.000 y pagos pendientes en $0.
+No entendí a qué te referís con “M”. ¿Qué necesitás que haga o que te muestre?
+No se recibió una orden ni
+No hay una orden o pregunta clara en ese texto. Decime qué necesitás.
+No hay una orden clara. Decime qué
+
+
+
+0----
+
+logs del navegador:
+
+
+index-quyHH67M.js:257 [Nova Voice] Audio sent: 200 chunks, pcmLen=512, avgLevel=32575.54
+index-quyHH67M.js:257 [Nova Voice] Audio sent: 300 chunks, pcmLen=512, avgLevel=4927.92
+index-quyHH67M.js:257 [Nova Voice] Audio sent: 400 chunks, pcmLen=512, avgLevel=31935.50
+index-quyHH67M.js:257 [Nova Voice] Audio sent: 500 chunks, pcmLen=512, avgLevel=12095.83
+index-quyHH67M.js:257 [Nova Voice] Audio sent: 600 chunks, pcmLen=512, avgLevel=21695.68
+index-quyHH67M.js:257 [Nova Voice] Audio sent: 100 chunks, pcmLen=512, avgLevel=9471.85
+index-quyHH67M.js:257 [Nova Voice] Audio sent: 100 chunks, pcmLen=512, avgLevel=4607.94
+index-quyHH67M.js:257 [Nova Voice] Audio sent: 200 chunks, pcmLen=512, avgLevel=11711.81
+index-quyHH67M.js:257 [Nova Voice] Audio sent: 200 chunks, pcmLen=512, avgLevel=21247.69
+index-quyHH67M.js:257 [Nova Voice] Audio sent: 300 chunks, pcmLen=512, avgLevel=27519.64
+index-quyHH67M.js:257 [Nova Voice] Audio sent: 300 chunks, pcmLen=512, avgLevel=17855.71
+index-quyHH67M.js:257 [Nova Voice] Audio sent: 400 chunks, pcmLen=512, avgLevel=32447.47
+index-quyHH67M.js:257 [Nova Voice] Audio sent: 400 chunks, pcmLen=512, avgLevel=32639.53
+index-quyHH67M.js:257 [Nova Voice] Audio sent: 500 chunks, pcmLen=512, avgLevel=12287.79
+index-quyHH67M.js:257 [Nova Voice] Audio sent: 100 chunks, pcmLen=512, avgLevel=32383.52
+index-quyHH67M.js:257 [Nova Voice] Audio sent: 600 chunks, pcmLen=512, avgLevel=32767.59
+index-quyHH67M.js:257 [Nova Voice] Audio sent: 200 chunks, pcmLen=512, avgLevel=17727.72
+index-quyHH67M.js:257 [Nova Voice] Audio sent: 700 chunks, pcmLen=512, avgLevel=13439.80
+index-quyHH67M.js:257 [Nova Voice] Audio sent: 300 chunks, pcmLen=512, avgLevel=13184.00
+index-quyHH67M.js:257 [Nova Voice] Audio sent: 800 chunks, pcmLen=512, avgLevel=7615.91
+index-quyHH67M.js:257 [Nova Voice] Audio sent: 400 chunks, pcmLen=512, avgLevel=23999.60
+index-quyHH67M.js:257 [Nova Voice] Audio sent: 900 chunks, pcmLen=512, avgLevel=25023.60
+index-quyHH67M.js:257 [Nova Voice] Audio sent: 500 chunks, pcmLen=512, avgLevel=19903.68
+index-quyHH67M.js:257 [Nova Voice] Audio sent: 1000 chunks, pcmLen=512, avgLevel=22015.68
+index-quyHH67M.js:257 [Nova Voice] Audio sent: 600 chunks, pcmLen=512, avgLevel=16767.74
+index-quyHH67M.js:257 [Nova Voice] Audio sent: 1100 chunks, pcmLen=512, avgLevel=16959.74
+index-quyHH67M.js:257 [Nova Voice] Audio sent: 700 chunks, pcmLen=512, avgLevel=29183.45
+index-quyHH67M.js:257 [Nova Voice] Audio sent: 1200 chunks, pcmLen=512, avgLevel=21887.67
+index-quyHH67M.js:257 [Nova Voice] Audio sent: 800 chunks, pcmLen=512, avgLevel=13119.83
+index-quyHH67M.js:257 [Nova Voice] Audio sent: 1300 chunks, pcmLen=512, avgLevel=26815.60
+index-quyHH67M.js:257 [Nova Voice] Audio sent: 900 chunks, pcmLen=512, avgLevel=10879.68
+index-quyHH67M.js:257 [Nova Voice] Audio sent: 1400 chunks, pcmLen=512, avgLevel=6271.88
+index-quyHH67M.js:257 [Nova Voice] Audio sent: 1000 chunks, pcmLen=512, avgLevel=9855.80
+index-quyHH67M.js:257 [Nova Voice] Audio sent: 1500 chunks, pcmLen=512, avgLevel=6655.89
+index-quyHH67M.js:257 [Nova Voice] Audio sent: 1100 chunks, pcmLen=512, avgLevel=32703.56
+index-quyHH67M.js:257 [Nova Voice] Audio sent: 1600 chunks, pcmLen=512, avgLevel=32639.46
+index-quyHH67M.js:257 [Nova Voice] Audio sent: 1200 chunks, pcmLen=512, avgLevel=25663.68
+index-quyHH67M.js:257 [Nova Voice] Audio sent: 1700 chunks, pcmLen=512, avgLevel=18367.77
+index-quyHH67M.js:257 [Nova Voice] Audio sent: 1300 chunks, pcmLen=512, avgLevel=27327.60
+index-quyHH67M.js:257 [Nova Voice] Audio sent: 1800 chunks, pcmLen=512, avgLevel=32511.53
+index-quyHH67M.js:257 [Nova Voice] Audio sent: 1400 chunks, pcmLen=512, avgLevel=5311.86
+index-quyHH67M.js:257 [Nova Voice] Audio sent: 1900 chunks, pcmLen=512, avgLevel=9727.97
+index-quyHH67M.js:257 [Nova Voice] Audio sent: 1500 chunks, pcmLen=512, avgLevel=5439.91
+index-quyHH67M.js:257 [Nova Voice] Audio sent: 2000 chunks, pcmLen=512, avgLevel=5823.96
+index-quyHH67M.js:257 [Nova Voice] Audio sent: 1600 chunks, pcmLen=512, avgLevel=8767.86
+index-quyHH67M.js:257 [Nova Voice] Audio sent: 2100 chunks, pcmLen=512, avgLevel=32383.49
+index-quyHH67M.js:257 [Nova Voice] Audio sent: 1700 chunks, pcmLen=512, avgLevel=25087.61
+index-quyHH67M.js:257 [Nova Voice] Audio sent: 2200 chunks, pcmLen=512, avgLevel=20031.72
+index-quyHH67M.js:257 [Nova Voice] Audio sent: 1800 chunks, pcmLen=512, avgLevel=4031.95
+index-quyHH67M.js:257 [Nova Voice] Audio sent: 2300 chunks, pcmLen=512, avgLevel=12735.81
+
+
+-----------------------
+
+logs orchestrator: 
+
+\": [{\"type\": \"input_audio\", \"transcript\": null}]}}"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.created"}
+{"event": "\ud83c\udf99\ufe0f NOVA AUDIO FROM CLIENT: chunk=1001 size=1024B"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_item.added"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: conversation.item.added"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.function_call_arguments.delta {\"type\": \"response.function_call_arguments.delta\", \"event_id\": \"event_Dl7E6H0HMmcNhW9XZRCK5\", \"response_id\": \"resp_Dl7E5B1EWcTgOFlq96Tet\", \"item_id\": \"item_Dl7E55exEKJrLYzXg6DPP\", \"output_index\": 0, \"call_id\": \"call_VXL5Y8xg5SEYw1sJ\", \"delta\": \"{\\\"\", \"obfuscation\": \"SHGsPWFKQnyWtj\"}"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.function_call_arguments.delta {\"type\": \"response.function_call_arguments.delta\", \"event_id\": \"event_Dl7E6Ipqj4CTsGKKcEivq\", \"response_id\": \"resp_Dl7E5B1EWcTgOFlq96Tet\", \"item_id\": \"item_Dl7E55exEKJrLYzXg6DPP\", \"output_index\": 0, \"call_id\": \"call_VXL5Y8xg5SEYw1sJ\", \"delta\": \"tool\", \"obfuscation\": \"H5L2gQDK9qHU\"}"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.function_call_arguments.delta {\"type\": \"response.function_call_arguments.delta\", \"event_id\": \"event_Dl7E6GMrbJPQ0ocMiGbYI\", \"response_id\": \"resp_Dl7E5B1EWcTgOFlq96Tet\", \"item_id\": \"item_Dl7E55exEKJrLYzXg6DPP\", \"output_index\": 0, \"call_id\": \"call_VXL5Y8xg5SEYw1sJ\", \"delta\": \"_name\", \"obfuscation\": \"kWY3ACVQGLR\"}"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.function_call_arguments.delta {\"type\": \"response.function_call_arguments.delta\", \"event_id\": \"event_Dl7E6T0gHBKJeGuXe1FJX\", \"response_id\": \"resp_Dl7E5B1EWcTgOFlq96Tet\", \"item_id\": \"item_Dl7E55exEKJrLYzXg6DPP\", \"output_index\": 0, \"call_id\": \"call_VXL5Y8xg5SEYw1sJ\", \"delta\": \"\\\":\\\"\", \"obfuscation\": \"1T45BgmD0oHUK\"}"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.function_call_arguments.delta {\"type\": \"response.function_call_arguments.delta\", \"event_id\": \"event_Dl7E6VTAgouUyY1KIpk0x\", \"response_id\": \"resp_Dl7E5B1EWcTgOFlq96Tet\", \"item_id\": \"item_Dl7E55exEKJrLYzXg6DPP\", \"output_index\": 0, \"call_id\": \"call_VXL5Y8xg5SEYw1sJ\", \"delta\": \"res\", \"obfuscation\": \"KsCPQATmZNZXK\"}"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.function_call_arguments.delta {\"type\": \"response.function_call_arguments.delta\", \"event_id\": \"event_Dl7E6EVIQroPTDlkmhIh7\", \"response_id\": \"resp_Dl7E5B1EWcTgOFlq96Tet\", \"item_id\": \"item_Dl7E55exEKJrLYzXg6DPP\", \"output_index\": 0, \"call_id\": \"call_VXL5Y8xg5SEYw1sJ\", \"delta\": \"umen\", \"obfuscation\": \"OFZaWGlDSbcz\"}"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.function_call_arguments.delta {\"type\": \"response.function_call_arguments.delta\", \"event_id\": \"event_Dl7E663pvbyKbHh54LNGG\", \"response_id\": \"resp_Dl7E5B1EWcTgOFlq96Tet\", \"item_id\": \"item_Dl7E55exEKJrLYzXg6DPP\", \"output_index\": 0, \"call_id\": \"call_VXL5Y8xg5SEYw1sJ\", \"delta\": \"_fin\", \"obfuscation\": \"EevQdk9Rqq01\"}"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.function_call_arguments.delta {\"type\": \"response.function_call_arguments.delta\", \"event_id\": \"event_Dl7E6aC6HpRYqVpXudUvx\", \"response_id\": \"resp_Dl7E5B1EWcTgOFlq96Tet\", \"item_id\": \"item_Dl7E55exEKJrLYzXg6DPP\", \"output_index\": 0, \"call_id\": \"call_VXL5Y8xg5SEYw1sJ\", \"delta\": \"anc\", \"obfuscation\": \"aZO1X9PXfvpJE\"}"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.function_call_arguments.delta {\"type\": \"response.function_call_arguments.delta\", \"event_id\": \"event_Dl7E6mizNOzrRGL4BS71H\", \"response_id\": \"resp_Dl7E5B1EWcTgOFlq96Tet\", \"item_id\": \"item_Dl7E55exEKJrLYzXg6DPP\", \"output_index\": 0, \"call_id\": \"call_VXL5Y8xg5SEYw1sJ\", \"delta\": \"iero\", \"obfuscation\": \"xB5pLnXHIizl\"}"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.function_call_arguments.delta {\"type\": \"response.function_call_arguments.delta\", \"event_id\": \"event_Dl7E6khGYmzNusd2jsgpP\", \"response_id\": \"resp_Dl7E5B1EWcTgOFlq96Tet\", \"item_id\": \"item_Dl7E55exEKJrLYzXg6DPP\", \"output_index\": 0, \"call_id\": \"call_VXL5Y8xg5SEYw1sJ\", \"delta\": \"\\\",\\\"\", \"obfuscation\": \"7agUUBoZ9Fq4N\"}"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.function_call_arguments.delta {\"type\": \"response.function_call_arguments.delta\", \"event_id\": \"event_Dl7E6BOHi4oEWRJVg6gRW\", \"response_id\": \"resp_Dl7E5B1EWcTgOFlq96Tet\", \"item_id\": \"item_Dl7E55exEKJrLYzXg6DPP\", \"output_index\": 0, \"call_id\": \"call_VXL5Y8xg5SEYw1sJ\", \"delta\": \"args\", \"obfuscation\": \"A0Sy30eOPwyW\"}"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.function_call_arguments.delta {\"type\": \"response.function_call_arguments.delta\", \"event_id\": \"event_Dl7E6Tlp6gTl3JQgzWYuK\", \"response_id\": \"resp_Dl7E5B1EWcTgOFlq96Tet\", \"item_id\": \"item_Dl7E55exEKJrLYzXg6DPP\", \"output_index\": 0, \"call_id\": \"call_VXL5Y8xg5SEYw1sJ\", \"delta\": \"\\\":\", \"obfuscation\": \"yKdtKw8pJjlweN\"}"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.function_call_arguments.delta {\"type\": \"response.function_call_arguments.delta\", \"event_id\": \"event_Dl7E6SXi4kdP1hgRHKtrs\", \"response_id\": \"resp_Dl7E5B1EWcTgOFlq96Tet\", \"item_id\": \"item_Dl7E55exEKJrLYzXg6DPP\", \"output_index\": 0, \"call_id\": \"call_VXL5Y8xg5SEYw1sJ\", \"delta\": \"{\", \"obfuscation\": \"szmH1wQjCimgnfX\"}"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.function_call_arguments.delta {\"type\": \"response.function_call_arguments.delta\", \"event_id\": \"event_Dl7E6Ceyk5XsT612pSPZR\", \"response_id\": \"resp_Dl7E5B1EWcTgOFlq96Tet\", \"item_id\": \"item_Dl7E55exEKJrLYzXg6DPP\", \"output_index\": 0, \"call_id\": \"call_VXL5Y8xg5SEYw1sJ\", \"delta\": \"}}\", \"obfuscation\": \"OOIoDoGVrU4uU6\"}"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.function_call_arguments.done {\"type\": \"response.function_call_arguments.done\", \"event_id\": \"event_Dl7E6uwBbjXKmVCCuUzBI\", \"response_id\": \"resp_Dl7E5B1EWcTgOFlq96Tet\", \"item_id\": \"item_Dl7E55exEKJrLYzXg6DPP\", \"output_index\": 0, \"call_id\": \"call_VXL5Y8xg5SEYw1sJ\", \"name\": \"herramienta_avanzada\", \"arguments\": \"{\\\"tool_name\\\":\\\"res"}
+{"event": "\ud83c\udf99\ufe0f NOVA TOOL CALL: herramienta_avanzada({\"tool_name\": \"resumen_financiero\", \"args\": {}}) tenant=1 role=ceo"}
+{"event": "\ud83d\udd27 NOVA meta-tool: resumen_financiero([])"}
+{"event": "\ud83c\udf99\ufe0f NOVA TOOL RESULT: herramienta_avanzada \u2192 Finanzas \u00faltimos 30 d\u00edas:\nFacturaci\u00f3n total: $4.185.000\nPagos pendientes: 0 turnos ($0)\n\nPlanes de tratamiento activos (9):\n  \u2022 Martina Liberato \u2014 Rehabilitacion simple: $1.200.000 total. $1.200.000 p"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: conversation.item.done {\"type\": \"conversation.item.done\", \"event_id\": \"event_Dl7E6ibmcmZszntNXesBM\", \"previous_item_id\": \"item_Dl7E5Tz5x74x5Jiq1RGwt\", \"item\": {\"id\": \"item_Dl7E55exEKJrLYzXg6DPP\", \"type\": \"function_call\", \"status\": \"completed\", \"name\": \"herramienta_avanzada\", \"call_id\": \"call_VXL5Y8xg5SEYw1sJ\", \"arguments\""}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_item.done {\"type\": \"response.output_item.done\", \"event_id\": \"event_Dl7E6Jtx5wt6cTsNx1W6I\", \"response_id\": \"resp_Dl7E5B1EWcTgOFlq96Tet\", \"output_index\": 0, \"item\": {\"id\": \"item_Dl7E55exEKJrLYzXg6DPP\", \"type\": \"function_call\", \"status\": \"completed\", \"name\": \"herramienta_avanzada\", \"call_id\": \"call_VXL5Y8xg5SEYw"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.done {\"type\": \"response.done\", \"event_id\": \"event_Dl7E6F0lujT7UqWAjZZyT\", \"response\": {\"object\": \"realtime.response\", \"id\": \"resp_Dl7E5B1EWcTgOFlq96Tet\", \"status\": \"completed\", \"status_details\": null, \"output\": [{\"id\": \"item_Dl7E55exEKJrLYzXg6DPP\", \"type\": \"function_call\", \"status\": \"completed\", \"name\": "}
+{"event": "\ud83d\udcca Service tokens tracked: nova_voice | gpt-realtime-2 | 9996 tokens | $0.006055"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: rate_limits.updated"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: conversation.item.added"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: conversation.item.done {\"type\": \"conversation.item.done\", \"event_id\": \"event_Dl7E64XEZeTceQb0aU6aR\", \"previous_item_id\": \"item_Dl7E55exEKJrLYzXg6DPP\", \"item\": {\"id\": \"item_Dl7E62xY5YzpSCpbFpycT\", \"type\": \"function_call_output\", \"call_id\": \"call_VXL5Y8xg5SEYw1sJ\", \"output\": \"Finanzas \u00faltimos 30 d\u00edas:\\nFacturaci\u00f3n total: $4"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.created"}
+{"event": "\ud83c\udf99\ufe0f NOVA AUDIO FROM CLIENT: chunk=1101 size=1024B"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: input_audio_buffer.speech_started"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.done {\"type\": \"response.done\", \"event_id\": \"event_Dl7E6CfLHBqJ4BrrMUXMH\", \"response\": {\"object\": \"realtime.response\", \"id\": \"resp_Dl7E66U7xRNFoS4FAKcuy\", \"status\": \"cancelled\", \"status_details\": {\"type\": \"cancelled\", \"reason\": \"turn_detected\"}, \"output\": [], \"conversation_id\": \"conv_Dl7Ds7YWgFfUfLPIXSiVs"}
+{"event": "\ud83d\udcca Service tokens tracked: nova_voice | gpt-realtime-2 | 0 tokens | $0.000000"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: conversation.item.added"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: conversation.item.done {\"type\": \"conversation.item.done\", \"event_id\": \"event_Dl7E6kJDkO4vyakf8aVcj\", \"previous_item_id\": \"item_Dl7E62xY5YzpSCpbFpycT\", \"item\": {\"id\": \"item_Dl7E6EnY6mIlZs3NBsPr9\", \"type\": \"message\", \"status\": \"completed\", \"role\": \"user\", \"content\": [{\"type\": \"input_audio\", \"transcript\": null}]}}"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.created"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_item.added"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: conversation.item.added"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.content_part.added {\"type\": \"response.content_part.added\", \"event_id\": \"event_Dl7E75igmLwCtNs75hqh0\", \"response_id\": \"resp_Dl7E6N9rIKPOsONFjM2nF\", \"item_id\": \"item_Dl7E6fZMXmKndqKGeToyn\", \"output_index\": 0, \"content_index\": 0, \"part\": {\"type\": \"audio\", \"transcript\": \"\"}}"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA AUDIO FROM CLIENT: chunk=1201 size=1024B"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: input_audio_buffer.speech_started"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.done {\"type\": \"response.output_audio.done\", \"event_id\": \"event_Dl7E7eYzMslNQG6aNDZEp\", \"response_id\": \"resp_Dl7E6N9rIKPOsONFjM2nF\", \"item_id\": \"item_Dl7E6fZMXmKndqKGeToyn\", \"output_index\": 0, \"content_index\": 0}"}
+{"event": "\ud83c\udf99\ufe0f NOVA: Audio response DONE \u2014 sending nova_audio_done to client"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.done {\"type\": \"response.output_audio_transcript.done\", \"event_id\": \"event_Dl7E7rRgwpQRR6PcH3Wun\", \"response_id\": \"resp_Dl7E6N9rIKPOsONFjM2nF\", \"item_id\": \"item_Dl7E6fZMXmKndqKGeToyn\", \"output_index\": 0, \"content_index\": 0, \"transcript\": \"Resumen financ\"}"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.content_part.done {\"type\": \"response.content_part.done\", \"event_id\": \"event_Dl7E7trBnk9j7KP9XuNgB\", \"response_id\": \"resp_Dl7E6N9rIKPOsONFjM2nF\", \"item_id\": \"item_Dl7E6fZMXmKndqKGeToyn\", \"output_index\": 0, \"content_index\": 0, \"part\": {\"type\": \"audio\", \"transcript\": \"Resumen financ\"}}"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: conversation.item.done {\"type\": \"conversation.item.done\", \"event_id\": \"event_Dl7E7PUpuqHfmoCNRJm2t\", \"previous_item_id\": \"item_Dl7E6EnY6mIlZs3NBsPr9\", \"item\": {\"id\": \"item_Dl7E6fZMXmKndqKGeToyn\", \"type\": \"message\", \"status\": \"incomplete\", \"role\": \"assistant\", \"content\": [{\"type\": \"output_audio\", \"transcript\": \"Resumen fin"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_item.done {\"type\": \"response.output_item.done\", \"event_id\": \"event_Dl7E7Rix0WzAm6Tof7TrT\", \"response_id\": \"resp_Dl7E6N9rIKPOsONFjM2nF\", \"output_index\": 0, \"item\": {\"id\": \"item_Dl7E6fZMXmKndqKGeToyn\", \"type\": \"message\", \"status\": \"incomplete\", \"role\": \"assistant\", \"content\": [{\"type\": \"output_audio\", \"transcri"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.done {\"type\": \"response.done\", \"event_id\": \"event_Dl7E7fzLvTbw1zWw9cChg\", \"response\": {\"object\": \"realtime.response\", \"id\": \"resp_Dl7E6N9rIKPOsONFjM2nF\", \"status\": \"cancelled\", \"status_details\": {\"type\": \"cancelled\", \"reason\": \"turn_detected\"}, \"output\": [{\"id\": \"item_Dl7E6fZMXmKndqKGeToyn\", \"type\": \"mes"}
+{"event": "\ud83d\udcca Service tokens tracked: nova_voice | gpt-realtime-2 | 10408 tokens | $0.006317"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: conversation.item.added"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: conversation.item.done {\"type\": \"conversation.item.done\", \"event_id\": \"event_Dl7E8QueNXX0qTaSSC5WB\", \"previous_item_id\": \"item_Dl7E6fZMXmKndqKGeToyn\", \"item\": {\"id\": \"item_Dl7E7QJA0USCB0daYwgOK\", \"type\": \"message\", \"status\": \"completed\", \"role\": \"user\", \"content\": [{\"type\": \"input_audio\", \"transcript\": null}]}}"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.created"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: input_audio_buffer.speech_started"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.done {\"type\": \"response.done\", \"event_id\": \"event_Dl7E8fc9BbsUo9SeA7KpN\", \"response\": {\"object\": \"realtime.response\", \"id\": \"resp_Dl7E8aRIUce2YICxyugvT\", \"status\": \"cancelled\", \"status_details\": {\"type\": \"cancelled\", \"reason\": \"turn_detected\"}, \"output\": [], \"conversation_id\": \"conv_Dl7Ds7YWgFfUfLPIXSiVs"}
+{"event": "\ud83d\udcca Service tokens tracked: nova_voice | gpt-realtime-2 | 0 tokens | $0.000000"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: conversation.item.added"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: conversation.item.done {\"type\": \"conversation.item.done\", \"event_id\": \"event_Dl7E8z9XpyRXJS0PdhQKV\", \"previous_item_id\": \"item_Dl7E7QJA0USCB0daYwgOK\", \"item\": {\"id\": \"item_Dl7E8cNUtWApNZ9ef8vG5\", \"type\": \"message\", \"status\": \"completed\", \"role\": \"user\", \"content\": [{\"type\": \"input_audio\", \"transcript\": null}]}}"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.created"}
+{"event": "\ud83c\udf99\ufe0f NOVA AUDIO FROM CLIENT: chunk=1301 size=1024B"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: input_audio_buffer.speech_started"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.done {\"type\": \"response.done\", \"event_id\": \"event_Dl7E8z4WBatlB07xtuQN7\", \"response\": {\"object\": \"realtime.response\", \"id\": \"resp_Dl7E8wXEKExkY4x2rckv2\", \"status\": \"cancelled\", \"status_details\": {\"type\": \"cancelled\", \"reason\": \"turn_detected\"}, \"output\": [], \"conversation_id\": \"conv_Dl7Ds7YWgFfUfLPIXSiVs"}
+{"event": "\ud83d\udcca Service tokens tracked: nova_voice | gpt-realtime-2 | 0 tokens | $0.000000"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: conversation.item.added"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: conversation.item.done {\"type\": \"conversation.item.done\", \"event_id\": \"event_Dl7E948N1VrkUnKZWwKNi\", \"previous_item_id\": \"item_Dl7E8cNUtWApNZ9ef8vG5\", \"item\": {\"id\": \"item_Dl7E8eDOsFFrFUKVwwKD8\", \"type\": \"message\", \"status\": \"completed\", \"role\": \"user\", \"content\": [{\"type\": \"input_audio\", \"transcript\": null}]}}"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.created"}
+{"event": "\ud83c\udf99\ufe0f NOVA AUDIO FROM CLIENT: chunk=1401 size=1024B"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_item.added"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: conversation.item.added"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.content_part.added {\"type\": \"response.content_part.added\", \"event_id\": \"event_Dl7EANsISwqY7EDavtFRp\", \"response_id\": \"resp_Dl7E9Xbj1jfbsdpXuN2Zq\", \"item_id\": \"item_Dl7E9O73n9K5Qokq3o8OG\", \"output_index\": 0, \"content_index\": 0, \"part\": {\"type\": \"audio\", \"transcript\": \"\"}}"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA AUDIO FROM CLIENT: chunk=1501 size=1024B"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.done {\"type\": \"response.output_audio.done\", \"event_id\": \"event_Dl7ECSye4cMg0XR29DQV1\", \"response_id\": \"resp_Dl7E9Xbj1jfbsdpXuN2Zq\", \"item_id\": \"item_Dl7E9O73n9K5Qokq3o8OG\", \"output_index\": 0, \"content_index\": 0}"}
+{"event": "\ud83c\udf99\ufe0f NOVA: Audio response DONE \u2014 sending nova_audio_done to client"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.done {\"type\": \"response.output_audio_transcript.done\", \"event_id\": \"event_Dl7ECRHoHbOT635Bh3mfM\", \"response_id\": \"resp_Dl7E9Xbj1jfbsdpXuN2Zq\", \"item_id\": \"item_Dl7E9O73n9K5Qokq3o8OG\", \"output_index\": 0, \"content_index\": 0, \"transcript\": \"Resumen financiero de los \u00faltimos 30 d\u00edas: facturaci\u00f3n total de $4."}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.content_part.done {\"type\": \"response.content_part.done\", \"event_id\": \"event_Dl7ECF747m70VHi2l9OkX\", \"response_id\": \"resp_Dl7E9Xbj1jfbsdpXuN2Zq\", \"item_id\": \"item_Dl7E9O73n9K5Qokq3o8OG\", \"output_index\": 0, \"content_index\": 0, \"part\": {\"type\": \"audio\", \"transcript\": \"Resumen financiero de los \u00faltimos 30 d\u00edas: facturaci"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: conversation.item.done {\"type\": \"conversation.item.done\", \"event_id\": \"event_Dl7ECjYVVk8e7lQplAbzg\", \"previous_item_id\": \"item_Dl7E8eDOsFFrFUKVwwKD8\", \"item\": {\"id\": \"item_Dl7E9O73n9K5Qokq3o8OG\", \"type\": \"message\", \"status\": \"completed\", \"role\": \"assistant\", \"content\": [{\"type\": \"output_audio\", \"transcript\": \"Resumen fina"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_item.done {\"type\": \"response.output_item.done\", \"event_id\": \"event_Dl7ECIPvMlqTGdMejOC3A\", \"response_id\": \"resp_Dl7E9Xbj1jfbsdpXuN2Zq\", \"output_index\": 0, \"item\": {\"id\": \"item_Dl7E9O73n9K5Qokq3o8OG\", \"type\": \"message\", \"status\": \"completed\", \"role\": \"assistant\", \"content\": [{\"type\": \"output_audio\", \"transcrip"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.done {\"type\": \"response.done\", \"event_id\": \"event_Dl7ECeGfWAgK4mWcbWnCf\", \"response\": {\"object\": \"realtime.response\", \"id\": \"resp_Dl7E9Xbj1jfbsdpXuN2Zq\", \"status\": \"completed\", \"status_details\": null, \"output\": [{\"id\": \"item_Dl7E9O73n9K5Qokq3o8OG\", \"type\": \"message\", \"status\": \"completed\", \"role\": \"assis"}
+{"event": "\ud83d\udcca Service tokens tracked: nova_voice | gpt-realtime-2 | 10788 tokens | $0.007063"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: rate_limits.updated"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: input_audio_buffer.speech_started"}
+{"event": "\ud83c\udf99\ufe0f NOVA AUDIO FROM CLIENT: chunk=1601 size=1024B"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: conversation.item.added"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: conversation.item.done {\"type\": \"conversation.item.done\", \"event_id\": \"event_Dl7EDIAIeK1OM3YKjBeDo\", \"previous_item_id\": \"item_Dl7E9O73n9K5Qokq3o8OG\", \"item\": {\"id\": \"item_Dl7EDoxHey1NQiKsIRpBC\", \"type\": \"message\", \"status\": \"completed\", \"role\": \"user\", \"content\": [{\"type\": \"input_audio\", \"transcript\": null}]}}"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.created"}
+{"event": "\ud83c\udf99\ufe0f NOVA AUDIO FROM CLIENT: chunk=1701 size=1024B"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_item.added"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: conversation.item.added"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.content_part.added {\"type\": \"response.content_part.added\", \"event_id\": \"event_Dl7EEYN6sJclvzTZDggMe\", \"response_id\": \"resp_Dl7EDeLPMYGzYClsngURu\", \"item_id\": \"item_Dl7ED8yKHqgTBOI3TXYD7\", \"output_index\": 0, \"content_index\": 0, \"part\": {\"type\": \"audio\", \"transcript\": \"\"}}"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.done {\"type\": \"response.output_audio.done\", \"event_id\": \"event_Dl7EGijrnSzCgTBtImW2c\", \"response_id\": \"resp_Dl7EDeLPMYGzYClsngURu\", \"item_id\": \"item_Dl7ED8yKHqgTBOI3TXYD7\", \"output_index\": 0, \"content_index\": 0}"}
+{"event": "\ud83c\udf99\ufe0f NOVA: Audio response DONE \u2014 sending nova_audio_done to client"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.done {\"type\": \"response.output_audio_transcript.done\", \"event_id\": \"event_Dl7EG1kdlYY8Lbfqyf6qI\", \"response_id\": \"resp_Dl7EDeLPMYGzYClsngURu\", \"item_id\": \"item_Dl7ED8yKHqgTBOI3TXYD7\", \"output_index\": 0, \"content_index\": 0, \"transcript\": \"No entend\u00ed a qu\u00e9 te refer\u00eds con \u201cM\u201d. \u00bfQu\u00e9 necesit\u00e1s que haga o que "}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.content_part.done {\"type\": \"response.content_part.done\", \"event_id\": \"event_Dl7EG7TP4QZcu2mBAxPIR\", \"response_id\": \"resp_Dl7EDeLPMYGzYClsngURu\", \"item_id\": \"item_Dl7ED8yKHqgTBOI3TXYD7\", \"output_index\": 0, \"content_index\": 0, \"part\": {\"type\": \"audio\", \"transcript\": \"No entend\u00ed a qu\u00e9 te refer\u00eds con \u201cM\u201d. \u00bfQu\u00e9 necesit\u00e1s "}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: conversation.item.done {\"type\": \"conversation.item.done\", \"event_id\": \"event_Dl7EGkAwij5FpjFanX3GG\", \"previous_item_id\": \"item_Dl7EDoxHey1NQiKsIRpBC\", \"item\": {\"id\": \"item_Dl7ED8yKHqgTBOI3TXYD7\", \"type\": \"message\", \"status\": \"completed\", \"role\": \"assistant\", \"content\": [{\"type\": \"output_audio\", \"transcript\": \"No entend\u00ed a"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_item.done {\"type\": \"response.output_item.done\", \"event_id\": \"event_Dl7EGYoeYIXrBW4U7pbOo\", \"response_id\": \"resp_Dl7EDeLPMYGzYClsngURu\", \"output_index\": 0, \"item\": {\"id\": \"item_Dl7ED8yKHqgTBOI3TXYD7\", \"type\": \"message\", \"status\": \"completed\", \"role\": \"assistant\", \"content\": [{\"type\": \"output_audio\", \"transcrip"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.done {\"type\": \"response.done\", \"event_id\": \"event_Dl7EGZifk97JKkgA08yNf\", \"response\": {\"object\": \"realtime.response\", \"id\": \"resp_Dl7EDeLPMYGzYClsngURu\", \"status\": \"completed\", \"status_details\": null, \"output\": [{\"id\": \"item_Dl7ED8yKHqgTBOI3TXYD7\", \"type\": \"message\", \"status\": \"completed\", \"role\": \"assis"}
+{"event": "\ud83d\udcca Service tokens tracked: nova_voice | gpt-realtime-2 | 10888 tokens | $0.006898"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: rate_limits.updated"}
+{"event": "\ud83c\udf99\ufe0f NOVA AUDIO FROM CLIENT: chunk=1801 size=1024B"}
+{"event": "\ud83c\udf99\ufe0f NOVA AUDIO FROM CLIENT: chunk=1901 size=1024B"}
+{"event": "\ud83c\udf99\ufe0f NOVA AUDIO FROM CLIENT: chunk=2001 size=1024B"}
+{"event": "\ud83c\udf99\ufe0f NOVA AUDIO FROM CLIENT: chunk=2101 size=1024B"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: input_audio_buffer.speech_started"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: conversation.item.added"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: conversation.item.done {\"type\": \"conversation.item.done\", \"event_id\": \"event_Dl7EKn8BHKvSxMqwnKRI3\", \"previous_item_id\": \"item_Dl7ED8yKHqgTBOI3TXYD7\", \"item\": {\"id\": \"item_Dl7EJ2HGcUaJmtPk0eoKj\", \"type\": \"message\", \"status\": \"completed\", \"role\": \"user\", \"content\": [{\"type\": \"input_audio\", \"transcript\": null}]}}"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.created"}
+{"event": "\ud83c\udf99\ufe0f NOVA AUDIO FROM CLIENT: chunk=2201 size=1024B"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: input_audio_buffer.speech_started"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.done {\"type\": \"response.done\", \"event_id\": \"event_Dl7EKQhxgvXzjaVQMx2xT\", \"response\": {\"object\": \"realtime.response\", \"id\": \"resp_Dl7EKyyFGUTe9pU9nR4Zd\", \"status\": \"cancelled\", \"status_details\": {\"type\": \"cancelled\", \"reason\": \"turn_detected\"}, \"output\": [], \"conversation_id\": \"conv_Dl7Ds7YWgFfUfLPIXSiVs"}
+{"event": "\ud83d\udcca Service tokens tracked: nova_voice | gpt-realtime-2 | 0 tokens | $0.000000"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: conversation.item.added"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: conversation.item.done {\"type\": \"conversation.item.done\", \"event_id\": \"event_Dl7ELJ4eNt5ptXfYh1VER\", \"previous_item_id\": \"item_Dl7EJ2HGcUaJmtPk0eoKj\", \"item\": {\"id\": \"item_Dl7EKbyQeDICtXSI2bI3V\", \"type\": \"message\", \"status\": \"completed\", \"role\": \"user\", \"content\": [{\"type\": \"input_audio\", \"transcript\": null}]}}"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.created"}
+{"event": "\ud83c\udf99\ufe0f NOVA AUDIO FROM CLIENT: chunk=2301 size=1024B"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: input_audio_buffer.speech_started"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.done {\"type\": \"response.done\", \"event_id\": \"event_Dl7EMN3GSMadahoqtweI7\", \"response\": {\"object\": \"realtime.response\", \"id\": \"resp_Dl7ELK07iipQQ178kkxXF\", \"status\": \"cancelled\", \"status_details\": {\"type\": \"cancelled\", \"reason\": \"turn_detected\"}, \"output\": [], \"conversation_id\": \"conv_Dl7Ds7YWgFfUfLPIXSiVs"}
+{"event": "\ud83d\udcca Service tokens tracked: nova_voice | gpt-realtime-2 | 0 tokens | $0.000000"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: conversation.item.added"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: conversation.item.done {\"type\": \"conversation.item.done\", \"event_id\": \"event_Dl7EMvXaDCcvp5qca2gsN\", \"previous_item_id\": \"item_Dl7EKbyQeDICtXSI2bI3V\", \"item\": {\"id\": \"item_Dl7EMBABUUsbyix0tUQnz\", \"type\": \"message\", \"status\": \"completed\", \"role\": \"user\", \"content\": [{\"type\": \"input_audio\", \"transcript\": null}]}}"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.created"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: input_audio_buffer.speech_started"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.done {\"type\": \"response.done\", \"event_id\": \"event_Dl7EMP60hZuenM5JJTIEX\", \"response\": {\"object\": \"realtime.response\", \"id\": \"resp_Dl7EMV4e83qP21yJhN63q\", \"status\": \"cancelled\", \"status_details\": {\"type\": \"cancelled\", \"reason\": \"turn_detected\"}, \"output\": [], \"conversation_id\": \"conv_Dl7Ds7YWgFfUfLPIXSiVs"}
+{"event": "\ud83d\udcca Service tokens tracked: nova_voice | gpt-realtime-2 | 0 tokens | $0.000000"}
+{"event": "\ud83c\udf99\ufe0f NOVA AUDIO FROM CLIENT: chunk=2401 size=1024B"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: conversation.item.added"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: conversation.item.done {\"type\": \"conversation.item.done\", \"event_id\": \"event_Dl7EMlhWxgRnfsVK48MOq\", \"previous_item_id\": \"item_Dl7EMBABUUsbyix0tUQnz\", \"item\": {\"id\": \"item_Dl7EMrdUHonXmkp7Iq6fW\", \"type\": \"message\", \"status\": \"completed\", \"role\": \"user\", \"content\": [{\"type\": \"input_audio\", \"transcript\": null}]}}"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.created"}
+{"event": "\ud83c\udf99\ufe0f NOVA AUDIO FROM CLIENT: chunk=2501 size=1024B"}
+{"event": "\ud83c\udf99\ufe0f NOVA AUDIO FROM CLIENT: chunk=2601 size=1024B"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_item.added"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: conversation.item.added"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.content_part.added {\"type\": \"response.content_part.added\", \"event_id\": \"event_Dl7EOI5DjOLI75wbi9NwS\", \"response_id\": \"resp_Dl7EMcXL4D3RykQfdk2jO\", \"item_id\": \"item_Dl7EMyBvNX7deZmYGfbmm\", \"output_index\": 0, \"content_index\": 0, \"part\": {\"type\": \"audio\", \"transcript\": \"\"}}"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: input_audio_buffer.speech_started"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.done {\"type\": \"response.output_audio.done\", \"event_id\": \"event_Dl7EPJ0S863Wng4vtgXJe\", \"response_id\": \"resp_Dl7EMcXL4D3RykQfdk2jO\", \"item_id\": \"item_Dl7EMyBvNX7deZmYGfbmm\", \"output_index\": 0, \"content_index\": 0}"}
+{"event": "\ud83c\udf99\ufe0f NOVA: Audio response DONE \u2014 sending nova_audio_done to client"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.done {\"type\": \"response.output_audio_transcript.done\", \"event_id\": \"event_Dl7EPtBLwixWepmZIfbLa\", \"response_id\": \"resp_Dl7EMcXL4D3RykQfdk2jO\", \"item_id\": \"item_Dl7EMyBvNX7deZmYGfbmm\", \"output_index\": 0, \"content_index\": 0, \"transcript\": \"No se recibi\u00f3 una orden ni\"}"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.content_part.done {\"type\": \"response.content_part.done\", \"event_id\": \"event_Dl7EPMjjXCvvQkGTyvEXb\", \"response_id\": \"resp_Dl7EMcXL4D3RykQfdk2jO\", \"item_id\": \"item_Dl7EMyBvNX7deZmYGfbmm\", \"output_index\": 0, \"content_index\": 0, \"part\": {\"type\": \"audio\", \"transcript\": \"No se recibi\u00f3 una orden ni\"}}"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: conversation.item.done {\"type\": \"conversation.item.done\", \"event_id\": \"event_Dl7EP1VpKQKLMNIp4U2VA\", \"previous_item_id\": \"item_Dl7EMrdUHonXmkp7Iq6fW\", \"item\": {\"id\": \"item_Dl7EMyBvNX7deZmYGfbmm\", \"type\": \"message\", \"status\": \"incomplete\", \"role\": \"assistant\", \"content\": [{\"type\": \"output_audio\", \"transcript\": \"No se recib"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_item.done {\"type\": \"response.output_item.done\", \"event_id\": \"event_Dl7EP3J5kH5VdIUvAnoLg\", \"response_id\": \"resp_Dl7EMcXL4D3RykQfdk2jO\", \"output_index\": 0, \"item\": {\"id\": \"item_Dl7EMyBvNX7deZmYGfbmm\", \"type\": \"message\", \"status\": \"incomplete\", \"role\": \"assistant\", \"content\": [{\"type\": \"output_audio\", \"transcri"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.done {\"type\": \"response.done\", \"event_id\": \"event_Dl7EP1Vxt8i3rKikJsCbL\", \"response\": {\"object\": \"realtime.response\", \"id\": \"resp_Dl7EMcXL4D3RykQfdk2jO\", \"status\": \"cancelled\", \"status_details\": {\"type\": \"cancelled\", \"reason\": \"turn_detected\"}, \"output\": [{\"id\": \"item_Dl7EMyBvNX7deZmYGfbmm\", \"type\": \"mes"}
+{"event": "\ud83d\udcca Service tokens tracked: nova_voice | gpt-realtime-2 | 11077 tokens | $0.006938"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: conversation.item.added"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: conversation.item.done {\"type\": \"conversation.item.done\", \"event_id\": \"event_Dl7EPQKmIBg3cxXWmyhtC\", \"previous_item_id\": \"item_Dl7EMyBvNX7deZmYGfbmm\", \"item\": {\"id\": \"item_Dl7EPC2bOJlUantD3ZKS7\", \"type\": \"message\", \"status\": \"completed\", \"role\": \"user\", \"content\": [{\"type\": \"input_audio\", \"transcript\": null}]}}"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.created"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: input_audio_buffer.speech_started"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.done {\"type\": \"response.done\", \"event_id\": \"event_Dl7EPZguPSxsCPXHvt6QU\", \"response\": {\"object\": \"realtime.response\", \"id\": \"resp_Dl7EPvCYN9Yc4uoQHMGkc\", \"status\": \"cancelled\", \"status_details\": {\"type\": \"cancelled\", \"reason\": \"turn_detected\"}, \"output\": [], \"conversation_id\": \"conv_Dl7Ds7YWgFfUfLPIXSiVs"}
+{"event": "\ud83d\udcca Service tokens tracked: nova_voice | gpt-realtime-2 | 0 tokens | $0.000000"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: conversation.item.added"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: conversation.item.done {\"type\": \"conversation.item.done\", \"event_id\": \"event_Dl7EPxSdfHCtHh9JgQhfu\", \"previous_item_id\": \"item_Dl7EPC2bOJlUantD3ZKS7\", \"item\": {\"id\": \"item_Dl7EPOUuEFzNTas5oc6Cn\", \"type\": \"message\", \"status\": \"completed\", \"role\": \"user\", \"content\": [{\"type\": \"input_audio\", \"transcript\": null}]}}"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.created"}
+{"event": "\ud83c\udf99\ufe0f NOVA AUDIO FROM CLIENT: chunk=2701 size=1024B"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_item.added"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: conversation.item.added"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.content_part.added {\"type\": \"response.content_part.added\", \"event_id\": \"event_Dl7EQzzsSnEqKCHI6pTx8\", \"response_id\": \"resp_Dl7EPQu150JTuKx1xDUcj\", \"item_id\": \"item_Dl7EPSRodDdM0w6iJ83Yn\", \"output_index\": 0, \"content_index\": 0, \"part\": {\"type\": \"audio\", \"transcript\": \"\"}}"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.done {\"type\": \"response.output_audio.done\", \"event_id\": \"event_Dl7ERvTN0EJWiTWmJlzMR\", \"response_id\": \"resp_Dl7EPQu150JTuKx1xDUcj\", \"item_id\": \"item_Dl7EPSRodDdM0w6iJ83Yn\", \"output_index\": 0, \"content_index\": 0}"}
+{"event": "\ud83c\udf99\ufe0f NOVA: Audio response DONE \u2014 sending nova_audio_done to client"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.done {\"type\": \"response.output_audio_transcript.done\", \"event_id\": \"event_Dl7ERovnizlicaFvZFH8b\", \"response_id\": \"resp_Dl7EPQu150JTuKx1xDUcj\", \"item_id\": \"item_Dl7EPSRodDdM0w6iJ83Yn\", \"output_index\": 0, \"content_index\": 0, \"transcript\": \"No hay una orden o pregunta clara en ese texto. Decime qu\u00e9 necesit\u00e1"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.content_part.done {\"type\": \"response.content_part.done\", \"event_id\": \"event_Dl7ERFU92cwzDbSjUxwq1\", \"response_id\": \"resp_Dl7EPQu150JTuKx1xDUcj\", \"item_id\": \"item_Dl7EPSRodDdM0w6iJ83Yn\", \"output_index\": 0, \"content_index\": 0, \"part\": {\"type\": \"audio\", \"transcript\": \"No hay una orden o pregunta clara en ese texto. Deci"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: conversation.item.done {\"type\": \"conversation.item.done\", \"event_id\": \"event_Dl7EROJFxrxedlePBGWgw\", \"previous_item_id\": \"item_Dl7EPOUuEFzNTas5oc6Cn\", \"item\": {\"id\": \"item_Dl7EPSRodDdM0w6iJ83Yn\", \"type\": \"message\", \"status\": \"completed\", \"role\": \"assistant\", \"content\": [{\"type\": \"output_audio\", \"transcript\": \"No hay una o"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_item.done {\"type\": \"response.output_item.done\", \"event_id\": \"event_Dl7ERcLHgjAXjAWyr2zYJ\", \"response_id\": \"resp_Dl7EPQu150JTuKx1xDUcj\", \"output_index\": 0, \"item\": {\"id\": \"item_Dl7EPSRodDdM0w6iJ83Yn\", \"type\": \"message\", \"status\": \"completed\", \"role\": \"assistant\", \"content\": [{\"type\": \"output_audio\", \"transcrip"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.done {\"type\": \"response.done\", \"event_id\": \"event_Dl7ERUqtdSdvyD09kISmK\", \"response\": {\"object\": \"realtime.response\", \"id\": \"resp_Dl7EPQu150JTuKx1xDUcj\", \"status\": \"completed\", \"status_details\": null, \"output\": [{\"id\": \"item_Dl7EPSRodDdM0w6iJ83Yn\", \"type\": \"message\", \"status\": \"completed\", \"role\": \"assis"}
+{"event": "\ud83d\udcca Service tokens tracked: nova_voice | gpt-realtime-2 | 11237 tokens | $0.006960"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: rate_limits.updated"}
+{"event": "\ud83c\udf99\ufe0f NOVA AUDIO FROM CLIENT: chunk=2801 size=1024B"}
+{"event": "\ud83c\udf99\ufe0f NOVA AUDIO FROM CLIENT: chunk=2901 size=1024B"}
+{"event": "\ud83c\udf99\ufe0f NOVA AUDIO FROM CLIENT: chunk=3001 size=1024B"}
+{"event": "\ud83c\udf99\ufe0f NOVA AUDIO FROM CLIENT: chunk=3101 size=1024B"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: input_audio_buffer.speech_started"}
+{"event": "\ud83c\udf99\ufe0f NOVA AUDIO FROM CLIENT: chunk=3201 size=1024B"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: conversation.item.added"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: conversation.item.done {\"type\": \"conversation.item.done\", \"event_id\": \"event_Dl7EWwHKO79ohiLqkYeeJ\", \"previous_item_id\": \"item_Dl7EPSRodDdM0w6iJ83Yn\", \"item\": {\"id\": \"item_Dl7EVxfasgWHdzSND5az4\", \"type\": \"message\", \"status\": \"completed\", \"role\": \"user\", \"content\": [{\"type\": \"input_audio\", \"transcript\": null}]}}"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.created"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: input_audio_buffer.speech_started"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.done {\"type\": \"response.done\", \"event_id\": \"event_Dl7EWqHwJZBnIxvFNWgIk\", \"response\": {\"object\": \"realtime.response\", \"id\": \"resp_Dl7EWtQSKlpkVmPbysFHG\", \"status\": \"cancelled\", \"status_details\": {\"type\": \"cancelled\", \"reason\": \"turn_detected\"}, \"output\": [], \"conversation_id\": \"conv_Dl7Ds7YWgFfUfLPIXSiVs"}
+{"event": "\ud83d\udcca Service tokens tracked: nova_voice | gpt-realtime-2 | 0 tokens | $0.000000"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: conversation.item.added"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: conversation.item.done {\"type\": \"conversation.item.done\", \"event_id\": \"event_Dl7EWesBuUmZ8LdPJE0vp\", \"previous_item_id\": \"item_Dl7EVxfasgWHdzSND5az4\", \"item\": {\"id\": \"item_Dl7EWtVSzVdIpKbvxujJV\", \"type\": \"message\", \"status\": \"completed\", \"role\": \"user\", \"content\": [{\"type\": \"input_audio\", \"transcript\": null}]}}"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.created"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: input_audio_buffer.speech_started"}
+{"event": "\ud83c\udf99\ufe0f NOVA AUDIO FROM CLIENT: chunk=3301 size=1024B"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.done {\"type\": \"response.done\", \"event_id\": \"event_Dl7EXlWb8Mq0wl2cYO270\", \"response\": {\"object\": \"realtime.response\", \"id\": \"resp_Dl7EWWWk1F9KUqj0X400y\", \"status\": \"cancelled\", \"status_details\": {\"type\": \"cancelled\", \"reason\": \"turn_detected\"}, \"output\": [], \"conversation_id\": \"conv_Dl7Ds7YWgFfUfLPIXSiVs"}
+{"event": "\ud83d\udcca Service tokens tracked: nova_voice | gpt-realtime-2 | 0 tokens | $0.000000"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: conversation.item.added"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: conversation.item.done {\"type\": \"conversation.item.done\", \"event_id\": \"event_Dl7EXhkF4M0khqN8CR9wZ\", \"previous_item_id\": \"item_Dl7EWtVSzVdIpKbvxujJV\", \"item\": {\"id\": \"item_Dl7EXdD80gglmJiYBZJjh\", \"type\": \"message\", \"status\": \"completed\", \"role\": \"user\", \"content\": [{\"type\": \"input_audio\", \"transcript\": null}]}}"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.created"}
+{"event": "\ud83c\udf99\ufe0f NOVA AUDIO FROM CLIENT: chunk=3401 size=1024B"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: input_audio_buffer.speech_started"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.done {\"type\": \"response.done\", \"event_id\": \"event_Dl7EY6e9WwvdSYrrXSwXD\", \"response\": {\"object\": \"realtime.response\", \"id\": \"resp_Dl7EXWF0mCBsB5wNrqCZS\", \"status\": \"cancelled\", \"status_details\": {\"type\": \"cancelled\", \"reason\": \"turn_detected\"}, \"output\": [], \"conversation_id\": \"conv_Dl7Ds7YWgFfUfLPIXSiVs"}
+{"event": "\ud83d\udcca Service tokens tracked: nova_voice | gpt-realtime-2 | 11189 tokens | $0.006735"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: conversation.item.added"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: conversation.item.done {\"type\": \"conversation.item.done\", \"event_id\": \"event_Dl7EZPw3PHk1RYxH3MW5O\", \"previous_item_id\": \"item_Dl7EXdD80gglmJiYBZJjh\", \"item\": {\"id\": \"item_Dl7EYCBjgxtv33QkM7pL1\", \"type\": \"message\", \"status\": \"completed\", \"role\": \"user\", \"content\": [{\"type\": \"input_audio\", \"transcript\": null}]}}"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.created"}
+{"event": "\ud83c\udf99\ufe0f NOVA AUDIO FROM CLIENT: chunk=3501 size=1024B"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_item.added"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: conversation.item.added"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.content_part.added {\"type\": \"response.content_part.added\", \"event_id\": \"event_Dl7EZga2iQzeOwCnSsZAE\", \"response_id\": \"resp_Dl7EZihHRsZTIMOgou3JN\", \"item_id\": \"item_Dl7EZ5hmJm8YE6RXQ6jUa\", \"output_index\": 0, \"content_index\": 0, \"part\": {\"type\": \"audio\", \"transcript\": \"\"}}"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: input_audio_buffer.speech_started"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.done {\"type\": \"response.output_audio.done\", \"event_id\": \"event_Dl7EahzIywQijMRmHSa4H\", \"response_id\": \"resp_Dl7EZihHRsZTIMOgou3JN\", \"item_id\": \"item_Dl7EZ5hmJm8YE6RXQ6jUa\", \"output_index\": 0, \"content_index\": 0}"}
+{"event": "\ud83c\udf99\ufe0f NOVA: Audio response DONE \u2014 sending nova_audio_done to client"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.done {\"type\": \"response.output_audio_transcript.done\", \"event_id\": \"event_Dl7EaagzqrcKXVDApsNdL\", \"response_id\": \"resp_Dl7EZihHRsZTIMOgou3JN\", \"item_id\": \"item_Dl7EZ5hmJm8YE6RXQ6jUa\", \"output_index\": 0, \"content_index\": 0, \"transcript\": \"No hay una orden clara. Decime qu\u00e9\"}"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.content_part.done {\"type\": \"response.content_part.done\", \"event_id\": \"event_Dl7Ea1sbeObytMYdT5Ndy\", \"response_id\": \"resp_Dl7EZihHRsZTIMOgou3JN\", \"item_id\": \"item_Dl7EZ5hmJm8YE6RXQ6jUa\", \"output_index\": 0, \"content_index\": 0, \"part\": {\"type\": \"audio\", \"transcript\": \"No hay una orden clara. Decime qu\u00e9\"}}"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: conversation.item.done {\"type\": \"conversation.item.done\", \"event_id\": \"event_Dl7Eaa6A9wZOe3yEXEwxa\", \"previous_item_id\": \"item_Dl7EYCBjgxtv33QkM7pL1\", \"item\": {\"id\": \"item_Dl7EZ5hmJm8YE6RXQ6jUa\", \"type\": \"message\", \"status\": \"incomplete\", \"role\": \"assistant\", \"content\": [{\"type\": \"output_audio\", \"transcript\": \"No hay una "}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_item.done {\"type\": \"response.output_item.done\", \"event_id\": \"event_Dl7EaFkwZl5P6tt3nsuWZ\", \"response_id\": \"resp_Dl7EZihHRsZTIMOgou3JN\", \"output_index\": 0, \"item\": {\"id\": \"item_Dl7EZ5hmJm8YE6RXQ6jUa\", \"type\": \"message\", \"status\": \"incomplete\", \"role\": \"assistant\", \"content\": [{\"type\": \"output_audio\", \"transcri"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.done {\"type\": \"response.done\", \"event_id\": \"event_Dl7EaDoUpgBEOtrEVJvw4\", \"response\": {\"object\": \"realtime.response\", \"id\": \"resp_Dl7EZihHRsZTIMOgou3JN\", \"status\": \"cancelled\", \"status_details\": {\"type\": \"cancelled\", \"reason\": \"turn_detected\"}, \"output\": [{\"id\": \"item_Dl7EZ5hmJm8YE6RXQ6jUa\", \"type\": \"mes"}
+{"event": "\ud83d\udcca Service tokens tracked: nova_voice | gpt-realtime-2 | 11258 tokens | $0.006841"}
+{"event": "\ud83c\udf99\ufe0f NOVA AUDIO FROM CLIENT: chunk=3601 size=1024B"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: conversation.item.added"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: conversation.item.done {\"type\": \"conversation.item.done\", \"event_id\": \"event_Dl7EajxOlvLKFSy9OBa60\", \"previous_item_id\": \"item_Dl7EZ5hmJm8YE6RXQ6jUa\", \"item\": {\"id\": \"item_Dl7EaVWE3B4aOmB0tHfqX\", \"type\": \"message\", \"status\": \"completed\", \"role\": \"user\", \"content\": [{\"type\": \"input_audio\", \"transcript\": null}]}}"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.created"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: input_audio_buffer.speech_started"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.done {\"type\": \"response.done\", \"event_id\": \"event_Dl7EbJM53VtgrQaoOqjzp\", \"response\": {\"object\": \"realtime.response\", \"id\": \"resp_Dl7EaE15TmGdI19sJWGA1\", \"status\": \"cancelled\", \"status_details\": {\"type\": \"cancelled\", \"reason\": \"turn_detected\"}, \"output\": [], \"conversation_id\": \"conv_Dl7Ds7YWgFfUfLPIXSiVs"}
+{"event": "\ud83d\udcca Service tokens tracked: nova_voice | gpt-realtime-2 | 0 tokens | $0.000000"}
+{"event": "\ud83c\udf99\ufe0f NOVA client_to_openai ERROR: Cannot call \"receive\" once a disconnect message has been received."}
+INFO:     connection closed

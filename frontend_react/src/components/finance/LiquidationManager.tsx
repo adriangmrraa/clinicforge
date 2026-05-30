@@ -13,6 +13,7 @@ import {
   X,
   Loader2,
   Users,
+  Settings,
   CheckCircle2,
   XCircle,
 } from 'lucide-react';
@@ -20,6 +21,7 @@ import { useTranslation } from '../../context/LanguageContext';
 import api from '../../api/axios';
 import GlassCard from '../GlassCard';
 import LiquidationStatusBadge from './LiquidationStatusBadge';
+import CommissionEditor from './CommissionEditor';
 import type { LiquidationRecord, TreatmentGroup, ProfessionalPayout } from '../../types/finance';
 
 interface ProfessionalOption {
@@ -70,6 +72,8 @@ export default function LiquidationManager({ periodStart, periodEnd, formatCurre
   } | null>(null);
   const [emailSending, setEmailSending] = useState(false);
   const [customEmail, setCustomEmail] = useState('');
+
+  const [commissionEditorProf, setCommissionEditorProf] = useState<{ id: number; name: string } | null>(null);
 
   const [professionals, setProfessionals] = useState<ProfessionalOption[]>([]);
   const [professionalFilter, setProfessionalFilter] = useState<number | null>(null);
@@ -169,8 +173,10 @@ export default function LiquidationManager({ periodStart, periodEnd, formatCurre
         treatment_groups: res.data.treatment_groups || [],
         payouts: res.data.payouts || [],
       });
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error fetching liquidation detail:', err);
+      showToast('error', err.response?.data?.detail || 'Error al cargar detalle de liquidación');
+      setExpandedId(null);
     }
   };
 
@@ -445,6 +451,18 @@ export default function LiquidationManager({ periodStart, periodEnd, formatCurre
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-center gap-1" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              onClick={() =>
+                                setCommissionEditorProf({
+                                  id: liq.professional_id,
+                                  name: liq.professional_name,
+                                })
+                              }
+                              className="p-1.5 hover:bg-amber-500/10 rounded-lg text-white/40 hover:text-amber-400 transition-colors"
+                              title={t('commissions.title')}
+                            >
+                              <Settings size={14} />
+                            </button>
                             <button
                               onClick={() => handleExpand(liq.id)}
                               className="p-1.5 hover:bg-white/[0.06] rounded-lg text-white/40 hover:text-white/70 transition-colors"
@@ -824,6 +842,19 @@ function TreatmentGroupDetail({ group, formatCurrency }: { group: TreatmentGroup
             </div>
           ))}
         </div>
+      )}
+
+      {/* Commission Editor Modal */}
+      {commissionEditorProf && (
+        <CommissionEditor
+          professionalId={commissionEditorProf.id}
+          professionalName={commissionEditorProf.name}
+          onClose={() => setCommissionEditorProf(null)}
+          onSuccess={() => {
+            setCommissionEditorProf(null);
+            fetchLiquidations();
+          }}
+        />
       )}
     </div>
   );

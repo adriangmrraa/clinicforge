@@ -1,0 +1,153 @@
+NFO:orchestrator:Meta Direct routers registered (webhook + credentials sync + connect/disconnect)
+INFO:jobs:✅ Job de recordatorios importado correctamente
+INFO:jobs:✅ Job de seguimiento post-atención importado correctamente
+INFO:jobs.scheduler:📋 Job registrado: check_lead_recovery cada 900s
+INFO:jobs:✅ Job de recuperación de leads importado correctamente
+INFO:jobs.scheduler:📋 Job registrado: send_morning_summary cada 3600s
+INFO:jobs:✅ Job de resumen matutino Nova importado correctamente
+INFO:jobs.scheduler:📋 Job registrado: evaluate_smart_alerts cada 14400s
+INFO:jobs:✅ Job de alertas inteligentes importado correctamente
+INFO:jobs:✅ Job de expiración de seña importado correctamente
+INFO:jobs.scheduler:📋 Job registrado: process_pending_executions cada 300s
+INFO:jobs.scheduler:📋 Job registrado: check_inactive_patients cada 86400s
+INFO:jobs.scheduler:📋 Job registrado: daily_reset_counters cada 86400s
+INFO:jobs.scheduler:📋 Job registrado: check_appointment_reminders cada 86400s
+INFO:jobs.scheduler:📋 Job registrado: check_leads_without_booking cada 1800s
+INFO:jobs:✅ Job de playbook executor importado correctamente
+INFO:jobs.scheduler:📋 Job registrado: evaluate_business_insights cada 43200s
+INFO:jobs:✅ Job de business insights importado correctamente
+INFO:jobs.scheduler:📋 Job registrado: run_weekly_backup cada 604800s
+INFO:jobs:✅ Job de backup semanal importado correctamente
+INFO:orchestrator:✅ Rutas de jobs programados incluidas
+INFO:orchestrator:✅ AI Engine health check router registered
+INFO:orchestrator:✅ Google Auth router registered successfully
+INFO:orchestrator:✅ Google Ads router registered successfully
+INFO:orchestrator:✅ Leads router registered successfully
+INFO:orchestrator:✅ Metrics router registered successfully
+INFO:orchestrator:nova_routes_registered
+INFO:orchestrator:✅ Digital Records router registered
+INFO:orchestrator:✅ Backup & Restore router registered
+INFO:orchestrator:✅ Playbook Engine V2 router registered
+INFO:orchestrator:✅ YCloud Sync router registered
+INFO:dashboard:✅ Dashboard CEO Simple inicializado correctamente
+INFO:dashboard:   📊 URL: https://app.dralauradelgado.com/dashboard/status
+INFO:dashboard:   🔐 Acceso: Cualquier usuario autenticado en ClinicForge
+INFO:orchestrator:✅ Dashboard CEO (Tokens y Métricas) registrado: /dashboard/status, /dashboard/api/metrics
+INFO:orchestrator:✅ Static mount /uploads -> /app/uploads
+INFO:orchestrator:✅ Static mount /media -> /app/media
+INFO:     Started server process [1]
+INFO:     Waiting for application startup.
+{"event": "Sentry disabled (SENTRY_DSN not set)"}
+{"event": "\ud83d\ude80 Iniciando orquestador dental..."}
+{"event": "DB pool initialized: min=10 max=40 command_timeout=60s (pgvector codec registration enabled)"}
+{"event": "\u2705 Base de datos conectada. Version: PostgreSQL 17.9 (Debian 17.9-1.pgdg12+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 12.2.0-14+deb12u1) 12.2.0, 64-bit"}
+{"event": "\ud83d\udce6 MODEL_PRICING v2 loaded \u2014 OpenAI + DeepSeek models"}
+{"event": "\u2705 Tabla de token_usage verificada/creada"}
+{"event": "\u2705 Tabla de system_config verificada/creada"}
+{"event": "\u2705 Configuraci\u00f3n por defecto inicializada"}
+{"event": "\u2705 Dashboard: token_tracker y config_manager inicializados"}
+{"event": "\u2705 Sistema de jobs programados activado (reemplaza AutomationService)"}
+{"event": "\ud83d\ude80 Iniciando JobScheduler..."}
+{"event": "\u2705 JobScheduler iniciado con 12 jobs"}
+{"event": "\u2705 JobScheduler iniciado correctamente"}
+{"event": "\u23f0 send_appointment_reminders programado para 2026-05-30 10:00:00 (en 26928 segundos)"}
+{"event": "\u23f0 send_post_treatment_followups programado para 2026-05-30 11:00:00 (en 30528 segundos)"}
+{"event": "[weekly_backup] Waiting for Telegram bots to initialize..."}
+{"event": "Lead recovery rules seeded for 1 tenants"}
+{"event": "nova_daily_analysis_started"}
+{"event": "rag_all_embedding_sync_started"}
+{"event": "\ud83d\udcda sync_all_tenants_faq_embeddings: starting..."}
+{"event": "pgvector extension detected \u2014 RAG semantic search enabled"}
+{"event": "\ud83e\udd16 No Telegram bots configured"}
+{"event": "\ud83e\udd16 Telegram bots initialized"}
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+{"event": "\ud83d\udcda sync_all_tenants_faq_embeddings: processing 1 tenants"}
+{"event": "\ud83d\udcda sync_tenant_faq_embeddings(tenant=1): FAQs=88, existing embeddings=88"}
+{"event": "\ud83d\udcda sync_tenant_faq_embeddings(tenant=1): 0 FAQs need embedding"}
+{"event": "\ud83d\udcda sync_tenant_faq_embeddings(tenant=1): created 0, failed 0"}
+{"event": "\ud83d\udcda sync_all_tenants_faq_embeddings: COMPLETE \u2014 0 embeddings created total"}
+{"event": "rag_all_embedding_sync_complete: 0 embeddings created"}
+{"event": "nova_analysis: tenant 1 using model 'gpt-5.4-mini' (JSON mode enabled)"}
+{"event": "\ud83d\udcca Service tokens tracked: nova_daily_analysis | gpt-5.4-mini | 708 tokens | $0.000856"}
+{"event": "nova_analysis_tenant_1_cached (Cl\u00ednica Dra. Laura Delgado)"}
+{"event": "nova_analysis: tenant 1 using model 'gpt-5.4-mini' (JSON mode enabled)"}
+{"event": "[weekly_backup] Waiting for Telegram bots to initialize..."}
+{"event": "\ud83d\udcca Service tokens tracked: nova_daily_analysis | gpt-5.4-mini | 768 tokens | $0.000974"}
+{"event": "nova_analysis_consolidated_cached"}
+INFO:     10.11.0.23:45816 - "WebSocket /socket.io/?EIO=4&transport=websocket" [accepted]
+INFO:     connection open
+{"event": "\ud83d\udd0c Client connected: ErxQl_Ez5YTMBYcPAAAB \u2192 room tenant:1"}
+{"event": "\ud83d\udd0d ROI Debug: Tenant=1, TokenFound=True, Range=lifetime"}
+{"event": "[weekly_backup] Waiting for Telegram bots to initialize..."}
+INFO:     connection closed
+{"event": "\ud83d\udd0c Client disconnected: ErxQl_Ez5YTMBYcPAAAB"}
+INFO:     10.11.0.23:53914 - "WebSocket /socket.io/?EIO=4&transport=websocket" [accepted]
+INFO:     connection open
+{"event": "\ud83d\udd0d ROI Debug: Tenant=1, TokenFound=True, Range=lifetime"}
+{"event": "\ud83d\udd0c Client connected: pKC1DRj1G3D_TCWvAAAD \u2192 room tenant:1"}
+{"event": "nova_session_created: session=21d0da5c-67fc-4277-962b-bc0322c0f4be user=pruebaslaura@gmail.com page=dashboard tenant=1"}
+{"event": "[weekly_backup] Waiting for Telegram bots to initialize..."}
+INFO:     10.0.2.10:47740 - "WebSocket /voice?tenant_id=1&token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiZTM1ZjBjYzItZjFkNC00YmNjLTk0NzQtOGE3NmM3YWM5NjE1IiwiZW1haWwiOiJwcnVlYmFzbGF1cmFAZ21haWwuY29tIiwicm9sZSI6ImNlbyIsInRlbmFudF9pZCI6MSwicHJvZmVzc2lvbmFsX2lkIjpudWxsLCJleHAiOjE3ODA3MDY1MjEsImp0aSI6IjQ0OWVmZjRjLTgyYzYtNDNiZC05YjZlLTBhZDVlOWYwZDlmZCJ9.IVDWXPlkBurOE4bGxddmZC2FQSVldvwa2XnXxoFJsIo&page=dashboard" 403
+INFO:     connection rejected (403 Forbidden)
+INFO:     connection closed
+{"event": "[weekly_backup] Waiting for Telegram bots to initialize..."}
+{"event": "[weekly_backup] Waiting for Telegram bots to initialize..."}
+{"event": "[weekly_backup] Waiting for Telegram bots to initialize..."}
+INFO:     connection closed
+{"event": "\ud83d\udd0c Client disconnected: pKC1DRj1G3D_TCWvAAAD"}
+INFO:     10.11.0.23:34912 - "WebSocket /socket.io/?EIO=4&transport=websocket" [accepted]
+INFO:     connection open
+{"event": "\ud83d\udd0c Client connected: QtJ9_2uQDJUTVjeyAAAF \u2192 room tenant:1"}
+{"event": "\ud83d\udd0d ROI Debug: Tenant=1, TokenFound=True, Range=lifetime"}
+{"event": "[weekly_backup] Waiting for Telegram bots to initialize..."}
+{"event": "[weekly_backup] Waiting for Telegram bots to initialize..."}
+{"event": "[weekly_backup] Waiting for Telegram bots to initialize..."}
+{"event": "[weekly_backup] Waiting for Telegram bots to initialize..."}
+{"event": "[weekly_backup] Waiting for Telegram bots to initialize..."}
+{"event": "[weekly_backup] No active Telegram bots after waiting, skipping"}
+{"event": "\ud83d\udd0d ROI Debug: Tenant=1, TokenFound=True, Range=lifetime"}
+INFO:     10.11.0.23:43714 - "WebSocket /socket.io/?EIO=4&transport=websocket" [accepted]
+INFO:     connection open
+{"event": "\ud83d\udd0c Client connected: JX9iBDCESV4Mfq2AAAAH \u2192 room tenant:1"}
+INFO:     10.0.2.10:48888 - "WebSocket /public/nova/voice?tenant_id=1&token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiZTM1ZjBjYzItZjFkNC00YmNjLTk0NzQtOGE3NmM3YWM5NjE1IiwiZW1haWwiOiJwcnVlYmFzbGF1cmFAZ21haWwuY29tIiwicm9sZSI6ImNlbyIsInRlbmFudF9pZCI6MSwicHJvZmVzc2lvbmFsX2lkIjpudWxsLCJleHAiOjE3ODA3MTMxMzUsImp0aSI6IjU1NzMwYzkzLTY2NzEtNDM5ZS1hZGI5LThiMzk0ZGUxMjNkYiJ9.Be8ZZCSFsjU6YqBBMqlGTDbMBUOl66h4kqtCcsSV9JI&page=dashboard" [accepted]
+INFO:     connection open
+{"event": "\ud83c\udf99\ufe0f NOVA DIRECT: session=direct_1_1780108344 tenant=1 role=ceo page=dashboard prompt=13421 chars"}
+{"event": "\ud83c\udf99\ufe0f NOVA: Model from DB: 'gpt-realtime-2' for tenant=1"}
+{"event": "\ud83c\udf99\ufe0f NOVA: Connecting to OpenAI Realtime: model=gpt-realtime-2 tenant=1 page=dashboard"}
+{"event": "\ud83c\udf99\ufe0f NOVA: System prompt length: 15387 chars, tools: 35"}
+{"event": "\ud83c\udf99\ufe0f NOVA: session.update sent with 35 tools: ['buscar_paciente', 'ver_paciente', 'registrar_paciente', 'convertir_lead', 'actualizar_paciente', 'historial_clinico', 'ver_agenda', 'proximo_paciente', 'verificar_disponibilidad', 'agendar_turno', 'cancelar_turno', 'confirmar_turnos', 'listar_tratamientos', 'registrar_pago', 'facturacion_pendiente', 'resumen_semana', 'rendimiento_profesional', 'ir_a_pagina', 'ir_a_paciente', 'listar_profesionales', 'reprogramar_turno', 'ver_chats_recientes', 'enviar_mensaje', 'ver_estadisticas', 'bloquear_agenda', 'eliminar_paciente', 'cambiar_estado_turno', 'guardar_anamnesis', 'ver_anamnesis', 'enviar_anamnesis', 'ver_odontograma', 'modificar_odontograma', 'guardar_memoria', 'buscar_memorias', 'herramienta_avanzada']"}
+{"event": "\ud83c\udf99\ufe0f NOVA: prompt=15387 chars, output_modalities=[audio], voice=coral"}
+{"event": "\ud83c\udf99\ufe0f NOVA: Waiting for OpenAI events..."}
+{"event": "\ud83c\udf99\ufe0f NOVA: Starting bidirectional bridge..."}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: session.created {\"type\": \"session.created\", \"event_id\": \"event_Dl3mrulW4M7QdxLno0xLp\", \"session\": {\"type\": \"realtime\", \"object\": \"realtime.session\", \"id\": \"sess_Dl3mrR49zji1w8RRYvKUM\", \"model\": \"gpt-realtime-2\", \"output_modalities\": [\"audio\"], \"instructions\": \"Your knowledge cutoff is 2023-10. You are a helpful, wi"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: error {\"type\": \"error\", \"event_id\": \"event_Dl3msjA8je9aI5nYcSYhn\", \"error\": {\"type\": \"invalid_request_error\", \"code\": \"unknown_parameter\", \"message\": \"Unknown parameter: 'session.input_audio_format'.\", \"param\": \"session.input_audio_format\", \"event_id\": null}}"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: input_audio_buffer.speech_started"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: conversation.item.added"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: conversation.item.done {\"type\": \"conversation.item.done\", \"event_id\": \"event_Dl3myJnlwopVBUSgr9pMg\", \"previous_item_id\": null, \"item\": {\"id\": \"item_Dl3mtd1H8HF8MDlmwRZjD\", \"type\": \"message\", \"status\": \"completed\", \"role\": \"user\", \"content\": [{\"type\": \"input_audio\", \"transcript\": null}]}}"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.created"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_item.added"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: conversation.item.added"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.content_part.added {\"type\": \"response.content_part.added\", \"event_id\": \"event_Dl3mz7tn17KCZpKAr642I\", \"response_id\": \"resp_Dl3my8R0QuYLt1Xx5WPWw\", \"item_id\": \"item_Dl3mytvmIG0lLclJ42eZB\", \"output_index\": 0, \"content_index\": 0, \"part\": {\"type\": \"audio\", \"transcript\": \"\"}}"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+{"event": "\ud83c\udf99\ufe0f NOVA EVENT: response.output_audio_transcript.delta"}
+Instalando extensiones PostgreSQL...
+  Extension install skipped (connection failed)
+Verificando estado de migraciones...
+DB_ACTION=NORMAL
+Aplicando migraciones incrementales...
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+Migraciones aplicadas.
+Aplicando patches de schema (IF NOT EXISTS)...
+  Patch skip: cannot cast type bytea to vector
+LINE 1: ...COLUMN embedding TYPE vector(1536) USING embedding::vector(1...
+                                                             ^
+
+  Patch skip: cannot cast type bytea to vector
+LINE 1: ...COLUMN embedding TYPE vector(1536) USING embedding::vector(1...
