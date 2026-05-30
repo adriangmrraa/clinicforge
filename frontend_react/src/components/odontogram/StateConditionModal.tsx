@@ -14,8 +14,8 @@ interface StateConditionModalProps {
 
 const CONDITION_COLORS: Record<DentalCondition, string> = {
   bueno: 'bg-green-500/20 border-green-500/50 text-green-400',
-  malo: 'bg-cyan-500/20 border-cyan-500/50 text-cyan-400',
-  indefinido: 'bg-gray-500/20 border-gray-500/50 text-gray-400',
+  malo: 'bg-red-500/20 border-red-500/50 text-red-400',
+  indefinido: 'bg-yellow-500/20 border-yellow-500/50 text-yellow-400',
 };
 
 const DENTAL_PRESETS = [
