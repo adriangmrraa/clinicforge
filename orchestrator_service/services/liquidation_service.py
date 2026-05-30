@@ -61,7 +61,7 @@ class LiquidationService:
                 total_billed, total_paid, total_pending,
                 commission_pct, commission_amount, payout_amount,
                 status, generated_by, notes
-            ) VALUES ($1, $2, $3, $4, 0, 0, 0, 0, 0, 0, 'generated', 'system', '{}')
+            ) VALUES ($1::int, $2::int, $3::date, $4::date, 0, 0, 0, 0, 0, 0, 'generated', 'system', '{}')
             ON CONFLICT (tenant_id, professional_id, period_start, period_end)
             DO NOTHING
             RETURNING id
@@ -124,7 +124,7 @@ class LiquidationService:
                     total_billed, total_paid, total_pending,
                     commission_pct, commission_amount, payout_amount,
                     status, generated_by, notes
-                ) VALUES ($1, $2, $3, $4, 0, 0, 0, 0, 0, 0, 'generated', 'system', '{}')
+                ) VALUES ($1::int, $2::int, $3::date, $4::date, 0, 0, 0, 0, 0, 0, 'generated', 'system', '{}')
                 RETURNING id
                 """,
                 tenant_id,
@@ -558,7 +558,7 @@ class LiquidationService:
             SELECT id, amount, payment_method, payment_date,
                    reference_number, notes, created_at
             FROM professional_payouts
-            WHERE liquidation_id = $1 AND tenant_id = $2
+            WHERE liquidation_record_id = $1 AND tenant_id = $2
             ORDER BY payment_date DESC
             """,
             liquidation_id,

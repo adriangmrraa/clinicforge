@@ -180,10 +180,11 @@ export default function LiquidationManager({ periodStart, periodEnd, formatCurre
     }
   };
 
-  const handleStatusUpdate = async (id: string, newStatus: 'approved' | 'paid') => {
+  const handleStatusUpdate = async (id: string, newStatus: 'approve' | 'paid') => {
     setUpdating(id);
+    const backendStatus = newStatus === 'approve' ? 'approved' : newStatus;
     try {
-      await api.patch(`/admin/liquidations/${id}`, { status: newStatus });
+      await api.patch(`/admin/liquidations/${id}`, { status: backendStatus });
       setConfirmAction(null);
       showToast('success', newStatus === 'approved' ? t('liquidation.generated_success') : t('liquidation.status_paid'));
       fetchLiquidations();

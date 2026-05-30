@@ -230,7 +230,6 @@ async def gather_liquidation_pdf_data(
             lr.*,
             p.first_name || ' ' || COALESCE(p.last_name, '') AS professional_full_name,
             p.specialty,
-            p.license_number,
             p.email AS professional_email,
             t.clinic_name,
             t.address AS clinic_address,
@@ -503,7 +502,7 @@ async def gather_liquidation_pdf_data(
             "full_name": (record["professional_full_name"] or "").strip()
             or "Profesional",
             "specialty": record["specialty"] or "",
-            "license_number": record["license_number"] or "",
+            "license_number": "",
             "email": record["professional_email"] or "",
         },
         "period": {

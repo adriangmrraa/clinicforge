@@ -1,56 +1,34 @@
-
-index-DDmUy-9q.js:248 [API] 🔥 Error del servidor: 500 /admin/liquidations/18
-(anonymous) @ index-DDmUy-9q.js:248
-FinancialCommandCenterView-D29uYuDZ.js:1 Error fetching liquidation detail: AxiosError: Request failed with status code 500
-    at gn (index-DDmUy-9q.js:242:10042)
-    at XMLHttpRequest.h (index-DDmUy-9q.js:242:15553)
-we @ FinancialCommandCenterView-D29uYuDZ.js:1
-dentalforgepruebas-bff-service.gvdlcu.easypanel.host/admin/liquidations/18:1  Failed to load resource: the server responded with a status of 400 ()
-FinancialCommandCenterView-D29uYuDZ.js:1 Error updating status: AxiosError: Request failed with status code 400
-    at gn (index-DDmUy-9q.js:242:10042)
-    at XMLHttpRequest.h (index-DDmUy-9q.js:242:15553)
-Oe @ FinancialCommandCenterView-D29uYuDZ.js:1
-dentalforgepruebas-bff-service.gvdlcu.easypanel.host/admin/liquidations/18/pdf:1  Failed to load resource: the server responded with a status of 500 ()
-index-DDmUy-9q.js:248 [API] 🔥 Error del servidor: 500 /admin/liquidations/18/pdf
-(anonymous) @ index-DDmUy-9q.js:248
-FinancialCommandCenterView-D29uYuDZ.js:1 Error downloading PDF: AxiosError: Request failed with status code 500
-    at gn (index-DDmUy-9q.js:242:10042)
-    at XMLHttpRequest.h (index-DDmUy-9q.js:242:15553)
-Me @ FinancialCommandCenterView-D29uYuDZ.js:1
-dentalforgepruebas-bff-service.gvdlcu.easypanel.host/admin/liquidations/18/send-email:1  Failed to load resource: the server responded with a status of 500 ()
-index-DDmUy-9q.js:248 [API] 🔥 Error del servidor: 500 /admin/liquidations/18/send-email
-(anonymous) @ index-DDmUy-9q.js:248
-FinancialCommandCenterView-D29uYuDZ.js:1 Error sending email: AxiosError: Request failed with status code 500
-    at gn (index-DDmUy-9q.js:242:10042)
-    at XMLHttpRequest.h (index-DDmUy-9q.js:242:15553)
-Ie @ FinancialCommandCenterView-D29uYuDZ.js:1
-dentalforgepruebas-bff-service.gvdlcu.easypanel.host/admin/liquidations/18:1  Failed to load resource: the server responded with a status of 500 ()
-index-DDmUy-9q.js:248 [API] 🔥 Error del servidor: 500 /admin/liquidations/18
-(anonymous) @ index-DDmUy-9q.js:248
-FinancialCommandCenterView-D29uYuDZ.js:1 Error fetching liquidation detail: AxiosError: Request failed with status code 500
-    at gn (index-DDmUy-9q.js:242:10042)
-    at XMLHttpRequest.h (index-DDmUy-9q.js:242:15553)
-we @ FinancialCommandCenterView-D29uYuDZ.js:1
-dentalforgepruebas-bff-service.gvdlcu.easypanel.host/admin/liquidations/18:1  Failed to load resource: the server responded with a status of 400 ()
-FinancialCommandCenterView-D29uYuDZ.js:1 Error updating status: AxiosError: Request failed with status code 400
-    at gn (index-DDmUy-9q.js:242:10042)
-    at XMLHttpRequest.h (index-DDmUy-9q.js:242:15553)
-Oe @ FinancialCommandCenterView-D29uYuDZ.js:1
-dentalforgepruebas-bff-service.gvdlcu.easypanel.host/admin/liquidations/18:1  Failed to load resource: the server responded with a status of 400 ()
-FinancialCommandCenterView-D29uYuDZ.js:1 Error updating status: AxiosError: Request failed with status code 400
-    at gn (index-DDmUy-9q.js:242:10042)
-    at XMLHttpRequest.h (index-DDmUy-9q.js:242:15553)
-Oe @ FinancialCommandCenterView-D29uYuDZ.js:1
-dentalforgepruebas-bff-service.gvdlcu.easypanel.host/admin/liquidations/18/pdf:1  Failed to load resource: the server responded with a status of 500 ()
-index-DDmUy-9q.js:248 [API] 🔥 Error del servidor: 500 /admin/liquidations/18/pdf
-(anonymous) @ index-DDmUy-9q.js:248
-FinancialCommandCenterView-D29uYuDZ.js:1 Error downloading PDF: AxiosError: Request failed with status code 500
-    at gn (index-DDmUy-9q.js:242:10042)
-    at XMLHttpRequest.h (index-DDmUy-9q.js:242:15553)
-Me @ FinancialCommandCenterView-D29uYuDZ.js:1
-dentalforgepruebas-bff-service.gvdlcu.easypanel.host/admin/liquidations/18/send-email:1  Failed to load resource: the server responded with a status of 500 ()
-index-DDmUy-9q.js:248 [API] 🔥 Error del servidor: 500 /admin/liquidations/18/send-email
-(anonymous) @ index-DDmUy-9q.js:248
-FinancialCommandCenterView-D29uYuDZ.js:1 Error sending email: AxiosError: Request failed with status code 500
-    at gn (index-DDmUy-9q.js:242:10042)
-    at XMLHttpRequest.h (index-DDmUy-9q.js:242:15553)
+event": "EP-FC-03 OK: count=0"}
+{"event": "\ud83d\udd0c Client connected: WWlf7iK_kV7HyPhJAAAF \u2192 room tenant:1"}
+{"event": "[weekly_backup] Waiting for Telegram bots to initialize..."}
+{"event": "[weekly_backup] No active Telegram bots after waiting, skipping"}
+{"event": "=== EP-FC-02: POST /admin/liquidations/generate-bulk ==="}
+{"event": "EP-FC-02: tenant_id=1, body={\"period_start\":\"2026-05-01\",\"period_end\":\"2026-05-31\"}"}
+{"event": "generate_liquidation: zombie placeholder 26 found for prof 3, period 2026-05-01-2026-05-31. Deleting and regenerating."}
+{"event": "generate_bulk_liquidations: error for professional 3: could not determine data type of parameter $2", "exc_info": ["<class 'asyncpg.exceptions.IndeterminateDatatypeError'>", "IndeterminateDatatypeError('could not determine data type of parameter $2')", "<traceback object at 0x759dc1e90200>"]}
+{"event": "generate_liquidation: zombie placeholder 28 found for prof 4, period 2026-05-01-2026-05-31. Deleting and regenerating."}
+{"event": "generate_bulk_liquidations: error for professional 4: could not determine data type of parameter $2", "exc_info": ["<class 'asyncpg.exceptions.IndeterminateDatatypeError'>", "IndeterminateDatatypeError('could not determine data type of parameter $2')", "<traceback object at 0x759dc1e90180>"]}
+{"event": "generate_liquidation: zombie placeholder 30 found for prof 22, period 2026-05-01-2026-05-31. Deleting and regenerating."}
+{"event": "generate_bulk_liquidations: error for professional 22: could not determine data type of parameter $2", "exc_info": ["<class 'asyncpg.exceptions.IndeterminateDatatypeError'>", "IndeterminateDatatypeError('could not determine data type of parameter $2')", "<traceback object at 0x759dc1e90c80>"]}
+{"event": "EP-FC-02 OK: generated_count=0, skipped_count=0"}
+{"event": "=== EP-FC-03: GET /admin/liquidations ==="}
+{"event": "EP-FC-03: tenant_id=1, professional_id=None, status=None, period_start=2026-05-01, period_end=2026-05-31, page=1, page_size=20"}
+{"event": "EP-FC-03 OK: count=0"}
+{"event": "=== EP-FC-12: GET /admin/liquidations/36/pdf ==="}
+{"event": "EP-FC-12: liquidation_id=36, tenant_id=1"}
+{"event": "EP-FC-12 ERROR: column p.license_number does not exist", "exc_info": ["<class 'asyncpg.exceptions.UndefinedColumnError'>", "UndefinedColumnError('column p.license_number does not exist')", "<traceback object at 0x759dc1e938c0>"]}
+{"event": "=== EP-FC-13: POST /admin/liquidations/36/send-email ==="}
+{"event": "EP-FC-13: liquidation_id=36, tenant_id=1, to_email=gamarraadrian200@gmail.com"}
+{"event": "EP-FC-13 ERROR: column p.license_number does not exist", "exc_info": ["<class 'asyncpg.exceptions.UndefinedColumnError'>", "UndefinedColumnError('column p.license_number does not exist')", "<traceback object at 0x759dc1e9aa40>"]}
+{"event": "=== EP-FC-05: PATCH /admin/liquidations/36 ==="}
+{"event": "EP-FC-05: liquidation_id=36, tenant_id=1, new_status=approve"}
+{"event": "EP-FC-05 INVALID STATUS: approve"}
+{"event": "=== EP-FC-04: GET /admin/liquidations/36 ==="}
+{"event": "EP-FC-04: liquidation_id=36, tenant_id=1"}
+{"event": "EP-FC-04 ERROR: column \"liquidation_id\" does not exist", "exc_info": ["<class 'asyncpg.exceptions.UndefinedColumnError'>", "UndefinedColumnError('column \"liquidation_id\" does not exist')", "<traceback object at 0x759dc1eb4140>"]}
+{"event": "=== EP-FC-04: GET /admin/liquidations/36 ==="}
+{"event": "EP-FC-04: liquidation_id=36, tenant_id=1"}
+{"event": "EP-FC-04 ERROR: column \"liquidation_id\" does not exist", "exc_info": ["<class 'asyncpg.exceptions.UndefinedColumnError'>", "UndefinedColumnError('column \"liquidation_id\" does not exist')", "<traceback object at 0x759dc1ed5ac0>"]}
+{"event": "=== EP-FC-04: GET /admin/liquidations/36 ==="}
+{"event": "EP-FC-04: liquidation_id=36, tenant_id=1"}
+{"event": "EP-FC-04 ERROR: column \"liquidation_id\" does not exist", "exc_info": ["<class 'asyncpg.exceptions.UndefinedColumnError'>", "UndefinedColumnError('column \"liquidation_id\" does not exist')", "<traceback object at 0x759dc1e9bc40>"]}
