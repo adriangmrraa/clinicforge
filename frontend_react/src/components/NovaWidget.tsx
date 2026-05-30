@@ -552,25 +552,31 @@ export const NovaWidget: React.FC = () => {
 
         // --- Shared audio processing callback (resample + PCM16) ---
         let _audioChunkCount = 0;
-        const processAudio = (input: Float32Array) => {
+        let _audioBuffer: number[] = [];
+        const _MIN_AUDIO_SAMPLES = 480; // 20ms at 24000Hz
+        const processAudio = (rawInput: Float32Array) => {
           if (micPausedRef.current) return;
           if (novaPlayingRef.current) return;
           if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
 
-          _audioChunkCount++;
           const ratio = nativeSampleRate / 24000;
-          const newLength = Math.floor(input.length / ratio);
-          const resampled = new Float32Array(newLength);
+          const newLength = Math.floor(rawInput.length / ratio);
+          // Acumular samples resampleados
           for (let i = 0; i < newLength; i++) {
-            resampled[i] = input[Math.floor(i * ratio)];
+            _audioBuffer.push(Math.max(-1, Math.min(1, rawInput[Math.floor(i * ratio)])));
           }
-          const pcm16 = new Int16Array(resampled.length);
-          for (let i = 0; i < resampled.length; i++) {
-            pcm16[i] = Math.max(-32768, Math.min(32767, resampled[i] * 32768));
+          // Solo enviar cuando tengamos al menos 20ms acumulados
+          if (_audioBuffer.length < _MIN_AUDIO_SAMPLES) return;
+          _audioChunkCount++;
+          const pcm16 = new Int16Array(_audioBuffer.length);
+          for (let i = 0; i < _audioBuffer.length; i++) {
+            pcm16[i] = Math.max(-32768, Math.min(32767, _audioBuffer[i] * 32768));
           }
+          _audioBuffer = [];
           wsRef.current!.send(pcm16.buffer);
           if (_audioChunkCount % 100 === 0) {
-            console.log(`[Nova Voice] Audio sent: ${_audioChunkCount} chunks, sampleRate=${nativeSampleRate}, frameLen=${input.length}, pcmLen=${pcm16.length}, avgLevel=${(input.reduce((a,b)=>a+Math.abs(b),0)/input.length).toFixed(5)}`);
+            const avg = pcm16.reduce((a,b)=>a+Math.abs(b),0) / pcm16.length;
+            console.log(`[Nova Voice] Audio sent: ${_audioChunkCount} chunks, pcmLen=${pcm16.length}, avgLevel=${avg.toFixed(2)}`);
           }
         };
 
@@ -583,6 +589,8 @@ export const NovaWidget: React.FC = () => {
                 constructor() {
                   super();
                   this._ratio = sampleRate / 24000;
+                  this._buffer = [];
+                  this._MIN_SAMPLES = 480; // 20ms at 24000Hz
                 }
                 process(inputs) {
                   const input = inputs[0];
@@ -590,13 +598,21 @@ export const NovaWidget: React.FC = () => {
                   const samples = input[0];
                   const ratio = this._ratio;
                   const newLength = Math.floor(samples.length / ratio);
-                  const pcm16 = new Int16Array(newLength);
+                  // Acumular samples hasta tener al menos 20ms
                   for (let i = 0; i < newLength; i++) {
-                    const s = samples[Math.floor(i * ratio)];
-                    pcm16[i] = Math.max(-32768, Math.min(32767, s * 32768));
+                    const s = Math.max(-1, Math.min(1, samples[Math.floor(i * ratio)]));
+                    this._buffer.push(s);
                   }
-                  const buf = pcm16.buffer.slice(0);
-                  this.port.postMessage(buf, [buf]);
+                  if (this._buffer.length >= this._MIN_SAMPLES) {
+                    const len = this._buffer.length;
+                    const pcm16 = new Int16Array(len);
+                    for (let i = 0; i < len; i++) {
+                      pcm16[i] = Math.max(-32768, Math.min(32767, this._buffer[i] * 32768));
+                    }
+                    this._buffer = [];
+                    const buf = pcm16.buffer.slice(0);
+                    this.port.postMessage(buf, [buf]);
+                  }
                   return true;
                 }
               }
