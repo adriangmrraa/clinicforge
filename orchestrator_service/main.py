@@ -12142,7 +12142,6 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
                         "session": {
                             "type": "realtime",
                             "instructions": config.get("system_prompt", ""),
-                            "voice": _nova_voice,
                             "output_modalities": ["audio"],
                             "audio": {
                                 "input": {
