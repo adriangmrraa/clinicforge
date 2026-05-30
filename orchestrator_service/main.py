@@ -12101,8 +12101,8 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
         import websockets
 
         api_key = os.getenv("OPENAI_API_KEY")
-        nova_voice_model = "gpt-realtime-2"
         tenant_id_nova = config.get("tenant_id", 1)
+        nova_voice_model = os.getenv("NOVA_VOICE_MODEL") or "gpt-realtime-2"
         try:
             _voice_model_row = await db.pool.fetchrow(
                 "SELECT value FROM system_config WHERE key = 'MODEL_NOVA_VOICE' AND tenant_id = $1",
@@ -12115,7 +12115,7 @@ async def _nova_realtime_handler(websocket: WebSocket, session_id: str):
                 )
             else:
                 logger.info(
-                    f"🎙️ NOVA: No model in DB, using default: '{nova_voice_model}'"
+                    f"🎙️ NOVA: No model in DB, using env/fallback: '{nova_voice_model}'"
                 )
         except Exception as model_err:
             logger.error(f"🎙️ NOVA MODEL ERROR: {model_err}")
