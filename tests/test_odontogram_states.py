@@ -115,7 +115,7 @@ class TestResolvePrintColor:
         result = resolve_print_color("caries")
         assert "fill" in result
         assert "stroke" in result
-        assert result["stroke"] == "#78350f"
+        assert result["stroke"] == "#991b1b"
 
     def test_custom_color_override(self):
         result = resolve_print_color("caries", "#ff0000")
