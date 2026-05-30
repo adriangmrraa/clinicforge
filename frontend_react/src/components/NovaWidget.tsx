@@ -190,6 +190,7 @@ export const NovaWidget: React.FC = () => {
   const novaPlayingWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const micPausedWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const transcriptBufferRef = useRef('');
+  const userDisabledMicRef = useRef(false);
   const sedeDropdownRef = useRef<HTMLDivElement>(null);
 
   const isCeo = user?.role === 'ceo';
@@ -558,18 +559,18 @@ export const NovaWidget: React.FC = () => {
             return;
           }
 
-          // Noise gate: skip silent frames (volume below threshold)
+          // Noise gate: skip silent frames
           let sum = 0;
           for (let i = 0; i < input.length; i++) {
             sum += Math.abs(input[i]);
           }
           const avg = sum / input.length;
-          if (avg < 0.008) {
+          if (avg < 0.004) {
             return;  // Silencio — no enviar
           }
 
           // Normalize: boost quiet speech, cap loud noise
-          const gain = 1.5;
+          const gain = 2.0;
           const ratio = nativeSampleRate / 24000;
           const newLength = Math.floor(input.length / ratio);
           const resampled = new Float32Array(newLength);
@@ -593,8 +594,8 @@ export const NovaWidget: React.FC = () => {
                 constructor() {
                   super();
                   this._ratio = sampleRate / 24000;
-                  this._gateThreshold = 0.008;
-                  this._gain = 1.5;
+                  this._gateThreshold = 0.004;
+                  this._gain = 2.0;
                 }
                 process(inputs) {
                   const input = inputs[0];
@@ -790,8 +791,10 @@ export const NovaWidget: React.FC = () => {
 
   const toggleVoice = () => {
     if (voiceActive) {
+      userDisabledMicRef.current = true;
       stopRealtimeAudio();
     } else {
+      userDisabledMicRef.current = false;
       startVoice();
     }
   };
@@ -818,7 +821,7 @@ export const NovaWidget: React.FC = () => {
 
   // Auto-start voice when widget opens, cleanup on close
   useEffect(() => {
-    if (isOpen && !voiceActive) {
+    if (isOpen && !voiceActive && !userDisabledMicRef.current) {
       const t = setTimeout(() => startVoice(), 500);
       return () => clearTimeout(t);
     }
