@@ -16,6 +16,13 @@ for ext in ['pg_trgm', 'vector']:
         print(f'  Extension {ext}: OK')
     except Exception as e:
         print(f'  Extension {ext}: not available ({e})')
+
+# Fix collation version mismatch (idempotent — no-op if versions match)
+try:
+    cur.execute("ALTER DATABASE postgres REFRESH COLLATION VERSION")
+    print('  Collation version: refreshed')
+except Exception as e:
+    print(f'  Collation version: skipped ({e})')
 conn.close()
 " 2>/dev/null || echo "  Extension install skipped (connection failed)"
 

@@ -16,6 +16,8 @@ depends_on = None
 
 
 def upgrade():
+    # Fix collation version mismatch (idempotent — no-op if versions match)
+    op.execute("ALTER DATABASE postgres REFRESH COLLATION VERSION")
     op.execute(
         "CREATE INDEX IF NOT EXISTS idx_insurance_provider_name_trgm "
         "ON tenant_insurance_providers USING gin(provider_name gin_trgm_ops)"
