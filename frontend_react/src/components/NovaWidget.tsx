@@ -190,6 +190,7 @@ export const NovaWidget: React.FC = () => {
   const novaPlayingWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const micPausedWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const transcriptBufferRef = useRef('');
+  const assistantMsgIdRef = useRef<string | null>(null);
   const userDisabledMicRef = useRef(false);
   const sedeDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -661,7 +662,7 @@ export const NovaWidget: React.FC = () => {
           const msg = JSON.parse(evt.data as string);
           console.log('[Nova Voice] Event:', msg.type, 'novaPlaying:', novaPlayingRef.current, 'state:', voiceState);
 
-          // Acumular transcript de assistant
+          // Transcript en vivo de assistant
           if (msg.type === 'transcript') {
             if (msg.role === 'user') {
               transcriptBufferRef.current = '';
@@ -670,6 +671,22 @@ export const NovaWidget: React.FC = () => {
               }]);
             } else if (msg.role === 'assistant') {
               transcriptBufferRef.current += msg.text;
+              // Mostrar en vivo en el chat actualizando el último mensaje de assistant
+              const currentId = assistantMsgIdRef.current;
+              setMessages(prev => {
+                const last = prev[prev.length - 1];
+                if (last && last.role === 'assistant' && currentId && last.id === currentId) {
+                  const updated = [...prev];
+                  updated[updated.length - 1] = { ...last, text: transcriptBufferRef.current };
+                  return updated;
+                } else {
+                  const newId = msgId();
+                  assistantMsgIdRef.current = newId;
+                  return [...prev, {
+                    id: newId, role: 'assistant', text: transcriptBufferRef.current, timestamp: Date.now(),
+                  }];
+                }
+              });
             }
           }
 
@@ -700,11 +717,22 @@ export const NovaWidget: React.FC = () => {
               novaPlayingWatchdogRef.current = null;
             }
             if (transcriptBufferRef.current) {
-              setMessages(prev => [...prev, {
-                id: msgId(), role: 'assistant', text: transcriptBufferRef.current, timestamp: Date.now(),
-              }]);
+              // Actualizar el último mensaje con el texto final si ya existe
+              const currentId = assistantMsgIdRef.current;
+              setMessages(prev => {
+                const last = prev[prev.length - 1];
+                if (last && last.role === 'assistant' && currentId && last.id === currentId) {
+                  const updated = [...prev];
+                  updated[updated.length - 1] = { ...last, text: transcriptBufferRef.current };
+                  return updated;
+                }
+                return [...prev, {
+                  id: msgId(), role: 'assistant', text: transcriptBufferRef.current, timestamp: Date.now(),
+                }];
+              });
               transcriptBufferRef.current = '';
             }
+            assistantMsgIdRef.current = null;
             // Forzar paso a listening — la respuesta terminó
             novaPlayingRef.current = false;
             setIsThinking(false);
@@ -720,11 +748,21 @@ export const NovaWidget: React.FC = () => {
               novaPlayingWatchdogRef.current = null;
             }
             if (transcriptBufferRef.current) {
-              setMessages(prev => [...prev, {
-                id: msgId(), role: 'assistant', text: transcriptBufferRef.current, timestamp: Date.now(),
-              }]);
+              const currentId = assistantMsgIdRef.current;
+              setMessages(prev => {
+                const last = prev[prev.length - 1];
+                if (last && last.role === 'assistant' && currentId && last.id === currentId) {
+                  const updated = [...prev];
+                  updated[updated.length - 1] = { ...last, text: transcriptBufferRef.current };
+                  return updated;
+                }
+                return [...prev, {
+                  id: msgId(), role: 'assistant', text: transcriptBufferRef.current, timestamp: Date.now(),
+                }];
+              });
               transcriptBufferRef.current = '';
             }
+            assistantMsgIdRef.current = null;
             novaPlayingRef.current = false;
             cancelPlayback();
             setIsThinking(false);
