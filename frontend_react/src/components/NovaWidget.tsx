@@ -468,8 +468,11 @@ export const NovaWidget: React.FC = () => {
   }, []);
 
   const cancelPlayback = useCallback(() => {
-    // Don't close the AudioContext — just reset scheduling cursor
-    // Closing it causes issues when the next response comes quickly
+    // Close the playback context to STOP all scheduled audio sources immediately
+    if (playbackCtxRef.current && playbackCtxRef.current.state !== 'closed') {
+      try { playbackCtxRef.current.close(); } catch (_) { /* ignore */ }
+    }
+    playbackCtxRef.current = null;
     nextPlayTimeRef.current = 0;
     novaPlayingRef.current = false;
     // Never override manual mic pause from here
@@ -559,24 +562,11 @@ export const NovaWidget: React.FC = () => {
             return;
           }
 
-          // Noise gate: skip silent frames
-          let sum = 0;
-          for (let i = 0; i < input.length; i++) {
-            sum += Math.abs(input[i]);
-          }
-          const avg = sum / input.length;
-          if (avg < 0.004) {
-            return;  // Silencio — no enviar
-          }
-
-          // Normalize: boost quiet speech, cap loud noise
-          const gain = 2.0;
           const ratio = nativeSampleRate / 24000;
           const newLength = Math.floor(input.length / ratio);
           const resampled = new Float32Array(newLength);
           for (let i = 0; i < newLength; i++) {
-            const val = input[Math.floor(i * ratio)] * gain;
-            resampled[i] = Math.max(-0.95, Math.min(0.95, val));
+            resampled[i] = input[Math.floor(i * ratio)];
           }
           const pcm16 = new Int16Array(resampled.length);
           for (let i = 0; i < resampled.length; i++) {
@@ -594,25 +584,16 @@ export const NovaWidget: React.FC = () => {
                 constructor() {
                   super();
                   this._ratio = sampleRate / 24000;
-                  this._gateThreshold = 0.004;
-                  this._gain = 2.0;
                 }
                 process(inputs) {
                   const input = inputs[0];
                   if (!input || !input[0] || !input[0].length) return true;
                   const samples = input[0];
-                  // Noise gate
-                  let sum = 0;
-                  for (let i = 0; i < samples.length; i++) {
-                    sum += Math.abs(samples[i]);
-                  }
-                  if (sum / samples.length < this._gateThreshold) return true;
                   const ratio = this._ratio;
-                  const gain = this._gain;
                   const newLength = Math.floor(samples.length / ratio);
                   const pcm16 = new Int16Array(newLength);
                   for (let i = 0; i < newLength; i++) {
-                    const s = Math.max(-0.95, Math.min(0.95, samples[Math.floor(i * ratio)] * gain));
+                    const s = samples[Math.floor(i * ratio)];
                     pcm16[i] = Math.max(-32768, Math.min(32767, s * 32768));
                   }
                   const buf = pcm16.buffer.slice(0);
