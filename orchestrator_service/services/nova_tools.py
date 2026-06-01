@@ -4266,7 +4266,36 @@ async def _agendar_turno(args: Dict, tenant_id: int) -> str:
                 f"_agendar_turno: derivation rules skipped: {_der_err}"
             )
 
-        # 1b. Fallback: first active professional in tenant
+        # 1b. Fallback: professionals assigned to this treatment via treatment_type_professionals
+        if not resolved_prof_id:
+            try:
+                prof_row = await db.pool.fetchrow(
+                    """
+                    SELECT p.id
+                    FROM professionals p
+                    JOIN treatment_type_professionals ttp ON ttp.professional_id = p.id
+                    JOIN treatment_types tt ON tt.id = ttp.treatment_type_id
+                    LEFT JOIN users u ON p.user_id = u.id
+                    WHERE p.tenant_id = $1 AND p.is_active = true
+                      AND tt.tenant_id = $1 AND tt.code = $2 AND tt.is_active = true
+                      AND (p.user_id IS NULL OR (u.status = 'active' AND u.role IN ('professional', 'ceo')))
+                    ORDER BY p.id ASC
+                    LIMIT 1
+                    """,
+                    tenant_id,
+                    treatment_type,
+                )
+                if prof_row:
+                    resolved_prof_id = prof_row["id"]
+                    _lg.getLogger("nova_tools").info(
+                        f"_agendar_turno: treatment_type_professionals match for '{treatment_type}' → prof_id={resolved_prof_id}"
+                    )
+            except Exception as _ttp_err:
+                _lg.getLogger("nova_tools").warning(
+                    f"_agendar_turno: treatment_type_professionals lookup failed: {_ttp_err}"
+                )
+
+        # 1c. Fallback final: any active professional
         if not resolved_prof_id:
             try:
                 prof_row = await db.pool.fetchrow(
@@ -4284,7 +4313,7 @@ async def _agendar_turno(args: Dict, tenant_id: int) -> str:
                 if prof_row:
                     resolved_prof_id = prof_row["id"]
                     _lg.getLogger("nova_tools").info(
-                        f"_agendar_turno: no derivation rule, using first active prof_id={resolved_prof_id}"
+                        f"_agendar_turno: no assignment for '{treatment_type}', using first active prof_id={resolved_prof_id}"
                     )
             except Exception as _any_err:
                 _lg.getLogger("nova_tools").warning(
