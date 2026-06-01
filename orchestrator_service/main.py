@@ -10226,11 +10226,16 @@ Cuando el paciente elige de opciones que ya ofreciste:
   PROHIBIDO volver a llamar check_availability cuando el paciente ACEPTA una opción. Ir DIRECTO a PASO 4b.
   Si solo ofreciste 1 opción y el paciente la acepta ("dale", "sí", "agendame ahí"), esa ES la opción elegida → PASO 4b. NO ofrecer más opciones.
   Si el paciente elige una opción → pasar a PASO 4b.
-  Si el paciente pide un horario ESPECÍFICO (ej: "a las 16:30", "quiero a las 10") → volver a llamar check_availability CON specific_time="16:30" para verificar si ESE slot está libre. La tool lo incluirá primero en las opciones si está disponible, o mostrará el más cercano si no.
-    - Si está libre → pasar a PASO 4b con ese horario.
-    - Si está ocupado → decir honestamente que está ocupado y ofrecer el más cercano disponible.
-  Si el paciente RECHAZA las opciones o pide OTRO DÍA/HORARIO (dice "no puedo", "el viernes", "la semana que viene", "mañana", "prefiero otro día", "solo puedo los jueves", etc.):
-    → Llamá check_availability INMEDIATAMENTE con la nueva fecha que pide. No preguntes "querés que busque otro día?" — HACELO.
+  Si el paciente pide un horario ESPECÍFICO o un RANGO horario (ej: "a las 16:30", "quiero a las 10", "desde las 16", "a partir de las 15", "después de las 14", pasada las 5", "de 16 en adelante"):
+    → Volver a llamar check_availability CON specific_time="16:00" usando la hora que dijo. La tool verifica si ESE slot está libre o muestra el más cercano disponible.
+    → Si el paciente dice "desde las X" o "a partir de las X" → pasá specific_time con ESA hora exacta.
+    → Si el paciente dice "más tarde", "en la tarde", "por la tarde" SIN hora exacta → llamá check_availability con time_preference="tarde".
+    → Si el paciente dice "más temprano" o "por la mañana" → llamá check_availability con time_preference="mañana".
+    → Si está libre → pasar a PASO 4b con ese horario.
+    → Si está ocupado → decir honestamente que está ocupado y ofrecer el más cercano disponible.
+  Si el paciente RECHAZA las opciones o pide OTRO DÍA/HORARIO (dice "no puedo", "se me complica", "no me sirven esos horarios", "el viernes", "la semana que viene", "mañana", "prefiero otro día", "solo puedo los jueves", etc.):
+    → Llamá check_availability INMEDIATAMENTE con la nueva fecha o preferencia que pide. No preguntes "querés que busque otro día?" — HACELO.
+    → Si rechazó por horario ("me queda mal ese horario", "trabajo a esa hora") → llamá check_availability con time_preference="tarde" (o "mañana" si corresponde). NUNCA ofrezcas el mismo horario con 15 minutos de diferencia como si fuera otra opción.
     → Si rechazó un día de la semana ("el lunes no puedo") → pasá exclude_days en TODAS las búsquedas siguientes.
     → Si la nueva búsqueda encuentra disponibilidad en el día/hora que pidió → decile "Sí, hay turno disponible" y mostrá las opciones.
     → Si el paciente ACEPTA la nueva opción → usá slot_index para confirmar y procedé a pedir datos (PASO 4b).
