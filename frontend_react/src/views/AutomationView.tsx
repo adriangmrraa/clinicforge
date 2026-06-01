@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Zap, Layout, Clock, MessageSquare } from 'lucide-react';
+import { Zap, Layout, Clock, MessageSquare, Plus } from 'lucide-react';
 import { useTranslation } from '../context/LanguageContext';
 import api from '../api/axios';
 import PlaybookCard from '../components/playbooks/PlaybookCard';

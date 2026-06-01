@@ -1,0 +1,26 @@
+
+﻿
+vendor-react-DlFPfz2e.js:32 ReferenceError: Plus is not defined
+    at vt (AutomationView-BCjJysW6.js:19:8571)
+    at Ri (vendor-react-DlFPfz2e.js:30:16959)
+    at Du (vendor-react-DlFPfz2e.js:32:3134)
+    at kc (vendor-react-DlFPfz2e.js:32:44241)
+    at gc (vendor-react-DlFPfz2e.js:32:39513)
+    at Xd (vendor-react-DlFPfz2e.js:32:39444)
+    at ol (vendor-react-DlFPfz2e.js:32:39302)
+    at Ku (vendor-react-DlFPfz2e.js:32:35719)
+    at mc (vendor-react-DlFPfz2e.js:32:34675)
+    at k (vendor-react-DlFPfz2e.js:17:1562)
+index-CdIbrmNU.js:309 [ErrorBoundary] ReferenceError: Plus is not defined
+    at vt (AutomationView-BCjJysW6.js:19:8571)
+    at Ri (vendor-react-DlFPfz2e.js:30:16959)
+    at Du (vendor-react-DlFPfz2e.js:32:3134)
+    at kc (vendor-react-DlFPfz2e.js:32:44241)
+    at gc (vendor-react-DlFPfz2e.js:32:39513)
+    at Xd (vendor-react-DlFPfz2e.js:32:39444)
+    at ol (vendor-react-DlFPfz2e.js:32:39302)
+    at Ku (vendor-react-DlFPfz2e.js:32:35719)
+    at mc (vendor-react-DlFPfz2e.js:32:34675)
+    at k (vendor-react-DlFPfz2e.js:17:1562)
+ 
+{componentStack: '\n    at vt (https://app.dralauradelgado.com/assets…uradelgado.com/assets/index-CdIbrmNU.js:309:6376)'}
