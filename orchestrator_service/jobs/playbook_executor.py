@@ -545,15 +545,81 @@ Respondé SOLO con el mensaje a enviar, o "NO_ENVIAR" si no corresponde."""
         return False
 
 
+def _format_instructions_text(instructions: dict, instruction_type: str) -> str:
+    """Formatea instrucciones pre/post como texto legible para WhatsApp."""
+    parts = []
+
+    if instruction_type == "pre":
+        title = "📋 Indicaciones pre-tratamiento"
+        days = instructions.get("preparation_days_before")
+        if days:
+            parts.append(f"⏰ Preparación: {days} día(s) antes")
+        fasting = instructions.get("fasting_required")
+        if fasting:
+            hrs = instructions.get("fasting_hours")
+            parts.append(f"🍽️ Ayuno requerido: {'sí' if hrs else ''}{f' ({hrs} horas)' if hrs else ''}")
+        meds_avoid = instructions.get("medications_to_avoid") or []
+        if meds_avoid:
+            parts.append("🚫 Evitar medicación: " + ", ".join(meds_avoid))
+        meds_take = instructions.get("medications_to_take") or []
+        if meds_take:
+            parts.append("💊 Tomar: " + ", ".join(meds_take))
+        bring = instructions.get("what_to_bring") or []
+        if bring:
+            parts.append("🎒 Traer: " + ", ".join(bring))
+        notes = instructions.get("general_notes")
+        if notes:
+            parts.append(f"📝 {notes}")
+
+    elif instruction_type == "post":
+        title = "📋 Indicaciones post-tratamiento"
+        care_days = instructions.get("care_duration_days")
+        if care_days:
+            parts.append(f"⏰ Cuidados por {care_days} día(s)")
+        diet = instructions.get("dietary_restrictions") or []
+        if diet:
+            parts.append("🍽️ Dieta: " + ", ".join(diet))
+        activity = instructions.get("activity_restrictions") or []
+        if activity:
+            parts.append("🚫 Actividades: " + ", ".join(activity))
+        meds_ok = instructions.get("allowed_medications") or []
+        if meds_ok:
+            parts.append("✅ Medicación permitida: " + ", ".join(meds_ok))
+        meds_no = instructions.get("prohibited_medications") or []
+        if meds_no:
+            parts.append("🚫 Evitar: " + ", ".join(meds_no))
+        sutures = instructions.get("sutures_removal_day")
+        if sutures:
+            parts.append(f"🧵 Retiro de puntos: día {sutures}")
+        normal = instructions.get("normal_symptoms") or []
+        if normal:
+            parts.append("✅ Síntomas normales: " + ", ".join(normal))
+        alarm = instructions.get("alarm_symptoms") or []
+        if alarm:
+            parts.append("⚠️ Síntomas de alarma: " + ", ".join(alarm))
+        escalation = instructions.get("escalation_message")
+        if escalation:
+            parts.append(f"📞 {escalation}")
+
+    if not parts:
+        notes = instructions.get("general_notes")
+        if notes:
+            return notes
+        return ""
+
+    return title + "\n\n" + "\n\n".join(parts)
+
+
 async def _action_send_instructions(pool, tenant_id, phone, step, execution) -> bool:
     """Send treatment pre/post instructions."""
     try:
         source = step.get("instruction_source") or "from_treatment"
+        instruction_type = step.get("instruction_type") or "post"
 
         if source == "custom":
             text = step.get("custom_instructions") or ""
         else:
-            # Load from treatment_types.post_instructions
+            # Load from treatment_types
             apt_type = (execution.get("context") or {}).get("appointment_type")
             if not apt_type:
                 if execution.get("appointment_id"):
@@ -562,13 +628,14 @@ async def _action_send_instructions(pool, tenant_id, phone, step, execution) -> 
                         execution["appointment_id"],
                     )
             if apt_type:
+                field = "pre_instructions" if instruction_type == "pre" else "post_instructions"
                 row = await pool.fetchrow(
-                    "SELECT post_instructions FROM treatment_types WHERE tenant_id = $1 AND code = $2",
+                    f"SELECT {field} FROM treatment_types WHERE tenant_id = $1 AND code = $2",
                     tenant_id, apt_type,
                 )
-                instructions = row["post_instructions"] if row else None
+                instructions = row[field] if row else None
                 if instructions and isinstance(instructions, dict):
-                    text = instructions.get("general_notes") or json.dumps(instructions, ensure_ascii=False)
+                    text = _format_instructions_text(instructions, instruction_type)
                 elif instructions and isinstance(instructions, str):
                     text = instructions
                 else:

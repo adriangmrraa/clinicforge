@@ -19,6 +19,7 @@ export interface StepData {
   template_vars?: Record<string, string>;
   message_text?: string;
   instruction_source?: string;
+  instruction_type?: string;
   custom_instructions?: string;
   notify_channel?: string;
   notify_message?: string;
@@ -384,7 +385,33 @@ export default function StepEditor({
 
           {/* Content: send_instructions */}
           {action === 'send_instructions' && (
-            <div className="space-y-2">
+            <div className="space-y-3">
+              {/* Tipo de instrucción */}
+              <div>
+                <label className="text-xs font-medium text-white/40 mb-1.5 block">Tipo de instrucción</label>
+                <div className="flex gap-3">
+                  <label className="flex items-center gap-2 text-sm text-white/70 cursor-pointer">
+                    <input
+                      type="radio"
+                      checked={step.instruction_type !== 'post'}
+                      onChange={() => update({ instruction_type: 'pre' })}
+                      className="accent-blue-500"
+                    />
+                    Pre-tratamiento
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-white/70 cursor-pointer">
+                    <input
+                      type="radio"
+                      checked={step.instruction_type === 'post' || !step.instruction_type}
+                      onChange={() => update({ instruction_type: 'post' })}
+                      className="accent-blue-500"
+                    />
+                    Post-tratamiento
+                  </label>
+                </div>
+              </div>
+
+              {/* Fuente */}
               <label className="text-xs font-medium text-white/40">{t('playbooks.instruction_source')}</label>
               <div className="flex gap-3">
                 <label className="flex items-center gap-2 text-sm text-white/70 cursor-pointer">
