@@ -1181,7 +1181,7 @@ async def _get_slots_for_extra_day(
             """
             SELECT professional_id, appointment_datetime as start, duration_minutes
             FROM appointments
-            WHERE tenant_id = $1 AND professional_id = ANY($2) AND status IN ('scheduled', 'confirmed')
+            WHERE tenant_id = $1 AND (professional_id = ANY($2) OR professional_id IS NULL) AND status IN ('scheduled', 'confirmed')
             AND (appointment_datetime < $4 AND (appointment_datetime + interval '1 minute' * COALESCE(duration_minutes, 60)) > $3)
         """,
             tenant_id,
@@ -1336,7 +1336,7 @@ async def _batch_fetch_availability_for_range(
         SELECT professional_id, appointment_datetime AS start, duration_minutes
         FROM appointments
         WHERE tenant_id = $1
-          AND professional_id = ANY($2::int[])
+          AND (professional_id = ANY($2::int[]) OR professional_id IS NULL)
           AND status IN ('scheduled', 'confirmed')
           AND appointment_datetime < $4
           AND (appointment_datetime + interval '1 minute' * COALESCE(duration_minutes, 60)) > $3
@@ -2355,7 +2355,7 @@ async def check_availability(
             """
             SELECT professional_id, appointment_datetime as start, duration_minutes
             FROM appointments
-            WHERE tenant_id = $1 AND professional_id = ANY($2) AND status IN ('scheduled', 'confirmed')
+            WHERE tenant_id = $1 AND (professional_id = ANY($2) OR professional_id IS NULL) AND status IN ('scheduled', 'confirmed')
             AND (appointment_datetime < $4 AND (appointment_datetime + interval '1 minute' * COALESCE(duration_minutes, 60)) > $3)
         """,
             tenant_id,

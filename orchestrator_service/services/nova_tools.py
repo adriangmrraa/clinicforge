@@ -2082,6 +2082,28 @@ def _fmt_money(amount: Any) -> str:
     return f"${float(amount):,.2f}"
 
 
+async def _fmt_local_time(dt: Optional[datetime], tenant_id: int, fmt: str = "%H:%M") -> str:
+    """Format a datetime to the tenant's local timezone for user-facing display.
+
+    Args:
+        dt: The datetime to format (may be None, may be timezone-aware).
+        tenant_id: The tenant whose timezone to use.
+        fmt: strftime format string (default "%H:%M").
+
+    Returns:
+        Formatted time string, or "?" if dt is None.
+    """
+    if dt is None:
+        return "?"
+    try:
+        from services.tz_resolver import get_tenant_tz
+
+        tz = await get_tenant_tz(tenant_id)
+        return dt.astimezone(tz).strftime(fmt)
+    except Exception:
+        return dt.strftime(fmt)  # fallback sin conversión
+
+
 def _today() -> date:
     return date.today()
 
@@ -3959,11 +3981,7 @@ async def _ver_agenda(args: Dict, tenant_id: int, user_role: str, user_id: str) 
 
     lines = [f"Agenda del {target_date} ({len(rows)} turnos):"]
     for r in rows:
-        time_str = (
-            r["appointment_datetime"].strftime("%H:%M")
-            if r["appointment_datetime"]
-            else "?"
-        )
+        time_str = await _fmt_local_time(r["appointment_datetime"], tenant_id, "%H:%M")
         dur = f"{r['duration_minutes']}min" if r["duration_minutes"] else ""
         status_icon = {
             "scheduled": "⏳",
@@ -4011,7 +4029,7 @@ async def _proximo_paciente(tenant_id: int, user_role: str, user_id: str) -> str
     if not row:
         return "No tenes mas turnos para hoy."
 
-    time_str = row["appointment_datetime"].strftime("%H:%M")
+    time_str = await _fmt_local_time(row["appointment_datetime"], tenant_id, "%H:%M")
     ins = f" | OS: {row['insurance_provider']}" if row["insurance_provider"] else ""
     notes = f"\nNotas: {row['notes']}" if row["notes"] else ""
     return (
@@ -4144,6 +4162,8 @@ async def _verificar_disponibilidad(args: Dict, tenant_id: int) -> str:
 
 
 async def _agendar_turno(args: Dict, tenant_id: int) -> str:
+    import logging as _lg
+
     pid = args.get("patient_id")
     target_date = str(args.get("date", ""))
     time_str = str(args.get("time", ""))
@@ -4170,11 +4190,6 @@ async def _agendar_turno(args: Dict, tenant_id: int) -> str:
     duration = int(tt_row["default_duration_minutes"]) if tt_row else 30
     tt_name = tt_row["name"] if tt_row else treatment_type
 
-    # Resolve professional
-    prof_id = args.get("professional_id")
-    if prof_id:
-        prof_id = int(prof_id)
-
     # Build datetime (timezone-aware)
     try:
         from services.tz_resolver import get_tenant_tz
@@ -4185,6 +4200,7 @@ async def _agendar_turno(args: Dict, tenant_id: int) -> str:
         ).replace(tzinfo=_tz)
     except ValueError:
         return "Formato de fecha/hora invalido. Usa YYYY-MM-DD y HH:MM."
+    end_dt = appt_dt + timedelta(minutes=duration)
 
     # Verificar feriado
     from services.holiday_service import is_holiday as check_is_holiday
@@ -4193,7 +4209,6 @@ async def _agendar_turno(args: Dict, tenant_id: int) -> str:
         db.pool, tenant_id, appt_dt.date()
     )
     if _is_hol and _custom_hours:
-        # Feriado con atención — validar que el horario esté dentro del rango especial
         from datetime import time as time_type
 
         custom_start = time_type.fromisoformat(_custom_hours["start"])
@@ -4205,17 +4220,161 @@ async def _agendar_turno(args: Dict, tenant_id: int) -> str:
                 f"{_custom_hours['start']} a {_custom_hours['end']}. "
                 f"Elegí un horario dentro de ese rango."
             )
-        # Horario válido dentro del rango especial — continuar con el flujo normal
     elif _is_hol:
         return f"No se puede agendar el {target_date}: es feriado ({_hol_name}). Elegí otro día."
 
-    # Per-professional block check
+    # ──────────────────────────────────────────────────────────────
+    # BUG FIX: Resolver profesional, validar disponibilidad
+    # ──────────────────────────────────────────────────────────────
+    prof_id = args.get("professional_id")
     if prof_id:
-        _is_blocked, _blk_name, _ = await check_is_holiday(
-            db.pool, tenant_id, appt_dt.date(), professional_id=prof_id
+        prof_id = int(prof_id)
+    resolved_prof_id = None
+    resolved_prof_name = None
+
+    # Step 1: Resolve professional if not specified
+    if not prof_id:
+        # 1a. Check professional_derivation_rules by treatment type
+        try:
+            rules = await db.pool.fetch(
+                """
+                SELECT id, target_professional_id, treatment_categories
+                FROM professional_derivation_rules
+                WHERE tenant_id = $1 AND is_active = true
+                ORDER BY priority_order ASC, id ASC
+                """,
+                tenant_id,
+            )
+            tname_lower = (treatment_type or "").lower()
+            for rule in rules:
+                cats = rule.get("treatment_categories") or ""
+                if isinstance(cats, list):
+                    cats_str = ",".join(cats)
+                else:
+                    cats_str = str(cats)
+                cat_list = [c.strip().lower() for c in cats_str.split(",") if c.strip()]
+                if cat_list and any(c in tname_lower for c in cat_list):
+                    target_pid = rule.get("target_professional_id")
+                    if target_pid:
+                        resolved_prof_id = int(target_pid)
+                        _lg.getLogger("nova_tools").info(
+                            f"_agendar_turno: derivation rule {rule['id']} matched → prof_id={resolved_prof_id}"
+                        )
+                    break
+        except Exception as _der_err:
+            _lg.getLogger("nova_tools").warning(
+                f"_agendar_turno: derivation rules skipped: {_der_err}"
+            )
+
+        # 1b. Fallback: first active professional in tenant
+        if not resolved_prof_id:
+            try:
+                prof_row = await db.pool.fetchrow(
+                    """
+                    SELECT p.id
+                    FROM professionals p
+                    LEFT JOIN users u ON p.user_id = u.id
+                    WHERE p.tenant_id = $1 AND p.is_active = true
+                      AND (p.user_id IS NULL OR (u.status = 'active' AND u.role IN ('professional', 'ceo')))
+                    ORDER BY p.id ASC
+                    LIMIT 1
+                    """,
+                    tenant_id,
+                )
+                if prof_row:
+                    resolved_prof_id = prof_row["id"]
+                    _lg.getLogger("nova_tools").info(
+                        f"_agendar_turno: no derivation rule, using first active prof_id={resolved_prof_id}"
+                    )
+            except Exception as _any_err:
+                _lg.getLogger("nova_tools").warning(
+                    f"_agendar_turno: fallback prof lookup failed: {_any_err}"
+                )
+
+        if resolved_prof_id:
+            prof_id = resolved_prof_id
+
+    # Step 2: If still no professional, reject
+    if not prof_id:
+        return "No se pudo determinar un profesional para este turno. Especificá un profesional o verificá que haya profesionales activos en el sistema."
+
+    # Step 3: Per-professional block check
+    _is_blocked, _blk_name, _ = await check_is_holiday(
+        db.pool, tenant_id, appt_dt.date(), professional_id=prof_id
+    )
+    if _is_blocked:
+        return f"No se puede agendar con ese profesional el {target_date}: {_blk_name}. Elegí otro profesional."
+
+    # Step 4: Check working_hours of the professional
+    try:
+        _prof_wh = await db.pool.fetchval(
+            "SELECT working_hours FROM professionals WHERE id = $1 AND tenant_id = $2",
+            prof_id, tenant_id,
         )
-        if _is_blocked:
-            return f"No se puede agendar con ese profesional el {target_date}: {_blk_name}. Elegí otro profesional."
+        if _prof_wh:
+            if isinstance(_prof_wh, str):
+                _prof_wh = json.loads(_prof_wh)
+            _day_name = appt_dt.strftime("%A").lower()
+            _day_map = {
+                "monday": "monday", "tuesday": "tuesday", "wednesday": "wednesday",
+                "thursday": "thursday", "friday": "friday", "saturday": "saturday", "sunday": "sunday",
+                "lunes": "monday", "martes": "tuesday", "miércoles": "wednesday", "miercoles": "wednesday",
+                "jueves": "thursday", "viernes": "friday", "sábado": "saturday", "sabado": "saturday", "domingo": "sunday",
+            }
+            _day_name_en = _day_map.get(_day_name, _day_name)
+            _day_cfg = _prof_wh.get(_day_name_en, {}) if isinstance(_prof_wh, dict) else {}
+            if not _day_cfg.get("enabled") or not _day_cfg.get("slots"):
+                return f"El profesional no atiende ese día. Elegí otro día."
+            _appt_time = appt_dt.time()
+            _within_hours = False
+            for _slot in _day_cfg["slots"]:
+                _slot_start = datetime.strptime(_slot["start"], "%H:%M").time()
+                _slot_end = datetime.strptime(_slot["end"], "%H:%M").time()
+                if _slot_start <= _appt_time < _slot_end:
+                    _within_hours = True
+                    break
+            if not _within_hours:
+                return f"El horario solicitado ({time_str}) está fuera del horario de atención del profesional."
+    except Exception as _wh_err:
+        _lg.getLogger("nova_tools").warning(
+            f"_agendar_turno: working_hours check failed (non-blocking): {_wh_err}"
+        )
+
+    # Step 5: Check for conflicts with existing appointments
+    _conflict = await db.pool.fetchval(
+        """
+        SELECT EXISTS(
+            SELECT 1 FROM appointments
+            WHERE tenant_id = $1 AND professional_id = $2 AND status IN ('scheduled', 'confirmed')
+            AND appointment_datetime < $4
+            AND (appointment_datetime + interval '1 minute' * COALESCE(duration_minutes, 60)) > $3
+        )
+        """,
+        tenant_id, prof_id, appt_dt, end_dt,
+    )
+    if _conflict:
+        return f"El profesional ya tiene un turno agendado el {target_date} a las {time_str}. Elegí otro horario."
+
+    # Step 6: Check patient duplicate (same patient, overlapping time)
+    _patient_conflict = await db.pool.fetchval(
+        """
+        SELECT COUNT(*) FROM appointments
+        WHERE tenant_id = $1 AND patient_id = $2
+          AND status IN ('scheduled', 'confirmed')
+          AND appointment_datetime < $4
+          AND (appointment_datetime + interval '1 minute' * COALESCE(duration_minutes, 60)) > $3
+        """,
+        tenant_id, int(pid), appt_dt, end_dt,
+    )
+    if _patient_conflict and _patient_conflict > 0:
+        return f"El paciente ya tiene un turno agendado en ese horario. Verificá los datos."
+
+    # Resolve professional name for response
+    prof_name = await db.pool.fetchval(
+        "SELECT first_name || ' ' || last_name FROM professionals WHERE id = $1",
+        prof_id,
+    )
+    resolved_prof_name = prof_name.strip() if prof_name else None
 
     appt_id = uuid.uuid4()
     await db.pool.execute(
@@ -4263,8 +4422,6 @@ async def _agendar_turno(args: Dict, tenant_id: int) -> str:
             reason=None,
         )
     except Exception as _audit_err:
-        import logging as _lg
-
         _lg.getLogger("nova_tools").warning(
             f"audit_log nova agendar failed (non-blocking): {_audit_err}"
         )
@@ -4272,13 +4429,8 @@ async def _agendar_turno(args: Dict, tenant_id: int) -> str:
     patient_name = f"{patient['first_name']} {patient['last_name'] or ''}".strip()
     patient_phone = patient.get("phone_number") or ""
     prof_msg = ""
-    if prof_id:
-        prof_name = await db.pool.fetchval(
-            "SELECT first_name || ' ' || last_name FROM professionals WHERE id = $1",
-            prof_id,
-        )
-        if prof_name:
-            prof_msg = f" con Dr. {prof_name}"
+    if resolved_prof_name:
+        prof_msg = f" con Dr. {resolved_prof_name}"
 
     await _nova_emit(
         "NEW_APPOINTMENT",
@@ -4291,7 +4443,7 @@ async def _agendar_turno(args: Dict, tenant_id: int) -> str:
             if hasattr(appt_dt, "isoformat")
             else str(appt_dt),
             "appointment_type": tt_name or treatment_type,
-            "professional_name": prof_name.strip() if prof_id and prof_name else None,
+            "professional_name": resolved_prof_name,
         },
     )
 
@@ -6461,7 +6613,7 @@ async def _enviar_email_chat(args: Dict, tenant_id: int, user_role: str) -> str:
         next_appointment_str = ""
         if next_apt:
             next_appointment_str = (
-                f"{next_apt['appointment_datetime'].strftime('%d/%m/%Y %H:%M')} - "
+                f"{await _fmt_local_time(next_apt['appointment_datetime'], tenant_id, '%d/%m/%Y %H:%M')} - "
                 f"{next_apt['appointment_type']} con {next_apt['prof_name']}"
             )
 
@@ -7704,7 +7856,7 @@ async def _completar_tratamiento(args: Dict, tenant_id: int) -> str:
         f"{apt['prof_first_name'] or ''} {apt['prof_last_name'] or ''}".strip()
     )
     apt_date = (
-        apt["appointment_datetime"].strftime("%d/%m/%Y")
+        await _fmt_local_time(apt["appointment_datetime"], tenant_id, "%d/%m/%Y")
         if apt["appointment_datetime"]
         else ""
     )
@@ -7957,7 +8109,7 @@ async def _consultar_datos(args: Dict, tenant_id: int, user_role: str) -> str:
             for r in rows:
                 dt = r["appointment_datetime"]
                 parts.append(
-                    f"- {dt.strftime('%d/%m %H:%M')} | {r['patient_name']} | {r['appointment_type'] or 'consulta'} | {r['prof_name'] or '?'} | {r['status']} | pago: {r['payment_status'] or 'pendiente'}"
+                    f"- {await _fmt_local_time(dt, tenant_id, '%d/%m %H:%M')} | {r['patient_name']} | {r['appointment_type'] or 'consulta'} | {r['prof_name'] or '?'} | {r['status']} | pago: {r['payment_status'] or 'pendiente'}"
                 )
             return "\n".join(parts)
 
