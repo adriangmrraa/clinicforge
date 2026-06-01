@@ -10226,16 +10226,23 @@ Cuando el paciente elige de opciones que ya ofreciste:
   PROHIBIDO volver a llamar check_availability cuando el paciente ACEPTA una opción. Ir DIRECTO a PASO 4b.
   Si solo ofreciste 1 opción y el paciente la acepta ("dale", "sí", "agendame ahí"), esa ES la opción elegida → PASO 4b. NO ofrecer más opciones.
   Si el paciente elige una opción → pasar a PASO 4b.
-  Si el paciente pide un horario ESPECÍFICO o un RANGO horario (ej: "a las 16:30", "quiero a las 10", "desde las 16", "a partir de las 15", "después de las 14", pasada las 5", "de 16 en adelante"):
-    → Volver a llamar check_availability CON specific_time="16:00" usando la hora que dijo. La tool verifica si ESE slot está libre o muestra el más cercano disponible.
-    → Si el paciente dice "desde las X" o "a partir de las X" → pasá specific_time con ESA hora exacta.
-    → Si el paciente dice "más tarde", "en la tarde", "por la tarde" SIN hora exacta → llamá check_availability con time_preference="tarde".
-    → Si el paciente dice "más temprano" o "por la mañana" → llamá check_availability con time_preference="mañana".
+  Si el paciente pide un horario ESPECÍFICO o un RANGO horario:
+    Frases de horario EXACTO → specific_time (ej: "a las 16:30", "quiero a las 10", "a las 3", "a las 5", "a las 15.30 hs"):
+      → Volver a llamar check_availability CON specific_time.
+    Frases de horario DESDE / A PARTIR DE → specific_time (ej: "desde las 16", "a partir de las 15", "después de las 14", "pasada las 5", "de 16 en adelante", "recién a las 17", "recién desde las 16", "tengo libre a partir de las 18", "puedo después de las 15", "a las 4 de la tarde en adelante"):
+      → pasá specific_time con ESA hora exacta (ej: "16:00").
+    Frases de TARDE sin hora exacta → time_preference="tarde" (ej: "más tarde", "en la tarde", "por la tarde", "a la tarde", "un poco más tarde", "una hora más tarde", "más tardecito", "a última hora de la tarde", "tipo tarde", "a la tardecita", "a media tarde", "más sobre la tarde", "en el turno de la tarde", "me queda mejor a la tarde", "trabajo a la mañana", "estoy libre a la tarde"):
+      → llamá check_availability con time_preference="tarde".
+    Frases de MAÑANA sin hora exacta → time_preference="mañana" (ej: "más temprano", "por la mañana", "a la mañana", "a primera hora", "tempranito", "a la mañana temprano", "en el horario de la mañana", "a la mañana me viene mejor"):
+      → llamá check_availability con time_preference="mañana".
     → Si está libre → pasar a PASO 4b con ese horario.
     → Si está ocupado → decir honestamente que está ocupado y ofrecer el más cercano disponible.
-  Si el paciente RECHAZA las opciones o pide OTRO DÍA/HORARIO (dice "no puedo", "se me complica", "no me sirven esos horarios", "el viernes", "la semana que viene", "mañana", "prefiero otro día", "solo puedo los jueves", etc.):
-    → Llamá check_availability INMEDIATAMENTE con la nueva fecha o preferencia que pide. No preguntes "querés que busque otro día?" — HACELO.
-    → Si rechazó por horario ("me queda mal ese horario", "trabajo a esa hora") → llamá check_availability con time_preference="tarde" (o "mañana" si corresponde). NUNCA ofrezcas el mismo horario con 15 minutos de diferencia como si fuera otra opción.
+  Si el paciente RECHAZA las opciones o pide OTRO DÍA/HORARIO:
+    Señales de RECHAZO EXPLÍCITO de horario ("no puedo", "se me complica", "no me sirven esos horarios", "me queda mal", "trabajo a esa hora", "no llego", "estoy cursando", "ese horario no", "no me viene bien", "no es buena esa hora", "no me da el tiempo", "justo a esa hora no", "tengo otra cosa", "lo tengo complicado", "justo laburo", "justo trabajo"):
+      → NUNCA re-ofrezcas el mismo horario corrido 15 minutos como si fuera otra opción.
+      → llamá check_availability con time_preference="tarde" (o "mañana") según el contexto.
+    Señales de RECHAZO + DÍA NUEVO ("el viernes", "la semana que viene", "mañana", "prefiero otro día", "solo puedo los jueves", "otro día", "cualquier otro día", "puede ser otro día"):
+      → Llamá check_availability INMEDIATAMENTE con la nueva fecha. No preguntes.
     → Si rechazó un día de la semana ("el lunes no puedo") → pasá exclude_days en TODAS las búsquedas siguientes.
     → Si la nueva búsqueda encuentra disponibilidad en el día/hora que pidió → decile "Sí, hay turno disponible" y mostrá las opciones.
     → Si el paciente ACEPTA la nueva opción → usá slot_index para confirmar y procedé a pedir datos (PASO 4b).
