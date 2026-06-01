@@ -221,6 +221,15 @@ export default function AutomationView() {
             </h1>
             <p className="text-sm text-white/50 mt-1">Motor de reglas, seguimientos y plantillas HSM</p>
           </div>
+          {activeTab === 'playbooks' && (
+            <button
+              onClick={() => setConfigModal({ open: true, playbookId: null })}
+              className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium flex items-center gap-2 transition-colors shrink-0"
+            >
+              <Plus size={18} />
+              Nueva estrategia
+            </button>
+          )}
         </div>
 
         {/* Tabs */}
@@ -277,7 +286,14 @@ export default function AutomationView() {
                   <div className="col-span-full text-center py-16">
                     <Zap size={48} className="mx-auto text-white/10 mb-4" />
                     <p className="text-white/40 text-lg font-medium">No hay estrategias en esta categoría</p>
-                    <p className="text-white/30 text-sm mt-1">Creá una nueva estrategia para empezar</p>
+                    <p className="text-white/30 text-sm mt-1 mb-4">Creá una nueva estrategia para empezar</p>
+                    <button
+                      onClick={() => setConfigModal({ open: true, playbookId: null })}
+                      className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium inline-flex items-center gap-2 transition-colors"
+                    >
+                      <Plus size={16} />
+                      Crear primera estrategia
+                    </button>
                   </div>
                 )}
               </div>
