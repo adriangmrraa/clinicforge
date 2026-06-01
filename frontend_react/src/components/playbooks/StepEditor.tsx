@@ -230,7 +230,7 @@ export default function StepEditor({
             <label className="text-xs font-medium text-white/40">{t('playbooks.action_type')}</label>
             <select
               value={requiresHSM ? 'send_template' : action}
-              onChange={e => update({ action_type: e.target.value })}
+              onChange={e => update({ action_type: e.target.value, instruction_type: e.target.value === 'send_instructions' ? 'pre' : step.instruction_type })}
               className="w-full mt-1 px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white text-sm outline-none focus:ring-1 focus:ring-blue-500/30 appearance-none"
             >
               {availableActions.map(opt => (
@@ -393,7 +393,7 @@ export default function StepEditor({
                   <label className="flex items-center gap-2 text-sm text-white/70 cursor-pointer">
                     <input
                       type="radio"
-                      checked={step.instruction_type !== 'post'}
+                      checked={step.instruction_type === 'pre'}
                       onChange={() => update({ instruction_type: 'pre' })}
                       className="accent-blue-500"
                     />
@@ -402,7 +402,7 @@ export default function StepEditor({
                   <label className="flex items-center gap-2 text-sm text-white/70 cursor-pointer">
                     <input
                       type="radio"
-                      checked={step.instruction_type === 'post' || !step.instruction_type}
+                      checked={step.instruction_type === 'post'}
                       onChange={() => update({ instruction_type: 'post' })}
                       className="accent-blue-500"
                     />
