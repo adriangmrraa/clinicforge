@@ -186,17 +186,6 @@ export default function AutomationView() {
     setConfigModal({ open: true, playbookId: id });
   };
 
-  const handleSendNow = async () => {
-    if (!confirm('Enviar recordatorios de turnos de mañana ahora?')) return;
-    try {
-      const { data } = await api.post('/admin/playbooks/send-reminders-now');
-      alert(`${data.sent} de ${data.total} enviados`);
-      loadPlaybooks();
-    } catch (e) {
-      console.error('Error sending reminders:', e);
-    }
-  };
-
   const filteredPlaybooks = categoryFilter === 'all'
     ? playbooks
     : playbooks.filter(p => p.category === categoryFilter);
@@ -282,7 +271,6 @@ export default function AutomationView() {
                     playbook={pb}
                     onConfigure={handleConfigure}
                     onToggle={handleToggle}
-                    onSendNow={pb.trigger_type === 'appointment_reminder' && pb.is_active ? handleSendNow : undefined}
                   />
                 ))}
                 {filteredPlaybooks.length === 0 && (
