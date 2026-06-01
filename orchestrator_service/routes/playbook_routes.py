@@ -163,8 +163,8 @@ async def send_reminders_now(
         _tz = ZoneInfo("America/Argentina/Buenos_Aires")
     today_local = datetime.now(_tz).date()
     tomorrow = today_local + timedelta(days=1)
-    tomorrow_start = datetime.combine(tomorrow, datetime.min.time())
-    tomorrow_end = datetime.combine(tomorrow, datetime.max.time())
+    tomorrow_start = datetime.combine(tomorrow, datetime.min.time(), tzinfo=_tz)
+    tomorrow_end = datetime.combine(tomorrow, datetime.max.time(), tzinfo=_tz)
 
     appointments = await db.pool.fetch("""
         SELECT
@@ -185,6 +185,7 @@ async def send_reminders_now(
             AND a.appointment_datetime <= $3
             AND p.phone_number IS NOT NULL
             AND p.phone_number != ''
+            AND (a.reminder_sent IS NULL OR a.reminder_sent = false)
         ORDER BY a.appointment_datetime
     """, tenant_id, tomorrow_start, tomorrow_end)
 
@@ -232,13 +233,7 @@ async def send_reminders_now(
         try:
             patient_name = apt["first_name"] or "paciente"
             apt_time = apt["appointment_datetime"]
-            # Convert to tenant timezone for correct display
-            try:
-                from services.tz_resolver import get_tenant_tz
-                _tz = await get_tenant_tz(tenant_id)
-            except Exception:
-                from zoneinfo import ZoneInfo
-                _tz = ZoneInfo("America/Argentina/Buenos_Aires")
+            # Convert to tenant timezone for correct display (_tz already resolved above)
             if apt_time.tzinfo is not None:
                 apt_time = apt_time.astimezone(_tz)
             formatted_time = apt_time.strftime("%H:%M")

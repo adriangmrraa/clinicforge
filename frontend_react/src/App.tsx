@@ -18,8 +18,7 @@ const UserApprovalView = lazy(() => import('./views/UserApprovalView'));
 const ProfileView = lazy(() => import('./views/ProfileView'));
 const ClinicsView = lazy(() => import('./views/ClinicsView'));
 const ConfigView = lazy(() => import('./views/ConfigView'));
-const MetaTemplatesView = lazy(() => import('./views/MetaTemplatesView'));
-const PlaybooksView = lazy(() => import('./views/PlaybooksView'));
+const AutomationView = lazy(() => import('./views/AutomationView'));
 const MarketingHubView = lazy(() => import('./views/MarketingHubView'));
 const ROIDashboardView = lazy(() => import('./views/ROIDashboardView'));
 const LeadsManagementView = lazy(() => import('./views/LeadsManagementView'));
@@ -107,14 +106,9 @@ function App() {
                         <ROIDashboardView />
                       </ProtectedRoute>
                     } />
-                    <Route path="templates" element={
+                    <Route path="automation" element={
                       <ProtectedRoute allowedRoles={['ceo']}>
-                        <MetaTemplatesView />
-                      </ProtectedRoute>
-                    } />
-                    <Route path="playbooks" element={
-                      <ProtectedRoute allowedRoles={['ceo']}>
-                        <PlaybooksView />
+                        <AutomationView />
                       </ProtectedRoute>
                     } />
                     <Route path="leads" element={

@@ -1,0 +1,270 @@
+Estrategias de Automatización
+Activá protocolos clínicos automatizados para tu clínica
+
+Crear estrategia
+Todos
+Retención
+Ingresos
+Reputación
+Clínico
+Recuperación
+Personalizado
+🔪
+Protocolo Post-Cirugia
+Clínico
+
+Después de una cirugía, envía instrucciones de cuidado y pide reseña en Google
+
+2 pasos
+
+Configurar
+🩺
+Seguimiento Post-Atención
+Clínico
+
+Después del turno, le pregunta al paciente cómo se siente y envía instrucciones de cuidado
+
+2 pasos
+
+Configurar
+❌
+Recuperador de No-Shows
+Recuperación
+
+Si el paciente no vino al turno, le escribe para saber si está bien y ofrece reprogramar
+
+💡 Activalo para automatizar este proceso
+
+3 pasos
+
+Configurar
+⭐
+Motor de Reseñas Google
+Reputación
+
+Después de completar un tratamiento de alto valor, le pide al paciente que deje una reseña en Google
+
+💡 Activalo para automatizar este proceso
+
+1 pasos
+
+Configurar
+🛡️
+Escudo Anti-Ausencias
+Retención
+
+Le recuerda al paciente su turno 24hs antes y le da opciones para confirmar o reprogramar
+
+1 pasos
+Enviar ahora
+
+Configurar
+💤
+Reactivador de Pacientes
+Retención
+
+Contacta pacientes que no vienen hace más de 90 días para invitarlos a un control
+
+💡 Activalo para automatizar este proceso
+
+3 pasos
+
+Configurar
+⏰
+Segundo Aviso de Turno
+Retención
+
+Si el paciente no confirmó el recordatorio en 2 horas, envía un segundo aviso más directo
+
+💡 Activalo para automatizar este proceso
+
+1 pasos
+Enviar ahora
+
+Configurar
+💰
+Recordatorio de Pago
+Ingresos
+
+Antes del turno, le recuerda al paciente si tiene un saldo pendiente de seña
+
+💡 Activalo para automatizar este proceso
+
+1 pasos
+
+Configurar
+🎯
+Recuperador de Leads
+Ingresos
+
+Si un lead escribió pero no agendó en 2 horas, le envía un seguimiento personalizado
+
+3 pasos
+
+Configurar
+📋
+Seguimiento: Cirugía Compleja
+Clínico
+
+Envía plantilla "post_ciruga" después de completar Cirugía Compleja
+
+1 pasos
+
+Configurar
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+--------------------------
+
+
+
+pagina hsm automatizacion:
+
+
+Automatización & HSM
+Motor de Reglas · Seguimientos · WhatsApp Marketing
+
+50
+
+Enviados (últimos registros)
+
+0%
+
+Tasa de entrega
+
+3
+
+Reglas activas
+
+⚡ Reglas
+📋 Logs
+🗂️ Plantillas YCloud
+Reglas del Sistema
+No editable
+Recordatorio 24h
+SISTEMA
+Recordatorio 24h
+💬 Texto Libre
+8:00 – 20:00 hs
+
+Recuperación de Leads
+SISTEMA
+Recuperación de Lead
+💬 Texto Libre
+8:00 – 20:00 hs
+
+Feedback Pacientes
+SISTEMA
+Feedback Post-Cita
+💬 Texto Libre
+8:00 – 20:00 hs
+
+Reglas Personalizadas
++ Nueva Regla
+Aún no hay reglas personalizadas.
+
+Crear primera regla
+
+
+
+
+
+
+
+
+
+------------------
+
+
+
+Todas la splantillas que tengo aprobada y se listan:
+
+instrucciones_post_cirugia_compleja
+
+es_AR
+UTILITY
+APPROVED
+Hola {{1}}, es normal presentar leves molestias o sensibilidad en las horas posteriores. Evitar enjuagues o escupir durante las primeras horas. Mantener reposo relativo el día del procedimiento. Evitar alimentos duros o calientes durante las primeras horas. No fumar ni consumir alcohol durante el período inicial de cicatrización. Mantener higiene bucal cuidada. Tomar la medicación indicada si corresponde.
+
+instrucciones_post_cirugia_simple
+
+es_AR
+UTILITY
+APPROVED
+Hola {{1}}, es normal presentar leves molestias o sensibilidad en las horas posteriores. Evitar enjuagues o escupir durante las primeras horas. Mantener reposo relativo el día del procedimiento. Evitar alimentos duros o calientes durante las primeras horas. No fumar ni consumir alcohol durante el período inicial de cicatrización. Mantener higiene bucal cuidada. Tomar la medicación indicada si corresponde.
+
+atm_365_dias
+
+es_AR
+MARKETING
+APPROVED
+Hola {{1}},¿cómo estás? Te escribo para recordarte la importancia de realizar controles periódicos de la placa de descanso. Con el uso, puede requerir ajustes para seguir cumpliendo correctamente su función. Si querés, puedo ayudarte a coordinar un turno de control.
+
+atm_30_dias
+
+es_AR
+MARKETING
+APPROVED
+Hola {{1}}, ¿cómo estás? Quería recordarte que en esta etapa es importante realizar el control de la placa para evaluar su adaptación y, si es necesario, hacer ajustes. Esto nos permite asegurar que el tratamiento esté funcionando correctamente. Si querés, puedo ayudarte a coordinar un turno.
+
+seguimiento_confirmacion_de_turno
+
+es_AR
+UTILITY
+APPROVED
+Hola {{1}}, seguimos a la espera de tu confirmación para el turno. De no recibir respuesta en la próxima hora, lamentablemente liberaremos el espacio para otro paciente. ¡Gracias!
+
+confirmar_turno_agendado_ok
+
+es_AR
+UTILITY
+APPROVED
+¡Hola {{1}}! ¿Cómo estás? Te escribo para recordarte tu turno programado para el día {{2}} {{3}} a las {{4}} hs. Por favor, confirmame tu asistencia respondiendo a este mensaje. En caso de que no puedas asistir, te pedimos avisarnos con la mayor antelación posible para poder reasignar el turno a otro paciente que lo necesite. ¡Te esperamos! 🦷✨
+
+armonizacion_facial_completada
+
+es_AR
+MARKETING
+APPROVED
+Hola {{1}}, ¿cómo estás? Quería agradecerte por haber confiado en mí para tu tratamiento de armonización facial. Muchas personas quieren mejorar su aspecto pero tienen dudas o miedo a que los resultados no sean naturales. Tu experiencia puede ayudar a otros a animarse y sentirse más seguros. Seria de mucha ayuda que dejes tu experiencia aquí 👇
+
+blanqueamiento_diamante_completado
+
+es_AR
+MARKETING
+APPROVED
+Hola {{1}}, ¿cómo estás? Quería agradecerte por haber confiado en mí para tu Blanqueamiento Diamante. Muchas personas quieren mejorar su sonrisa pero tienen dudas sobre los resultados, y tu experiencia puede ayudar a otros a animarse y sentirse más seguros. Seria de mucha ayuda que dejes tu experiencia aquí 👇
+
+implantes_rehabilitacion
+
+es_AR
+MARKETING
+APPROVED
+Hola {{1}}, ¿cómo estás? Quería agradecerte nuevamente por la confianza que depositaste en mí para tu tratamiento de implantes/rehabilitación. Sé que no es una decisión fácil, y muchos pacientes tienen dudas o miedos antes de comenzar. Tu experiencia puede ayudar muchísimo a otras personas que están pasando por lo mismo. Sería de mucha ayuda que puedas dejar tu experiencia aquí 👇
+
+post_cirugia
+
+es_AR
+MARKETING
+APPROVED
+Hola {{1}}, ¿cómo estás? Quería agradecerte nuevamente por la confianza que depositaste en mí para tu cirugía. Muchos pacientes llegan con miedo o dudas antes de operarse, y leer la experiencia de alguien que ya pasó por ese proceso puede ayudarles muchísimo a sentirse más tranquilos. Si te sientes cómodo, tu experiencia podría ayudar a otras personas. Te dejo el link para hacerlo aquí 👇
+
+rehabilitacion_implantes_completada
+
+es_AR
+MARKETING
+APPROVED
+Hola {{1}} ¿Cómo estás? Quería preguntarte cómo te estás sintiendo con tu rehabilitación con implantes. Si tu experiencia fue positiva, me ayudaría muchísimo que puedas dejar una reseña en Google contando
