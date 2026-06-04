@@ -2151,20 +2151,20 @@ async def check_availability(
             )
             target_date += timedelta(days=1)
 
-    # Parse exclude_dates into a set of date objects
-    _excluded_dates: set = set()
-    if exclude_dates:
-        try:
-            for _date_str in exclude_dates.split(","):
-                _date_str = _date_str.strip()
-                if _date_str:
-                    _excluded_dates.add(datetime.strptime(_date_str, "%Y-%m-%d").date())
-        except ValueError as _e:
-            logger.warning(f"Invalid exclude_dates format: {exclude_dates}, error: {_e}")
-    if _excluded_dates:
-        logger.info(f"📅 Excluding specific dates: {_excluded_dates} from results")
+        # Parse exclude_dates into a set of date objects
+        _excluded_dates: set = set()
+        if exclude_dates:
+            try:
+                for _date_str in exclude_dates.split(","):
+                    _date_str = _date_str.strip()
+                    if _date_str:
+                        _excluded_dates.add(datetime.strptime(_date_str, "%Y-%m-%d").date())
+            except ValueError as _e:
+                logger.warning(f"Invalid exclude_dates format: {exclude_dates}, error: {_e}")
+        if _excluded_dates:
+            logger.info(f"📅 Excluding specific dates: {_excluded_dates} from results")
 
-    # 0. B) Auto-avanzar si el día está cerrado (clínica o profesional)
+        # 0. B) Auto-avanzar si el día está cerrado (clínica o profesional)
         # En vez de retornar error, buscamos el próximo día válido automáticamente.
         days_en = [
             "monday",
