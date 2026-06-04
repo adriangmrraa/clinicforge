@@ -247,6 +247,7 @@ class BookingAgent(BaseAgent):
             list_my_appointments,
             list_services,
             reschedule_appointment,
+            confirm_appointment,
         )
 
         return [
@@ -257,6 +258,7 @@ class BookingAgent(BaseAgent):
             cancel_appointment,
             reschedule_appointment,
             list_services,
+            confirm_appointment,
         ]
 
     async def run(self, state: AgentState) -> AgentState:
@@ -327,6 +329,12 @@ REGLAS INMUTABLES:
 - `list_my_appointments` primero si hay más de un turno futuro.
 - Confirmá el turno exacto (día + hora + tratamiento) antes de cancelar/reprogramar.
 - Reprogramación = `cancel_appointment` + flujo de booking normal.
+
+# CONFIRMACIÓN DE TURNOS EXISTENTES
+- Si el paciente escribe para confirmar un turno existente que ya tiene agendado o pendiente (ej: "quiero confirmar mi turno", "asisto al turno del jueves a las 3", "confirmo para mañana", etc.):
+  - Debés llamar a `confirm_appointment`.
+  - Pasá `target_date` (ej: "jueves", "mañana") y/o `approximate_time` (ej: "15:00", "a las 3", "tarde") si el paciente los mencionó, o el ID del turno si se conoce de antemano.
+  - Si la herramienta responde con un `WARNING` indicando una discrepancia horaria, es OBLIGATORIO que le aclares al paciente en tu respuesta el horario exacto agendado en el sistema (por ejemplo, si el paciente dijo "a las 15:00" pero el turno está agendado a las 15:15 hs, aclarale: "Tu turno está agendado a las 15:15 hs").
 
 # LÍMITES
 - NO das precios ni explicás cuotas (eso es Billing).

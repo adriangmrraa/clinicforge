@@ -1023,6 +1023,10 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                 "confirmo el turno",
                 # Generic
                 "confirmar", "confirmo", "sí, confirmo", "si, confirmo",
+                # Expanded synonyms
+                "conservo", "asisto", "voy", "acepto",
+                "conservo ✅", "asisto ✅", "voy ✅", "acepto ✅", "confirmo ✅",
+                "sí, voy", "si, voy", "sí, asisto", "si, asisto",
             }
             _RESCHEDULE_BUTTONS = {
                 # Template 5: Recordatorio de Asistencia

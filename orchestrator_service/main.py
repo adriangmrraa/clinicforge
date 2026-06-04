@@ -8488,6 +8488,239 @@ async def link_payment_to_patient(
         return f"❌ Error al vincular el pago: {str(e)}"
 
 
+def parse_approximate_time(approx_time: str) -> Optional[tuple[int, int]]:
+    """
+    Parses a string representing a time (e.g. '15:00', 'a las 3', 'tarde', '19:00', '7 de la tarde')
+    to a tuple of (hour, minute).
+    """
+    if not approx_time:
+        return None
+    query = approx_time.lower().strip()
+    
+    if query in ("mañana", "morning"):
+        return (9, 0)
+    if query in ("tarde", "afternoon"):
+        return (16, 0)
+    if query in ("noche", "evening", "night"):
+        return (20, 0)
+        
+    time_match = re.search(r"(\d{1,2})[:h\.](\d{2})", query)
+    if time_match:
+        h = int(time_match.group(1))
+        m = int(time_match.group(2))
+    else:
+        hour_only = re.search(r"\b(?:las?\s+)?(\d{1,2})\b", query)
+        if hour_only:
+            h = int(hour_only.group(1))
+            m = 0
+        else:
+            return None
+
+    is_pm = False
+    if "pm" in query or "p.m." in query or "tarde" in query or "noche" in query:
+        is_pm = True
+    elif "am" in query or "a.m." in query or "mañana" in query:
+        is_pm = False
+    else:
+        if 1 <= h <= 7:
+            is_pm = True
+
+    if h == 12:
+        h = 12 if is_pm else 0
+    elif is_pm and h < 12:
+        h += 12
+
+    if 0 <= h <= 23 and 0 <= m <= 59:
+        return (h, m)
+    return None
+
+
+@tool
+async def confirm_appointment(
+    appointment_id: Optional[str] = None,
+    approximate_time: Optional[str] = None,
+    target_date: Optional[str] = None,
+) -> str:
+    """
+    Confirma un turno programado o pendiente del paciente.
+    appointment_id: (Opcional) UUID del turno si se conoce de antemano.
+    approximate_time: (Opcional) Hora aproximada mencionada por el paciente (ej: '15:00', 'a las 3', 'tarde').
+    target_date: (Opcional) Fecha mencionada por el paciente (ej: 'mañana', '2026-06-05', 'lunes').
+    """
+    tenant_id = current_tenant_id.get()
+    phone = current_customer_phone.get()
+    
+    logger.info(
+        f"📅 TOOL confirm_appointment ENTRY | tenant={tenant_id} phone={phone} "
+        f"appointment_id={appointment_id!r} approx_time={approximate_time!r} target_date={target_date!r}"
+    )
+
+    if not tenant_id:
+        return "ERROR: No pude identificar la clínica."
+
+    try:
+        matched_apt = None
+        
+        if appointment_id:
+            query = """
+                SELECT a.id, a.appointment_datetime, a.status, a.patient_id,
+                       pat.first_name as patient_first_name, pat.last_name as patient_last_name, pat.phone_number as patient_phone,
+                       prof.name as professional_name,
+                       tt.name as treatment_name
+                FROM appointments a
+                LEFT JOIN patients pat ON a.patient_id = pat.id AND pat.tenant_id = a.tenant_id
+                LEFT JOIN professionals prof ON a.professional_id = prof.id AND prof.tenant_id = a.tenant_id
+                LEFT JOIN treatment_types tt ON a.treatment_type_id = tt.id AND tt.tenant_id = a.tenant_id
+                WHERE a.id = $1 AND a.tenant_id = $2
+            """
+            row = await db.pool.fetchrow(query, uuid.UUID(appointment_id) if isinstance(appointment_id, str) and len(appointment_id) == 36 else appointment_id, tenant_id)
+            if not row:
+                return "ERROR: No se encontró ningún turno programado o pendiente en el futuro para este paciente."
+            
+            apt_dt = row["appointment_datetime"]
+            if apt_dt.tzinfo is None:
+                apt_dt = apt_dt.replace(tzinfo=timezone.utc)
+            
+            if row["status"] not in ("scheduled", "pending") or apt_dt <= datetime.now(timezone.utc):
+                return "ERROR: No se encontró ningún turno programado o pendiente en el futuro para este paciente."
+                
+            matched_apt = row
+        else:
+            if not phone:
+                return "ERROR: No se encontró ningún turno programado o pendiente en el futuro para este paciente."
+            
+            patient_row = await db.pool.fetchrow(
+                "SELECT id, first_name, last_name FROM patients WHERE phone_number = $1 AND tenant_id = $2 AND status != 'deleted' LIMIT 1",
+                phone, tenant_id
+            )
+            if not patient_row:
+                return "ERROR: No se encontró ningún turno programado o pendiente en el futuro para este paciente."
+                
+            patient_id = patient_row["id"]
+            
+            query = """
+                SELECT a.id, a.appointment_datetime, a.status, a.patient_id,
+                       pat.first_name as patient_first_name, pat.last_name as patient_last_name, pat.phone_number as patient_phone,
+                       prof.name as professional_name,
+                       tt.name as treatment_name
+                FROM appointments a
+                LEFT JOIN patients pat ON a.patient_id = pat.id AND pat.tenant_id = a.tenant_id
+                LEFT JOIN professionals prof ON a.professional_id = prof.id AND prof.tenant_id = a.tenant_id
+                LEFT JOIN treatment_types tt ON a.treatment_type_id = tt.id AND tt.tenant_id = a.tenant_id
+                WHERE a.patient_id = $1 AND a.tenant_id = $2 AND a.status IN ('scheduled', 'pending') AND a.appointment_datetime > NOW()
+                ORDER BY a.appointment_datetime ASC
+            """
+            rows = await db.pool.fetch(query, patient_id, tenant_id)
+            if not rows:
+                return "ERROR: No se encontró ningún turno programado o pendiente en el futuro para este paciente."
+                
+            tz = get_active_tz()
+            appointments = []
+            for r in rows:
+                dt_utc = r["appointment_datetime"]
+                if dt_utc.tzinfo is None:
+                    dt_utc = dt_utc.replace(tzinfo=timezone.utc)
+                dt_local = dt_utc.astimezone(tz)
+                appointments.append({
+                    "row": r,
+                    "local_dt": dt_local,
+                    "utc_dt": dt_utc
+                })
+                
+            if target_date:
+                parsed_date = parse_date(target_date)
+                if parsed_date:
+                    appointments = [apt for apt in appointments if apt["local_dt"].date() == parsed_date]
+                else:
+                    appointments = []
+                    
+            if not appointments:
+                return "ERROR: No se encontró ningún turno programado o pendiente en el futuro para este paciente."
+                
+            if approximate_time:
+                parsed_time = parse_approximate_time(approximate_time)
+                if parsed_time:
+                    target_h, target_m = parsed_time
+                    closest_apt = min(
+                        appointments,
+                        key=lambda a: abs((a["local_dt"].hour * 60 + a["local_dt"].minute) - (target_h * 60 + target_m))
+                    )
+                    matched_apt = closest_apt["row"]
+                else:
+                    matched_apt = appointments[0]["row"]
+            else:
+                matched_apt = appointments[0]["row"]
+
+        apt_id = matched_apt["id"]
+        apt_dt_utc = matched_apt["appointment_datetime"]
+        if apt_dt_utc.tzinfo is None:
+            apt_dt_utc = apt_dt_utc.replace(tzinfo=timezone.utc)
+        tz = get_active_tz()
+        apt_dt_local = apt_dt_utc.astimezone(tz)
+        
+        patient_first_name = matched_apt["patient_first_name"] or ""
+        patient_last_name = matched_apt["patient_last_name"] or ""
+        patient_phone = matched_apt["patient_phone"] or phone or ""
+        
+        prof_name = matched_apt["professional_name"] or "No asignado"
+        treatment_name = matched_apt["treatment_name"] or "Consulta"
+        
+        await db.pool.execute(
+            "UPDATE appointments SET status = 'confirmed', updated_at = NOW() WHERE id = $1 AND tenant_id = $2",
+            apt_id, tenant_id
+        )
+        logger.info(f"✅ Appointment {apt_id} confirmed via confirm_appointment tool.")
+        
+        try:
+            from main import app
+            sio = getattr(app.state, "sio", None)
+            if sio:
+                await sio.emit("APPOINTMENT_UPDATED", {
+                    "appointment_id": str(apt_id),
+                    "status": "confirmed",
+                    "tenant_id": tenant_id,
+                    "phone_number": patient_phone,
+                }, room=f"tenant:{tenant_id}")
+        except Exception as sio_err:
+            logger.warning(f"confirm_appointment Socket.IO emit failed: {sio_err}")
+
+        try:
+            from services.telegram_notifier import fire_telegram_notification
+            patient_full_name = f"{patient_first_name} {patient_last_name}".strip() or patient_phone
+            fire_telegram_notification("APPOINTMENT_UPDATED", {
+                "patient_name": patient_full_name,
+                "appointment_datetime": str(apt_dt_utc),
+                "status": "confirmed",
+                "phone_number": patient_phone,
+                "tenant_id": tenant_id,
+                "source": "agent_tool",
+            }, tenant_id)
+        except Exception as tg_err:
+            logger.warning(f"confirm_appointment Telegram notification failed: {tg_err}")
+            
+        warning_str = ""
+        if approximate_time:
+            parsed_time = parse_approximate_time(approximate_time)
+            if parsed_time:
+                target_h, target_m = parsed_time
+                if apt_dt_local.hour != target_h or apt_dt_local.minute != target_m:
+                    warning_str = (
+                        f" WARNING: El paciente mencionó las {target_h:02d}:{target_m:02d} hs, "
+                        f"pero el turno está agendado a las {apt_dt_local.strftime('%H:%M')} hs. "
+                        f"Es obligatorio aclararle al paciente que el horario exacto es {apt_dt_local.strftime('%H:%M')} hs."
+                    )
+                    
+        success_msg = (
+            f"SUCCESS: Turno del {apt_dt_local.strftime('%Y-%m-%d')} a las {apt_dt_local.strftime('%H:%M')} hs confirmado. "
+            f"Profesional: {prof_name}. Tratamiento: {treatment_name}.{warning_str}"
+        )
+        return success_msg
+        
+    except Exception as e:
+        logger.error(f"Error in confirm_appointment tool: {e}", exc_info=True)
+        return f"ERROR: Hubo un error al procesar la confirmación del turno: {str(e)}"
+
+
 DENTAL_TOOLS = [
     list_professionals,
     list_services,
@@ -8513,6 +8746,7 @@ DENTAL_TOOLS = [
     check_insurance_coverage,
     get_treatment_instructions,
     link_payment_to_patient,
+    confirm_appointment,
 ]
 
 
