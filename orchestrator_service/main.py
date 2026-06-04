@@ -89,7 +89,34 @@ CLINIC_HOURS_END = os.getenv("CLINIC_HOURS_END", "19:00")
 ARG_TZ = timezone(timedelta(hours=-3))
 
 # R6 — TTL consistency: single source of truth for slot lock duration
-SLOT_LOCK_TTL_SECONDS = 300
+# v8.2: increased to 600s (10 min) to give patients more time during admission flow
+SLOT_LOCK_TTL_SECONDS = 600
+
+# v8.2 — Anti-loop booking guards
+MAX_BOOKING_ATTEMPTS = 3  # After 3 failed bookings in one conversation → escalate to human
+
+# v8.2 — Booking error protocol: every book_appointment failure returns [BOOK_ERROR:CODE]
+BOOKING_ERROR_CODES = {
+    "UNAVAILABLE": "Ese horario ya no está disponible",
+    "EXPIRED": "La reserva temporal venció",
+    "CHAIRS_FULL": "No hay más turnos para ese tratamiento hoy",
+    "DUPLICATE": "Ya tenés un turno para ese día y horario",
+    "PAST": "No se puede reservar en el pasado",
+    "HOLIDAY": "Ese día es feriado",
+    "NOT_OFFERED": "Ese horario no fue parte de las opciones",
+    "CONFIRM_REQUIRED": "Debés llamar confirm_slot antes de book_appointment",
+}
+
+# v8.2 — Standardized booking error formatter
+def _format_book_error(code: str, msg: str = "", action: str = "") -> str:
+    """Return a standardized [BOOK_ERROR:CODE] envelope for book_appointment failures."""
+    human = BOOKING_ERROR_CODES.get(code, msg)
+    parts = [f"[BOOK_ERROR:{code}] {human}"]
+    if action:
+        parts.append(f"[ACTION:{action}]")
+    return " ".join(parts)
+
+
 
 
 def get_active_tz():
@@ -1390,6 +1417,7 @@ async def pick_representative_slots(
     time_preference: Optional[str] = None,
     specific_time: Optional[str] = None,
     excluded_weekdays: Optional[set] = None,
+    excluded_dates: Optional[set] = None,
 ) -> tuple:
     """
     Selecciona hasta max_options slots representativos.
@@ -1447,7 +1475,11 @@ async def pick_representative_slots(
 
     # Filter out excluded weekdays from slots
     if excluded_weekdays and target_date.weekday() in excluded_weekdays:
-        slots = []  # Target date falls on an excluded day
+        slots = [] # Target date falls on an excluded day
+        total_today = 0
+    # Filter out excluded specific dates from slots
+    if excluded_dates and target_date in excluded_dates:
+        slots = [] # Target date falls on an explicitly excluded date
         total_today = 0
 
     if search_range_days <= 1:
@@ -1488,14 +1520,17 @@ async def pick_representative_slots(
                 }
             )
 
-        # Buscar en el resto del rango
-        for day_offset in range(1, search_range_days):
-            if len(days_with_slots) >= max_options * 2:  # Suficientes días para elegir
-                break
-            extra_date = target_date + timedelta(days=day_offset)
-            # Skip excluded weekdays (patient rejected this day of the week)
-            if excluded_weekdays and extra_date.weekday() in excluded_weekdays:
-                continue
+    # Buscar en el resto del rango
+    for day_offset in range(1, search_range_days):
+        if len(days_with_slots) >= max_options * 2: # Suficientes días para elegir
+            break
+        extra_date = target_date + timedelta(days=day_offset)
+        # Skip excluded weekdays (patient rejected this day of the week)
+        if excluded_weekdays and extra_date.weekday() in excluded_weekdays:
+            continue
+        # Skip excluded specific dates (patient rejected this exact date)
+        if excluded_dates and extra_date in excluded_dates:
+            continue
             extra_day_en = DAYS_EN[extra_date.weekday()]
             extra_day_cfg = tenant_wh.get(extra_day_en, {})
             if extra_day_cfg and not extra_day_cfg.get("enabled", True):
@@ -1578,6 +1613,9 @@ async def pick_representative_slots(
             extra_date = target_date + timedelta(days=day_offset)
             # Skip excluded weekdays (patient rejected this day of the week)
             if excluded_weekdays and extra_date.weekday() in excluded_weekdays:
+                continue
+            # Skip excluded specific dates (patient rejected this exact date)
+            if excluded_dates and extra_date in excluded_dates:
                 continue
             extra_day_en = DAYS_EN[extra_date.weekday()]
             extra_day_cfg = tenant_wh.get(extra_day_en, {})
@@ -1667,21 +1705,23 @@ async def check_availability(
     time_preference: Optional[str] = None,
     specific_time: Optional[str] = None,
     exclude_days: Optional[str] = None,
+    exclude_dates: Optional[str] = None,
 ):
     """
     Consulta la disponibilidad REAL de turnos para una fecha. Llamar UNA sola vez por pregunta del paciente.
     date_query: OBLIGATORIO. Texto del paciente sobre la fecha, SIEMPRE incluyendo el mes. Si el paciente dijo el mes en un mensaje anterior, incluirlo aquí. Ejemplos: "mitad de mayo", "fines de abril 22 en adelante", "cerca del 15 de mayo". NUNCA pasar solo un número sin mes.
     interpreted_date: OBLIGATORIO. Fecha YYYY-MM-DD que vos calculás. Razoná combinando TODA la conversación. NUNCA vacío.
     search_mode: OBLIGATORIO. Opciones:
-      - "exact": Día puntual ("el 30 de abril", "mañana", "pasado mañana", "hoy mismo").
-      - "week": Rango ~7 días ("mitad de mayo", "fines de julio", "la semana que viene", "dentro de un par de días", "después del 20", "antes de que termine el mes", "esta semana sí o sí").
-      - "month": Mes completo ("para mayo", "el mes que viene").
-      - "open": Sin fecha fija ("lo antes posible", "cuando haya", "cualquier día", "me da igual cuándo").
+    - "exact": Día puntual ("el 30 de abril", "mañana", "pasado mañana", "hoy mismo").
+    - "week": Rango ~7 días ("mitad de mayo", "fines de julio", "la semana que viene", "dentro de un par de días", "después del 20", "antes de que termine el mes", "esta semana sí o sí").
+    - "month": Mes completo ("para mayo", "el mes que viene").
+    - "open": Sin fecha fija ("lo antes posible", "cuando haya", "cualquier día", "me da igual cuándo").
     professional_name: (Opcional) Nombre del profesional.
     treatment_name: (Opcional) Tratamiento definido (ej. limpieza profunda, consulta).
     time_preference: Si el paciente pide horarios de un momento del día: 'mañana' (horario AM) o 'tarde'. Si no especifica no pasar.
     specific_time: (Opcional) Hora EXACTA que el paciente pidió, en formato HH:MM (ej: "16:30", "10:00"). Usar SOLO cuando el paciente pide una hora concreta ("a las 16:30", "quiero a las 10"). Si el paciente solo dice "mañana" o "tarde" sin hora exacta, NO pasar este campo — usar time_preference. Si se pasa, la tool verifica si ESE slot exacto está libre y lo incluye primero en las opciones.
     exclude_days: (Opcional) Días de la semana que el paciente RECHAZÓ, separados por coma. Ej: "viernes", "lunes,miércoles". Si el paciente dijo "el viernes no puedo" o "los lunes no me sirven", pasá esos días acá para EXCLUIRLOS de los resultados. SIEMPRE pasar los días rechazados por el paciente en la conversación.
+    exclude_dates: (Opcional) Fechas específicas que el paciente RECHAZÓ, separadas por coma en formato YYYY-MM-DD. Ej: "2026-06-03", "2026-06-03,2026-06-05". Si el paciente dijo "el 3 de junio no puedo" o "mañana no puedo", pasá esas fechas acá para EXCLUIRLAS de los resultados. SIEMPRE pasar las fechas rechazadas por el paciente en TODAS las búsquedas siguientes.
     La tool devuelve 2 opciones concretas de horario con sede. Presentá las opciones al paciente tal cual las recibís.
     """
     try:
@@ -1718,7 +1758,7 @@ async def check_availability(
         except Exception:
             _ca_state_str = "?"
         logger.info(
-            f"📅 check_availability date_query={date_query!r} interpreted_date={interpreted_date!r} search_mode={search_mode!r} tenant_id={tid} state={_ca_state_str} treatment={treatment_name!r} prof={professional_name!r} exclude_days={exclude_days!r}"
+            f"📅 check_availability date_query={date_query!r} interpreted_date={interpreted_date!r} search_mode={search_mode!r} tenant_id={tid} state={_ca_state_str} treatment={treatment_name!r} prof={professional_name!r} exclude_days={exclude_days!r} exclude_dates={exclude_dates!r}"
         )
 
         # Parse exclude_days into a set of weekday numbers (0=Monday..6=Sunday)
@@ -2111,7 +2151,20 @@ async def check_availability(
             )
             target_date += timedelta(days=1)
 
-        # 0. B) Auto-avanzar si el día está cerrado (clínica o profesional)
+    # Parse exclude_dates into a set of date objects
+    _excluded_dates: set = set()
+    if exclude_dates:
+        try:
+            for _date_str in exclude_dates.split(","):
+                _date_str = _date_str.strip()
+                if _date_str:
+                    _excluded_dates.add(datetime.strptime(_date_str, "%Y-%m-%d").date())
+        except ValueError as _e:
+            logger.warning(f"Invalid exclude_dates format: {exclude_dates}, error: {_e}")
+    if _excluded_dates:
+        logger.info(f"📅 Excluding specific dates: {_excluded_dates} from results")
+
+    # 0. B) Auto-avanzar si el día está cerrado (clínica o profesional)
         # En vez de retornar error, buscamos el próximo día válido automáticamente.
         days_en = [
             "monday",
@@ -2736,6 +2789,48 @@ async def check_availability(
                 f"{_p['first_name']} {_p.get('last_name') or ''}".strip()
             )
 
+        # v8.2: Merge conversation-state exclusions with tool-param exclusions
+        # This ensures patient-declared exclusions (from earlier messages) auto-propagate
+        # across ALL check_availability calls in the same conversation.
+        try:
+            from services.conversation_state import get_state as _ca_cs_get
+            _ca_cs = await _ca_cs_get(tenant_id, _ca_phone) if _ca_phone else {}
+            if isinstance(_ca_cs, dict):
+                # Merge excluded_days from convstate
+                _cs_excluded_days = _ca_cs.get("excluded_days") or []
+                if _cs_excluded_days:
+                    _day_map_merge = {
+                        "lunes": 0, "martes": 1, "miércoles": 2, "miercoles": 2,
+                        "jueves": 3, "viernes": 4, "sábado": 5, "sabado": 5, "domingo": 6,
+                    }
+                    for _cs_day in _cs_excluded_days:
+                        _cs_day_lower = _cs_day.lower().strip()
+                        if _cs_day_lower in _day_map_merge:
+                            _excluded_weekdays.add(_day_map_merge[_cs_day_lower])
+                    logger.info(f"📅 Merged convstate excluded_days: {_cs_excluded_days} → weekdays={_excluded_weekdays}")
+                # Merge excluded_dates from convstate
+                _cs_excluded_dates = _ca_cs.get("excluded_dates") or []
+                if _cs_excluded_dates:
+                    for _cs_date_str in _cs_excluded_dates:
+                        try:
+                            _cs_d = datetime.strptime(_cs_date_str.strip(), "%Y-%m-%d").date()
+                            _excluded_dates.add(_cs_d)
+                        except ValueError:
+                            pass
+                    logger.info(f"📅 Merged convstate excluded_dates: {_cs_excluded_dates} → dates={_excluded_dates}")
+                # Merge failed_slots from convstate: filter same-date slots from results
+                _cs_failed_slots = _ca_cs.get("failed_slots") or []
+                for _fs in _cs_failed_slots:
+                    try:
+                        _fs_date = datetime.strptime(_fs.get("date", ""), "%Y-%m-%d").date()
+                        _excluded_dates.add(_fs_date)
+                    except (ValueError, AttributeError):
+                        pass
+                if _cs_failed_slots:
+                    logger.info(f"📅 Merged convstate failed_slots: {len(_cs_failed_slots)} → added to excluded_dates")
+        except Exception as _ca_cs_merge_err:
+            logger.debug(f"check_availability convstate merge skipped: {_ca_cs_merge_err}")
+
         # Seleccionar 2 opciones representativas (con multi-día si hace falta)
         options, total_today = await pick_representative_slots(
             available_slots,
@@ -2751,6 +2846,7 @@ async def check_availability(
             time_preference=time_preference,
             specific_time=specific_time,
             excluded_weekdays=_excluded_weekdays if _excluded_weekdays else None,
+        excluded_dates=_excluded_dates if _excluded_dates else None,
         )
 
         if options:
@@ -3191,6 +3287,26 @@ async def book_appointment(
     except Exception as _ba_err:
         logger.warning(f"📅 BOOK: duplicate check failed (non-blocking): {_ba_err}")
 
+    # v8.2: Anti-loop — check per-conversation booking attempt counter
+    try:
+        from services.conversation_state import increment_booking_attempts as _ba_incr
+
+        _ba_attempts = await _ba_incr(tenant_id, chat_phone)
+        logger.info(
+            f"📊 BOOKING_FLOW | booking_attempts={_ba_attempts} phone={chat_phone}"
+        )
+        if _ba_attempts > MAX_BOOKING_ATTEMPTS:
+            logger.warning(
+                f"📊 BOOKING_FLOW | 🚫 BOOK BLOCKED: max_attempts={MAX_BOOKING_ATTEMPTS} reached, "
+                f"phone={chat_phone}"
+            )
+            return _format_book_error(
+                "CONFIRM_REQUIRED",
+                action="Call derivhumano with motivo='No se pudo agendar después de 3 intentos'. NO sigas intentando agendar."
+            )
+    except Exception as _ba_attempts_err:
+        logger.warning(f"📅 BOOK: booking_attempts check failed (non-blocking): {_ba_attempts_err}")
+
     # Lead context: accumulate name/DNI for self-bookings AND minor bookings
     # IMPORTANT: Also save context for minors so AI doesn't lose track in long conversations
     if not bool(
@@ -3405,8 +3521,9 @@ async def book_appointment(
                         f"📅 BOOK R1: slot_offer key missing for {chat_phone} — availability expired"
                     )
                     return (
-                        "AVAILABILITY_EXPIRED: La disponibilidad ofrecida expiró. "
-                        "Llamá check_availability nuevamente para buscar opciones actualizadas."
+                        _format_book_error("EXPIRED",
+                            action="Fresh check_availability; if 2nd EXPIRED, escalate to derivhumano"
+                        )
                     )
                 else:
                     _offered_slots = json.loads(
@@ -3426,9 +3543,10 @@ async def book_appointment(
                             f"{s.get('date')} {s.get('time')}" for s in _offered_slots
                         )
                         return (
-                            f"SLOT_NOT_OFFERED: El horario {_req_date} {_req_time} no fue ofrecido al paciente. "
-                            f"Las opciones válidas son: {_opts_text}. "
-                            "Pedile al paciente que elija una de esas opciones."
+                            _format_book_error("NOT_OFFERED",
+                                msg=f"El horario {_req_date} {_req_time} no fue ofrecido al paciente. Las opciones válidas son: {_opts_text}. Pedile al paciente que elija una de esas opciones.",
+                                action="Re-present only slots from last availability check"
+                            )
                         )
             # If Redis is down, log and skip validation (fail-open to avoid blocking bookings)
         except Exception as _validate_err:
@@ -3457,7 +3575,10 @@ async def book_appointment(
                 )
             # Horario válido dentro del rango especial — continuar con el flujo normal
         elif _is_hol:
-            return f"❌ No se puede agendar el {apt_datetime.strftime('%d/%m/%Y')}: es feriado ({_hol_name}). Por favor elegí otro día."
+            return _format_book_error("HOLIDAY",
+                msg=f"No se puede agendar el {apt_datetime.strftime('%d/%m/%Y')}: es feriado ({_hol_name}). Por favor elegí otro día.",
+                action="Pick another day; do NOT retry this date"
+            )
         first_name = (
             str(first_name).strip() if first_name and str(first_name).strip() else None
         )
@@ -3918,7 +4039,10 @@ async def book_appointment(
             logger.info(
                 f"book_appointment: sin disponibilidad phone={phone} tenant={tenant_id} datetime={apt_datetime} tratamiento={treatment_code} (paciente no creado por spec)"
             )
-            return f"❌ Lo siento, no hay disponibilidad a las {apt_datetime.strftime('%H:%M')} para el tratamiento de {final_duration} min. ¿Probamos otro horario?"
+            return _format_book_error("UNAVAILABLE",
+                msg=f"Lo siento, no hay disponibilidad a las {apt_datetime.strftime('%H:%M')} para el tratamiento de {final_duration} min. ¿Probamos otro horario?",
+                action="Pick next slot; do NOT re-offer this slot"
+            )
 
         # Patient duplicate guard: block ONLY if time overlaps with existing appointment (DLD-59)
         if existing_patient:
@@ -3932,8 +4056,10 @@ async def book_appointment(
                     tenant_id, existing_patient["id"], apt_datetime, end_apt
                 )
                 if existing_same_day and existing_same_day > 0:
-                    return ("⚠️ Ya tenés un turno agendado en ese horario. "
-                            "Si querés cambiar el horario, pedime que lo reprograme en lugar de agendar uno nuevo.")
+                    return _format_book_error("DUPLICATE",
+                        msg="Ya tenés un turno agendado en ese horario. Si querés cambiar el horario, pedime que lo reprograme en lugar de agendar uno nuevo.",
+                        action="Use list_my_appointments; do NOT retry"
+                    )
             except Exception as e:
                 logger.warning(f"[BOOK] Same-day check failed (continuing): {e}")
                 # Fail-open: don't block booking if the check fails
@@ -3962,7 +4088,10 @@ async def book_appointment(
                     logger.info(
                         f"🪑 book_appointment: CHAIRS FULL at {apt_datetime} (concurrent={concurrent}, max={max_chairs})"
                     )
-                    return f"❌ Lo siento, todos los sillones están ocupados a las {apt_datetime.strftime('%H:%M')}. La clínica tiene {max_chairs} sillones y ya hay {concurrent} turnos simultáneos. ¿Probamos otro horario?"
+                    return _format_book_error("CHAIRS_FULL",
+                        msg=f"Lo siento, todos los sillones están ocupados a las {apt_datetime.strftime('%H:%M')}. La clínica tiene {max_chairs} sillones y ya hay {concurrent} turnos simultáneos. ¿Probamos otro horario?",
+                        action="Offer next available day"
+                    )
         except Exception as chair_err:
             logger.warning(f"Chair check (non-fatal): {chair_err}")
 
@@ -4066,7 +4195,10 @@ async def book_appointment(
                         # DLD-74: usar chat_phone (no phone) — phone se muta para menores/ART
                         if _holder_str != chat_phone:
                             logger.warning("Soft-lock conflict: slot reserved by %s, requester %s", _holder_str, chat_phone)
-                            return "❌ Ese turno acaba de ser reservado por otro paciente. Volvamos a buscar disponibilidad."
+                            return _format_book_error("UNAVAILABLE",
+                                msg="Ese turno acaba de ser reservado por otro paciente. Volvamos a buscar disponibilidad.",
+                                action="Pick next slot; do NOT re-offer this slot"
+                            )
                         else:
                             _patient_lock_key = _lk
                             break
@@ -4084,7 +4216,10 @@ async def book_appointment(
             logger.warning(
                 f"📅 BOOK REJECTED: apt_datetime={apt_datetime} is in the past (now={now_check})"
             )
-            return f"❌ La fecha {apt_datetime.strftime('%d/%m/%Y %H:%M')} ya pasó. Por favor elegí una fecha futura."
+            return _format_book_error("PAST",
+                msg=f"La fecha {apt_datetime.strftime('%d/%m/%Y %H:%M')} ya pasó. Por favor elegí una fecha futura.",
+                action="Guide patient to future date; do NOT retry"
+            )
 
         # G2 GUARDRAIL: Calculate seña expiration timestamp
         _sena_exp_hours = (
@@ -4120,31 +4255,9 @@ async def book_appointment(
                         logger.warning(
                             f"🔒 R2 advisory lock contention: prof={target_prof['id']} datetime={apt_datetime}"
                         )
-                        return (
-                            "❌ Ese horario fue tomado por otro paciente justo ahora. "
-                            "Te ofrezco otra opción cercana, ¿te parece?"
-                        )
-                    # Atomic conflict re-check inside the lock (SELECT FOR UPDATE on existing rows)
-                    _atomic_conflict = await _conn.fetchval(
-                        """
-                        SELECT EXISTS(
-                            SELECT 1 FROM appointments
-                            WHERE tenant_id = $1 AND professional_id = $2 AND status IN ('scheduled', 'confirmed')
-                            AND appointment_datetime = $3
-                            FOR UPDATE SKIP LOCKED
-                        )
-                        """,
-                        tenant_id,
-                        target_prof["id"],
-                        apt_datetime,
-                    )
-                    if _atomic_conflict:
-                        logger.warning(
-                            f"🔒 R2 atomic conflict: prof={target_prof['id']} datetime={apt_datetime}"
-                        )
-                        return (
-                            "❌ Ese horario fue tomado por otro paciente justo ahora. "
-                            "Te ofrezco otra opción cercana, ¿te parece?"
+                        return _format_book_error("UNAVAILABLE",
+                            msg="Ese horario fue tomado por otro paciente justo ahora. Te ofrezco otra opción cercana, ¿te parece?",
+                            action="Pick next slot; do NOT re-offer this slot"
                         )
                     await _conn.execute(
                         """
@@ -4165,13 +4278,20 @@ async def book_appointment(
             logger.warning(
                 f"🔒 UNIQUE constraint blocked double-booking: prof={target_prof['id']} datetime={apt_datetime} err={_uniq_err}"
             )
-            return (
-                "❌ Ese horario fue tomado por otro paciente justo ahora. "
-                "Te ofrezco otra opción cercana, ¿te parece?"
+            return _format_book_error("UNAVAILABLE",
+                msg="Ese horario fue tomado por otro paciente justo ahora. Te ofrezco otra opción cercana, ¿te parece?",
+                action="Pick next slot; do NOT re-offer this slot"
             )
         logger.info(
             f"✅ book_appointment OK phone={phone} tenant={tenant_id} apt_id={apt_id} patient_id={patient_id} prof={target_prof['first_name']} datetime={apt_datetime}"
         )
+
+        # v8.2: Reset booking attempts on successful booking
+        try:
+            from services.conversation_state import reset_booking_attempts as _ba_reset
+            await _ba_reset(tenant_id, chat_phone)
+        except Exception as _ba_reset_err:
+            logger.warning(f"📅 BOOK: reset_booking_attempts failed (non-blocking): {_ba_reset_err}")
 
         # Audit log (TIER 3 cap.3) — best-effort
         try:
@@ -4604,7 +4724,23 @@ async def book_appointment(
 
         logger.exception(f"Error en book_appointment: {e}")
         logger.warning(f"book_appointment FAIL traceback={traceback.format_exc()}")
-        return "⚠️ Tuve un problema al procesar la reserva. Por favor, intenta de nuevo indicando fecha y hora. Formato esperado: día de la semana + hora 24h (ej. miércoles 17:00, Wednesday 17:00)."
+        # v8.2: Track failed attempt in conversation state
+        try:
+            from services.conversation_state import append_failed_slot as _ba_fail
+            _tid = current_tenant_id.get()
+            _ba_phone = current_customer_phone.get()
+            if _tid and _ba_phone:
+                await _ba_fail(_tid, _ba_phone, {
+                    "date": "unknown",
+                    "time": "unknown",
+                    "code": "UNAVAILABLE",
+                })
+        except Exception:
+            pass
+        return _format_book_error("UNAVAILABLE",
+            msg="Tuve un problema al procesar la reserva. Por favor, intenta de nuevo indicando fecha y hora.",
+            action="Fresh check_availability; do NOT retry same slot"
+        )
 
 
 @tool
@@ -6382,14 +6518,16 @@ async def confirm_slot(
     treatment_name: Optional[str] = None,
     slot_index: Optional[int] = None,
     interpreted_date: Optional[str] = None,
+    anchor_date: Optional[str] = None,
 ):
     """
-    Confirma y reserva temporalmente un turno por 300 segundos antes de llamar a book_appointment.
+    Confirma y reserva temporalmente un turno por 600 segundos antes de llamar a book_appointment.
     Llamar SOLO DESPUÉS de haber recopilado los datos del paciente (nombre, apellido, DNI).
     FLUJO CORRECTO: check_availability → paciente elige → pedir datos (nombre, DNI) → confirm_slot → book_appointment.
-    NUNCA llamar confirm_slot ANTES de tener los datos del paciente. El timer de 5 minutos empieza acá.
+    NUNCA llamar confirm_slot ANTES de tener los datos del paciente. El timer de 10 minutos empieza acá.
     slot_index: (Recomendado) Número de la opción que el paciente eligió (1, 2, etc.) de las opciones que ofreciste con check_availability. Ejemplo: si ofreciste dos turnos y el paciente dijo "el primero" → slot_index=1.
     interpreted_date: (Alternativa) Fecha ISO YYYY-MM-DD del turno seleccionado. Usar si conocés la fecha exacta.
+    anchor_date: (Recomendado) Fecha YYYY-MM-DD resuelta desde check_availability. Pasala SIEMPRE para evitar que se recalcule la fecha relativa. Ejemplo: si check_availability resolvió "mañana" → "2026-06-05", pasá anchor_date="2026-06-05".
     date_time: (Fallback) Texto libre con la fecha/hora. Solo usar si no tenés slot_index ni interpreted_date.
     professional_name: (Opcional) Profesional elegido.
     treatment_name: (Opcional) Tratamiento definido.
@@ -6397,7 +6535,14 @@ async def confirm_slot(
     try:
         tenant_id = current_tenant_id.get()
         phone = current_customer_phone.get()
-        logger.info(f"🎯 confirm_slot ENTRY | tenant={tenant_id} phone={phone} date_time={date_time!r} slot_index={slot_index} interpreted_date={interpreted_date!r} prof={professional_name!r} treatment={treatment_name!r}")
+        # v8.2: Store anchor_date in convstate for downstream propagation
+        if anchor_date:
+            try:
+                from services.conversation_state import set_anchor_date as _cs_set_anchor
+                await _cs_set_anchor(tenant_id, phone, anchor_date)
+            except Exception as _anc_err:
+                logger.warning(f"confirm_slot: set_anchor_date failed (non-blocking): {_anc_err}")
+        logger.info(f"🎯 confirm_slot ENTRY | tenant={tenant_id} phone={phone} date_time={date_time!r} slot_index={slot_index} interpreted_date={interpreted_date!r} anchor_date={anchor_date!r} prof={professional_name!r} treatment={treatment_name!r}")
         if not phone:
             return "❌ No pude identificar tu número para reservar el turno."
 
@@ -10073,7 +10218,16 @@ NUNCA interpretar duda como confirmación. NUNCA cerrar turno sin elección EXPL
 
 EJEMPLOS de frases PROHIBIDAS cuando el paciente YA pidió turno o tratamiento: "Si querés, te ayudo a coordinar", "Te gustaría agendar?", "Querés que te busque turno?", "Te agendo?", "Te busco el turno", "Te busco turno". En su lugar → ejecutá check_availability directamente.
 NOTA: "Te ayudo a coordinar un turno" es válida como cierre consultivo cuando OFRECÉS agendar (F1-F8 CTAs). Solo está PROHIBIDA cuando el paciente ya expresó que quiere agendar.
-REGLA ANTI-REPETICIÓN DE CTA: PROHIBIDO ofrecer "te ayudo a coordinar un turno" (o variaciones) más de 2 veces en toda la conversación. Si el paciente no aceptó las primeras 2 veces, NO insistir — respondé a sus preguntas sin volver a ofrecer hasta que lo pida explícitamente. Si el paciente dice "voy a tomar un turno", "quiero turno", "agendame", "ok dale" → ejecutar check_availability INMEDIATAMENTE sin repetir el ofrecimiento.
+REGLA ANTI-REPETICIÓN DE CTA (EXPANDIDA): PROHIBIDO ofrecer CUALQUIERA de estas frases más de 2 veces en total (combinadas) en toda la conversación:
+- "Si querés, te ayudo a coordinar"
+- "Te gustaría agendar?"
+- "Querés que te busque turno?"
+- "Te agendo?"
+- "Te busco turno"
+- "Querés que te ayudo a coordinar un turno?"
+- "Si querés, te busco un turno"
+- CUALQUIER variación que ofrezca agendar sin que el paciente lo pida
+Después de 2 veces, NO insistas. Respondé a sus preguntas sin volver a ofrecer hasta que el paciente lo pida explícitamente.
 REGLA POST-DATOS: Si el paciente ya dio nombre y DNI Y ya expresó intención de turno → ejecutar check_availability y mostrar turnos SIN preguntar "¿querés que te pase los turnos disponibles?". La intención ya fue expresada — AVANZAR.
 PASO 1: SALUDO E IDENTIDAD - Usá el GREETING correspondiente al tipo de paciente.
 PASO 2: DEFINIR SERVICIO - Si el paciente ya lo dijo, NO lo volvás a preguntar. PERO siempre validá que el servicio exista llamando 'list_services'. Si el paciente dijo un término coloquial (ej: "cirugía", "arreglar diente"), mapealo al nombre canónico y validá. Si no existe en list_services, mostrar los servicios disponibles.
@@ -10248,8 +10402,26 @@ Cuando el paciente elige de opciones que ya ofreciste:
     → Si el paciente ACEPTA la nueva opción → usá slot_index para confirmar y procedé a pedir datos (PASO 4b).
     → Si no hay disponibilidad en lo que pidió → decile honestamente y ofrecé las alternativas más cercanas.
   Si NINGUNA opción funciona y no especifica preferencia → ejecutá check_availability con search_mode="month".
-  REGLA DE EXCLUSIÓN: Si el paciente rechazó un día de la semana ("el viernes no puedo", "los lunes no"), SIEMPRE pasá exclude_days en TODAS las llamadas siguientes a check_availability en esta conversación. NUNCA vuelvas a ofrecer un día rechazado.
-  REGLA DE CONTINUIDAD (OBLIGATORIA — CON EXCEPCIÓN):
+   REGLA DE EXCLUSIÓN: Si el paciente rechazó un día de la semana ("el viernes no puedo", "los lunes no"), SIEMPRE pasá exclude_days en TODAS las llamadas siguientes a check_availability en esta conversación. NUNCA vuelvas a ofrecer un día rechazado.
+
+REGLA DE NOTIFICACIÓN ÚNICA: Si el paciente no tiene turno, informalo UNA sola vez. Luego pasá DIRECTO a ofrecer alternativas (check_availability o preguntar fecha preferida). PROHIBIDO repetir "no tenés turno activo" o "no figura ningún turno" más de una vez por conversación.
+
+REGLA DLD-67 (MISMO DÍA): El sistema NO permite agendar turnos para el día de hoy. Se requiere mínimo 1 día de margen operativo. NUNCA ofrezcas turnos para hoy — si el paciente pide "hoy", la tool auto-avanza al día siguiente.
+
+REGLA DE EXCLUSIÓN DE FECHAS ESPECÍFICAS: Si el paciente dice que una FECHA ESPECÍFICA no puede (ej: "el 3 de junio tengo que viajar", "mañana no puedo", "el 15 no me sirve"), pasá exclude_dates con esa fecha en formato YYYY-MM-DD en TODAS las llamadas siguientes a check_availability. NUNCA ofrezcas turnos para una fecha que el paciente explícitamente rechazó. EJEMPLO: Paciente dice "el miércoles 03/06 tengo que viajar" → exclude_dates="2026-06-03" en TODAS las búsquedas siguientes.
+
+REGLA ANTI-LOOP DE AGENDAMIENTO:
+• Si book_appointment falla 2 veces para el MISMO día → PROHIBIDO intentar ese día nuevamente. Ofrecé turnos para otro día.
+• Si book_appointment falla 3 veces en total en la conversación → llamá derivhumano con motivo "No se pudo agendar después de 3 intentos". NO sigas intentando.
+• PROHIBIDO ofrecer el mismo horario o un horario 15 minutos corrido como alternativa después de un fallo.
+
+REGLA DE CONFIRMACIÓN EXACTA: Cuando el paciente pregunta por su turno ("¿para cuándo quedó?", "¿qué día es mi turno?"):
+1. Llamá list_my_appointments PRIMERO para obtener los datos reales.
+2. Respondé con la fecha EXACTA del turno (ej: "jueves 04/06 a las 10:30").
+3. PROHIBIDO usar referencias relativas ("mañana", "pasado mañana", "esta semana") sin haber calculado los días exactos usando el TIEMPO ACTUAL.
+4. Si tenés duda sobre la fecha, llamá list_my_appointments de nuevo. NUNCA adivines.
+
+   REGLA DE CONTINUIDAD (OBLIGATORIA — CON EXCEPCIÓN):
   Si le ofreciste opciones de turno al paciente y él hace una pregunta lateral (obra social, precio, dirección, tratamientos, etc.), \
   RESPONDÉ su pregunta normalmente y DESPUÉS retomá el tema del turno recordándole las opciones que tenía pendientes. \
   Ejemplo: "Sí, trabajamos con Galeno 😊 Y respecto al turno, ¿te queda mejor el 1️⃣ o el 2️⃣?" \
