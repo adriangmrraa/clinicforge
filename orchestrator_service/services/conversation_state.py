@@ -3,10 +3,19 @@ Conversation State Machine Module.
 
 Manages conversation state in Redis keyed by (tenant_id, phone_number).
 Provides state transitions for the TORA booking flow: IDLE -> OFFERED_SLOTS -> SLOT_LOCKED -> BOOKED/PAYMENT_PENDING -> PAYMENT_VERIFIED.
+
+v8.2 — Anti-loop booking extensions:
+- failed_slots[]: blacklist of (date, time, code) the agent must never re-offer
+- excluded_days[]: patient-declared day-of-week exclusions
+- excluded_dates[]: patient-declared specific-date exclusions
+- statements_made{}: hash → count for deduplicating agent output
+- booking_attempts: per-conversation counter for escalation guard
+- anchor_date: resolved anchor date propagated through confirm_slot → book_appointment
 """
 
 import json
 import logging
+from datetime import datetime as _dt
 from typing import Optional, Dict, Any, List
 from enum import Enum
 
@@ -115,13 +124,29 @@ async def set_state(
         phone_normalized = _normalize_phone_for_key(phone_number)
         key = _get_redis_key(tenant_id, phone_normalized)
 
+        # Preserve anti-loop fields across state transitions (v8.2)
+        _existing = None
+        try:
+            _raw = await r.get(key)
+            if _raw:
+                _existing = json.loads(_raw)
+        except Exception:
+            _existing = None
+
         state_data = {
             "state": state,
             "last_offered_slots": last_offered_slots,
             "last_locked_slot": last_locked_slot,
             "last_booked_appointment_id": last_booked_appointment_id,
             "offered_treatment": offered_treatment,
-            "updated_at": __import__("datetime").datetime.now().isoformat(),
+            # Anti-loop fields — preserve existing or default to empty/null
+            "failed_slots": (_existing or {}).get("failed_slots", []),
+            "excluded_days": (_existing or {}).get("excluded_days", []),
+            "excluded_dates": (_existing or {}).get("excluded_dates", []),
+            "statements_made": (_existing or {}).get("statements_made", {}),
+            "booking_attempts": (_existing or {}).get("booking_attempts", 0),
+            "anchor_date": (_existing or {}).get("anchor_date"),
+            "updated_at": _dt.now().isoformat(),
         }
 
         # DLD-89/92: BOOKED y PAYMENT_PENDING usan TTL de 24h para no expirar durante la conversación
@@ -176,3 +201,170 @@ async def reset(tenant_id: int, phone_number: str) -> None:
     except Exception as e:
         logger.warning(f"[conversation_state] reset failed: {e}")
         # Fail silently
+
+
+# ── Anti-loop Booking Helpers (v8.2) ──────────────────────────────
+#
+# Each helper reads the current convstate payload via get_state(), mutates the
+# relevant anti-loop field, and writes the whole payload back atomically.
+# All payload writes use a _raw_write() helper that merges anti-loop fields
+# with the existing payload so state transitions done concurrently (via set_state)
+# don't wipe out fields that other code just mutated.
+
+
+async def _raw_write(tenant_id: int, phone_number: str, payload: Dict[str, Any], ttl: int = CONVSTATE_TTL) -> None:
+    """Write a raw payload dict directly to the convstate Redis key."""
+    try:
+        from services.relay import get_redis
+
+        r = get_redis()
+        if r is None:
+            return
+        phone_normalized = _normalize_phone_for_key(phone_number)
+        key = _get_redis_key(tenant_id, phone_normalized)
+        await r.setex(key, ttl, json.dumps(payload))
+    except Exception as e:
+        logger.warning(f"[conversation_state] _raw_write failed: {e}")
+
+
+async def _read_payload(tenant_id: int, phone_number: str) -> Dict[str, Any]:
+    """Read the full convstate payload, defaulting to IDLE if missing."""
+    state = await get_state(tenant_id, phone_number)
+    if not isinstance(state, dict):
+        state = {"state": "IDLE"}
+    return state
+
+
+async def append_failed_slot(tenant_id: int, phone_number: str, slot: Dict[str, Any]) -> None:
+    """
+    Record a failed booking slot so it is never re-offered in this conversation.
+
+    slot must contain at least: {"date": "YYYY-MM-DD", "time": "HH:MM", "code": "UNAVAILABLE"}
+    Timestamp 'at' is auto-added.
+    """
+    try:
+        payload = await _read_payload(tenant_id, phone_number)
+        slot["at"] = _dt.now().isoformat()
+        failed = list(payload.get("failed_slots") or [])
+        # Deduplicate: same date+time+code → skip
+        if not any(
+            s.get("date") == slot.get("date")
+            and s.get("time") == slot.get("time")
+            and s.get("code") == slot.get("code")
+            for s in failed
+        ):
+            failed.append(slot)
+        payload["failed_slots"] = failed
+        payload["updated_at"] = _dt.now().isoformat()
+        await _raw_write(tenant_id, phone_number, payload)
+        logger.info(
+            f"[conversation_state] append_failed_slot: {slot.get('date')} {slot.get('time')} "
+            f"code={slot.get('code')} for {phone_number}"
+        )
+    except Exception as e:
+        logger.warning(f"[conversation_state] append_failed_slot failed: {e}")
+
+
+async def add_exclusion(tenant_id: int, phone_number: str, exclusion: Dict[str, Any]) -> None:
+    """
+    Add a patient-declared exclusion to the convstate.
+
+    exclusion keys:
+      - "days": [list of day names] → appended to excluded_days
+      - "dates": [list of YYYY-MM-DD] → appended to excluded_dates
+    """
+    try:
+        payload = await _read_payload(tenant_id, phone_number)
+
+        if exclusion.get("days"):
+            existing_days = set(payload.get("excluded_days") or [])
+            for d in exclusion["days"]:
+                existing_days.add(d.lower().strip())
+            payload["excluded_days"] = list(existing_days)
+
+        if exclusion.get("dates"):
+            existing_dates = set(payload.get("excluded_dates") or [])
+            for d in exclusion["dates"]:
+                existing_dates.add(d)
+            payload["excluded_dates"] = list(existing_dates)
+
+        payload["updated_at"] = _dt.now().isoformat()
+        await _raw_write(tenant_id, phone_number, payload)
+        logger.info(
+            f"[conversation_state] add_exclusion: days={payload.get('excluded_days')} "
+            f"dates={payload.get('excluded_dates')} for {phone_number}"
+        )
+    except Exception as e:
+        logger.warning(f"[conversation_state] add_exclusion failed: {e}")
+
+
+async def track_statement(tenant_id: int, phone_number: str, statement_hash: str) -> int:
+    """
+    Record a sent agent statement hash and return its current count (0-based before increment).
+
+    Returns the count AFTER incrementing (≥ 1). If this is the 3rd+ occurrence (return ≥ 3),
+    caller should suppress the message.
+    """
+    try:
+        payload = await _read_payload(tenant_id, phone_number)
+        statements = dict(payload.get("statements_made") or {})
+        count = statements.get(statement_hash, 0) + 1
+        statements[statement_hash] = count
+        payload["statements_made"] = statements
+        payload["updated_at"] = _dt.now().isoformat()
+        await _raw_write(tenant_id, phone_number, payload)
+        logger.debug(
+            f"[conversation_state] track_statement: hash={statement_hash} count={count} for {phone_number}"
+        )
+        return count
+    except Exception as e:
+        logger.warning(f"[conversation_state] track_statement failed: {e}")
+        return 1  # Fail-open: don't block the message
+
+
+async def increment_booking_attempts(tenant_id: int, phone_number: str) -> int:
+    """
+    Increment the per-conversation booking attempt counter.
+    Returns the new count after increment.
+    """
+    try:
+        payload = await _read_payload(tenant_id, phone_number)
+        current = int(payload.get("booking_attempts") or 0) + 1
+        payload["booking_attempts"] = current
+        payload["updated_at"] = _dt.now().isoformat()
+        await _raw_write(tenant_id, phone_number, payload)
+        logger.info(
+            f"[conversation_state] booking_attempts: {current} for {phone_number}"
+        )
+        return current
+    except Exception as e:
+        logger.warning(f"[conversation_state] increment_booking_attempts failed: {e}")
+        return 0
+
+
+async def reset_booking_attempts(tenant_id: int, phone_number: str) -> None:
+    """Reset booking_attempts counter to 0 (called on successful booking)."""
+    try:
+        payload = await _read_payload(tenant_id, phone_number)
+        payload["booking_attempts"] = 0
+        payload["updated_at"] = _dt.now().isoformat()
+        await _raw_write(tenant_id, phone_number, payload)
+        logger.info(
+            f"[conversation_state] booking_attempts reset to 0 for {phone_number}"
+        )
+    except Exception as e:
+        logger.warning(f"[conversation_state] reset_booking_attempts failed: {e}")
+
+
+async def set_anchor_date(tenant_id: int, phone_number: str, anchor_date: str) -> None:
+    """Store the resolved anchor date so downstream tools use it, never recalculate."""
+    try:
+        payload = await _read_payload(tenant_id, phone_number)
+        payload["anchor_date"] = anchor_date
+        payload["updated_at"] = _dt.now().isoformat()
+        await _raw_write(tenant_id, phone_number, payload)
+        logger.info(
+            f"[conversation_state] anchor_date set to {anchor_date} for {phone_number}"
+        )
+    except Exception as e:
+        logger.warning(f"[conversation_state] set_anchor_date failed: {e}")
