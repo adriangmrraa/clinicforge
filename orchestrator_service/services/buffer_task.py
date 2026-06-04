@@ -52,6 +52,14 @@ _RESEARCH_INTENT_PATTERN = None
 logger = logging.getLogger(__name__)
 
 
+# v8.2 — Statement dedup: hash agent output, suppress identical messages after 2 occurrences
+def _hash_statement(text: str) -> str:
+    """Return a deterministic 12-char hex hash of the statement text (sha256[:12])."""
+    import hashlib
+
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
+
+
 def compute_social_context(channel_type: str, tenant_row: dict) -> dict:
     """Compute social channel context for TurnContext.extra.
 
@@ -1279,6 +1287,89 @@ async def process_buffer_task(
         if operational_rules_block:
             system_prompt += "\n\n" + operational_rules_block
 
+        # v8.2: Inject conversation-state anti-loop context (failed slots, exclusions, anchor_date)
+        try:
+            from services.conversation_state import get_state as _cs_inject
+
+            _cs_inject_phone = current_customer_phone.get() if current_customer_phone else None
+            if _cs_inject_phone:
+                _cs_inject_data = await _cs_inject(tenant_id, _cs_inject_phone)
+                if isinstance(_cs_inject_data, dict):
+                    # Failed slots blacklist
+                    _failed = _cs_inject_data.get("failed_slots") or []
+                    if _failed:
+                        _failed_dates = sorted(set(f["date"] for f in _failed if f.get("date")))
+                        _failed_block = "SLOTS FALLIDOS (PROHIBIDO re-ofrecer):\n" + "\n".join(
+                            f"  • {f['date']} {f.get('time', '??:??')} — {f.get('code', 'UNAVAILABLE')}"
+                            for f in _failed
+                        )
+                        system_prompt += f"\n\n{_failed_block}\nREGLA: NO ofrezcas ninguno de estos slots al paciente. Si check_availability los incluye, filtralos antes de presentar."
+
+                    # Patient exclusions
+                    _exd = _cs_inject_data.get("excluded_days") or []
+                    _exdt = _cs_inject_data.get("excluded_dates") or []
+                    if _exd or _exdt:
+                        _exc_lines = []
+                        if _exd:
+                            _exc_lines.append(f"DÍAS EXCLUIDOS: {', '.join(_exd)}")
+                        if _exdt:
+                            _exc_lines.append(f"FECHAS EXCLUIDAS: {', '.join(_exdt)}")
+                        _exc_lines.append("REGLA: NO ofrezcas turnos en estos días/fechas. El paciente los rechazó explícitamente.")
+                        system_prompt += f"\n\nEXCLUSIONES DEL PACIENTE:\n" + "\n".join(_exc_lines)
+
+                    # Booking attempts warning
+                    _batt = _cs_inject_data.get("booking_attempts") or 0
+                    if _batt > 0:
+                        _batt_remaining = max(0, 3 - _batt)
+                        system_prompt += (
+                            f"\n\n⚠️ INTENTOS DE AGENDAMIENTO FALLIDOS: {_batt} de {3}."
+                            f" Te quedan {_batt_remaining} intentos."
+                            f" Al llegar a 3 fallos → llamá derivhumano inmediatamente."
+                        )
+
+                    # Anchor date propagation
+                    _anc = _cs_inject_data.get("anchor_date")
+                    if _anc:
+                        system_prompt += (
+                            f"\n\n📅 ANCHOR_DATE: {_anc}"
+                            f" — Usá esta fecha en confirm_slot y book_appointment. NO recalcules fechas relativas."
+                        )
+        except Exception as _cs_inject_err:
+            logger.debug(f"convstate context injection skipped: {_cs_inject_err}")
+
+        # Inject booking flow guard rules (booking-agent-errors fix)
+        system_prompt += """
+
+REGLA DE NOTIFICACIÓN ÚNICA: Si el paciente no tiene turno, informalo UNA sola vez. Luego pasá DIRECTO a ofrecer alternativas (check_availability o preguntar fecha preferida). PROHIBIDO repetir "no tenés turno activo" o "no figura ningún turno" más de una vez por conversación.
+
+REGLA DLD-67 (MISMO DÍA): El sistema NO permite agendar turnos para el día de hoy. Se requiere mínimo 1 día de margen operativo. NUNCA ofrezcas turnos para hoy — si el paciente pide "hoy", la tool auto-avanza al día siguiente.
+
+REGLA DE EXCLUSIÓN DE FECHAS ESPECÍFICAS: Si el paciente dice que una FECHA ESPECÍFICA no puede (ej: "el 3 de junio tengo que viajar", "mañana no puedo", "el 15 no me sirve"), pasá exclude_dates con esa fecha en formato YYYY-MM-DD en TODAS las llamadas siguientes a check_availability. NUNCA ofrezcas turnos para una fecha que el paciente explícitamente rechazó.
+
+REGLA ANTI-LOOP DE AGENDAMIENTO:
+• Si book_appointment falla 2 veces para el MISMO día → PROHIBIDO intentar ese día nuevamente. Ofrecé turnos para otro día.
+• Si book_appointment falla 3 veces en total en la conversación → llamá derivhumano con motivo "No se pudo agendar después de 3 intentos". NO sigas intentando.
+• PROHIBIDO ofrecer el mismo horario o un horario 15 minutos corrido como alternativa después de un fallo.
+• ERROR PROTOCOL: book_appointment ahora retorna errores en formato [BOOK_ERROR:CÓDIGO] mensaje [ACTION:directiva]. Seguí SIEMPRE la directiva ACTION. Ej: [BOOK_ERROR:UNAVAILABLE] → [ACTION:Pick next slot; do NOT re-offer] significa que NO debés re-ofrecer ESE slot específico.
+
+REGLA DE CONFIRMACIÓN EXACTA: Cuando el paciente pregunta por su turno ("¿para cuándo quedó?", "¿qué día es mi turno?"):
+1. Llamá list_my_appointments PRIMERO para obtener los datos reales.
+2. Respondé con la fecha EXACTA del turno (ej: "jueves 04/06 a las 10:30").
+3. PROHIBIDO usar referencias relativas ("mañana", "pasado mañana", "esta semana") sin haber calculado los días exactos usando el TIEMPO ACTUAL.
+4. Si tenés duda sobre la fecha, llamá list_my_appointments de nuevo. NUNCA adivines.
+
+REGLA ANTI-REPETICIÓN DE CTA (EXPANDIDA): PROHIBIDO ofrecer CUALQUIERA de estas frases más de 2 veces en total (combinadas) en toda la conversación:
+- "Si querés, te ayudo a coordinar"
+- "Te gustaría agendar?"
+- "Querés que te busque turno?"
+- "Te agendo?"
+- "Te busco turno"
+- "Querés que te ayudo a coordinar un turno?"
+- "Si querés, te busco un turno"
+- CUALQUIER variación que ofrezca agendar sin que el paciente lo pida
+Después de 2 veces, NO insistas. Respondé a sus preguntas sin volver a ofrecer hasta que el paciente lo pida explícitamente.
+"""
+
         # Inject min appointment date if configured
         tenant_config = dict(tenant_row).get("config") if tenant_row else {}
         if isinstance(tenant_config, str):
@@ -1580,6 +1671,7 @@ Si el paciente pide un turno para {min_apt_date} o después, continuar normalmen
                                 "- Si el paciente dice un día específico ('el viernes', 'mañana', 'la semana que viene') → usá ese día como interpreted_date.\n"
                                 "- Si el paciente dice un horario específico ('a las 10', 'por la tarde') → pasá specific_time o time_preference.\n"
                                 "- Si rechazó un día de la semana ('el lunes no puedo') → pasá exclude_days con ese día en TODAS las búsquedas siguientes.\n"
+                                "- Si rechazó una FECHA ESPECÍFICA ('el 3 de junio no puedo', 'mañana no puedo') → pasá exclude_dates con esa fecha en formato YYYY-MM-DD en TODAS las búsquedas siguientes.\n"
                                 "- NO ofrezcas los turnos anteriores — busca disponibilidad nueva.\n"
                                 "- Cuando check_availability devuelva opciones y el paciente ACEPTE → usá slot_index para confirmar, luego pedí datos (PASO 4b) y reservá.\n"
                                 "- Si el paciente pidió un día/hora exacto y ESE slot está disponible en los resultados → decile que sí está disponible y procedé a pedir datos directamente.]"
@@ -2325,6 +2417,31 @@ Si el paciente pide un turno para {min_apt_date} o después, continuar normalmen
                         }
                     )
                 response_text = response.get("output", "") or "[Sin respuesta]"
+                # v8.2: Statement dedup — track and suppress identical agent messages
+                try:
+                    if response_text and len(response_text.strip()) > 10:
+                        from services.conversation_state import track_statement as _cs_track
+
+                        _hash = _hash_statement(response_text.strip())
+                        _cs_track_phone = current_customer_phone.get() if current_customer_phone else None
+                        if _cs_track_phone:
+                            _count = await _cs_track(tenant_id, _cs_track_phone, _hash)
+                            if _count >= 3:
+                                logger.warning(
+                                    f"🔇 STATEMENT DEDUP: suppressing message (hash={_hash}, count={_count})"
+                                    f" — original text: {response_text[:80]!r}"
+                                )
+                                response_text = (
+                                    "[INTERNAL: Mensaje suprimido por repetición. "
+                                    "Reformulá tu respuesta de forma diferente o pasá a la siguiente acción.]"
+                                )
+                            elif _count == 2:
+                                logger.info(
+                                    f"⚠️ STATEMENT DEDUP: message repeated (hash={_hash}, count={_count})"
+                                    f" — will suppress on next occurrence"
+                                )
+                except Exception as _dedup_err:
+                    logger.debug(f"Statement dedup failed (non-blocking): {_dedup_err}")
                 # Bug #9: Extract intermediate_steps to know if a tool was actually called
                 intermediate_steps = response.get("intermediate_steps", [])
                 tool_was_called = len(intermediate_steps) > 0
