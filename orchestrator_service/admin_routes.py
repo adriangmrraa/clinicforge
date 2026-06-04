@@ -6363,7 +6363,14 @@ async def link_chat_to_patient(
                     continue
                 mime = att.get("mime_type", "application/octet-stream")
                 desc = att.get("description", "")
-                fname = att.get("file_name") or f"chat_doc_{msg['id']}"
+                filename = att.get("file_name")
+                if filename:
+                    base, ext = os.path.splitext(filename)
+                else:
+                    base = f"chat_doc_{msg['id']}"
+                    ext = ""
+                suffix = _uuid.uuid4().hex[:8]
+                fname = f"{base}_{suffix}{ext}"
 
                 # Check if already migrated
                 exists = await db.pool.fetchval(
@@ -6371,13 +6378,16 @@ async def link_chat_to_patient(
                     SELECT 1 FROM patient_documents
                     WHERE tenant_id = $1 AND patient_id = $2
                     AND source_details->>'source_message_id' = $3
+                    AND file_path = $4
                     """,
                     tenant_id,
                     payload.patient_id,
                     str(msg["id"]),
+                    media_url,
                 )
                 if exists:
                     continue
+
 
                 await db.pool.execute(
                     """
