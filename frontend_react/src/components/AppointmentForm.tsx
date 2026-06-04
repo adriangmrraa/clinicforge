@@ -55,6 +55,7 @@ export default function AppointmentForm({
     const [anamnesisRefreshKey, setAnamnesisRefreshKey] = useState(0);
     const [blockedProfs, setBlockedProfs] = useState<number[]>([]);
     const socketRef = useRef<Socket | null>(null);
+    const statusChangedRef = useRef(false); // v8.2: prevents useEffect from resetting optimistic status update
     const [patientSearch, setPatientSearch] = useState('');
     const [patientDropdownOpen, setPatientDropdownOpen] = useState(false);
     const patientDropdownRef = useRef<HTMLDivElement>(null);
@@ -140,7 +141,10 @@ export default function AppointmentForm({
                 notes: initialData.notes || '',
                 duration_minutes: initialData.duration_minutes || 30
             });
-            setAppointmentStatus((initialData as any).status || 'scheduled');
+            // v8.2: Only set status from initialData on first open — don't overwrite optimistic user changes
+            if (!statusChangedRef.current) {
+                setAppointmentStatus((initialData as any).status || 'scheduled');
+            }
             setBillingSuccess(null);
             setStatusSuccess(null);
             setError(null);
@@ -196,17 +200,29 @@ export default function AppointmentForm({
         }
     }, [isOpen, initialData, professionals, isEditing]);
 
-    // Cambio de estado del turno (event-driven → dispara feedback si es 'completed')
+    // Reset optimistic guard when modal closes or opens fresh — allow initialData override on next open
+    useEffect(() => {
+        if (!isOpen) {
+            statusChangedRef.current = false;
+        }
+    }, [isOpen]);
+
+    // Cambio de estado del turno — OPTIMISTIC UI: actualiza inmediatamente, revierte si falla
     const handleStatusChange = async (newStatus: string) => {
         if (!initialData.id || !isEditing) return;
+        const previousStatus = appointmentStatus;
+        // Optimistic: highlight the button immediately so medical staff see their click registered
+        setAppointmentStatus(newStatus);
+        statusChangedRef.current = true; // block useEffect from resetting on parent re-render
         setStatusLoading(true);
         setStatusSuccess(null);
         try {
             await api.patch(`/admin/appointments/${initialData.id}/status`, { status: newStatus });
-            setAppointmentStatus(newStatus);
             setStatusSuccess(newStatus === 'completed' ? '✅ Turno completado. Feedback programado en 45 min.' : `✅ Estado actualizado a "${newStatus}".`);
             setTimeout(() => setStatusSuccess(null), 5000);
         } catch (e: any) {
+            // Revert on failure — restore previous status
+            setAppointmentStatus(previousStatus);
             setError(e?.response?.data?.detail ?? 'Error al cambiar el estado.');
         } finally {
             setStatusLoading(false);
