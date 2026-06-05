@@ -1740,7 +1740,7 @@ Si el paciente pide un turno para {min_apt_date} o después, continuar normalmen
                             "   - No inicies un nuevo flujo de reserva.\n"
                             "3. PREGUNTAS LATERALES:\n"
                             "   - Si el paciente hace una pregunta lateral (ej: si aceptan cierta obra social), respondé la pregunta y luego solicitá inmediatamente el nombre/DNI para terminar de confirmar su reserva en el turno pre-reservado.\n"
-                            "   - ⚠️ PREGUNTAS LATERALES (OBRA SOCIAL, DOLOR, OTROS): Si el paciente menciona su obra social, un síntoma, o cualquier tema no relacionado MIENTRAS estás pidiendo el DNI → respondé el tema lateral en MÁXIMO 1 oración breve, y en el MISMO mensaje volvé a pedir el DNI. NO llames check_insurance_coverage ni triage_urgency. Ejemplo: paciente dice \"OSDE\" → \"Sí, trabajamos con OSDE 😊 ¿Me pasás tu DNI solo números para agendarte?\"\n"
+                            "   - ⚠️ PREGUNTAS LATERALES (OBRA SOCIAL, DOLOR, OTROS): Si el paciente menciona su obra social, un síntoma, o cualquier tema no relacionado MIENTRAS estás pidiendo el DNI → si necesitás verificar, llamá check_insurance_coverage (está permitido), pero al responder incluí en el MISMO mensaje la respuesta breve de cobertura Y el pedido de DNI. NO llames triage_urgency ni otras herramientas clínicas que desvíen del agendamiento. Ejemplo: paciente dice \"OSDE\" → \"¡Sí, trabajamos con OSDE 😊! ¿Me pasás tu DNI solo números para agendarte?\"\n"
                             "4. Si recibís el DNI numérico y/o nombre, usalos para completar la reserva llamando a book_appointment.]"
                         )
                         logger.info(

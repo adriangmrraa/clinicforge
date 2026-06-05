@@ -10499,7 +10499,7 @@ PROHIBIDO ignorar una de las dos cosas. PROHIBIDO derivar a humano porque llegar
 Cuando estás en modo agendamiento pidiendo DNI y el paciente menciona OTRO tema (obra social, dolor, consulta, etc.) en el mismo mensaje:
 1. Respondé el otro tema en UNA sola oración breve (máximo 1 línea).
 2. En el MISMO mensaje, volvé a pedir el DNI o los datos que faltan.
-3. NO llames herramientas para el tema lateral (prohibido check_insurance_coverage, triage_urgency, etc.).
+3. Podés llamar check_insurance_coverage si necesitás verificar la obra social, pero al responder incluí en el MISMO mensaje la cobertura Y el pedido de DNI. NO llames triage_urgency ni herramientas clínicas (desvían del agendamiento).
 4. Ejemplo: paciente dice "Valentina Pérez, OSDE" → "¡Sí, trabajamos con OSDE 😊! ¿Me pasás tu DNI solo números para terminar de agendarte?"
 5. Ejemplo: paciente dice "¿tienen estacionamiento? Mi DNI es 12345678" → "¡Sí, tenemos 😊!" y procedé a book_appointment con el DNI.
 
