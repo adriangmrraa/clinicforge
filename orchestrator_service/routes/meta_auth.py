@@ -125,11 +125,11 @@ async def meta_auth_callback(
             else:
                 logger.error(f"❌ Failed to save Meta LongToken for tenant {tenant_id}")
             
-            if expires_in:
-                from datetime import datetime, timedelta
-                expires_at = datetime.now() + timedelta(seconds=expires_in)
-                await save_tenant_credential(tenant_id, "META_TOKEN_EXPIRES_AT", expires_at.isoformat(), category="meta_ads")
-                logger.info(f"⏰ Meta Token expiration saved: {expires_at.isoformat()}")
+            from datetime import datetime, timedelta
+            expires_in_final = expires_in if expires_in else 5184000  # fallback: 60 días
+            expires_at = datetime.now() + timedelta(seconds=expires_in_final)
+            await save_tenant_credential(tenant_id, "META_TOKEN_EXPIRES_AT", expires_at.isoformat(), category="meta_ads")
+            logger.info(f"⏰ Meta Token expiration saved: {expires_at.isoformat()} (expires_in={expires_in})")
                 
         # 4. Redirigir al frontend con éxito
     return RedirectResponse(url=f"{frontend_url}/marketing?success=connected")
