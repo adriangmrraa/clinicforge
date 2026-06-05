@@ -1,226 +1,41 @@
-Hola, necesitaria reprogramar el turno
-03:09 p. m.
+Buenas tardes, consulta, yo tenía un turno el 16 de junio para una extracción de muelas, pero por temas económicos se me hace imposible ese día, se podría reprogramar dicha extracción para el mes de julio?
+01:26 p. m.
 
-Ya que no conseguí que me dieran el día en el trabajo
-03:09 p. m.
+Entiendo, Elias Mauricio. Ya vi el estudio que me enviaste y lo dejé registrado en tu ficha médica para que la Dra. lo revise.
+01:26 p. m.
 
-Quiero reprogramar
-03:09 p. m.
+Como ya tenés un turno previo y querés mover una extracción para julio, te pasé con el equipo para que te ayuden a reprogramarlo y lo dejen bien coordinado 😊
+01:26 p. m.
 
-Entendemos 😊 No hay problema. Contame qué día y horario te quedaría mejor y te ayudo a reprogramar tu turno.
-03:09 p. m.
+Muchas gracias!!!!
+01:42 p. m.
 
-Hola 😊 Soy Paula, del equipo de Clínica Dra. Laura Delgado.
-03:10 p. m.
+---------------
 
-Como no figura ningún turno activo, necesito que me cuentes cuál era el turno que querés reprogramar o, si preferís, te ayudo a coordinar uno nuevo.
-03:10 p. m.
+El turno del paciente esta cargado, y deberia ser visible para el agente: 
 
-No figura un turno activo en el sistema, capaz quedó pendiente de la actualización 😊
-03:10 p. m.
+ÚLTIMA CITA
+Sin citas previas
 
-Turno para tratamiento de conducto
-03:10 p. m.
+PRÓXIMA CITA
+cirugia_compleja
 
-Si querés, contame qué día te viene mejor y te ayudo a coordinar uno nuevo.
-03:10 p. m.
+16/06/2026 10:00 a. m.
+60 min
+Profesional: Laura
 
-Lunes, miércoles y viernes después de las 14:30
-03:11 p. m.
+-------------------------------
 
-Entiendo 😊 Para el tratamiento de conducto y con ese horario, el primer paso es revisar disponibilidad.
-03:11 p. m.
+Aca en teoria , el agente de ia tiene todo lo necesario para reprogramarlo. El paciente le dijo JULIO , y esta cargado el turno que quiere reprogramar el paciente, entiendes? es un paciente creado correctamente, sin embargo respondio mal aqui. quiero que analices que ha pasado, cual es el error y porque aqui no ha hecho la reprogramacion correctamente. Deberia haberlo hecho. Podria ser por que manda el paciente el primer mensaje toda la informacion y dice ahi que quiere reprogramar, . deberia haberlo reprogramado en teoria, ya estan esas reglas digamos. Analzia este chat y revisa que falta en el system prompt para que el agente d eia aqui ene ste caso o similares, lo reprograme correctamente. Quizas falta ampliar el espectro de sinonimos con palabras de este ejemplo? o no? 
 
-Contame si preferís lunes, miércoles o viernes después de las 14:30, y te ayudo a coordinar.
-03:11 p. m.
 
-Viernes
-03:11 p. m.
+Dato: Si te fijas el chat, el agente le dice en su respuesta como que entiende que quiere reprogramar, sin embargo no lo hace. Podria ser el error que no tiene en su contexto el turno en cuestion quie se quiere reprogramar? 
 
-Dale, te ayudo a coordinar un turno con el equipo para tratamiento de conducto.  
-Voy a buscar opciones para lunes, miércoles o viernes después de las 14:30 😊
-03:12 p. m.
+En vez de responder esto: Como ya tenés un turno previo y querés mover una extracción para julio, te pasé con el equipo para que te ayuden a reprogramarlo y lo dejen bien coordinado 😊
 
-Para el viernes sería mejor
-03:12 p. m.
+Deberia buscar oreconocer el turno en cuestion que se quiere reprogramar. Y luego buscar slots en base a lo que dijo el paciente, y luego responder dando los dos turnos , para que elija digamos, y cuando elije sehuiria reprogramar el turno existente a la fecha elegida, ok?  
 
-[Media]
-03:12 p. m.
+Dato: Hace unos minutos, con tigo en este chat estuvimos fixeando reglas para que responda a varias cosas y siempre ejecute las tools, en este caso derivo, pero deberia reprogramar. Si tiene todo lo necesario para reprogramar deberia hacerlo. Por ejemplo si el paciente dice que quiere reprogramarsu turno, pero no tiene el turno cargado, deberia agendar el turno. 
 
-Perfecto, te agendo el martes 16/06 a las 10:00 hs 😊
-03:12 p. m.
 
-Para dejarlo confirmado necesito tu nombre, tu apellido y tu DNI solo números.
-03:13 p. m.
-
-No puedo ir de mañana
-03:13 p. m.
-
-Debe ser después de 14:30
-03:13 p. m.
-
-No encontré disponibilidad para el viernes después de las 14:30 ni en los días cercanos.
-03:13 p. m.
-
-Si querés, te busco en otra semana o en otro horario que te quede cómodo 😊
-03:14 p. m.
-
-No encontré opciones después de las 14:30 para endodoncia con Elizabeth Ester.
-03:14 p. m.
-
-1️⃣ Martes 16/06 — 13:00 hs
-2️⃣ Martes 23/06 — 13:00 hs
-03:14 p. m.
-
-Cuál de las dos te va mejor?
-03:14 p. m.
-
-Jueves?
-03:15 p. m.
-
-Perfecto 😊 Para dejarlo agendado necesito tu nombre, apellido y DNI solo números.
-03:16 p. m.
-
-No no,
-03:17 p. m.
-
-Voy a ir al de mañana entonces
-03:18 p. m.
-
-A las 11
-03:18 p. m.
-
-1️⃣ Martes 09/06 — 10:00 hs
-2️⃣ Martes 16/06 — 10:00 hs
-03:18 p. m.
-
-Cuál te queda mejor?
-03:18 p. m.
-
-Me quedo con el de mañana a las 11
-03:33 p. m.
-
-Ya le avisé al equipo para que lo revisen y te contacten por WhatsApp en breve 😊  
-Parece que hubo una confusión con la reserva del horario, así que lo van a tomar ellos directamente.
-03:34 p. m.
-
-Bueno
-03:35 p. m.
-
-
-
-
-
-
-----------------------------
-
-
-
-Hola, necesitaria reprogramar el turno
-03:09 p. m.
-
-Ya que no conseguí que me dieran el día en el trabajo
-03:09 p. m.
-
-Quiero reprogramar
-03:09 p. m.
-
-Entendemos 😊 No hay problema. Contame qué día y horario te quedaría mejor y te ayudo a reprogramar tu turno.
-03:09 p. m.
-
-Hola 😊 Soy Paula, del equipo de Clínica Dra. Laura Delgado.
-03:10 p. m.
-
-Como no figura ningún turno activo, necesito que me cuentes cuál era el turno que querés reprogramar o, si preferís, te ayudo a coordinar uno nuevo.
-03:10 p. m.
-
-No figura un turno activo en el sistema, capaz quedó pendiente de la actualización 😊
-03:10 p. m.
-
-Turno para tratamiento de conducto
-03:10 p. m.
-
-Si querés, contame qué día te viene mejor y te ayudo a coordinar uno nuevo.
-03:10 p. m.
-
-Lunes, miércoles y viernes después de las 14:30
-03:11 p. m.
-
-Entiendo 😊 Para el tratamiento de conducto y con ese horario, el primer paso es revisar disponibilidad.
-03:11 p. m.
-
-Contame si preferís lunes, miércoles o viernes después de las 14:30, y te ayudo a coordinar.
-03:11 p. m.
-
-Viernes
-03:11 p. m.
-
-Dale, te ayudo a coordinar un turno con el equipo para tratamiento de conducto.  
-Voy a buscar opciones para lunes, miércoles o viernes después de las 14:30 😊
-03:12 p. m.
-
-Para el viernes sería mejor
-03:12 p. m.
-
-[Media]
-03:12 p. m.
-
-Perfecto, te agendo el martes 16/06 a las 10:00 hs 😊
-03:12 p. m.
-
-Para dejarlo confirmado necesito tu nombre, tu apellido y tu DNI solo números.
-03:13 p. m.
-
-No puedo ir de mañana
-03:13 p. m.
-
-Debe ser después de 14:30
-03:13 p. m.
-
-No encontré disponibilidad para el viernes después de las 14:30 ni en los días cercanos.
-03:13 p. m.
-
-Si querés, te busco en otra semana o en otro horario que te quede cómodo 😊
-03:14 p. m.
-
-No encontré opciones después de las 14:30 para endodoncia con Elizabeth Ester.
-03:14 p. m.
-
-1️⃣ Martes 16/06 — 13:00 hs
-2️⃣ Martes 23/06 — 13:00 hs
-03:14 p. m.
-
-Cuál de las dos te va mejor?
-03:14 p. m.
-
-Jueves?
-03:15 p. m.
-
-Perfecto 😊 Para dejarlo agendado necesito tu nombre, apellido y DNI solo números.
-03:16 p. m.
-
-No no,
-03:17 p. m.
-
-Voy a ir al de mañana entonces
-03:18 p. m.
-
-A las 11
-03:18 p. m.
-
-1️⃣ Martes 09/06 — 10:00 hs
-2️⃣ Martes 16/06 — 10:00 hs
-03:18 p. m.
-
-Cuál te queda mejor?
-03:18 p. m.
-
-Me quedo con el de mañana a las 11
-03:33 p. m.
-
-Ya le avisé al equipo para que lo revisen y te contacten por WhatsApp en breve 😊  
-Parece que hubo una confusión con la reserva del horario, así que lo van a tomar ellos directamente.
-03:34 p. m.
-
-Bueno
-03:35 p. m.
+Despues otra cosa es que estuve viendo que deriva demasiadas veces incorrectamente . Osea piensa erroneamente que el paciente tiene historial y manda el msj prdeterminado de: Estamos actualizando registros....    Esto evita que el agente por ejemplo siga avanzando normalmente respondiendo y atendiendo a los elads o pacientes, ya que los deriva innecesariamente. Esta regla esta bien porque aveces sirve  ok? digo lo de los registros y que derive, ppero es muy invasivo porque ejecuta ese fliujo cuando no corresponde entendes? a la moatoria de la sveces funciona, pero a veces sucede esto que te mecniono, entendes?
