@@ -46,6 +46,26 @@ class SupervisorAgent:
         if state.get("hop_count", 0) >= state.get("max_hops", 5):
             return "handoff"
 
+        # Rule 2.5: SLOT_LOCKED state direct routing bypass
+        tenant_id = state.get("tenant_id")
+        phone_number = state.get("phone_number")
+        if tenant_id and phone_number:
+            try:
+                from services.conversation_state import get_state
+                conv_state = await get_state(tenant_id, phone_number)
+                if conv_state and conv_state.get("state") == "SLOT_LOCKED":
+                    # Exception: human handoff keywords or intent matched
+                    is_handoff = False
+                    for pat in self.HANDOFF_PATTERNS:
+                        if re.search(pat, msg):
+                            is_handoff = True
+                            break
+                    if is_handoff:
+                        return "handoff"
+                    return "booking"
+            except Exception as e:
+                logger.warning(f"Supervisor failed to fetch conversation state: {e}")
+
         # Rule 3: DNI / Confirmation flow priority
         if re.search(r"\b\d{7,11}\b", msg) or any(x in msg for x in ["dni", "mi dni", "nro de documento", "mi documento", "nro documento"]):
             return "booking"

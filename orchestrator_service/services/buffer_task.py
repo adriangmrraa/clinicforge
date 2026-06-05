@@ -192,6 +192,12 @@ def _detect_selection_intent(msg: str) -> bool:
         _SELECTION_INTENT_PATTERN = re.compile(combined, re.IGNORECASE)
 
     text = msg.strip()
+
+    # Query/question exclusions: e.g. "quiero saber si atienden el lunes"
+    text_lower = text.lower()
+    if "?" in text_lower or "saber si" in text_lower or "si atienden" in text_lower or "saber que" in text_lower or "saber qué" in text_lower:
+        return False
+
     if not _SELECTION_INTENT_PATTERN.search(text):
         return False
 
@@ -1637,7 +1643,7 @@ Si el paciente pide un turno para {min_apt_date} o después, continuar normalmen
                                 for _idx, _slot in enumerate(_last_offered_slots, 1):
                                     _date_display = _slot.get("date_display") or _slot.get("date", "")
                                     _time = _slot.get("time", "")
-                                    _prof = _slot.get("professional", "")
+                                    _prof = _slot.get("professional") or _slot.get("professional_name") or ""
                                     _date_iso = _slot.get("date", "")
                                     _prof_suffix = f" (profesional: {_prof})" if _prof else ""
                                     _slots_lines.append(
@@ -1703,6 +1709,42 @@ Si el paciente pide un turno para {min_apt_date} o después, continuar normalmen
                             logger.info(
                                 f"🔒 STATE_GUARD: No clear intent detected, injecting clarification hint. prev_state={prev_state_str}, user_msg={user_msg[:50]}..."
                             )
+                    elif prev_state_str == "SLOT_LOCKED":
+                        _slot = prev_state.get("last_locked_slot") or {}
+                        _slot_details = ""
+                        if _slot:
+                            _date = _slot.get("date_display") or _slot.get("date") or ""
+                            _time = _slot.get("time") or ""
+                            _prof = _slot.get("professional") or _slot.get("professional_name") or ""
+                            _treatment = _slot.get("treatment") or _slot.get("treatment_name") or ""
+                            _details_list = []
+                            if _date:
+                                _details_list.append(f"Fecha: {_date}")
+                            if _time:
+                                _details_list.append(f"Hora: {_time}")
+                            if _prof:
+                                _details_list.append(f"Profesional: {_prof}")
+                            if _treatment:
+                                _details_list.append(f"Tratamiento: {_treatment}")
+                            _slot_details = " (" + ", ".join(_details_list) + ")" if _details_list else ""
+
+                        state_hint = (
+                            f"\n\n[STATE_HINT: El paciente tiene un turno pre-reservado (bloqueado){_slot_details}.\n\n"
+                            "INSTRUCCIONES CRÍTICAS PARA SLOT_LOCKED:\n"
+                            "1. El turno ya está pre-reservado. Tu único objetivo es confirmar la reserva solicitando los datos faltantes:\n"
+                            "   - Nombre completo (si no lo tenés)\n"
+                            "   - Número de DNI (debe ser numérico de 7 a 11 dígitos, ej: 12345678). Si el usuario da una respuesta ambigua o no numérica como 'Sí' o 'Así es', insistí educadamente en que proporcione el DNI numérico.\n"
+                            "2. REGLA ESTRICTA CONTRA LOOPS Y RE-OFERTAS:\n"
+                            "   - PROHIBIDO llamar a check_availability para buscar otras fechas o profesionales.\n"
+                            "   - PROHIBIDO ofrecer nuevos slots u horarios alternativos a menos que el paciente solicite explícitamente reprogramar o cancelar.\n"
+                            "   - No inicies un nuevo flujo de reserva.\n"
+                            "3. PREGUNTAS LATERALES:\n"
+                            "   - Si el paciente hace una pregunta lateral (ej: si aceptan cierta obra social), respondé la pregunta y luego solicitá inmediatamente el nombre/DNI para terminar de confirmar su reserva en el turno pre-reservado.\n"
+                            "4. Si recibís el DNI numérico y/o nombre, usalos para completar la reserva llamando a book_appointment.]"
+                        )
+                        logger.info(
+                            f"🔒 STATE_GUARD: Injecting hint for SLOT_LOCKED state. Details: {_slot_details}"
+                        )
             except Exception as state_err:
                 logger.warning(f"[STATE_GUARD] Failed to get state: {state_err}")
 

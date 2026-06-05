@@ -1,0 +1,41 @@
+---------------En este chaty es super claro el error, se manda el mensaje de la plantilla hsm de confirmacion del turno correctamente y el el paciente confirma el turno, aqui lo que deberia hacer el agente d eia de whatsapp de la clinica es editar el estado del turno a confirmado, ok? Y tambien hay que amplair el espectro de sinonimos que tiene la ia para entender muchas variantes de como se pueden referir tanto a COnfirmar, reagendar, o cancelar turno . Y los 3 flujos debe entenderlos a la perfeccion gracias a este espectro de sinonimos, y actuar en abse a ello, actualizando el estado dle turno en base a esto, ok? ahora a evecs funciona y aveces no, lo que contesta, a veces entiende cuando reagendan, epro cuando confirman no esta nada dicho sobre eso entonces varia y hace lo que quiere, establece reglas sobre esto que te digo, ok? ES IMPORTANTE QUE SE ACTUALICE EL ESTADO DE LOS TURNOS CORRECTAMENTE , OK? SI CONFIRMAN, CONFIRMARLO EN EL TURNO EL ESTADO DLE TURNO. Para confirmar pueden referirise com Conservo, acepto, etc, agrega mas al espectro de sinonimos de los 3 botones del seguimiento , ok?
+
+
+📅 Recordatorio de turno enviado
+🦷 control_revision
+📆 jueves 04/06 a las 15:30
+👩‍⚕️ Con Laura Delgado
+👤 Antonia Manet
+07:00 a. m.
+
+Buen dia ,  SI CONFIRMO , mañana jueves voy a las 15 horas sin falta.
+08:37 a. m.
+
+Hola Antonia 😊
+08:38 a. m.
+
+No quedó disponible mañana a las 15:00, pero te dejo las opciones más cercanas:
+1️⃣ Lunes 08/06 — 15:15 hs
+2️⃣ Martes 09/06 — 10:45 hs
+08:38 a. m.
+
+Cuál te queda mejor?
+08:38 a. m.
+
+Para el lunes , no entiendo cual me queda mejor. Me colocaste 2 ataches  y quedó uno x colocar porque no tenias mas el lunes me tienes que colocar el que falto, está claro... Confirma si se entendio.
+08:50 a. m.
+
+Entiendo, Antonia. Se complicó ese horario al momento de dejarlo confirmado, así que ya le pasé tu caso al equipo para que lo revisen y te contacten directo 😊
+08:51 a. m.
+
+Si querés, apenas te escriban lo resolvemos con ellos.
+08:51 a. m.
+
+Bueno confirmamé que tengo que hacer
+09:19 a. m.
+
+Hola Antonia! 😊 Disculpá la confusión de recién, fue un error nuestro. Ya lo revisamos con el equipo: tu turno queda confirmado para mañana jueves 04/06 a las 15:30 hs con la Dra. Laura Delgado. Y quedate tranquila que ya dejamos anotado lo que te quedó pendiente del tratamiento para verlo en esa misma visita. Cualquier cosa quedamos a disposición. ¡Te esperamos!
+09:20 a. m.
+
+acordate que me tienen q colocar  el atache  que falto de la protesis de abajo  me  colocaron 2 y faltó uno x colocar , mañana me lo tienen q ue poner, está claro ?
+09:34 a. m.

@@ -72,8 +72,9 @@ class TestPromptInstructions:
     def test_monolithic_prompt_contains_rules(self):
         """The monolithic system prompt must contain both rules."""
         prompt = build_system_prompt(
-            tenant_id=1,
             clinic_name="Test Clinic",
+            current_time="2026-06-05T12:00:00",
+            response_language="es",
             bot_name="TestBot",
             upcoming_holidays=[],
             patient_status="new_lead",

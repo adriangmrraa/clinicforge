@@ -1,26 +1,129 @@
+Hola Lau buenas tardes
+03:25 p. m.
 
-﻿
-vendor-react-DlFPfz2e.js:32 ReferenceError: Plus is not defined
-    at vt (AutomationView-BCjJysW6.js:19:8571)
-    at Ri (vendor-react-DlFPfz2e.js:30:16959)
-    at Du (vendor-react-DlFPfz2e.js:32:3134)
-    at kc (vendor-react-DlFPfz2e.js:32:44241)
-    at gc (vendor-react-DlFPfz2e.js:32:39513)
-    at Xd (vendor-react-DlFPfz2e.js:32:39444)
-    at ol (vendor-react-DlFPfz2e.js:32:39302)
-    at Ku (vendor-react-DlFPfz2e.js:32:35719)
-    at mc (vendor-react-DlFPfz2e.js:32:34675)
-    at k (vendor-react-DlFPfz2e.js:17:1562)
-index-CdIbrmNU.js:309 [ErrorBoundary] ReferenceError: Plus is not defined
-    at vt (AutomationView-BCjJysW6.js:19:8571)
-    at Ri (vendor-react-DlFPfz2e.js:30:16959)
-    at Du (vendor-react-DlFPfz2e.js:32:3134)
-    at kc (vendor-react-DlFPfz2e.js:32:44241)
-    at gc (vendor-react-DlFPfz2e.js:32:39513)
-    at Xd (vendor-react-DlFPfz2e.js:32:39444)
-    at ol (vendor-react-DlFPfz2e.js:32:39302)
-    at Ku (vendor-react-DlFPfz2e.js:32:35719)
-    at mc (vendor-react-DlFPfz2e.js:32:34675)
-    at k (vendor-react-DlFPfz2e.js:17:1562)
- 
-{componentStack: '\n    at vt (https://app.dralauradelgado.com/assets…uradelgado.com/assets/index-CdIbrmNU.js:309:6376)'}
+Hola 😊
+03:26 p. m.
+
+Soy Paula, del equipo de Clínica Dra. Laura Delgado.
+03:26 p. m.
+
+Para orientarte mejor y derivarte con el profesional indicado, contame por favor: ¿querés atenderte por un tratamiento específico o querés sacar un turno de evaluación?
+03:26 p. m.
+
+Es para hacer una caries
+03:26 p. m.
+
+Sí, te podemos ayudar con eso desde el equipo odontológico 😊
+03:27 p. m.
+
+La idea es coordinarte un turno de evaluación para que la Dra. Delgado o el equipo vean tu caso y te indiquen la mejor opción. ¿Qué día te viene bien?
+03:27 p. m.
+
+Para el miércoles o viernes
+03:27 p. m.
+
+1️⃣ Martes 09/06 — 10:00 hs
+2️⃣ Miércoles 17/06 — 13:00 hs
+03:28 p. m.
+
+Cuál te queda mejor?
+03:28 p. m.
+
+Miércoles 17
+03:28 p. m.
+
+Pero un poco más tarde puede ser
+03:28 p. m.
+
+Perfecto, quedó reservado ese horario por unos minutos 😊
+03:28 p. m.
+
+Para dejarlo agendado necesito tu nombre, apellido y DNI, por favor.
+03:28 p. m.
+
+1️⃣ Miércoles 17/06 — 13:00 hs
+2️⃣ Miércoles 17/06 — 13:15 hs
+03:29 p. m.
+
+Cuál te queda mejor?
+03:29 p. m.
+
+En la tarde ella no atiende?
+03:39 p. m.
+
+Se me complica en ese horario
+03:39 p. m.
+
+Sí, ese día también hay atención, pero el primer horario que figura es 13:00 hs 😊
+03:39 p. m.
+
+Y respecto al turno, te queda mejor el 1️⃣ o el 2️⃣?
+03:39 p. m.
+
+Perfecto, ya tengo reservado el horario por unos minutos 😊
+03:40 p. m.
+
+Para dejarte el turno agendado necesito tu nombre, apellido y DNI (solo números).
+03:40 p. m.
+
+Y otro día en la tarde
+05:52 p. m.
+
+No hay problema, contame qué día te viene mejor y te busco otro horario por la tarde 😊
+05:53 p. m.
+
+En la semana próxima puede ser
+06:08 p. m.
+
+1️⃣ Martes 23/06 — 13:00 hs
+2️⃣ Miércoles 24/06 — 13:00 hs
+06:08 p. m.
+
+Cuál te queda mejor?
+06:09 p. m.
+
+Corazón disculpa pero no me entendiste creo el día no es problema es el horario
+06:09 p. m.
+
+Sí, entendí, gracias por aclararlo 😊
+06:10 p. m.
+
+Yo desde las 16.00 horas tengo libre para ir
+06:10 p. m.
+
+Las opciones que te pasé son a las 13:00 hs porque por ahora es lo que hay disponible esa semana.
+Si querés, te ayudo a coordinar otro horario apenas me decís cuál te sirve más.
+06:10 p. m.
+
+Genial, entonces busquemos algo desde las 16:00 hs 😊
+06:10 p. m.
+
+Y respecto al turno, ¿te queda mejor el 1️⃣ o el 2️⃣?
+06:10 p. m.
+
+El 23
+06:11 p. m.
+
+Perfecto, te agendo el martes 23/06 a las 13:00 hs 😊
+06:11 p. m.
+
+Para dejarlo confirmado me faltan tu nombre, apellido y DNI (solo números).
+06:11 p. m.
+
+Costich Topacio Ayelen 33384513
+06:12 p. m.
+
+Listo, quedó tu evaluación con Elizabeth el martes 23/06 a las 13:00 😊
+📍 Salta 147, Neuquén Capital
+https://maps.app.goo.gl/w8qH8FmQvhQ6b9iy9 
+06:12 p. m.
+
+Si querés, podés adelantar una seña de $25.000 para asegurar el turno:
+Alias: dradelgadoml
+CBU: 0970099455003515270012
+Titular: Delgado Maria Laura
+06:12 p. m.
+
+Te paso la ficha médica para completar antes de venir:
+https://app.dralauradelgado.com/anamnesis/1/63dce116-318a-4239-860d-d7599a425c95 
+06:12 p. m.

@@ -453,10 +453,12 @@ class TestStateHooksInTools:
         mock_pool.execute = AsyncMock()
         # fetchval call order in book_appointment:
         #   1. conflict check (line 2822, "local" calendar) → False (no conflict)
-        #   2. max_chairs (line 2853) → None (COALESCE makes it 99 on real DB, but None→ falsy → skip chair check)
-        #   3. anamnesis_token (line 3169) → None
-        #   4. prof consultation_price (line 3208, seña branch) → 10000
-        mock_pool.fetchval = AsyncMock(side_effect=[False, None, None, 10000, None])
+        #   2. existing_same_day (line 4091) → False
+        #   3. max_chairs (line 2853) → None (COALESCE makes it 99 on real DB, but None→ falsy → skip chair check)
+        #   4. t_maps (line 4564) → "http://maps.google.com"
+        #   5. anamnesis_token (line 3169) → None
+        #   6. prof consultation_price (line 3208, seña branch) → 10000
+        mock_pool.fetchval = AsyncMock(side_effect=[False, False, None, "http://maps.google.com", None, 10000])
         mock_pool.acquire = MagicMock(return_value=AsyncMock(
             __aenter__=AsyncMock(return_value=mock_conn),
             __aexit__=AsyncMock(return_value=False),

@@ -822,6 +822,7 @@ def generate_free_slots(
     duration_minutes=30,
     limit=20,
     time_preference: Optional[str] = None,
+    min_time: Optional[str] = None,
 ) -> List[str]:
     """Genera lista de horarios disponibles (si al menos un profesional tiene el hueco COMPLETO
     para la duración del tratamiento). Verificación con granularidad de 15 min para evitar solapamientos."""
@@ -858,6 +859,16 @@ def generate_free_slots(
         if time_preference == "tarde" and current.hour < 13:
             current += timedelta(minutes=interval_minutes)
             continue
+
+        # Filtro por horario mínimo ("después de las X")
+        if min_time:
+            try:
+                min_h, min_m = map(int, min_time.strip().split(":"))
+                if current.hour < min_h or (current.hour == min_h and current.minute < min_m):
+                    current += timedelta(minutes=interval_minutes)
+                    continue
+            except (ValueError, IndexError):
+                pass  # malformed min_time → no filtering
 
         # Verificar si algún profesional tiene el hueco libre para TODA la duración
         time_needed = current + timedelta(minutes=duration_minutes)
@@ -1113,6 +1124,7 @@ async def _get_slots_for_extra_day(
     time_preference: Optional[str] = None,
     prefetched_appointments: Optional[dict] = None,
     prefetched_gcal_blocks: Optional[dict] = None,
+    min_time: Optional[str] = None,
 ) -> List[str]:
     """Obtiene slots libres para un día extra (para completar opciones multi-día). Versión simplificada.
 
@@ -1339,6 +1351,7 @@ async def _get_slots_for_extra_day(
         interval_minutes=15,
         limit=50,
         time_preference=time_preference,
+        min_time=min_time,
     )
 
 
@@ -1418,6 +1431,8 @@ async def pick_representative_slots(
     specific_time: Optional[str] = None,
     excluded_weekdays: Optional[set] = None,
     excluded_dates: Optional[set] = None,
+    min_time: Optional[str] = None,
+    preferred_days: Optional[str] = None,
 ) -> tuple:
     """
     Selecciona hasta max_options slots representativos.
@@ -1507,6 +1522,22 @@ async def pick_representative_slots(
         # Primero recolectar todos los días con disponibilidad dentro del rango
         days_with_slots = []
 
+        # Complemento de preferred_days: excluir todos los días NO preferidos
+        if preferred_days:
+            day_map_complement = {
+                "lunes": 0, "martes": 1, "miércoles": 2, "miercoles": 2,
+                "jueves": 3, "viernes": 4, "sábado": 5, "sabado": 5, "domingo": 6,
+            }
+            all_weekdays = ["lunes","martes","miércoles","jueves","viernes","sábado","domingo"]
+            preferred_list = [d.strip().lower() for d in preferred_days.split(",") if d.strip()]
+            complement_days = [d for d in all_weekdays if d not in preferred_list]
+            if excluded_weekdays is None:
+                excluded_weekdays = set()
+            for d in complement_days:
+                if d in day_map_complement:
+                    excluded_weekdays.add(day_map_complement[d])
+            logger.info(f"📅 preferred_days={preferred_days!r} → complement={complement_days} → excluded_weekdays={excluded_weekdays}")
+
         # Día target (ya tenemos sus slots)
         if slots:
             day_name_en = DAYS_EN[target_date.weekday()]
@@ -1548,6 +1579,7 @@ async def pick_representative_slots(
                     time_preference=time_preference,
                     prefetched_appointments=_prefetched_apts,
                     prefetched_gcal_blocks=_prefetched_blocks,
+                    min_time=min_time,
                 )
             except Exception as e:
                 logger.warning(f"Error getting range day slots for {extra_date}: {e}")
@@ -1634,6 +1666,7 @@ async def pick_representative_slots(
                     time_preference=time_preference,
                     prefetched_appointments=_prefetched_apts,
                     prefetched_gcal_blocks=_prefetched_blocks,
+                    min_time=min_time,
                 )
             except Exception as e:
                 logger.warning(f"Error getting extra day slots for {extra_date}: {e}")
@@ -1706,6 +1739,8 @@ async def check_availability(
     specific_time: Optional[str] = None,
     exclude_days: Optional[str] = None,
     exclude_dates: Optional[str] = None,
+    min_time: Optional[str] = None,
+    preferred_days: Optional[str] = None,
 ):
     """
     Consulta la disponibilidad REAL de turnos para una fecha. Llamar UNA sola vez por pregunta del paciente.
@@ -1722,9 +1757,12 @@ async def check_availability(
     specific_time: (Opcional) Hora EXACTA que el paciente pidió, en formato HH:MM (ej: "16:30", "10:00"). Usar SOLO cuando el paciente pide una hora concreta ("a las 16:30", "quiero a las 10"). Si el paciente solo dice "mañana" o "tarde" sin hora exacta, NO pasar este campo — usar time_preference. Si se pasa, la tool verifica si ESE slot exacto está libre y lo incluye primero en las opciones.
     exclude_days: (Opcional) Días de la semana que el paciente RECHAZÓ, separados por coma. Ej: "viernes", "lunes,miércoles". Si el paciente dijo "el viernes no puedo" o "los lunes no me sirven", pasá esos días acá para EXCLUIRLOS de los resultados. SIEMPRE pasar los días rechazados por el paciente en la conversación.
     exclude_dates: (Opcional) Fechas específicas que el paciente RECHAZÓ, separadas por coma en formato YYYY-MM-DD. Ej: "2026-06-03", "2026-06-03,2026-06-05". Si el paciente dijo "el 3 de junio no puedo" o "mañana no puedo", pasá esas fechas acá para EXCLUIRLAS de los resultados. SIEMPRE pasar las fechas rechazadas por el paciente en TODAS las búsquedas siguientes.
+    min_time: (Opcional) Hora MÍNIMA a partir de la cual buscar, en formato HH:MM (ej: "14:30", "15:00"). Es un FILTRO DURO: todos los slots antes de esa hora se EXCLUYEN. Usar SOLO cuando el paciente dice "después de las X", "a partir de las X", "recién a las X". Si se combina con time_preference, ambos filtros se aplican (intersección). Si min_time es más estricto que el límite de time_preference, min_time gana.
+    preferred_days: (Opcional) Días de la semana que el paciente PREFIERE, separados por coma. Ej: "lunes,miércoles,viernes". La tool calcula automáticamente los días NO preferidos y los excluye. Si el paciente menciona varios días, pasalos TODOS — NUNCA le pidas que elija uno solo. Si se combina con exclude_days, gana la intersección (preferred menos excluded).
     La tool devuelve 2 opciones concretas de horario con sede. Presentá las opciones al paciente tal cual las recibís.
     """
     try:
+        t_data = None
         tid = current_tenant_id.get()
         _ca_phone = current_customer_phone.get()
         # Log if check_availability is called when state suggests it shouldn't be
@@ -2697,6 +2735,7 @@ async def check_availability(
             start_time_str=day_start,
             end_time_str=day_end,
             time_preference=time_preference,
+            min_time=min_time,
             interval_minutes=15,
             limit=50,
         )
@@ -2715,6 +2754,7 @@ async def check_availability(
                 start_time_str=day_start,
                 end_time_str=day_end,
                 time_preference=None,
+                min_time=min_time,
                 interval_minutes=15,
                 limit=50,
             )
@@ -2847,6 +2887,8 @@ async def check_availability(
             specific_time=specific_time,
             excluded_weekdays=_excluded_weekdays if _excluded_weekdays else None,
         excluded_dates=_excluded_dates if _excluded_dates else None,
+            min_time=min_time,
+            preferred_days=preferred_days,
         )
 
         if options:
@@ -10161,6 +10203,13 @@ CUANDO DETECTES ESTO:
 - Ignorá cualquier descripción clínica o comentario sobre dolor/molestia que acompañe al DNI en ese mensaje (no des contención clínica ni desvíes el flujo hasta confirmar).
 - Queda PROHIBIDO disparar la regla de "DETECCIÓN DE PACIENTE EXISTENTE SIN DATOS EN SISTEMA (MIGRACIÓN)" o derivar a humano (`derivhumano`) en este punto. El ingreso del DNI es parte del flujo normal de agendamiento y debe culminar con la ejecución de `book_appointment`.
 
+⚠️ REGLAS CRÍTICAS PARA ESTADO SLOT_LOCKED:
+- Si el paciente tiene un turno pre-reservado (estado `SLOT_LOCKED`):
+  1. Tu única misión es recolectar el nombre completo y el número de DNI (numérico de 7 a 11 dígitos, ej: 12345678) para confirmar y agendar el turno usando `book_appointment`.
+  2. Si el usuario te responde de manera ambigua o no numérica ante el pedido del DNI (ej: "Así es", "Sí", "Eso es"), debés insistir educadamente en que te pase los números del DNI.
+  3. PROHIBICIÓN ABSOLUTA CONTRA LOOPS Y RE-OFERTAS: NUNCA llames a `check_availability` para buscar disponibilidad, ni ofrezcas horarios alternativos o nuevos profesionales, a menos que el paciente te pida explícitamente reprogramar o cancelar el turno pre-reservado.
+  4. PREGUNTAS LATERALES: Si el paciente realiza una consulta lateral (ej: medios de pago, obras sociales aceptadas), respondé a su pregunta brevemente y solicitá inmediatamente los datos faltantes (DNI/nombre) para concretar su reserva.
+
 PROHIBICIONES (OBLIGATORIO — LEER ANTES DE CADA RESPUESTA):
 1. PROHIBIDO diagnosticar o asignar tratamientos sin evaluación presencial. Solo podés decir: "{prof_display_full} evaluará tu caso y te recomendará la mejor opción".
 2. PROHIBIDO repetir la bio/presentación del profesional más de UNA vez por conversación. Después del primer uso, referite como "{prof_display}" o "el equipo".
@@ -10360,6 +10409,8 @@ NO ESCALAR (PROHIBIDO llamar derivhumano):
 • Pérdida de múltiples dientes → usar FLUJO F6
 • Paciente rechazado / sin hueso → usar FLUJO F8
 • Frustración general (sin pedir humano) → empatía + continuar flujo
+
+EXCEPCIÓN DE AGENDAMIENTO: Si el paciente rechaza tus opciones de turno 3+ veces consecutivas en el mismo intento de agendamiento sin que ninguna funcione, PODÉS llamar a derivhumano con motivo "Paciente no encuentra horario que le sirva después de múltiples intentos". Esto evita loops infinitos de check_availability→ofrecer→rechazar y es la ÚNICA excepción a la regla de no escalar por frustración general.
 
 REGLA: Si el trigger está en "NO ESCALAR" Y el paciente NO pidió explícitamente un humano → derivhumano PROHIBIDO.
 
@@ -10622,14 +10673,15 @@ Cuando el paciente elige de opciones que ya ofreciste:
   Si el paciente pide un horario ESPECÍFICO o un RANGO horario:
     Frases de horario EXACTO → specific_time (ej: "a las 16:30", "quiero a las 10", "a las 3", "a las 5", "a las 15.30 hs"):
       → Volver a llamar check_availability CON specific_time.
-    Frases de horario DESDE / A PARTIR DE → specific_time (ej: "desde las 16", "a partir de las 15", "después de las 14", "pasada las 5", "de 16 en adelante", "recién a las 17", "recién desde las 16", "tengo libre a partir de las 18", "puedo después de las 15", "a las 4 de la tarde en adelante"):
-      → pasá specific_time con ESA hora exacta (ej: "16:00").
+    Frases de horario DESDE / A PARTIR DE → min_time (ej: "desde las 16", "a partir de las 15", "después de las 14", "pasada las 5", "de 16 en adelante", "recién a las 17", "recién desde las 16", "tengo libre a partir de las 18", "puedo después de las 15", "a las 4 de la tarde en adelante"):
+      → pasá min_time con ESA hora exacta (ej: "16:00"). Esto FILTRA todos los horarios anteriores — el paciente NO va a aceptar un turno antes de esa hora.
     Frases de TARDE sin hora exacta → time_preference="tarde" (ej: "más tarde", "en la tarde", "por la tarde", "a la tarde", "un poco más tarde", "una hora más tarde", "más tardecito", "a última hora de la tarde", "tipo tarde", "a la tardecita", "a media tarde", "más sobre la tarde", "en el turno de la tarde", "me queda mejor a la tarde", "trabajo a la mañana", "estoy libre a la tarde"):
       → llamá check_availability con time_preference="tarde".
     Frases de MAÑANA sin hora exacta → time_preference="mañana" (ej: "más temprano", "por la mañana", "a la mañana", "a primera hora", "tempranito", "a la mañana temprano", "en el horario de la mañana", "a la mañana me viene mejor"):
       → llamá check_availability con time_preference="mañana".
     → Si está libre → pasar a PASO 4b con ese horario.
     → Si está ocupado → decir honestamente que está ocupado y ofrecer el más cercano disponible.
+  REGLA DE REFUERZO DE RESTRICCIONES: Después de que check_availability te devuelva opciones, revisá que NINGUNA viole las restricciones que el paciente dijo explícitamente (horario mínimo, día preferido). Si alguna opción viola una restricción — por ejemplo, si el paciente dijo "después de las 14:30" y check_availability te devuelve un slot a las 13:00 — NO la muestres. Filtrá antes de presentar. Solo ofrecé slots que respeten TODAS las restricciones del paciente.
   Si el paciente RECHAZA las opciones o pide OTRO DÍA/HORARIO:
     Señales de RECHAZO EXPLÍCITO de horario ("no puedo", "se me complica", "no me sirven esos horarios", "me queda mal", "trabajo a esa hora", "no llego", "estoy cursando", "ese horario no", "no me viene bien", "no es buena esa hora", "no me da el tiempo", "justo a esa hora no", "tengo otra cosa", "lo tengo complicado", "justo laburo", "justo trabajo"):
       → NUNCA re-ofrezcas el mismo horario corrido 15 minutos como si fuera otra opción.
@@ -10641,9 +10693,10 @@ Cuando el paciente elige de opciones que ya ofreciste:
     → Si el paciente ACEPTA la nueva opción → usá slot_index para confirmar y procedé a pedir datos (PASO 4b).
     → Si no hay disponibilidad en lo que pidió → decile honestamente y ofrecé las alternativas más cercanas.
   Si NINGUNA opción funciona y no especifica preferencia → ejecutá check_availability con search_mode="month".
-   REGLA DE EXCLUSIÓN: Si el paciente rechazó un día de la semana ("el viernes no puedo", "los lunes no"), SIEMPRE pasá exclude_days en TODAS las llamadas siguientes a check_availability en esta conversación. NUNCA vuelvas a ofrecer un día rechazado.
+    REGLA DE EXCLUSIÓN: Si el paciente rechazó un día de la semana ("el viernes no puedo", "los lunes no"), SIEMPRE pasá exclude_days en TODAS las llamadas siguientes a check_availability en esta conversación. NUNCA vuelvas a ofrecer un día rechazado.
+    REGLA DE DÍAS PREFERIDOS: Si el paciente dice los días que PREFIERE ("lunes, miércoles y viernes", "los martes o jueves", "solo puedo los sábados"), pasá preferred_days con los días separados por coma (ej: "lunes,miércoles,viernes"). NUNCA le pidas al paciente que elija uno solo si ya te dijo varios. Buscá en TODOS los que mencionó.
 
-   REGLA DE CONTINUIDAD (OBLIGATORIA — CON EXCEPCIÓN):
+    REGLA DE CONTINUIDAD (OBLIGATORIA — CON EXCEPCIÓN):
   Si le ofreciste opciones de turno al paciente y él hace una pregunta lateral (obra social, precio, dirección, tratamientos, etc.), \
   RESPONDÉ su pregunta normalmente y DESPUÉS retomá el tema del turno recordándole las opciones que tenía pendientes. \
   Ejemplo: "Sí, trabajamos con Galeno 😊 Y respecto al turno, ¿te queda mejor el 1️⃣ o el 2️⃣?" \
@@ -10868,6 +10921,11 @@ GESTIÓN DE TURNOS EXISTENTES:
   R4. Confirmá al paciente: nuevo día, hora y sede. NO llames book_appointment después de un reschedule exitoso.
 
   IMPORTANTE: Usá EXACTAMENTE la fecha y hora que el paciente eligió de las opciones de R2. No inventes ni redondees horarios.
+
+REGLA DE VERIFICACIÓN "VOY A IR AL [DÍA]": Si el paciente dice "voy a ir al de [día]", "voy al turno del [día]", "voy mañana/pasado al turno", o cualquier frase que implique que ya tiene un turno sin preguntar explícitamente "¿tengo turno?":
+  1. Llamá PRIMERO a list_my_appointments.
+  2. Si NO tiene turno ese día → informale amablemente que no figura un turno agendado y ofrecé buscar disponibilidad real con check_availability.
+  3. Si TIENE turno pero a otra hora → confirmale la hora real: "Tenés turno el [día] a las [hora] con [profesional], no a las [hora que dijo]."
 
 ⚠️ FALLBACK SI NO TIENE TURNOS FUTUROS ACTIVOS:
 - Si `list_my_appointments` devuelve que no existen turnos futuros (lista vacía), decile al paciente de forma amable: "No encuentro ningún turno agendado a tu nombre en el sistema."
