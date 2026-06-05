@@ -1,0 +1,9 @@
+https://www.facebook.com/v21.0/dialog/oauth?client_id=1649264159562011&redirect_uri=https%3A%2F%2Fdentalforge-orchestrator.gvdlcu.easypanel.host%2Fadmin%2Fmarketing%2Fmeta-auth%2Fcallback&scope=ads_management%2Cads_read%2Cbusiness_management&response_type=code&state=tenant_1
+
+
+aqui es donde me aparece bien la page donde debo reconectar la cuenta de meta. Pero cuando lo hago, me redirife a una url que esta mal formada por lo que no se confirma nunca la conexion porque en esta url da error: 
+
+https://app.dralauradelgado.com,https//dentalforge-frontend.gvdlcu.easypanel.host/marketing?success=connected#_=_
+
+
+Donde esta esta url? en mi panel de developers de meta o en variables de entorno? estan las dos urls juntas digamos, entiendes el error? ayudame a solucionarlo, no es nada de codigo creo, creo que es alguna variable o algo en panel de admin.

@@ -20,9 +20,7 @@ export default function MetaTokenBanner() {
         const checkToken = async () => {
             try {
                 const { data } = await api.get('/admin/marketing/token-status');
-                if (data.needs_reconnect || (data.days_left !== null && data.days_left <= 7)) {
-                    setStatus(data);
-                }
+                setStatus(data);
             } catch (error) {
                 console.error("Error checking Meta token status:", error);
             }
