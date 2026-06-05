@@ -46,32 +46,36 @@ class SupervisorAgent:
         if state.get("hop_count", 0) >= state.get("max_hops", 5):
             return "handoff"
 
-        # Rule 3: emergency/triage
+        # Rule 3: DNI / Confirmation flow priority
+        if re.search(r"\b\d{7,11}\b", msg) or any(x in msg for x in ["dni", "mi dni", "nro de documento", "mi documento", "nro documento"]):
+            return "booking"
+
+        # Rule 4: emergency/triage
         for pat in self.EMERGENCY_PATTERNS:
             if re.search(pat, msg):
                 return "triage"
 
-        # Rule 4: billing
+        # Rule 5: billing
         for pat in self.BILLING_PATTERNS:
             if re.search(pat, msg):
                 return "billing"
 
-        # Rule 5: anamnesis
+        # Rule 6: anamnesis
         for pat in self.ANAMNESIS_PATTERNS:
             if re.search(pat, msg):
                 return "anamnesis"
 
-        # Rule 6: handoff
+        # Rule 7: handoff
         for pat in self.HANDOFF_PATTERNS:
             if re.search(pat, msg):
                 return "handoff"
 
-        # Rule 7: booking
+        # Rule 8: booking
         for pat in self.BOOKING_PATTERNS:
             if re.search(pat, msg):
                 return "booking"
 
-        # Rule 8: greeting
+        # Rule 9: greeting
         for pat in self.GREETING_PATTERNS:
             if re.search(pat, msg):
                 return "reception"
