@@ -1,41 +1,74 @@
-Buenas tardes, consulta, yo tenía un turno el 16 de junio para una extracción de muelas, pero por temas económicos se me hace imposible ese día, se podría reprogramar dicha extracción para el mes de julio?
-01:26 p. m.
+[IMAGE]
+attachment
+05:24 p. m.
 
-Entiendo, Elias Mauricio. Ya vi el estudio que me enviaste y lo dejé registrado en tu ficha médica para que la Dra. lo revise.
-01:26 p. m.
+Recibí tu comprobante! 😊
+05:24 p. m.
 
-Como ya tenés un turno previo y querés mover una extracción para julio, te pasé con el equipo para que te ayuden a reprogramarlo y lo dejen bien coordinado 😊
-01:26 p. m.
+¿Para qué paciente es este pago? Decime el nombre completo así lo asocio a su ficha.
+05:24 p. m.
 
-Muchas gracias!!!!
-01:42 p. m.
+[IMAGE]
+attachment
+05:28 p. m.
 
----------------
+Recibí tu comprobante! 😊
+05:28 p. m.
 
-El turno del paciente esta cargado, y deberia ser visible para el agente: 
+¿Para qué paciente es este pago? Decime el nombre completo así lo asocio a su ficha.
+05:28 p. m.
 
-ÚLTIMA CITA
-Sin citas previas
+[IMAGE]
+attachment
+05:29 p. m.
 
-PRÓXIMA CITA
-cirugia_compleja
-
-16/06/2026 10:00 a. m.
-60 min
-Profesional: Laura
-
--------------------------------
-
-Aca en teoria , el agente de ia tiene todo lo necesario para reprogramarlo. El paciente le dijo JULIO , y esta cargado el turno que quiere reprogramar el paciente, entiendes? es un paciente creado correctamente, sin embargo respondio mal aqui. quiero que analices que ha pasado, cual es el error y porque aqui no ha hecho la reprogramacion correctamente. Deberia haberlo hecho. Podria ser por que manda el paciente el primer mensaje toda la informacion y dice ahi que quiere reprogramar, . deberia haberlo reprogramado en teoria, ya estan esas reglas digamos. Analzia este chat y revisa que falta en el system prompt para que el agente d eia aqui ene ste caso o similares, lo reprograme correctamente. Quizas falta ampliar el espectro de sinonimos con palabras de este ejemplo? o no? 
+---------------------------Aqui iba  a mandar por tercera vez el mismo mensaje, sin emabrgo nose que habra pasado o que regla siguio el agente para mandar este mensaje entre corchetes que esta horrible, NUNCA JAMAS SE DEBE MANDAR ESTO AL PACIENTE, NI AL LEAD, OK?  Deberia haber mandado el mismo mensaje que arriba y que volvio a mandar despues. Digo, lo de Recibitu comprobante, para que paciente es....-----------------
 
 
-Dato: Si te fijas el chat, el agente le dice en su respuesta como que entiende que quiere reprogramar, sin embargo no lo hace. Podria ser el error que no tiene en su contexto el turno en cuestion quie se quiere reprogramar? 
+[INTERNAL: Mensaje suprimido por repetición. Reformulá tu respuesta de forma diferente o pasá a la siguiente acción.]
+05:30 p. m.
 
-En vez de responder esto: Como ya tenés un turno previo y querés mover una extracción para julio, te pasé con el equipo para que te ayuden a reprogramarlo y lo dejen bien coordinado 😊
+[IMAGE]
+attachment
+07:27 p. m.
 
-Deberia buscar oreconocer el turno en cuestion que se quiere reprogramar. Y luego buscar slots en base a lo que dijo el paciente, y luego responder dando los dos turnos , para que elija digamos, y cuando elije sehuiria reprogramar el turno existente a la fecha elegida, ok?  
+[Media]
+07:27 p. m.
 
-Dato: Hace unos minutos, con tigo en este chat estuvimos fixeando reglas para que responda a varias cosas y siempre ejecute las tools, en este caso derivo, pero deberia reprogramar. Si tiene todo lo necesario para reprogramar deberia hacerlo. Por ejemplo si el paciente dice que quiere reprogramarsu turno, pero no tiene el turno cargado, deberia agendar el turno. 
+Recibí tu comprobante! 😊
+07:28 p. m.
+
+¿Para qué paciente es este pago? Decime el nombre completo así lo asocio a su ficha.
+07:28 p. m.
+
+----------Aca no respondio nunca. Y el agente respondio bien digamos, ya que este es un lead, no es un paciente, mando comprobante pero como no tiene ficha de client ele pregunto para quien era. Eso esta bien. El problema es que mando ese mensaje entre corchetes, y esta mal. hace explore de donde esta el problema y ele rror.
 
 
-Despues otra cosa es que estuve viendo que deriva demasiadas veces incorrectamente . Osea piensa erroneamente que el paciente tiene historial y manda el msj prdeterminado de: Estamos actualizando registros....    Esto evita que el agente por ejemplo siga avanzando normalmente respondiendo y atendiendo a los elads o pacientes, ya que los deriva innecesariamente. Esta regla esta bien porque aveces sirve  ok? digo lo de los registros y que derive, ppero es muy invasivo porque ejecuta ese fliujo cuando no corresponde entendes? a la moatoria de la sveces funciona, pero a veces sucede esto que te mecniono, entendes?
+
+
+
+
+
+
+
+
+
+
+--------------------------
+
+
+SECCION NUEVA, LOGICA NUEVA, PROPUEESTA QUE DEBES ADAPTAR AL CASO CLINICO, ESTO SERIA PARA UN PEDIDO DE UNA HAMBURGUESERIA Y PANADWERIA, DEBES ADAPTARLO A LOS PACIENTES Y A LOS TURNOS, OK? 
+
+✅ Design — duplicate-order-bug
+3 capas de defensa, no 1 sola:
+Capa 1: Status injection en cada turno (PRIMARIA)
+- prompt-builder.ts: cada estado inyecta su semántica + el mensaje que se mandó
+- preparing → "El pedido está en cola, no empezó a prepararse aún"
+- ready → "Se mandó: '🍞 Ya esta tu pedido de pan, retiralo por Neuquen 1245' porque el pedido está LISTO"
+- delivered → "Se mandó mensaje de agradecimiento + pedido de tag en IG porque el pedido fue ENTREGADO"
+- Regla explícita: "Si el cliente responde a estas notificaciones, NO es un pedido nuevo"
+Capa 2: getOrderStatus mejorado + directiva anti-duplicado (SECUNDARIA)
+- El tool existente getOrderStatus se enriquece para que el agente lo llame ANTES de createOrder
+- agent.ts: detecta si el último mensaje es system (notificación) y el último es del cliente → inyecta directiva
+Capa 3: Tool guard en createOrder (RED DE SEGURIDAD)
+- Guard genérico para B2B y B2C: si hay pedido reciente (15min, configurable) en estados activos → bloquea
