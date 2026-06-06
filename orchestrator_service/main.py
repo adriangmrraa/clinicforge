@@ -859,6 +859,9 @@ def generate_free_slots(
         if time_preference == "tarde" and current.hour < 13:
             current += timedelta(minutes=interval_minutes)
             continue
+        if time_preference == "noche" and current.hour < 19:
+            current += timedelta(minutes=interval_minutes)
+            continue
 
         # Filtro por horario mínimo ("después de las X")
         if min_time:
@@ -1753,7 +1756,7 @@ async def check_availability(
     - "open": Sin fecha fija ("lo antes posible", "cuando haya", "cualquier día", "me da igual cuándo").
     professional_name: (Opcional) Nombre del profesional.
     treatment_name: (Opcional) Tratamiento definido (ej. limpieza profunda, consulta).
-    time_preference: Si el paciente pide horarios de un momento del día: 'mañana' (horario AM) o 'tarde'. Si no especifica no pasar.
+    time_preference: Si el paciente pide horarios de un momento del día: 'mañana' (horario AM), 'tarde' (horario PM hasta ~18:00), o 'noche' (horario nocturno, después de las ~18:00). Si no especifica no pasar.
     specific_time: (Opcional) Hora EXACTA que el paciente pidió, en formato HH:MM (ej: "16:30", "10:00"). Usar SOLO cuando el paciente pide una hora concreta ("a las 16:30", "quiero a las 10"). Si el paciente solo dice "mañana" o "tarde" sin hora exacta, NO pasar este campo — usar time_preference. Si se pasa, la tool verifica si ESE slot exacto está libre y lo incluye primero en las opciones.
     exclude_days: (Opcional) Días de la semana que el paciente RECHAZÓ, separados por coma. Ej: "viernes", "lunes,miércoles". Si el paciente dijo "el viernes no puedo" o "los lunes no me sirven", pasá esos días acá para EXCLUIRLOS de los resultados. SIEMPRE pasar los días rechazados por el paciente en la conversación.
     exclude_dates: (Opcional) Fechas específicas que el paciente RECHAZÓ, separadas por coma en formato YYYY-MM-DD. Ej: "2026-06-03", "2026-06-03,2026-06-05". Si el paciente dijo "el 3 de junio no puedo" o "mañana no puedo", pasá esas fechas acá para EXCLUIRLAS de los resultados. SIEMPRE pasar las fechas rechazadas por el paciente en TODAS las búsquedas siguientes.
@@ -2760,7 +2763,7 @@ async def check_availability(
             )
             if all_day_slots:
                 available_slots = all_day_slots
-                franja = "la mañana" if time_preference == "mañana" else "la tarde"
+                franja = "la mañana" if time_preference == "mañana" else "la tarde" if time_preference == "tarde" else "la noche"
                 _time_pref_note = f"No hay turnos disponibles por {franja} ese día, pero sí en otros horarios.\n\n"
                 logger.info(
                     f"📅 time_preference={time_preference!r} filtered all slots — retrying without filter, found {len(all_day_slots)} slots"
@@ -10645,7 +10648,7 @@ PASO 4: CONSULTAR DISPONIBILIDAD — Llamá 'check_availability' con treatment_n
   - "esta misma semana" → interpreted_date=hoy
   - "dentro de un par de días" → interpreted_date=hoy+2
   - "en una semana" → interpreted_date="{next_week_iso}"
-  - "antes de que termine el mes" → interpreted_date=hoy+1
+  - "antes de que termine el mes" → interpreted_date=últimos 3 días del mes actual
   - "el mes que viene, la segunda quincena" → interpreted_date=día 15 del mes siguiente
   - "la próxima semana pero no el lunes" → interpreted_date=martes próximo
   - "después del 20" / "recién después del 20" → interpreted_date=día 21
@@ -10664,6 +10667,12 @@ PASO 4: CONSULTAR DISPONIBILIDAD — Llamá 'check_availability' con treatment_n
   - "un día que no sea viernes" → interpreted_date="{tomorrow_iso}"
   - "me da igual cuándo, que sea de mañana" → interpreted_date="{tomorrow_iso}", time_preference="mañana"
   - "cuando haya lugar, no me apuro" → interpreted_date="{tomorrow_iso}"
+
+  REGLAS DE MAÑANA EN FIN DE SEMANA:
+  Si "mañana" cae en sábado o domingo → NO resolver fecha directamente. En su lugar:
+  informar al paciente que es fin de semana y ofrecer el lunes siguiente.
+  Ejemplo: "Mañana es sábado/domingo, no atendemos fines de semana.
+  ¿Te queda bien el lunes? O preferís otro día de la semana?"
 
   AMBIGUAS — REPREGUNTÁ antes de llamar check_availability:
   - "cualquier día está bien" → Preguntar franja (mañana/tarde).
@@ -10754,6 +10763,8 @@ PASO 4: CONSULTAR DISPONIBILIDAD — Llamá 'check_availability' con treatment_n
       → llamá check_availability con time_preference="tarde".
     Frases de MAÑANA sin hora exacta → time_preference="mañana" (ej: "más temprano", "por la mañana", "a la mañana", "a primera hora", "tempranito", "a la mañana temprano", "en el horario de la mañana", "a la mañana me viene mejor"):
       → llamá check_availability con time_preference="mañana".
+    Frases de NOCHE sin hora exacta → time_preference="noche" (ej: "a la noche", "en la noche", "por la noche", "a la tardecita-noche", "en el horario de la noche", "tarde noche"):
+      → llamá check_availability con time_preference="noche".
     → Si está libre → pasar a PASO 4b con ese horario.
     → Si está ocupado → decir honestamente que está ocupado y ofrecer el más cercano disponible.
 
