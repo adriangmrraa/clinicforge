@@ -12658,6 +12658,54 @@ async def serve_uploads(
     )
 
 
+# --- BUDGETS SERVING ENDPOINT ---
+@app.get(
+    "/uploads/budgets/{tenant_id}/{filename}",
+    tags=["Media"],
+    summary="Servir presupuestos PDF firmados",
+)
+async def serve_signed_budgets(
+    tenant_id: int,
+    filename: str,
+    signature: str = Query(..., description="Firma HMAC de seguridad"),
+    expires: int = Query(..., description="Timestamp de expiración"),
+):
+    """
+    Sirve archivos de presupuesto en PDF firmados.
+    Requiere firma válida generada por el orchestrator.
+    Path: /uploads/budgets/{tenant_id}/{filename}
+    """
+    # 1. Verificar firma HMAC
+    url_path = f"/uploads/budgets/{tenant_id}/{filename}"
+    if not verify_signed_url(url_path, tenant_id, signature, expires):
+        logger.warning(
+            f"🛡️ Security Block: Attempt to access budget PDF without valid signature. Path: {url_path}"
+        )
+        raise HTTPException(
+            status_code=403, detail="Acceso denegado: Firma inválida o expirada."
+        )
+
+    # 2. Seguridad: validar filename para prevenir path traversal
+    if ".." in filename or "/" in filename or "\\" in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+    # Usar UPLOADS_DIR si está configurado, sino usar /app/uploads
+    uploads_dir = os.getenv("UPLOADS_DIR", os.path.join(os.getcwd(), "uploads"))
+    file_path = os.path.join(uploads_dir, "budgets", str(tenant_id), filename)
+
+    if not os.path.exists(file_path):
+        logger.warning(f"❌ Budget file not found: {file_path}")
+        raise HTTPException(status_code=404, detail="Not Found")
+
+    # Determinar content type
+    mime_type, _ = mimetypes.guess_type(filename)
+
+    logger.info(f"📎 Serving signed budget: {file_path}")
+    return FileResponse(
+        file_path, media_type=mime_type or "application/pdf", filename=filename
+    )
+
+
 @app.get("/health/live", tags=["Health"])
 async def health_live():
     """Liveness probe. Siempre 200 si el proceso está vivo."""

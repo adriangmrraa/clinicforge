@@ -207,6 +207,16 @@ EVENT_FORMATS = {
             "🚫 no_followup activado — sin más seguimientos",
         ],
     },
+    "TREATMENT_PLAN_APPROVED": {
+        "emoji": "✅",
+        "title": "Presupuesto aprobado",
+        "fields": lambda d: [
+            f"Paciente: {_patient_name(d)}",
+            f"Presupuesto: {d.get('plan_name', '?')}",
+            f"Total aprobado: ${d.get('approved_total', '?')}",
+            f"Aprobado por: {d.get('approved_by', '?')}",
+        ],
+    },
 }
 
 # WHITELIST: Only these high-value events reach the doctor's Telegram.
@@ -225,6 +235,7 @@ ALLOWED_EVENTS = {
     "LEAD_RECOVERY_TOUCH3",
     "LEAD_RECOVERY_CONVERSION",
     "LEAD_RECOVERY_NOT_INTERESTED",
+    "TREATMENT_PLAN_APPROVED",
 }
 
 

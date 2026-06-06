@@ -160,6 +160,23 @@ async def process_message(
     if not response_text:
         response_text = "Procesé tu consulta pero no obtuve una respuesta. Intentá reformular."
 
+    import json as _json_parser
+    if response_text and response_text.strip().startswith("{") and response_text.strip().endswith("}"):
+        try:
+            payload = _json_parser.loads(response_text)
+            if payload.get("type") == "send_document":
+                doc_url = payload.get("url")
+                filename = payload.get("filename", "Documento.pdf")
+                caption = payload.get("caption", "")
+                await update.message.reply_document(
+                    document=doc_url,
+                    filename=filename,
+                    caption=caption
+                )
+                return
+        except Exception as json_err:
+            logger.debug(f"Response not a JSON document payload: {json_err}")
+
     formatted = format_response(response_text)
     chunks = chunk_message(formatted)
 
@@ -392,7 +409,26 @@ async def handle_callback_query(
             )
             if resp.status_code == 200:
                 result = resp.json()
-                chunks = chunk_message(result.get("response_text", "Sin datos"))
+                response_text = result.get("response_text", "")
+                
+                import json as _json_parser
+                if response_text and response_text.strip().startswith("{") and response_text.strip().endswith("}"):
+                    try:
+                        payload = _json_parser.loads(response_text)
+                        if payload.get("type") == "send_document":
+                            doc_url = payload.get("url")
+                            filename = payload.get("filename", "Documento.pdf")
+                            caption = payload.get("caption", "")
+                            await query.message.reply_document(
+                                document=doc_url,
+                                filename=filename,
+                                caption=caption
+                            )
+                            return
+                    except Exception as json_err:
+                        logger.debug(f"Response not a JSON document payload: {json_err}")
+
+                chunks = chunk_message(response_text or "Sin datos")
                 for chunk in chunks:
                     await query.message.reply_text(chunk)
             else:

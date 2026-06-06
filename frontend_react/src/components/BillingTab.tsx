@@ -4,7 +4,7 @@ import {
   Plus, Trash2, Loader2, Receipt, X, RefreshCw,
   Banknote, ArrowRightLeft, CreditCard, Check, AlertCircle,
   User, Mail, Download, Sparkles,
-  CheckCircle2, Clock, Search, Edit2, Calendar
+  CheckCircle2, Clock, Search, Edit2, Calendar, MessageSquare
 } from 'lucide-react';
 import api from '../api/axios';
 
@@ -350,6 +350,7 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
   // ── PDF/Email
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [sendingEmail, setSendingEmail] = useState(false);
+  const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
   const [emailTo, setEmailTo] = useState('');
 
   // ── Generate plan loading
@@ -721,8 +722,15 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
       if (treatmentCodes && treatmentCodes.length > 0) {
         payload.treatment_codes = treatmentCodes;
       }
-      await api.post(`/admin/patients/${patientId}/generate-plan-from-appointments`, payload);
+      const res = await api.post(`/admin/patients/${patientId}/generate-plan-from-appointments`, payload);
+      const newPlanId = res.data.plan_id;
       await loadBillingSummary();
+      if (newPlanId) {
+        setSelectedPlanId(newPlanId);
+        setViewState('plan_view');
+        await loadPlanDetail(newPlanId);
+        setSuccess("Presupuesto creado. Recordá aprobarlo antes de enviarlo.");
+      }
     } catch (err: unknown) {
       console.error('Error generating plan:', err);
       const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
@@ -790,6 +798,22 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
       setError(detail);
     } finally {
       setSendingEmail(false);
+    }
+  };
+
+  const handleSendWhatsApp = async () => {
+    if (!planDetail) return;
+    try {
+      setSendingWhatsApp(true);
+      setError(null);
+      await api.post(`/admin/treatment-plans/${planDetail.id}/send-whatsapp`, {});
+      setSuccess("Presupuesto enviado por WhatsApp correctamente.");
+    } catch (err: unknown) {
+      console.error('Error sending WhatsApp:', err);
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setError(msg || "Error al enviar por WhatsApp.");
+    } finally {
+      setSendingWhatsApp(false);
     }
   };
 
@@ -1126,6 +1150,19 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
               >
                 <Mail size={14} />
                 {t('billing.send_email')}
+              </button>
+
+              <button
+                onClick={handleSendWhatsApp}
+                disabled={sendingWhatsApp || planDetail.status !== 'approved'}
+                className="flex items-center gap-2 bg-green-500/10 text-green-400 border border-green-500/20 px-3 py-1.5 rounded-lg text-sm hover:bg-green-500/20 transition-colors disabled:opacity-50"
+              >
+                {sendingWhatsApp ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <MessageSquare size={14} />
+                )}
+                {sendingWhatsApp ? 'Enviando...' : 'Enviar por WhatsApp'}
               </button>
 
               <button

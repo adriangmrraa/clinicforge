@@ -4239,6 +4239,7 @@ async def get_clinic_settings(
             "min_appointment_date": config.get("min_appointment_date")
             if config
             else None,
+            "telegram_notify_user_ids": config.get("telegram_notify_user_ids") or [],
         }
     except Exception as e:
         logger.warning(f"get_clinic_settings failed: {e}")
@@ -4276,6 +4277,8 @@ class ClinicSettingsUpdate(BaseModel):
     max_unpaid_appointments: Optional[int] = None
     # Fecha mínima para turnos (regla de agenda)
     min_appointment_date: Optional[date] = None
+    # Telegram notifications
+    telegram_notify_user_ids: Optional[List[int]] = None
 
 
 @router.patch(
@@ -4454,6 +4457,25 @@ async def update_clinic_settings(
             logger.error(f"update_clinic_settings min_appointment_date failed: {e}")
             raise HTTPException(
                 status_code=500, detail="Error al guardar la fecha mínima de turnos."
+            )
+
+    # Handle telegram_notify_user_ids
+    if payload.telegram_notify_user_ids is not None:
+        try:
+            await db.pool.execute(
+                """
+                UPDATE tenants
+                SET config = COALESCE(config, '{}') || jsonb_build_object('telegram_notify_user_ids', $1::jsonb),
+                    updated_at = NOW()
+                WHERE id = $2
+                """,
+                json.dumps(payload.telegram_notify_user_ids),
+                resolved_tenant_id,
+            )
+        except Exception as e:
+            logger.error(f"update_clinic_settings telegram_notify_user_ids failed: {e}")
+            raise HTTPException(
+                status_code=500, detail="Error al guardar la configuración de notificaciones de Telegram."
             )
 
     return {"status": "ok", "ui_language": getattr(payload, "ui_language", None)}
@@ -13048,18 +13070,20 @@ async def generate_plan_from_appointments(
     # 5. Auto-nombre si no se provee
     plan_name = payload.name
     if not plan_name:
-        patient_row = await db.pool.fetchrow(
-            "SELECT first_name, last_name FROM patients WHERE id=$1 AND tenant_id=$2",
-            patient_id,
-            tenant_id,
-        )
-        if patient_row:
-            full_name = (
-                f"{patient_row['first_name']} {patient_row['last_name'] or ''}".strip()
-            )
-            plan_name = f"Tratamiento de {full_name}"
+        unique_treatments = []
+        seen = set()
+        for apt in appointments:
+            t_name = apt["treatment_name"]
+            if t_name and t_name not in seen:
+                seen.add(t_name)
+                unique_treatments.append(t_name)
+        
+        current_date_str = datetime.now().strftime("%Y-%m-%d")
+        if unique_treatments:
+            treatments_str = " + ".join(unique_treatments)
+            plan_name = f"{treatments_str} — {current_date_str}"
         else:
-            plan_name = f"Tratamiento generado"
+            plan_name = f"Presupuesto — {current_date_str}"
 
     estimated_total = sum(a["billing_amount"] for a in appointments)
     plan_id = uuid.uuid4()
@@ -13211,6 +13235,277 @@ async def generate_plan_from_appointments(
         "items_created": items_created,
         "payments_migrated": payments_migrated,
         "estimated_total": round(estimated_total, 2),
+    }
+
+
+# Body for budget creation
+class CreateBudgetFromAppointmentsBody(BaseModel):
+    appointment_ids: List[str]
+
+
+@router.post(
+    "/budgets/from-appointments",
+    tags=["Planes de Tratamiento"],
+    summary="Genera un plan/presupuesto borrador a partir de una lista de turnos",
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_budget_from_appointments(
+    payload: CreateBudgetFromAppointmentsBody,
+    request: Request,
+    user_data=Depends(verify_admin_token),
+    resolved_tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    tenant_id = resolved_tenant_id
+
+    # Parse and validate UUIDs
+    parsed_ids = []
+    for aid in payload.appointment_ids:
+        try:
+            parsed_ids.append(uuid.UUID(aid))
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"ID de turno inválido: {aid}")
+
+    # Fetch appointments
+    rows = await db.pool.fetch(
+        """
+        SELECT
+            a.id as appointment_id,
+            a.patient_id,
+            a.professional_id,
+            a.appointment_datetime,
+            a.appointment_type,
+            COALESCE(tt.name, a.appointment_type, 'Consulta') as treatment_name,
+            tt.base_price,
+            tt.code as treatment_code,
+            COALESCE(a.billing_amount, tt.base_price, 0) as billing_amount,
+            a.payment_status,
+            a.payment_receipt_data,
+            a.plan_item_id
+        FROM appointments a
+        LEFT JOIN treatment_types tt ON tt.code = a.appointment_type AND tt.tenant_id = $1
+        WHERE a.tenant_id = $1
+          AND a.id = ANY($2::uuid[])
+          AND a.status NOT IN ('cancelled', 'deleted')
+        """,
+        tenant_id,
+        parsed_ids,
+    )
+
+    if not rows:
+        raise HTTPException(
+            status_code=404,
+            detail="No se encontraron turnos válidos para los IDs provistos."
+        )
+
+    # Check already linked
+    for r in rows:
+        if r["plan_item_id"]:
+            raise HTTPException(
+                status_code=422,
+                detail=f"El turno {r['appointment_id']} ya está vinculado a un presupuesto."
+            )
+
+    # Check same patient
+    patient_ids = {r["patient_id"] for r in rows}
+    if len(patient_ids) > 1:
+        raise HTTPException(
+            status_code=422,
+            detail="Todos los turnos deben pertenecer al mismo paciente."
+        )
+    patient_id = list(patient_ids)[0]
+
+    # Map professionals
+    professional_ids = {r["professional_id"] for r in rows if r["professional_id"]}
+    professional_id = list(professional_ids)[0] if len(professional_ids) == 1 else None
+
+    # Group by treatment_code
+    appointments = []
+    for row in rows:
+        receipt = row["payment_receipt_data"]
+        if isinstance(receipt, str):
+            try:
+                receipt = json.loads(receipt)
+            except Exception:
+                receipt = None
+
+        appointments.append(
+            {
+                "id": str(row["appointment_id"]),
+                "treatment_code": row["treatment_code"] or row["appointment_type"] or "sin_tipo",
+                "treatment_name": row["treatment_name"],
+                "base_price": float(row["base_price"]) if row["base_price"] else 0.0,
+                "billing_amount": float(row["billing_amount"] or 0),
+                "payment_status": row["payment_status"] or "pending",
+                "payment_receipt": receipt,
+            }
+        )
+
+    groups_map: Dict[str, Dict] = {}
+    for apt in appointments:
+        code = apt["treatment_code"]
+        if code not in groups_map:
+            groups_map[code] = {
+                "treatment_code": code,
+                "treatment_name": apt["treatment_name"],
+                "base_price": apt["base_price"],
+                "appointments": [],
+                "total_billed": 0.0,
+            }
+        groups_map[code]["appointments"].append(apt)
+        groups_map[code]["total_billed"] += apt["billing_amount"]
+
+    # Auto-generate name based on treatments
+    unique_treatments = []
+    seen = set()
+    for apt in appointments:
+        t_name = apt["treatment_name"]
+        if t_name and t_name not in seen:
+            seen.add(t_name)
+            unique_treatments.append(t_name)
+    
+    current_date_str = datetime.now().strftime("%Y-%m-%d")
+    if unique_treatments:
+        treatments_str = " + ".join(unique_treatments)
+        plan_name = f"{treatments_str} — {current_date_str}"
+    else:
+        plan_name = f"Presupuesto — {current_date_str}"
+
+    estimated_total = sum(a["billing_amount"] for a in appointments)
+    plan_id = uuid.uuid4()
+    items_created = 0
+    payments_migrated = 0
+
+    async with db.pool.acquire() as conn:
+        async with conn.transaction():
+            # Create treatment plan
+            await conn.execute(
+                """
+                INSERT INTO treatment_plans
+                (id, tenant_id, patient_id, professional_id, name, status, estimated_total, created_at, updated_at)
+                VALUES ($1, $2, $3, $4, $5, 'draft', $6, NOW(), NOW())
+                """,
+                plan_id,
+                tenant_id,
+                patient_id,
+                professional_id,
+                plan_name,
+                estimated_total,
+            )
+
+            # Create items
+            for sort_order, (code, group) in enumerate(groups_map.items()):
+                item_id = uuid.uuid4()
+                estimated_price = (
+                    group["total_billed"]
+                    if group["total_billed"] > 0
+                    else group["base_price"]
+                )
+
+                await conn.execute(
+                    """
+                    INSERT INTO treatment_plan_items
+                    (id, plan_id, tenant_id, treatment_type_code, custom_description,
+                     estimated_price, approved_price, status, sort_order, created_at, updated_at)
+                    VALUES ($1, $2, $3, $4, $5, $6, NULL, 'pending', $7, NOW(), NOW())
+                    """,
+                    item_id,
+                    plan_id,
+                    tenant_id,
+                    code if code != "sin_tipo" else None,
+                    group["treatment_name"],
+                    estimated_price,
+                    sort_order,
+                )
+                items_created += 1
+
+                # Link appointments
+                for apt in group["appointments"]:
+                    await conn.execute(
+                        "UPDATE appointments SET plan_item_id = $1 WHERE id = $2 AND tenant_id = $3",
+                        item_id,
+                        uuid.UUID(apt["id"]),
+                        tenant_id,
+                    )
+
+                # Migrate payments
+                for apt in group["appointments"]:
+                    receipt = apt["payment_receipt"]
+                    if not receipt:
+                        continue
+
+                    receipt_status = receipt.get("status", "")
+                    if receipt_status not in ("verified", "verified_manual"):
+                        continue
+
+                    apt_id = apt["id"]
+
+                    existing_payment = await conn.fetchval(
+                        "SELECT id FROM treatment_plan_payments WHERE plan_id=$1 AND notes LIKE $2",
+                        plan_id,
+                        f"%migrated:apt:{apt_id}%",
+                    )
+                    if existing_payment:
+                        continue
+
+                    amount_detected = receipt.get("amount_detected") or receipt.get("amount")
+                    payment_amount = float(amount_detected) if amount_detected else apt["billing_amount"]
+
+                    if payment_amount <= 0:
+                        continue
+
+                    payment_id = uuid.uuid4()
+                    await conn.execute(
+                        """
+                        INSERT INTO treatment_plan_payments
+                        (id, plan_id, tenant_id, amount, payment_method, notes, created_at)
+                        VALUES ($1, $2, $3, $4, 'transfer', $5, NOW())
+                        """,
+                        payment_id,
+                        plan_id,
+                        tenant_id,
+                        payment_amount,
+                        f"migrated:apt:{apt_id} (item:{item_id})",
+                    )
+
+                    tx_id = uuid.uuid4()
+                    await conn.execute(
+                        """
+                        INSERT INTO accounting_transactions
+                        (id, tenant_id, patient_id, amount, transaction_type, payment_method, status, description, transaction_date, created_at)
+                        VALUES ($1, $2, $3, $4, 'payment', 'transfer', 'completed', $5, NOW(), NOW())
+                        """,
+                        tx_id,
+                        tenant_id,
+                        patient_id,
+                        payment_amount,
+                        f"Pago migrado desde turno {apt_id} (payment_id: {payment_id})",
+                    )
+                    payments_migrated += 1
+
+    try:
+        await emit_treatment_plan_event(
+            "TREATMENT_PLAN_CREATED",
+            {
+                "plan_id": str(plan_id),
+                "patient_id": patient_id,
+                "tenant_id": tenant_id,
+                "name": plan_name,
+                "status": "draft",
+                "source": "budgets_from_appointments",
+            },
+            request,
+        )
+    except Exception as e:
+        logger.warning(f"⚠️ Socket emit TREATMENT_PLAN_CREATED falló (non-fatal): {e}")
+
+    return {
+        "status": "created",
+        "plan_id": str(plan_id),
+        "items_created": items_created,
+        "payments_migrated": payments_migrated,
+        "estimated_total": round(estimated_total, 2),
+        "name": plan_name,
+        "patient_id": patient_id,
     }
 
 
@@ -13941,6 +14236,137 @@ async def get_treatment_plan_detail(
     }
 
 
+async def notify_treatment_plan_approved(
+    tenant_id: int,
+    plan_id: str,
+    plan_name: str,
+    approved_total: float,
+    approved_by: str,
+    patient_id: uuid.UUID,
+):
+    try:
+        # Get patient name
+        patient_row = await db.pool.fetchrow(
+            "SELECT first_name, last_name FROM patients WHERE id = $1 AND tenant_id = $2",
+            patient_id,
+            tenant_id,
+        )
+        patient_name = "?"
+        if patient_row:
+            patient_name = f"{patient_row['first_name']} {patient_row['last_name'] or ''}".strip()
+
+        # Fire Telegram notification
+        from services.telegram_notifier import fire_telegram_notification
+        notification_data = {
+            "patient_name": patient_name,
+            "plan_name": plan_name,
+            "approved_total": approved_total,
+            "approved_by": approved_by,
+            "tenant_id": tenant_id,
+            "plan_id": plan_id,
+        }
+        fire_telegram_notification("TREATMENT_PLAN_APPROVED", notification_data, tenant_id)
+    except Exception as e:
+        logger.error(f"Error in notify_treatment_plan_approved background task: {e}")
+
+
+async def notify_telegram_on_budget_approval(
+    tenant_id: int,
+    plan_id: str,
+    plan_name: str,
+    approved_total: float,
+    approved_by: str,
+    patient_id: uuid.UUID,
+):
+    try:
+        # Get patient name
+        patient_row = await db.pool.fetchrow(
+            "SELECT first_name, last_name FROM patients WHERE id = $1 AND tenant_id = $2",
+            patient_id,
+            tenant_id,
+        )
+        patient_name = "?"
+        if patient_row:
+            patient_name = f"{patient_row['first_name']} {patient_row['last_name'] or ''}".strip()
+
+        # Get telegram_notify_user_ids from tenants config
+        config_row = await db.pool.fetchrow(
+            "SELECT config FROM tenants WHERE id = $1",
+            tenant_id,
+        )
+        if not config_row or not config_row["config"]:
+            return
+            
+        config = config_row["config"]
+        if isinstance(config, str):
+            try:
+                config = json.loads(config)
+            except Exception:
+                config = {}
+        if not isinstance(config, dict):
+            config = {}
+            
+        notify_user_ids = config.get("telegram_notify_user_ids")
+        if not notify_user_ids:
+            logger.info(f"No telegram_notify_user_ids configured for tenant {tenant_id}")
+            return
+
+        # Generar el PDF
+        from services.budget_service import generate_budget_pdf
+        pdf_path = await generate_budget_pdf(db.pool, plan_id, tenant_id)
+        if not pdf_path:
+            logger.error("Could not generate PDF for Telegram approval notification")
+            return
+            
+        # Generar URL firmada
+        relative_url = f"/uploads/budgets/{tenant_id}/{plan_id}.pdf"
+        signature, expires = generate_signed_url(relative_url, tenant_id)
+        
+        # Build signed URL
+        from urllib.parse import urlencode
+        query_params = {
+            "signature": signature,
+            "expires": expires,
+        }
+        api_base = os.getenv("ORCHESTRATOR_PUBLIC_URL", "")
+        if not api_base:
+            api_base = "http://127.0.0.1:8000"
+        api_base = api_base.rstrip("/")
+        signed_pdf_url = f"{api_base}{relative_url}?{urlencode(query_params)}"
+
+        # Prepare message in Spanish
+        message = (
+            f"✅ <b>Presupuesto aprobado</b>\n\n"
+            f"▸ Paciente: {patient_name}\n"
+            f"▸ Presupuesto: {plan_name}\n"
+            f"▸ Total aprobado: ${approved_total:.2f}\n"
+            f"▸ Aprobado por: {approved_by}\n"
+            f"▸ <a href=\"{signed_pdf_url}\">Ver PDF del Presupuesto</a>"
+        )
+
+        from services.telegram_bot import _bots
+        app = _bots.get(tenant_id)
+        if not app:
+            logger.warning(f"No active Telegram bot for tenant {tenant_id}")
+            return
+            
+        from telegram.constants import ParseMode
+        bot = app.bot
+        for user_id in notify_user_ids:
+            try:
+                await bot.send_message(
+                    chat_id=int(user_id),
+                    text=message,
+                    parse_mode=ParseMode.HTML,
+                )
+                logger.info(f"Notification sent to Telegram user {user_id} for tenant {tenant_id}")
+            except Exception as e:
+                logger.error(f"Failed to send Telegram notification to user {user_id}: {e}")
+                
+    except Exception as e:
+        logger.error(f"Error in notify_telegram_on_budget_approval background task: {e}")
+
+
 # EP-04: PATCH /admin/treatment-plans/{plan_id}  (also accepts PUT for backwards compat)
 @router.patch(
     "/treatment-plans/{plan_id}",
@@ -13957,6 +14383,7 @@ async def update_treatment_plan(
     plan_id: str,
     payload: UpdateTreatmentPlanBody,
     request: Request,
+    background_tasks: BackgroundTasks,
     user_data=Depends(verify_admin_token),
     resolved_tenant_id: int = Depends(get_resolved_tenant_id),
 ):
@@ -13965,6 +14392,7 @@ async def update_treatment_plan(
     Caso especial: status='approved' establece approved_by y approved_at.
     """
     tenant_id = resolved_tenant_id
+    is_approving = False
 
     try:
         plan_uuid = uuid.UUID(plan_id)
@@ -14009,6 +14437,8 @@ async def update_treatment_plan(
             )
 
         if payload.status == "approved":
+            if plan["status"] in ("draft", "sent"):
+                is_approving = True
             update_fields.append(f"status = ${idx}")
             params.append(payload.status)
             idx += 1
@@ -14134,6 +14564,26 @@ async def update_treatment_plan(
         },
         request,
     )
+
+    if is_approving:
+        background_tasks.add_task(
+            notify_treatment_plan_approved,
+            tenant_id=tenant_id,
+            plan_id=str(plan_uuid),
+            plan_name=updated_plan["name"],
+            approved_total=float(updated_plan["approved_total"] or 0),
+            approved_by=updated_plan["approved_by"] or user_data.email,
+            patient_id=updated_plan["patient_id"],
+        )
+        background_tasks.add_task(
+            notify_telegram_on_budget_approval,
+            tenant_id=tenant_id,
+            plan_id=str(plan_uuid),
+            plan_name=updated_plan["name"],
+            approved_total=float(updated_plan["approved_total"] or 0),
+            approved_by=updated_plan["approved_by"] or user_data.email,
+            patient_id=updated_plan["patient_id"],
+        )
 
     return {
         "id": str(updated_plan["id"]),
@@ -14782,6 +15232,196 @@ async def send_treatment_plan_email(
         raise HTTPException(status_code=500, detail=f"Error enviando email: {str(e)}")
 
     return {"success": True, "message": f"Presupuesto enviado a {to_email}"}
+
+
+# Body for sending budget via WhatsApp
+class SendWhatsAppPlanBody(BaseModel):
+    message: Optional[str] = None
+    template_name: Optional[str] = None
+
+
+@router.post(
+    "/treatment-plans/{plan_id}/send-whatsapp",
+    tags=["Planes de Tratamiento"],
+    summary="Genera el PDF del presupuesto y lo envía por WhatsApp al paciente",
+)
+async def send_treatment_plan_whatsapp(
+    plan_id: str,
+    payload: SendWhatsAppPlanBody,
+    request: Request,
+    user_data=Depends(verify_admin_token),
+    resolved_tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """Genera el PDF del presupuesto, lo guarda y lo envía al paciente por WhatsApp (YCloud)."""
+    tenant_id = resolved_tenant_id
+
+    # 1. Obtener el plan
+    try:
+        plan_uuid = uuid.UUID(plan_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="ID de plan inválido")
+
+    plan = await db.pool.fetchrow(
+        "SELECT * FROM treatment_plans WHERE id=$1 AND tenant_id=$2",
+        plan_uuid,
+        tenant_id,
+    )
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plan de tratamiento no encontrado")
+
+    # 2. Obtener paciente y validar su teléfono
+    patient = await db.pool.fetchrow(
+        "SELECT first_name, last_name, phone_number FROM patients WHERE id=$1 AND tenant_id=$2",
+        plan["patient_id"],
+        tenant_id,
+    )
+    if not patient or not patient["phone_number"]:
+        raise HTTPException(
+            status_code=422,
+            detail="El paciente no tiene un número de teléfono configurado."
+        )
+
+    phone = patient["phone_number"].strip()
+    clean_phone = re.sub(r"[^\d+]", "", phone)
+    if len([c for c in clean_phone if c.isdigit()]) < 8:
+        raise HTTPException(
+            status_code=422,
+            detail=f"El número de teléfono del paciente '{phone}' no es válido."
+        )
+
+    # 3. Generar el PDF
+    from services.budget_service import generate_budget_pdf, gather_budget_data
+    try:
+        pdf_path = await generate_budget_pdf(db.pool, plan_id, tenant_id)
+    except Exception as e:
+        logger.error(f"Error generating budget PDF: {e}")
+        raise HTTPException(status_code=500, detail=f"Error generando PDF: {str(e)}")
+
+    if not pdf_path:
+        raise HTTPException(
+            status_code=500, detail="No se pudo generar el PDF del presupuesto."
+        )
+
+    data = await gather_budget_data(db.pool, plan_id, tenant_id)
+    if data and data.get("patient", {}).get("name"):
+        safe_name = data["patient"]["name"].replace(" ", "_")
+        filename = f"Presupuesto_{safe_name}.pdf"
+    else:
+        filename = f"Presupuesto_{plan_id}.pdf"
+
+    # 4. Generar URL firmada para la descarga del PDF
+    relative_url = f"/uploads/budgets/{tenant_id}/{plan_id}.pdf"
+    signature, expires = generate_signed_url(relative_url, tenant_id)
+
+    from urllib.parse import urlencode
+    query_params = {
+        "signature": signature,
+        "expires": expires,
+    }
+    api_base = os.getenv("ORCHESTRATOR_PUBLIC_URL", "")
+    if not api_base:
+        api_base = str(request.base_url).rstrip("/")
+    api_base = api_base.rstrip("/")
+    signed_pdf_url = f"{api_base}{relative_url}?{urlencode(query_params)}"
+
+    # 5. Obtener credenciales de YCloud
+    from core.credentials import YCLOUD_API_KEY
+    api_key = await get_tenant_credential(tenant_id, YCLOUD_API_KEY)
+    if not api_key:
+        raise HTTPException(
+            status_code=503,
+            detail="YCloud credentials not configured"
+        )
+    from_number = await db.pool.fetchval(
+        "SELECT bot_phone_number FROM tenants WHERE id = $1", tenant_id
+    )
+    if not from_number:
+        from_number = await get_tenant_credential(
+            tenant_id, "YCLOUD_WHATSAPP_NUMBER"
+        )
+
+    # 6. Enviar mensaje por WhatsApp
+    from ycloud_client import YCloudClient
+    yc = YCloudClient(api_key=api_key, business_number=from_number)
+    
+    custom_msg = (payload.message or "").strip()
+    template_name = (payload.template_name or "").strip()
+
+    try:
+        if template_name:
+            # Enviar plantilla
+            await yc.send_template(
+                to=clean_phone,
+                template_name=template_name,
+                language_code="es",
+                from_number=from_number,
+            )
+            sent_content = f"[Template: {template_name}]"
+        else:
+            # Enviar documento PDF directamente con la descripción
+            caption = custom_msg if custom_msg else f"Hola, te adjuntamos el presupuesto del tratamiento solicitado. ¡Cualquier duda nos avisas!"
+            await yc.send_document(
+                to_number=clean_phone,
+                document_url=signed_pdf_url,
+                filename=filename,
+                caption=caption,
+                from_number=from_number,
+            )
+            sent_content = f"{caption} (PDF adjunto: {filename})"
+
+        # 7. Registrar en el historial de chats de la clínica
+        conv_id = await db.pool.fetchval(
+            "SELECT id FROM chat_conversations WHERE external_user_id = $1 AND tenant_id = $2 AND channel = 'whatsapp'",
+            clean_phone,
+            tenant_id,
+        )
+        if not conv_id:
+            conv_id = uuid.uuid4()
+            await db.pool.execute(
+                """
+                INSERT INTO chat_conversations (id, tenant_id, channel, provider, external_user_id, display_name, status, created_at, updated_at)
+                VALUES ($1, $2, 'whatsapp', 'ycloud', $3, $4, 'active', NOW(), NOW())
+                """,
+                conv_id,
+                tenant_id,
+                clean_phone,
+                f"{patient['first_name']} {patient['last_name'] or ''}".strip(),
+            )
+
+        attachments_payload = [{
+            "type": "document",
+            "url": relative_url,
+            "name": filename
+        }]
+
+        await db.pool.execute(
+            """
+            INSERT INTO chat_messages (tenant_id, conversation_id, role, content, from_number, content_attributes) 
+            VALUES ($1, $2, 'human_supervisor', $3, $4, $5::jsonb)
+            """,
+            tenant_id,
+            conv_id,
+            sent_content,
+            clean_phone,
+            json.dumps(attachments_payload),
+        )
+
+        await db.sync_conversation(
+            tenant_id, "whatsapp", clean_phone, sent_content, is_user=False
+        )
+
+        return {
+            "success": True,
+            "message": f"Presupuesto enviado correctamente a {phone} vía WhatsApp.",
+            "signed_url": signed_pdf_url,
+        }
+
+    except Exception as e:
+        logger.error(f"Error enviando presupuesto por WhatsApp: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al enviar mensaje por WhatsApp: {str(e)}"
+        )
 
 
 # =============================================================================

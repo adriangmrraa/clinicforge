@@ -126,6 +126,50 @@ class YCloudClient:
                 logger.error(f"ycloud_send_image_error: to={to} error={str(e)}")
                 raise
 
+    async def send_document(
+        self,
+        to_number: str,
+        document_url: str,
+        filename: str,
+        caption: Optional[str] = None,
+        from_number: Optional[str] = None,
+    ) -> dict[str, Any]:
+        """
+        Envía un documento PDF/file a través de YCloud.
+        """
+        endpoint = f"{self.base_url}/whatsapp/messages/sendDirectly"
+        sender = from_number or self.business_number
+        payload = {
+            "to": to_number,
+            "type": "document",
+            "document": {
+                "link": document_url,
+                "filename": filename
+            }
+        }
+        if caption:
+            payload["document"]["caption"] = caption
+        if sender:
+            payload["from"] = sender
+
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.post(
+                    endpoint, json=payload, headers=self.headers, timeout=15.0
+                )
+                response.raise_for_status()
+                data = response.json()
+                logger.info(f"✅ YCloud document sent to {to_number}: {data.get('id')}")
+                return data
+            except httpx.HTTPStatusError as e:
+                logger.error(
+                    f"ycloud_send_document_failed: to={to_number} status={e.response.status_code} body={e.response.text[:200]}"
+                )
+                raise
+            except Exception as e:
+                logger.error(f"ycloud_send_document_error: to={to_number} error={str(e)}")
+                raise
+
     async def send_audio(
         self,
         to: str,

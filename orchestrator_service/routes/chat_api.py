@@ -486,23 +486,29 @@ async def unified_send_message(
                     to=external_user_id, text=message, from_number=from_number
                 )
 
-            # Enviar attachments de audio vía YCloud send_audio()
-            # Nota: para Chatwoot, los attachments de audio ya funcionan vía send_attachment()
+            # Enviar attachments (audio, imagen, documento) vía YCloud
             backend_public_url = os.getenv("BACKEND_PUBLIC_URL", "").rstrip("/")
             for att in attachments:
                 att_type = att.get("type", "")
                 att_url = att.get("url", "")
-                if att_type == "audio" and att_url:
-                    # Si la URL es local (/media/...), hay que convertirla en una URL pública
-                    # que YCloud pueda descargar desde internet
-                    if att_url.startswith("/media/") or att_url.startswith("/uploads/"):
-                        if backend_public_url:
-                            att_url = f"{backend_public_url}{att_url}"
-                        else:
-                            logger.warning(
-                                f"⚠️ BACKEND_PUBLIC_URL not set — YCloud cannot fetch local audio: {att_url}"
-                            )
-                            continue
+                if not att_url:
+                    continue
+
+                # Si la URL es local (/media/ o /uploads/), la convertimos en URL pública y firmada
+                if att_url.startswith("/media/") or att_url.startswith("/uploads/"):
+                    clean_att_path = att_url.split("?")[0]
+                    sig, exp = generate_signed_url(clean_att_path, tenant_id)
+                    from urllib.parse import urlencode
+                    signed_query = urlencode({"signature": sig, "expires": exp})
+                    if backend_public_url:
+                        att_url = f"{backend_public_url}{clean_att_path}?{signed_query}"
+                    else:
+                        logger.warning(
+                            f"⚠️ BACKEND_PUBLIC_URL not set — YCloud cannot fetch local attachment: {att_url}"
+                        )
+                        continue
+
+                if att_type == "audio":
                     logger.info(
                         f"📤 Sending audio via YCloud: to={external_user_id}, url={att_url[:100]}"
                     )
@@ -549,6 +555,30 @@ async def unified_send_message(
                                 raise
                         else:
                             raise
+
+                elif att_type == "image":
+                    logger.info(
+                        f"📤 Sending image via YCloud: to={external_user_id}, url={att_url[:100]}"
+                    )
+                    await client.send_image(
+                        to=external_user_id, url=att_url, from_number=from_number
+                    )
+
+                elif att_type in ("document", "file", "pdf"):
+                    filename = att.get("name") or att.get("filename") or "Documento"
+                    if att_type == "pdf" and not filename.lower().endswith(".pdf"):
+                        filename = f"{filename}.pdf"
+                    logger.info(
+                        f"📤 Sending document via YCloud: to={external_user_id}, url={att_url[:100]}, filename={filename}"
+                    )
+                    await client.send_document(
+                        to_number=external_user_id,
+                        document_url=att_url,
+                        filename=filename,
+                        from_number=from_number,
+                    )
+                else:
+                    logger.warning(f"⚠️ Unsupported YCloud attachment type: {att_type}")
 
         elif provider == "meta_direct":
             page_token = await get_tenant_credential(tenant_id, "meta_page_token")

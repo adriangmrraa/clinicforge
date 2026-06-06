@@ -1412,6 +1412,28 @@ IMPORTANTE — REGLAS QUIRÚRGICAS:
             "required": [],
         },
     },
+    # O3b. Preparar y enviar presupuesto (Automatizado)
+    # -------------------------------------------------------------------------
+    {
+        "type": "function",
+        "name": "preparar_y_enviar_presupuesto",
+        "description": "Busca un paciente, genera un presupuesto (plan de tratamiento) a partir de sus turnos sin presupuesto asignado, lo aprueba y lo envía. Admite sinónimos de ES/EN como 'prepará el presupuesto', 'create and send budget', 'mandale la cotizacion', etc.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "patient_name": {
+                    "type": "string",
+                    "description": "Nombre y/o apellido del paciente a buscar",
+                },
+                "delivery_mode": {
+                    "type": "string",
+                    "description": "Modo de entrega: 'whatsapp' (envía PDF al WhatsApp del paciente) o 'telegram' (envía PDF directamente a este chat de Telegram)",
+                    "enum": ["whatsapp", "telegram"],
+                },
+            },
+            "required": ["patient_name"],
+        },
+    },
     # O4. Agregar item a presupuesto
     # -------------------------------------------------------------------------
     {
@@ -2959,6 +2981,239 @@ async def _crear_presupuesto(args: Dict, tenant_id: int, user_role: str) -> str:
 
     logger.info(f"Nova: crear_presupuesto → plan {plan_id} para paciente {patient_id}")
     return f"✅ Presupuesto creado: *{plan_name}* (ID: {plan_id})\nEstado: borrador. Podés agregar ítems con agregar_item_presupuesto."
+
+
+async def _preparar_y_enviar_presupuesto(args: Dict, tenant_id: int, user_role: str) -> str:
+    """Busca un paciente, genera un presupuesto (plan de tratamiento) a partir de sus turnos sin presupuesto asignado, lo aprueba y lo envía."""
+    if user_role not in ("ceo", "secretary", "professional"):
+        return _role_error("preparar_y_enviar_presupuesto", ["ceo", "secretary", "professional"])
+
+    patient_name = args.get("patient_name")
+    delivery_mode = args.get("delivery_mode", "whatsapp")
+
+    # Search for patient
+    row = await db.pool.fetchrow(
+        """
+        SELECT id, first_name, last_name, phone_number FROM patients
+        WHERE tenant_id = $1 AND LOWER(first_name || ' ' || COALESCE(last_name, '')) LIKE $2
+        ORDER BY created_at DESC LIMIT 1
+        """,
+        tenant_id,
+        f"%{patient_name.lower()}%",
+    )
+    if not row:
+        return f"No encontré ningún paciente con el nombre '{patient_name}'."
+        
+    patient_id = row["id"]
+    patient_full_name = f"{row['first_name']} {row['last_name'] or ''}".strip()
+    patient_phone = row["phone_number"]
+
+    # Fetch unassigned appointments
+    apt_rows = await db.pool.fetch(
+        """
+        SELECT
+            a.id as appointment_id,
+            a.appointment_datetime,
+            a.appointment_type,
+            COALESCE(tt.name, a.appointment_type, 'Consulta') as treatment_name,
+            tt.base_price,
+            tt.code as treatment_code,
+            COALESCE(a.billing_amount, tt.base_price, 0) as billing_amount
+        FROM appointments a
+        LEFT JOIN treatment_types tt ON tt.code = a.appointment_type AND tt.tenant_id = $1
+        WHERE a.tenant_id = $1
+          AND a.patient_id = $2
+          AND a.status NOT IN ('cancelled', 'deleted')
+          AND a.plan_item_id IS NULL
+        ORDER BY a.appointment_datetime ASC
+        """,
+        tenant_id,
+        patient_id,
+    )
+
+    if not apt_rows:
+        return f"El paciente {patient_full_name} no tiene turnos pendientes sin asignar a un presupuesto."
+
+    appointments = []
+    for r in apt_rows:
+        appointments.append({
+            "id": str(r["appointment_id"]),
+            "treatment_code": r["treatment_code"] or r["appointment_type"] or "sin_tipo",
+            "treatment_name": r["treatment_name"],
+            "base_price": float(r["base_price"]) if r["base_price"] else 0.0,
+            "billing_amount": float(r["billing_amount"] or 0),
+        })
+
+    groups_map = {}
+    for apt in appointments:
+        code = apt["treatment_code"]
+        if code not in groups_map:
+            groups_map[code] = {
+                "treatment_code": code,
+                "treatment_name": apt["treatment_name"],
+                "base_price": apt["base_price"],
+                "appointments": [],
+                "total_billed": 0.0,
+            }
+        groups_map[code]["appointments"].append(apt)
+        groups_map[code]["total_billed"] += apt["billing_amount"]
+
+    unique_treatments = []
+    seen = set()
+    for apt in appointments:
+        t_name = apt["treatment_name"]
+        if t_name and t_name not in seen:
+            seen.add(t_name)
+            unique_treatments.append(t_name)
+    
+    current_date_str = datetime.now().strftime("%Y-%m-%d")
+    if unique_treatments:
+        treatments_str = " + ".join(unique_treatments)
+        plan_name = f"{treatments_str} — {current_date_str}"
+    else:
+        plan_name = f"Presupuesto — {current_date_str}"
+        
+    estimated_total = sum(a["billing_amount"] for a in appointments)
+    plan_id = uuid.uuid4()
+
+    async with db.pool.acquire() as conn:
+        async with conn.transaction():
+            # Crear plan aprobado
+            await conn.execute(
+                """
+                INSERT INTO treatment_plans
+                (id, tenant_id, patient_id, professional_id, name, status, estimated_total, approved_total, approved_by, approved_at, created_at, updated_at)
+                VALUES ($1, $2, $3, NULL, $4, 'approved', $5, $5, 'AI Bot', NOW(), NOW(), NOW())
+                """,
+                plan_id,
+                tenant_id,
+                patient_id,
+                plan_name,
+                estimated_total,
+            )
+
+            # Crear items
+            for sort_order, (code, group) in enumerate(groups_map.items()):
+                item_id = uuid.uuid4()
+                estimated_price = group["total_billed"] if group["total_billed"] > 0 else group["base_price"]
+                await conn.execute(
+                    """
+                    INSERT INTO treatment_plan_items
+                    (id, plan_id, tenant_id, treatment_type_code, treatment_type_name, estimated_price, approved_price, status, sort_order, created_at, updated_at)
+                    VALUES ($1, $2, $3, $4, $5, $6, $6, 'pending', $7, NOW(), NOW())
+                    """,
+                    item_id,
+                    plan_id,
+                    tenant_id,
+                    group["treatment_code"],
+                    group["treatment_name"],
+                    estimated_price,
+                    sort_order,
+                )
+                # Vincular appointments
+                for apt in group["appointments"]:
+                    await conn.execute(
+                        "UPDATE appointments SET plan_item_id = $1 WHERE id = $2 AND tenant_id = $3",
+                        item_id,
+                        uuid.UUID(apt["id"]),
+                        tenant_id,
+                    )
+
+    # Generar el PDF
+    from services.budget_service import generate_budget_pdf
+    pdf_path = await generate_budget_pdf(db.pool, str(plan_id), tenant_id)
+    if not pdf_path:
+        return "Error: No se pudo generar el PDF del presupuesto."
+
+    # Generar URL firmada
+    from core.security_utils import generate_signed_url
+    relative_url = f"/uploads/budgets/{tenant_id}/{plan_id}.pdf"
+    signature, expires = generate_signed_url(relative_url, tenant_id)
+    
+    from urllib.parse import urlencode
+    query_params = {
+        "signature": signature,
+        "expires": expires,
+    }
+    api_base = os.getenv("ORCHESTRATOR_PUBLIC_URL", "")
+    if not api_base:
+        api_base = "http://127.0.0.1:8000"
+    api_base = api_base.rstrip("/")
+    signed_pdf_url = f"{api_base}{relative_url}?{urlencode(query_params)}"
+
+    if delivery_mode == "whatsapp":
+        if not patient_phone:
+            return f"El presupuesto fue creado y aprobado, pero el paciente {patient_full_name} no tiene número de teléfono configurado para el envío por WhatsApp."
+            
+        clean_phone = re.sub(r"[^\d+]", "", patient_phone.strip())
+        from core.credentials import YCLOUD_API_KEY
+        api_key = await get_tenant_credential(tenant_id, YCLOUD_API_KEY)
+        if not api_key:
+            return "El presupuesto fue creado y aprobado, pero las credenciales de YCloud no están configuradas."
+            
+        from_number = await db.pool.fetchval(
+            "SELECT bot_phone_number FROM tenants WHERE id = $1", tenant_id
+        )
+        if not from_number:
+            from_number = await get_tenant_credential(tenant_id, "YCLOUD_WHATSAPP_NUMBER")
+            
+        from ycloud_client import YCloudClient
+        yc = YCloudClient(api_key=api_key, business_number=from_number)
+        
+        filename = f"Presupuesto_{patient_full_name.replace(' ', '_')}.pdf"
+        caption = f"Hola {patient_full_name}, te adjuntamos el presupuesto de tu tratamiento."
+        
+        await yc.send_document(
+            to_number=clean_phone,
+            document_url=signed_pdf_url,
+            filename=filename,
+            caption=caption,
+            from_number=from_number,
+        )
+        
+        # Registrar mensaje en chat_messages y conv
+        conv_id = await db.pool.fetchval(
+            "SELECT id FROM chat_conversations WHERE external_user_id = $1 AND tenant_id = $2 AND channel = 'whatsapp'",
+            clean_phone,
+            tenant_id,
+        )
+        if not conv_id:
+            conv_id = uuid.uuid4()
+            await db.pool.execute(
+                """
+                INSERT INTO chat_conversations (id, tenant_id, channel, provider, external_user_id, display_name, status, created_at, updated_at)
+                VALUES ($1, $2, 'whatsapp', 'ycloud', $3, $4, 'active', NOW(), NOW())
+                """,
+                conv_id,
+                tenant_id,
+                clean_phone,
+                patient_full_name,
+            )
+            
+        msg_id = str(uuid.uuid4())
+        await db.pool.execute(
+            """
+            INSERT INTO chat_messages (id, conversation_id, tenant_id, sender_type, content, status, created_at, content_attributes)
+            VALUES ($1, $2, $3, 'agent', $4, 'sent', NOW(), $5::jsonb)
+            """,
+            msg_id,
+            conv_id,
+            tenant_id,
+            f"Presupuesto enviado por WhatsApp: {filename}",
+            json.dumps({"attachments": [{"type": "document", "url": relative_url, "name": filename}]}),
+        )
+        
+        return f"✅ Presupuesto *{plan_name}* (total: ${estimated_total:.2f}) preparado y enviado al WhatsApp del paciente ({clean_phone})."
+    else:
+        # telegram delivery mode: return instructions for message_handler.py to intercept
+        filename = f"Presupuesto_{patient_full_name.replace(' ', '_')}.pdf"
+        payload = {
+            "type": "send_document",
+            "url": signed_pdf_url,
+            "filename": filename,
+            "caption": f"Acá tenés el presupuesto para {patient_full_name} ({plan_name}) por un total de ${estimated_total:.2f}."
+        }
+        return json.dumps(payload, ensure_ascii=False)
 
 
 async def _agregar_item_presupuesto(args: Dict, tenant_id: int, user_role: str) -> str:
@@ -6842,6 +7097,18 @@ async def execute_nova_tool(
         # I. Consultas avanzadas
         elif name == "consultar_datos":
             return await _consultar_datos(args, tenant_id, user_role)
+        elif name == "ver_presupuesto_paciente":
+            return await _ver_presupuesto_paciente(args, tenant_id)
+        elif name == "aprobar_presupuesto":
+            return await _aprobar_presupuesto(args, tenant_id, user_role, user_id)
+        elif name == "crear_presupuesto":
+            return await _crear_presupuesto(args, tenant_id, user_role)
+        elif name == "preparar_y_enviar_presupuesto":
+            return await _preparar_y_enviar_presupuesto(args, tenant_id, user_role)
+        elif name == "agregar_item_presupuesto":
+            return await _agregar_item_presupuesto(args, tenant_id, user_role)
+        elif name == "generar_pdf_presupuesto":
+            return await _generar_pdf_presupuesto(args, tenant_id, user_role)
         elif name == "resumen_marketing":
             return await _resumen_marketing(args, tenant_id, user_role)
         elif name == "resumen_financiero":

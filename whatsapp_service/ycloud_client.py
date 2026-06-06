@@ -48,6 +48,21 @@ class YCloudClient:
         logger.info("ycloud_send_image", to=to, image_url=image_url, correlation_id=correlation_id)
         return await self._post("/whatsapp/messages/sendDirectly", payload, correlation_id)
 
+    async def send_document(self, to_number: str, document_url: str, filename: str, caption: str = None, correlation_id: str = None):
+        payload = {
+            "from": self.business_number,
+            "to": to_number,
+            "type": "document",
+            "document": {
+                "link": document_url,
+                "filename": filename
+            }
+        }
+        if caption:
+            payload["document"]["caption"] = caption
+        logger.info("ycloud_send_document", to=to_number, document_url=document_url, filename=filename, correlation_id=correlation_id)
+        return await self._post("/whatsapp/messages/sendDirectly", payload, correlation_id or "default")
+
     async def mark_as_read(self, inbound_id: str, correlation_id: str):
         logger.info("ycloud_mark_as_read", inbound_id=inbound_id, correlation_id=correlation_id)
         return await self._post(f"/whatsapp/inboundMessages/{inbound_id}/markAsRead", {}, correlation_id)
