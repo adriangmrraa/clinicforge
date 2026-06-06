@@ -1,0 +1,32 @@
+continuacion de investigacion de clinicforge y trabajo en repo:
+
+
+🟡 WARNINGS (planificar próximos)
+Booking Flow:
+- B1: Falta PASO 5 en el flujo (solo define 4 pasos pero el proceso real tiene 5)
+- B2: Duplicación de "COMPOSICIÓN MULTI-TEMA" y "MENSAJE COMBINADO" — hacen lo mismo
+- B3: POST-ATENCIÓN está en la location incorrecta del flujo
+- B4: "antes de que termine el mes" → mapea a hoy+1 que está mal (debería ser fin de mes)
+- B5: "mañana" en finde → no hay handling, el paciente agarra finde sin aviso
+- B6: Anti-Repetición CTA vs "cierre consultivo" — se pisan
+- B7: GREETING section no está definida (se referencia pero no existe)
+- B8: No existe time_preference='tarde' / 'noche' / 'evening'
+- B9: No hay límite de reintentos en loop de check_availability
+- B10: Location data se pide en 2 secciones con wording diferente
+Emotional + Escalations:
+- E1: Mala experiencia en esta clínica → instrucción de no nombrar a la Dra. pero el paciente ya la nombró
+- E2: DNI extranjero no cubierto
+- E3: Paciente existente con teléfono nuevo — no hay flujo
+- E4: OS aceptada + lead de alto valor (implantes) — no hay fusión de flujos
+Tools + Config:
+- T1: Anti-Markdown no cubre listas numeradas ni blockquotes
+- T2: No hay sección GREETING (se referencia pero no existe)
+- T3: No se define end_conversation tool
+🟢 Observaciones (nice to have)
+- Over-escalación en post-seguimiento (F7-F8)
+- Crypto sin flujo de pago real
+- F2 sin disponibilidad para urgencia — gap en flujo
+- Pregunta FAQ + get_service_details combinada
+- Blanqueamiento dental no tiene flujo F específico
+- list_patient_documents no integrado en secciones principales
+- Sanitización de ad_context básica (mejorable)
