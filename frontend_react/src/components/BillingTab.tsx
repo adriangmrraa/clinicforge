@@ -400,15 +400,17 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
   const loadPlans = async () => {
     try {
       const res = await api.get(`/admin/patients/${patientId}/treatment-plans`);
-      setPlans(res.data);
+      const activePlans = res.data.filter((p: any) => p.status !== 'cancelled');
+      setPlans(activePlans);
 
-      if (res.data.length > 0) {
+      if (activePlans.length > 0) {
         setViewState('plan_view');
-        if (res.data.length === 1 && !selectedPlanId) {
-          setSelectedPlanId(res.data[0].id);
+        if (!selectedPlanId || !activePlans.some((p: any) => p.id === selectedPlanId)) {
+          setSelectedPlanId(activePlans[0].id);
         }
       } else {
         setViewState('empty');
+        setSelectedPlanId(null);
       }
     } catch (err) {
       console.error('Error loading plans:', err);
@@ -817,6 +819,20 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
     }
   };
 
+  const handleDeletePlan = async () => {
+    if (!planDetail) return;
+    if (!window.confirm("¿Estás seguro de que deseas eliminar este presupuesto?")) return;
+    try {
+      await api.delete(`/admin/treatment-plans/${planDetail.id}`);
+      setSuccess("Presupuesto eliminado correctamente.");
+      await loadPlans();
+    } catch (err: any) {
+      console.error('Error deleting plan:', err);
+      const detail = err?.response?.data?.detail || "Error al eliminar el presupuesto.";
+      setError(detail);
+    }
+  };
+
   const openEmailModal = () => {
     setEmailTo(billingData?.patient_email || '');
     setShowEmailModal(true);
@@ -1177,6 +1193,16 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
                 )}
                 {t('billing.sync_appointments') || 'Sincronizar turnos'}
               </button>
+
+              {planDetail.status !== 'completed' && (
+                <button
+                  onClick={handleDeletePlan}
+                  className="flex items-center gap-2 bg-red-500/10 text-red-400 border border-red-500/20 px-3 py-1.5 rounded-lg text-sm hover:bg-red-500/20 transition-colors md:ml-auto"
+                >
+                  <Trash2 size={14} />
+                  {t('billing.delete_plan') || 'Eliminar'}
+                </button>
+              )}
             </div>
 
             {/* Approve Button */}

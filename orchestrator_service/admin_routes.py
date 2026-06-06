@@ -14651,6 +14651,20 @@ async def delete_treatment_plan(
             "message": "El plan ya estaba cancelado",
         }
 
+    # Desvincular turnos asociados
+    await db.pool.execute(
+        """
+        UPDATE appointments
+        SET plan_item_id = NULL, updated_at = NOW()
+        FROM treatment_plan_items
+        WHERE appointments.plan_item_id = treatment_plan_items.id
+          AND treatment_plan_items.plan_id = $1
+          AND appointments.tenant_id = $2
+        """,
+        plan_uuid,
+        tenant_id,
+    )
+
     await db.pool.execute(
         "UPDATE treatment_plans SET status = 'cancelled', updated_at = NOW() WHERE id = $1 AND tenant_id = $2",
         plan_uuid,
