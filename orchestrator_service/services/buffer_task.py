@@ -2474,10 +2474,7 @@ Si el paciente pide un turno para {min_apt_date} o después, continuar normalmen
                                     f"🔇 STATEMENT DEDUP: suppressing message (hash={_hash}, count={_count})"
                                     f" — original text: {response_text[:80]!r}"
                                 )
-                                response_text = (
-                                    "[INTERNAL: Mensaje suprimido por repetición. "
-                                    "Reformulá tu respuesta de forma diferente o pasá a la siguiente acción.]"
-                                )
+                                response_text = ""  # Silencio total — NUNCA mandar texto interno al paciente
                             elif _count == 2:
                                 logger.info(
                                     f"⚠️ STATEMENT DEDUP: message repeated (hash={_hash}, count={_count})"

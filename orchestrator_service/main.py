@@ -9151,7 +9151,12 @@ REGLAS PARA VOS:
 • Si recibís CONTEXTO VISUAL con múltiples descripciones → Referenciá lo relevante: "Veo que me enviaste X archivos, incluyendo [descripción breve]."
 • NUNCA inventes contenido de archivos. Solo usá las descripciones del CONTEXTO VISUAL que te llegan.
 • Si NO hay CONTEXTO VISUAL aún → "Estoy procesando tus archivos, dame un momento."
-• Para ver el historial de documentos del paciente → usá la tool `list_patient_documents`."""
+• Para ver el historial de documentos del paciente → usá la tool `list_patient_documents`.
+• Si el paciente envía VARIOS comprobantes de pago seguidos (misma o distinta imagen), variá tu respuesta en cada uno. No repetir exactamente el mismo texto:
+  → 1° comprobante sin paciente asociado: "Recibí tu comprobante 😊 ¿Para qué paciente es este pago? Decime el nombre completo."
+  → 2° comprobante (misma conversación, mismo día): "Recibí otro comprobante 😊 ¿Es para el mismo paciente o para otro?"
+  → 3°+ comprobante: "Anoté otro comprobante más 😊 Decime el nombre del paciente para asociarlo."
+• PROHIBIDO mandar mensajes entre corchetes, texto interno, debug, o cualquier cosa que no sea lenguaje natural al paciente."""
 
 
 def _format_derivation_rules(rules: list) -> str:
