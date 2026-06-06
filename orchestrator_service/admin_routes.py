@@ -15296,7 +15296,8 @@ async def send_treatment_plan_whatsapp(
         )
 
     phone = patient["phone_number"].strip()
-    clean_phone = re.sub(r"[^\d+]", "", phone)
+    from ycloud_client import normalize_phone_e164
+    clean_phone = normalize_phone_e164(phone)
     if len([c for c in clean_phone if c.isdigit()]) < 8:
         raise HTTPException(
             status_code=422,

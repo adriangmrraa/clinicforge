@@ -3145,7 +3145,8 @@ async def _preparar_y_enviar_presupuesto(args: Dict, tenant_id: int, user_role: 
         if not patient_phone:
             return f"El presupuesto fue creado y aprobado, pero el paciente {patient_full_name} no tiene número de teléfono configurado para el envío por WhatsApp."
             
-        clean_phone = re.sub(r"[^\d+]", "", patient_phone.strip())
+        from ycloud_client import normalize_phone_e164
+        clean_phone = normalize_phone_e164(patient_phone.strip())
         from core.credentials import YCLOUD_API_KEY
         api_key = await get_tenant_credential(tenant_id, YCLOUD_API_KEY)
         if not api_key:
