@@ -6445,6 +6445,43 @@ async def set_no_followup(reason: str = "patient_request") -> str:
 
 
 @tool
+async def end_conversation(conclusion: str = ""):
+    """Marca la conversación como finalizada cuando el paciente se despide, agradece,
+    o confirma que no necesita nada más. Esta tool permite un cierre limpio.
+
+    CUÁNDO USAR: Cuando el paciente indique explícita o implícitamente que la conversación
+    terminó — se despidió ("chau", "gracias", "hasta luego"), confirmó que no necesita más
+    ("no, gracias", "ya está", "estoy al día"), o no hay ninguna acción pendiente.
+
+    CUÁNDO NO USAR: Cuando el paciente sigue con preguntas, dudas o flujo activo.
+    Cuando hay tools por ejecutar. Cuando el paciente no respondió aún.
+
+    Parámetros:
+    - conclusion: (Opcional) Resumen breve del resultado de la conversación para registro interno.
+      Ej: "Turno agendado para limpieza el 15/06", "Paciente solo consultó precio", "No interesado".
+
+    La tool registra que la conversación fue completada exitosamente.
+    Después de llamar esta tool, respondé con un cierre cálido y no sigas la conversación.
+    """
+    tenant_id = current_tenant_id.get()
+    phone = current_customer_phone.get()
+    if not tenant_id or not phone:
+        return "No se pudo finalizar. Contexto faltante."
+
+    try:
+        await db.pool.execute(
+            "UPDATE chat_conversations SET completed_at = NOW() WHERE tenant_id = $1 AND external_user_id = $2",
+            tenant_id,
+            phone,
+        )
+        logger.info(f"✅ end_conversation OK tenant={tenant_id} phone={phone} conclusion={conclusion!r}")
+        return "✅ Conversación marcada como finalizada."
+    except Exception as e:
+        logger.error(f"end_conversation error: {e}")
+        return "No se pudo finalizar la conversación."
+
+
+@tool
 async def get_patient_anamnesis():
     """
     Obtiene la ficha médica (anamnesis) del paciente actual.
@@ -8817,6 +8854,7 @@ DENTAL_TOOLS = [
     get_treatment_instructions,
     link_payment_to_patient,
     confirm_appointment,
+    end_conversation,
 ]
 
 
@@ -9188,7 +9226,8 @@ REGLAS PARA VOS:
 
 ## DOCUMENTACIÓN DE TOOLS ADICIONALES:
 • `confirm_appointment`: Usar CUANDO el paciente confirma EXPLÍCITAMENTE un turno pre-reservado (SLOT_LOCKED) y no se usó book_appointment. Parámetros: appointment_id (UUID), approximate_time (ej: "15:00"), target_date (ej: "mañana"). NO usar para agenda interna ni para turnos ya agendados con book_appointment.
-• `link_payment_to_patient`: Usar CUANDO un tercero (NO el paciente) envía un comprobante de pago y especifica para quién es. Parámetros: patient_name (nombre del paciente destino), receipt_description, amount_detected, relationship. NO usar si el comprobante lo envía el propio paciente."""
+• `link_payment_to_patient`: Usar CUANDO un tercero (NO el paciente) envía un comprobante de pago y especifica para quién es. Parámetros: patient_name (nombre del paciente destino), receipt_description, amount_detected, relationship. NO usar si el comprobante lo envía el propio paciente.
+• `end_conversation`: Usar CUANDO el paciente se despide, agradece o confirma que no necesita nada más. Marca la conversación como finalizada. Parámetros: conclusion (opcional, resumen breve del resultado). NO usar si hay preguntas pendientes, tools por ejecutar, o flujo activo."""
 
 
 def _format_derivation_rules(rules: list) -> str:
@@ -9815,6 +9854,8 @@ REGLA ANTI-MARKDOWN (WHATSAPP):
 • PROHIBIDO usar _ o __ para itálicas.
 • PROHIBIDO usar ~ para tachado.
 • PROHIBIDO usar ``` para bloques de código.
+• PROHIBIDO usar `código` para código inline.
+• PROHIBIDO usar > para citas o blockquotes.
 • PROHIBIDO usar [texto](url) o ![img](url). Solo URL limpia.
 • PROHIBIDO usar # para títulos. Usá emojis + texto plano.
 • Formato correcto: emojis + saltos de línea + texto plano.
