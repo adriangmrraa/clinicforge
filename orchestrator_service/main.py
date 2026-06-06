@@ -94,6 +94,7 @@ SLOT_LOCK_TTL_SECONDS = 600
 
 # v8.2 — Anti-loop booking guards
 MAX_BOOKING_ATTEMPTS = 3  # After 3 failed bookings in one conversation → escalate to human
+MAX_AVAILABILITY_ATTEMPTS = 4  # After 4 check_availability calls in one booking attempt → escalate
 
 # v8.2 — Booking error protocol: every book_appointment failure returns [BOOK_ERROR:CODE]
 BOOKING_ERROR_CODES = {
@@ -1796,6 +1797,23 @@ async def check_availability(
                     )
             elif _ca_state_str in ("OFFERED_SLOTS", "SLOT_LOCKED"):
                 logger.warning(f"📊 BOOKING_FLOW | ⚠️ check_availability called in state={_ca_state_str} — possible loop! phone={_ca_phone}")
+                # Increment availability_attempts counter
+                try:
+                    from services.conversation_state import increment_availability_attempts as _ca_incr
+                    _ca_avail = await _ca_incr(tid, _ca_phone)
+                    logger.info(f"📊 BOOKING_FLOW | availability_attempts={_ca_avail} phone={_ca_phone}")
+                    if _ca_avail > MAX_AVAILABILITY_ATTEMPTS:
+                        logger.warning(
+                            f"📊 BOOKING_FLOW | 🚫 AVAILABILITY BLOCKED: max_attempts={MAX_AVAILABILITY_ATTEMPTS} reached, "
+                            f"phone={_ca_phone}"
+                        )
+                        return (
+                            "AVAILABILITY_BLOCKED: Límite de consultas de disponibilidad alcanzado. "
+                            "No debes seguir ofreciendo opciones de turno. "
+                            "Llama a derivhumano con motivo 'Paciente sin turno después de múltiples intentos — no encuentra horario'."
+                        )
+                except Exception as _ca_avail_err:
+                    logger.warning(f"📊 BOOKING_FLOW | availability_attempts check failed (non-blocking): {_ca_avail_err}")
         except Exception:
             _ca_state_str = "?"
         logger.info(
@@ -6753,6 +6771,13 @@ async def confirm_slot(
                 f"[conversation_state] set_state in confirm_slot failed (non-blocking): {state_err}"
             )
 
+        # Reset availability counter on successful slot confirmation
+        try:
+            from services.conversation_state import reset_availability_attempts as _ra_reset
+            await _ra_reset(tenant_id, phone)
+        except Exception:
+            logger.warning("[conversation_state] reset_availability_attempts failed (non-blocking)")
+
         return response
 
     except Exception as e:
@@ -10463,7 +10488,13 @@ NO ESCALAR (PROHIBIDO llamar derivhumano):
 • Paciente rechazado / sin hueso → usar FLUJO F8
 • Frustración general (sin pedir humano) → empatía + continuar flujo
 
-EXCEPCIÓN DE AGENDAMIENTO: Si el paciente rechaza tus opciones de turno 3+ veces consecutivas en el mismo intento de agendamiento sin que ninguna funcione, PODÉS llamar a derivhumano con motivo "Paciente no encuentra horario que le sirva después de múltiples intentos". Esto evita loops infinitos de check_availability→ofrecer→rechazar y es la ÚNICA excepción a la regla de no escalar por frustración general.
+EXCEPCIÓN DE AGENDAMIENTO — LÍMITE DE REINTENTOS (OBLIGATORIO):
+Llevá un contador MENTAL de cuántas veces ofreciste opciones de check_availability y el paciente las rechazó.
+Si llegás a 3+ rechazos consecutivos en el mismo intento de agendamiento sin que funcione ninguna:
+1. DEBÉS llamar a derivhumano con motivo "Paciente sin turno después de múltiples intentos — no encuentra horario".
+2. PROHIBIDO seguir llamando check_availability.
+3. PROHIBIDO seguir ofreciendo opciones manuales.
+Esto evita loops infinitos de check_availability→ofrecer→rechazar y es la ÚNICA excepción a la regla de no escalar por frustración general.
 
 REGLA: Si el trigger está en "NO ESCALAR" Y el paciente NO pidió explícitamente un humano → derivhumano PROHIBIDO.
 

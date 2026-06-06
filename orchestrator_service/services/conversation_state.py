@@ -145,6 +145,7 @@ async def set_state(
             "excluded_dates": (_existing or {}).get("excluded_dates", []),
             "statements_made": (_existing or {}).get("statements_made", {}),
             "booking_attempts": (_existing or {}).get("booking_attempts", 0),
+            "availability_attempts": (_existing or {}).get("availability_attempts", 0),
             "anchor_date": (_existing or {}).get("anchor_date"),
             "updated_at": _dt.now().isoformat(),
         }
@@ -340,6 +341,37 @@ async def increment_booking_attempts(tenant_id: int, phone_number: str) -> int:
     except Exception as e:
         logger.warning(f"[conversation_state] increment_booking_attempts failed: {e}")
         return 0
+
+
+async def increment_availability_attempts(tenant_id: int, phone_number: str) -> int:
+    """Increment check_availability attempt counter. Returns the new count (0 on error)."""
+    try:
+        payload = await _read_payload(tenant_id, phone_number)
+        current = int(payload.get("availability_attempts") or 0) + 1
+        payload["availability_attempts"] = current
+        payload["updated_at"] = _dt.now().isoformat()
+        await _raw_write(tenant_id, phone_number, payload)
+        logger.info(
+            f"[conversation_state] availability_attempts: {current} for {phone_number}"
+        )
+        return current
+    except Exception as e:
+        logger.warning(f"[conversation_state] increment_availability_attempts failed: {e}")
+        return 0
+
+
+async def reset_availability_attempts(tenant_id: int, phone_number: str) -> None:
+    """Reset availability_attempts counter to 0 (called on successful confirm_slot)."""
+    try:
+        payload = await _read_payload(tenant_id, phone_number)
+        payload["availability_attempts"] = 0
+        payload["updated_at"] = _dt.now().isoformat()
+        await _raw_write(tenant_id, phone_number, payload)
+        logger.info(
+            f"[conversation_state] availability_attempts reset to 0 for {phone_number}"
+        )
+    except Exception as e:
+        logger.warning(f"[conversation_state] reset_availability_attempts failed: {e}")
 
 
 async def reset_booking_attempts(tenant_id: int, phone_number: str) -> None:
