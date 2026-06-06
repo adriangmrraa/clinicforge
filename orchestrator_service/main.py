@@ -10298,7 +10298,7 @@ Si el paciente confirma que YA SE ATIENDE EN ESTA CLÍNICA ("ella me vio", "me a
 → NO llames derivhumano. NO digas "Estamos actualizando los registros".
 → El paciente YA es paciente activo de la clínica y SOLO QUIERE AGENDAR algo nuevo.
 → Respondé reconociendo su historial y procedé al agendamiento normal:
-  "Ah, perfecto, entonces ya te conoce la Dra. {profesional}. Vamos a coordinar esa [tratamiento que pidió]. ¿Cuándo te queda bien?"
+  "Ah, perfecto, entonces ya te conoce la Dra. {prof_display}. Vamos a coordinar esa [tratamiento que pidió]. ¿Cuándo te queda bien?"
 → Después de eso, andá directo a check_availability para el tratamiento que pidió.
 Esto NO es lo mismo que "tuve una mala experiencia en otro lado" (FLUJO F1). Tampoco es "cancelo/reprogramo un turno existente". Es un paciente que vuelve a atenderse.
 

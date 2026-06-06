@@ -118,8 +118,11 @@ async def _process_tenant(pool, rule: Dict[str, Any]):
 async def _get_candidates(pool, tenant_id: int, touch_number: int, delay_minutes: int, now_utc) -> List[Dict]:
     """Get eligible candidates for the given touch level."""
 
+    t_max = now_utc - timedelta(minutes=delay_minutes)
+
     if touch_number == 1:
         # Touch 1: based on last_user_message_at, recovery_touch_count = 0
+        t_min = t_max - timedelta(minutes=30)
         rows = await pool.fetch("""
             SELECT
                 c.id AS conversation_id,
@@ -137,8 +140,8 @@ async def _get_candidates(pool, tenant_id: int, touch_number: int, delay_minutes
               AND c.recovery_touch_count = 0
               AND c.no_followup = false
               AND c.last_user_message_at IS NOT NULL
-              AND c.last_user_message_at <= $2 - INTERVAL '1 minute' * $3
-              AND c.last_user_message_at >= $2 - INTERVAL '1 minute' * $3 - INTERVAL '30 minutes'
+              AND c.last_user_message_at <= $3
+              AND c.last_user_message_at >= $4
               AND (c.human_override_until IS NULL OR c.human_override_until < $2)
               AND $2 <= c.last_user_message_at + INTERVAL '23 hours 30 minutes'
               AND NOT EXISTS (
@@ -157,7 +160,7 @@ async def _get_candidates(pool, tenant_id: int, touch_number: int, delay_minutes
               )
             ORDER BY c.last_user_message_at ASC
             LIMIT 20
-        """, tenant_id, now_utc, delay_minutes)
+        """, tenant_id, now_utc, t_max, t_min)
     else:
         # Touch 2 and 3: based on last_recovery_at
         expected_touch_count = touch_number - 1
@@ -180,7 +183,7 @@ async def _get_candidates(pool, tenant_id: int, touch_number: int, delay_minutes
               AND c.recovery_touch_count = $4
               AND c.no_followup = false
               AND c.last_recovery_at IS NOT NULL
-              AND c.last_recovery_at <= $2 - INTERVAL '1 minute' * $3
+              AND c.last_recovery_at <= $3
               AND (c.human_override_until IS NULL OR c.human_override_until < $2)
               AND $2 <= c.last_user_message_at + INTERVAL '23 hours 30 minutes'
               AND NOT EXISTS (
@@ -199,7 +202,7 @@ async def _get_candidates(pool, tenant_id: int, touch_number: int, delay_minutes
               )
             ORDER BY c.last_recovery_at ASC
             LIMIT 20
-        """, tenant_id, now_utc, delay_minutes, expected_touch_count, trigger_type)
+        """, tenant_id, now_utc, t_max, expected_touch_count, trigger_type)
 
     return [dict(r) for r in rows]
 
