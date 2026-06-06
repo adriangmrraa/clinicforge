@@ -1463,6 +1463,49 @@ IMPORTANTE — REGLAS QUIRÚRGICAS:
             "required": ["plan_id", "treatment_code"],
         },
     },
+    # O4b. Modificar item de presupuesto
+    # -------------------------------------------------------------------------
+    {
+        "type": "function",
+        "name": "modificar_item_presupuesto",
+        "description": "Modifica el precio o la descripcion de un item existente en un presupuesto. NO crea items nuevos. ANTES de modificar, ejecutá ver_presupuesto_paciente para mostrar los items actuales al usuario y pedir confirmacion explicita de cual item y que campo modificar.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "item_id": {
+                    "type": "string",
+                    "description": "ID UUID del item a modificar",
+                },
+                "field": {
+                    "type": "string",
+                    "enum": ["estimated_price", "custom_description"],
+                    "description": "Campo a modificar: estimated_price (precio) o custom_description (descripcion/tratamiento)",
+                },
+                "value": {
+                    "type": "string",
+                    "description": "Nuevo valor. Si es estimated_price, pasar numero como string. Si es custom_description, pasar el nuevo texto.",
+                },
+            },
+            "required": ["item_id", "field", "value"],
+        },
+    },
+    # O4c. Eliminar item de presupuesto
+    # -------------------------------------------------------------------------
+    {
+        "type": "function",
+        "name": "eliminar_item_presupuesto",
+        "description": "Elimina un item de un presupuesto en estado borrador o aprobado. ANTES de eliminar, ejecutá ver_presupuesto_paciente para mostrar los items actuales al usuario y pedir confirmacion explicita de cual item eliminar.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "item_id": {
+                    "type": "string",
+                    "description": "ID UUID del item a eliminar",
+                },
+            },
+            "required": ["item_id"],
+        },
+    },
     # O5. Generar PDF presupuesto
     # -------------------------------------------------------------------------
     {
@@ -3299,6 +3342,139 @@ async def _agregar_item_presupuesto(args: Dict, tenant_id: int, user_role: str) 
     desc = custom_description or treatment_code.upper()
     logger.info(f"Nova: agregar_item_presupuesto → plan {plan_id}, item {item_id}")
     return f"✅ Ítem agregado al plan *{plan['name']}*:\n• {desc} — {_fmt_money(estimated_price)}\nTotal actualizado del plan calculado correctamente."
+
+
+async def _modificar_item_presupuesto(args: Dict, tenant_id: int, user_role: str) -> str:
+    """Modifica precio o descripcion de un item existente."""
+    if user_role not in ("ceo", "secretary"):
+        return _role_error("modificar_item_presupuesto", ["ceo", "secretary"])
+
+    item_id = args.get("item_id")
+    field = args.get("field")
+    value = args.get("value")
+
+    if not item_id or not field or value is None:
+        return "Necesito item_id, field (estimated_price o custom_description) y value."
+
+    if field not in ("estimated_price", "custom_description"):
+        return "field debe ser 'estimated_price' o 'custom_description'."
+
+    # Verificar item
+    item = await db.pool.fetchrow(
+        "SELECT i.*, p.name as plan_name, p.status as plan_status, p.patient_id "
+        "FROM treatment_plan_items i "
+        "JOIN treatment_plans p ON i.plan_id = p.id AND p.tenant_id = $2 "
+        "WHERE i.id = $1 AND i.tenant_id = $2",
+        item_id, tenant_id,
+    )
+    if not item:
+        return f"No encontré el item con ID {item_id}."
+
+    plan_name = item["plan_name"]
+    plan_status = item["plan_status"]
+    old_value = str(item[field] or "")
+
+    # Validar valor
+    if field == "estimated_price":
+        try:
+            new_price = round(float(value), 2)
+            if new_price < 0:
+                return "El precio no puede ser negativo."
+        except (ValueError, TypeError):
+            return "El valor para estimated_price debe ser un número válido."
+        await db.pool.execute(
+            "UPDATE treatment_plan_items SET estimated_price = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3",
+            new_price, item_id, tenant_id,
+        )
+        # Actualizar plan_id en la query
+        plan_id = item["plan_id"]
+        await db.pool.execute(
+            """
+            UPDATE treatment_plans SET estimated_total = (
+                SELECT COALESCE(SUM(estimated_price), 0)
+                FROM treatment_plan_items
+                WHERE plan_id = $1 AND tenant_id = $2
+            ), updated_at = NOW() WHERE id = $1 AND tenant_id = $2
+            """,
+            plan_id, tenant_id,
+        )
+        change_desc = f"precio: ${old_value} → ${new_price:,.2f}"
+    else:
+        # custom_description
+        await db.pool.execute(
+            "UPDATE treatment_plan_items SET custom_description = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3",
+            value, item_id, tenant_id,
+        )
+        change_desc = f"descripción: '{old_value}' → '{value}'"
+        plan_id = item["plan_id"]
+
+    await _nova_emit(
+        "TREATMENT_PLAN_UPDATED",
+        {"plan_id": plan_id, "tenant_id": tenant_id, "patient_id": item["patient_id"]},
+    )
+
+    logger.info(f"Nova: modificar_item_presupuesto → item {item_id} {change_desc}")
+    return f"✅ Item modificado en *{plan_name}*:\n{change_desc}"
+
+
+async def _eliminar_item_presupuesto(args: Dict, tenant_id: int, user_role: str) -> str:
+    """Elimina un item de un presupuesto."""
+    if user_role not in ("ceo", "secretary"):
+        return _role_error("eliminar_item_presupuesto", ["ceo", "secretary"])
+
+    item_id = args.get("item_id")
+    if not item_id:
+        return "Necesito item_id para eliminar el item."
+
+    # Verificar item con datos del plan
+    item = await db.pool.fetchrow(
+        "SELECT i.*, p.name as plan_name, p.status as plan_status, p.patient_id "
+        "FROM treatment_plan_items i "
+        "JOIN treatment_plans p ON i.plan_id = p.id AND p.tenant_id = $2 "
+        "WHERE i.id = $1 AND i.tenant_id = $2",
+        item_id, tenant_id,
+    )
+    if not item:
+        return f"No encontré el item con ID {item_id}."
+
+    plan_id = item["plan_id"]
+    plan_name = item["plan_name"]
+    item_desc = item["custom_description"] or item["treatment_type_code"] or "sin descripción"
+
+    # Desvincular appointments que referencien este item
+    await db.pool.execute(
+        "UPDATE appointments SET plan_item_id = NULL WHERE plan_item_id = $1 AND tenant_id = $2",
+        item_id, tenant_id,
+    )
+
+    # Eliminar pagos vinculados a este item (via treatment_plan_payments.appointment_id or similar)
+    # treatment_plan_payments no tiene item_id FK directa, solo plan_id, así que no hay que desvincular
+
+    # Eliminar el item
+    await db.pool.execute(
+        "DELETE FROM treatment_plan_items WHERE id = $1 AND tenant_id = $2",
+        item_id, tenant_id,
+    )
+
+    # Recalcular total del plan
+    await db.pool.execute(
+        """
+        UPDATE treatment_plans SET estimated_total = (
+            SELECT COALESCE(SUM(estimated_price), 0)
+            FROM treatment_plan_items
+            WHERE plan_id = $1 AND tenant_id = $2
+        ), updated_at = NOW() WHERE id = $1 AND tenant_id = $2
+        """,
+        plan_id, tenant_id,
+    )
+
+    await _nova_emit(
+        "TREATMENT_PLAN_UPDATED",
+        {"plan_id": plan_id, "tenant_id": tenant_id, "patient_id": item["patient_id"]},
+    )
+
+    logger.info(f"Nova: eliminar_item_presupuesto → item {item_id} ({item_desc}) eliminado del plan {plan_id}")
+    return f"✅ Item eliminado de *{plan_name}*: {item_desc}\nTotal del plan recalculado."
 
 
 async def _generar_pdf_presupuesto(args: Dict, tenant_id: int, user_role: str) -> str:
@@ -6801,6 +6977,7 @@ _META_TOOL_SCHEMA: Dict[str, Any] = {
                     "generar_ficha_digital, enviar_ficha_digital, enviar_pdf_telegram, "
                     "generar_reporte_personalizado, "
                     "ver_presupuesto_paciente, crear_presupuesto, agregar_item_presupuesto, "
+                    "modificar_item_presupuesto, eliminar_item_presupuesto, "
                     "generar_pdf_presupuesto, enviar_presupuesto_email, aprobar_presupuesto, "
                     "sincronizar_turnos_presupuesto, "
                     "editar_facturacion_turno, registrar_pago_plan, "
@@ -7108,6 +7285,10 @@ async def execute_nova_tool(
             return await _preparar_y_enviar_presupuesto(args, tenant_id, user_role)
         elif name == "agregar_item_presupuesto":
             return await _agregar_item_presupuesto(args, tenant_id, user_role)
+        elif name == "modificar_item_presupuesto":
+            return await _modificar_item_presupuesto(args, tenant_id, user_role)
+        elif name == "eliminar_item_presupuesto":
+            return await _eliminar_item_presupuesto(args, tenant_id, user_role)
         elif name == "generar_pdf_presupuesto":
             return await _generar_pdf_presupuesto(args, tenant_id, user_role)
         elif name == "resumen_marketing":
@@ -7144,6 +7325,10 @@ async def execute_nova_tool(
             return await _crear_presupuesto(args, tenant_id, user_role)
         elif name == "agregar_item_presupuesto":
             return await _agregar_item_presupuesto(args, tenant_id, user_role)
+        elif name == "modificar_item_presupuesto":
+            return await _modificar_item_presupuesto(args, tenant_id, user_role)
+        elif name == "eliminar_item_presupuesto":
+            return await _eliminar_item_presupuesto(args, tenant_id, user_role)
         elif name == "generar_pdf_presupuesto":
             return await _generar_pdf_presupuesto(args, tenant_id, user_role)
         elif name == "enviar_presupuesto_email":

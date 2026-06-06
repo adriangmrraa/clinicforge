@@ -1,32 +1,114 @@
-continuacion de investigacion de clinicforge y trabajo en repo:
+desd telegram yo puedo actualizar un presupuesto?  le regunte eso, tr mando el chat: 
+
+Actualiza el presupuesto , 60mil rs una consulta, y la segunda consulta tiene valor de 1500000 pesos argentinos. Actualiza el presupuesto de adrian
+Quedarían en 1560000
+No pude actualizarlo porque el presupuesto de Adrian quedó cargado con un solo ítem y el sistema no me dejó modificar ese plan desde acá.
 
 
-🟡 WARNINGS (planificar próximos)
-Booking Flow:
-- B1: Falta PASO 5 en el flujo (solo define 4 pasos pero el proceso real tiene 5)
-- B2: Duplicación de "COMPOSICIÓN MULTI-TEMA" y "MENSAJE COMBINADO" — hacen lo mismo
-- B3: POST-ATENCIÓN está en la location incorrecta del flujo
-- B4: "antes de que termine el mes" → mapea a hoy+1 que está mal (debería ser fin de mes)
-- B5: "mañana" en finde → no hay handling, el paciente agarra finde sin aviso
-- B6: Anti-Repetición CTA vs "cierre consultivo" — se pisan
-- B7: GREETING section no está definida (se referencia pero no existe)
-- B8: No existe time_preference='tarde' / 'noche' / 'evening'
-- B9: No hay límite de reintentos en loop de check_availability
-- B10: Location data se pide en 2 secciones con wording diferente
-Emotional + Escalations:
-- E1: Mala experiencia en esta clínica → instrucción de no nombrar a la Dra. pero el paciente ya la nombró
-- E2: DNI extranjero no cubierto
-- E3: Paciente existente con teléfono nuevo — no hay flujo
-- E4: OS aceptada + lead de alto valor (implantes) — no hay fusión de flujos
-Tools + Config:
-- T1: Anti-Markdown no cubre listas numeradas ni blockquotes
-- T2: No hay sección GREETING (se referencia pero no existe)
-- T3: No se define end_conversation tool
-🟢 Observaciones (nice to have)
-- Over-escalación en post-seguimiento (F7-F8)
-- Crypto sin flujo de pago real
-- F2 sin disponibilidad para urgencia — gap en flujo
-- Pregunta FAQ + get_service_details combinada
-- Blanqueamiento dental no tiene flujo F específico
-- list_patient_documents no integrado en secciones principales
-- Sanitización de ad_context básica (mejorable)
+otro agente de codigo me respondio:
+
+
+I will search in `services/nova_tools.py` to see what budget/treatment plan tools are currently available to the AI agent, and see why the agent failed or what options exist for updating items.
+
+Searched for "presupuesto"
+
+I will search `nova_tools.py` for tools or functions that allow modifying/updating a budget, treatment plan, or its items.
+
+Searched for "modificar_presupuesto"
+
+I will view `services/nova_tools.py` around line 1441 to see the tool definition and details for `agregar_item_presupuesto` and other nearby tools.
+
+Viewed nova_tools.py:1435-1465
+
+I will search `nova_tools.py` for queries targeting the `treatment_plan_items` or `treatment_plans` tables to see if there is any update or modification tool currently implemented in python.
+
+Searched for "UPDATE treatment_plan"
+
+I will view the `_aprobar_presupuesto` and `_agregar_item_presupuesto` logic to understand the constraints on modifying budget items once a budget is created or approved.
+
+Viewed nova_tools.py:2798-2850
+
+I will search for `def _agregar_item_presupuesto` to inspect its implementation and see what validations are executed when adding an item to a budget.
+
+Searched for "def _agregar_item_presupuesto"
+
+I will view `_agregar_item_presupuesto` starting from line 3220 to see the checks applied.
+
+Viewed nova_tools.py:3220-3270
+
+I will view the rest of the function `_agregar_item_presupuesto`.
+
+Viewed nova_tools.py:3271-3290
+
+No, **desde Telegram no podés modificar precios de ítems existentes ni eliminarlos**. 
+
+### ¿Por qué falló el agente?
+El agente de Telegram tiene herramientas para:
+1. `crear_presupuesto` (en borrador).
+2. `agregar_item_presupuesto` (añadir ítems nuevos).
+3. `sincronizar_turnos_presupuesto`.
+4. `aprobar_presupuesto`.
+
+Sin embargo, **no cuenta con herramientas para editar el precio de un ítem que ya fue agregado ni para borrar ítems**. Además, una vez que un presupuesto está en estado **aprobado** (`approved`), queda bloqueado para modificaciones automáticas de precios desde la IA. 
+
+### ¿Cómo resolverlo?
+Cualquier edición de precios o eliminación de ítems la tenés que hacer directamente desde la **Web App** (el panel de React).
+
+¿Querés que desarrollemos una herramienta nueva para que el bot de Telegram pueda modificar o eliminar ítems de un presupuesto en borrador?3
+
+
+
+
+---Y YO LE DIJE:
+
+Sisi quiero que hagas eso. Deberia poder editar con cuidado digamos y con confirmaciones  de datos y de donde se quiere eeditar, se deberia poder editar el precio, tratamientos del presupuesto, y notas o detalles de los tratamientos, se deberia poder agregar un pago de x monto en el presupuesto aprobado, y asi, ok? deberia pdoer hacer todo desde telegram, como te digo, cel agente debe pedir confirmaciones en algunas situaciones, previamente busca informacion y ahi repsonde con infromacion real y da opcioens , digo, el agente siempre debe confirmar y tener claro donde va a cambiar un vlaor, entiendes?
+
+----a lo que me dio el siguiente plan:
+
+
+Plan de Implementación: Modificación de Presupuestos desde Telegram/IA (Nova)
+Este plan detalla los cambios técnicos necesarios para permitir que el agente de IA (Nova) pueda modificar precios/descripciones de ítems y eliminar ítems de presupuestos (planes de tratamiento) que estén en estado borrador (draft).
+
+Proposed Changes
+Backend (Orchestrator Service)
+[MODIFY] 
+nova_tools.py
+Definir Schemas en NOVA_TOOLS_SCHEMA:
+
+Agregar modificar_item_presupuesto para cambiar precio estimado (estimated_price) o descripción (custom_description) de un ítem.
+Agregar eliminar_item_presupuesto para borrar un ítem por item_id.
+Incorporar instrucciones en las descripciones indicando que el agente debe pedir confirmación explícita antes de ejecutar la acción.
+Extender _META_TOOL_SCHEMA:
+
+Agregar ambos nombres de herramientas a la lista de herramientas avanzadas recomendadas del prompt.
+Implementar los Handlers:
+
+_modificar_item_presupuesto:
+Validar rol (CEO/Secretaria).
+Verificar que el plan existe, pertenece al tenant y está en estado draft.
+Validar que el ítem pertenece a ese plan y actualizar sus campos.
+Recalcular el estimated_total del plan sumando los ítems restantes.
+Emitir evento TREATMENT_PLAN_UPDATED vía Socket.IO.
+_eliminar_item_presupuesto:
+Validar rol (CEO/Secretaria).
+Verificar que el plan existe, pertenece al tenant y está en estado draft.
+Desvincular de appointments (actualizando plan_item_id a NULL) antes de borrar el ítem.
+Eliminar el registro de treatment_plan_items.
+Recalcular el estimated_total del plan.
+Emitir evento TREATMENT_PLAN_UPDATED.
+Registrar en Dispatcher execute_nova_tool:
+
+Mapear las herramientas a sus correspondientes funciones asíncronas.
+Verification Plan
+Automated Tests
+Ejecutar verificación de compilación syntax check: python -m py_compile services/nova_tools.py
+Manual Verification
+Testear a través del agente de Telegram que se puedan ejecutar estas acciones sobre un presupuesto en borrador y verificar que se emita la actualización correcta.
+Validar que no se puedan modificar planes en estado aprobado (approved).
+
+
+----
+
+Detalle escrito por mi: Y yo le dije:
+
+Deberia poder hacer todo lo que puedo hacer desde la ui, dese telegram , entiendeS? Crear presupeusto y asignarle algun turno, o crear un presupuesto sin turnos pero con un monto x y algun que otro detalle si se envia. Se deberia poder editar un presupuesto en borrador o uno aprobado igual si esta aprobado se deberia poder editar, se debe poder eliminar tambien desde telegram. Pero para todo, el agente debe confirmar primero, por ejemplo si le pido, Elimina el presupuesto de x paciente, debe buscar el paciente, buscar los presupuestos de ese paciente, y en base a eso responder: x paciente tiene estos preduuoestos con estos items , estos montos, estos pagfos, etc, todos los detalles de cada presupesto, cual queres que elimine? - Entendes? esto e simportante para que no haga cualquier cosa ok? 
