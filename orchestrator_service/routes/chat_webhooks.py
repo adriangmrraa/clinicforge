@@ -1103,10 +1103,10 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                         }, tenant_id)
                     except Exception:
                         pass
+                    continue  # Skip AI agent — already handled
 
                 except Exception as _conf_err:
                     logger.error(f"❌ Appointment confirm button failed: {_conf_err}")
-                continue  # Skip AI agent — already handled
 
             if not msg.is_agent and _btn_text in _CANCEL_BUTTONS:
                 try:
@@ -1168,10 +1168,10 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                         }, tenant_id)
                     except Exception:
                         pass
+                    continue  # Skip AI agent — already handled
 
                 except Exception as _cancel_err:
                     logger.error(f"❌ Cancel button failed: {_cancel_err}")
-                continue  # Skip AI agent — already handled
 
             if not msg.is_agent and _btn_text in _RESCHEDULE_BUTTONS:
                 try:

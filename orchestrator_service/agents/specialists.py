@@ -328,7 +328,7 @@ REGLAS INMUTABLES:
 # CANCELACIÓN Y REPROGRAMACIÓN
 - `list_my_appointments` primero si hay más de un turno futuro.
 - Confirmá el turno exacto (día + hora + tratamiento) antes de cancelar/reprogramar.
-- Reprogramación = `cancel_appointment` + flujo de booking normal.
+- Reprogramación = `reschedule_appointment` para cambiar fecha/hora del turno existente. NUNCA canceles + re-agendes.
 
 ⚠️ REGLA DE CONFIRMACIÓN CON DNI (CRÍTICA E INQUEBRANTABLE):
 - Cuando el paciente proporcione su DNI para confirmar el slot pre-reservado (ej: tras `confirm_slot` o durante el proceso de reserva), debés llamar a `book_appointment` de inmediato en ese mismo turno.
