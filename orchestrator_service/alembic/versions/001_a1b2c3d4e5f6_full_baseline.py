@@ -1150,6 +1150,8 @@ def upgrade() -> None:
         status VARCHAR(20) NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'final', 'sent')),
         sent_to_email VARCHAR(255),
         sent_at TIMESTAMPTZ,
+        sent_to_whatsapp VARCHAR(50),
+        sent_via_whatsapp_at TIMESTAMPTZ,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )

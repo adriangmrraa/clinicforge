@@ -1643,6 +1643,8 @@ class PatientDigitalRecord(Base):
     status = Column(String(20), nullable=False, server_default="draft")
     sent_to_email = Column(String(255), nullable=True)
     sent_at = Column(DateTime(timezone=True), nullable=True)
+    sent_to_whatsapp = Column(String(50), nullable=True)
+    sent_via_whatsapp_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
