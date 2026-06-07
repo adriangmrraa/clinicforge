@@ -1378,6 +1378,28 @@ IMPORTANTE — REGLAS QUIRÚRGICAS:
             },
         },
     },
+    {
+        "type": "function",
+        "name": "listar_presupuestos_paciente",
+        "description": "Lista los presupuestos ACTIVOS de un paciente (nombre, estado, total, ID) sin mostrar items. Usala cuando el usuario mencione 'el presupuesto' de un paciente que puede tener varios, y necesites desambiguar cuál antes de enviar/modificar/agregar/eliminar. Si el paciente tiene 1 solo plan activo, lo devuelve con su ID. Si tiene varios, devuelve lista numerada para que el bot pida aclaración.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "patient_id": {
+                    "type": "integer",
+                    "description": "ID del paciente (opcional si se busca por nombre)",
+                },
+                "patient_name": {
+                    "type": "string",
+                    "description": "Nombre del paciente para buscar (opcional si se usa patient_id)",
+                },
+                "include_completed": {
+                    "type": "boolean",
+                    "description": "Incluir planes completados/cancelados (default: false)",
+                },
+            },
+        },
+    },
     # O3. Crear presupuesto
     # -------------------------------------------------------------------------
     {
@@ -1439,7 +1461,7 @@ IMPORTANTE — REGLAS QUIRÚRGICAS:
     {
         "type": "function",
         "name": "agregar_item_presupuesto",
-        "description": "Agrega un ítem de tratamiento a un plan de presupuesto existente.",
+        "description": "Agrega un ítem de tratamiento a un plan de presupuesto existente. Si el usuario no aclara a cuál plan y el paciente tiene varios activos, ejecutá listar_presupuestos_paciente primero para desambiguar.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -1468,7 +1490,7 @@ IMPORTANTE — REGLAS QUIRÚRGICAS:
     {
         "type": "function",
         "name": "modificar_item_presupuesto",
-        "description": "Modifica el precio o la descripcion de un item existente en un presupuesto. NO crea items nuevos. ANTES de modificar, ejecutá ver_presupuesto_paciente para mostrar los items actuales al usuario y pedir confirmacion explicita de cual item y que campo modificar.",
+        "description": "Modifica el precio o la descripcion de un item existente en un presupuesto. NO crea items nuevos. ANTES de modificar: (1) si no sabés a qué plan pertenece el item, ejecutá listar_presupuestos_paciente para desambiguar, (2) ejecutá ver_presupuesto_paciente con el plan_id para mostrar los items al usuario y pedir confirmacion explicita de cual item y qué campo modificar.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -1494,7 +1516,7 @@ IMPORTANTE — REGLAS QUIRÚRGICAS:
     {
         "type": "function",
         "name": "eliminar_item_presupuesto",
-        "description": "Elimina un item de un presupuesto en estado borrador o aprobado. ANTES de eliminar, ejecutá ver_presupuesto_paciente para mostrar los items actuales al usuario y pedir confirmacion explicita de cual item eliminar.",
+        "description": "Elimina un item de un presupuesto en estado borrador o aprobado. ANTES de eliminar: (1) si no sabés a qué plan pertenece el item, ejecutá listar_presupuestos_paciente para desambiguar, (2) ejecutá ver_presupuesto_paciente con el plan_id para mostrar los items al usuario y pedir confirmacion explicita de cuál eliminar.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -1565,7 +1587,7 @@ IMPORTANTE — REGLAS QUIRÚRGICAS:
     {
         "type": "function",
         "name": "enviar_presupuesto_whatsapp",
-        "description": "Genera el PDF de un presupuesto existente y lo envía por WhatsApp al paciente. Antes de enviar, ejecutá ver_presupuesto_paciente para confirmar los detalles con el usuario.",
+        "description": "Genera el PDF de un presupuesto existente y lo envía por WhatsApp al paciente. Si el usuario no aclara a cuál presupuesto y el paciente tiene varios activos, ejecutá listar_presupuestos_paciente primero para desambiguar. Antes de enviar, ejecutá ver_presupuesto_paciente con el plan_id para confirmar los detalles con el usuario.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -2761,6 +2783,109 @@ async def _ver_presupuesto_paciente(args: Dict, tenant_id: int) -> str:
             lines.append(f"   Profesional: {p['professional_name']}")
 
     lines.append("\nPara ver el detalle de un plan específico, usá plan_id.")
+    return "\n".join(lines)
+
+
+async def _listar_presupuestos_paciente(args: Dict, tenant_id: int, user_role: str) -> str:
+    """
+    Lista los presupuestos activos de un paciente para desambiguar.
+
+    A diferencia de ver_presupuesto_paciente, esta tool NO muestra el detalle
+    de los items. Solo devuelve nombre, estado, total y IDs de cada plan
+    activo. Se usa cuando el usuario menciona un presupuesto pero no
+    específica cuál, y hay varios.
+
+    Retorna:
+    - Si no hay planes: mensaje claro
+    - Si hay 1: lo muestra con su ID
+    - Si hay varios: lista numerada para que el bot pida aclaración
+    """
+    patient_id = args.get("patient_id")
+    patient_name = args.get("patient_name")
+    include_completed = args.get("include_completed", False)
+
+    # 1. Resolver paciente
+    if patient_id:
+        patient = await db.pool.fetchrow(
+            "SELECT id, first_name, last_name FROM patients WHERE id = $1 AND tenant_id = $2",
+            int(patient_id),
+            tenant_id,
+        )
+        if not patient:
+            return f"No encontré un paciente con ID {patient_id}."
+    elif patient_name:
+        patients = await db.pool.fetch(
+            "SELECT id, first_name, last_name FROM patients WHERE tenant_id = $1 AND LOWER(first_name || ' ' || COALESCE(last_name, '')) LIKE $2",
+            tenant_id,
+            f"%{patient_name.lower()}%",
+        )
+        if not patients:
+            return f"No encontré ningún paciente con nombre '{patient_name}'."
+        if len(patients) > 1:
+            names = ", ".join(
+                [f"{p['first_name']} {p['last_name']}" for p in patients[:5]]
+            )
+            return f"Hay múltiples pacientes con ese nombre: {names}. Por favor usá el patient_id."
+        patient = patients[0]
+        patient_id = patient["id"]
+    else:
+        return "Necesito patient_id o patient_name para listar los presupuestos."
+
+    # 2. Obtener planes del paciente (todos los estados por defecto: solo no completados)
+    status_filter = "" if include_completed else "AND tp.status NOT IN ('completed', 'cancelled')"
+    plans = await db.pool.fetch(
+        f"""
+        SELECT tp.id, tp.name, tp.status, tp.estimated_total, tp.approved_total,
+               tp.created_at, tp.currency,
+               prof.first_name as professional_name
+        FROM treatment_plans tp
+        LEFT JOIN professionals prof ON tp.professional_id = prof.id
+        WHERE tp.patient_id = $1 AND tp.tenant_id = $2 {status_filter}
+        ORDER BY tp.created_at DESC
+        """,
+        patient["id"],
+        tenant_id,
+    )
+
+    if not plans:
+        full_name = f"{patient['first_name']} {patient['last_name'] or ''}".strip()
+        return f"El paciente {full_name} no tiene presupuestos activos."
+
+    full_name = f"{patient['first_name']} {patient['last_name'] or ''}".strip()
+    currency = plans[0]["currency"] or "ARS"
+    status_emoji = {
+        "draft": "📝",
+        "approved": "✅",
+        "in_progress": "⏳",
+    }
+
+    if len(plans) == 1:
+        # Un solo plan: devolver con detalle suficiente
+        p = plans[0]
+        total = float(p["approved_total"] or p["estimated_total"] or 0)
+        prof = f" (Dr/a. {p['professional_name']})" if p["professional_name"] else ""
+        return (
+            f"{full_name} tiene 1 presupuesto activo:\n"
+            f"{status_emoji.get(p['status'], '❓')} *{p['name']}*{prof} — "
+            f"${total:,.0f} {currency} ({p['status']}) [ID: {p['id']}]\n"
+            f"Usá este ID o pedile a {full_name} que confirme el plan."
+        )
+
+    # Múltiples planes: lista numerada para desambiguar
+    lines = [f"📋 *{full_name} tiene {len(plans)} presupuestos activos:*\n"]
+    for i, p in enumerate(plans, 1):
+        total = float(p["approved_total"] or p["estimated_total"] or 0)
+        prof = f" — Dr/a. {p['professional_name']}" if p["professional_name"] else ""
+        date = p["created_at"].strftime("%d/%m/%Y") if p["created_at"] else ""
+        lines.append(
+            f"{i}. {status_emoji.get(p['status'], '❓')} *{p['name']}*{prof} — "
+            f"${total:,.0f} {currency} ({p['status']}) — {date}\n"
+            f"   ID: `{p['id']}`"
+        )
+
+    lines.append(
+        "\n¿A cuál te referís? Decime el número o el nombre del plan."
+    )
     return "\n".join(lines)
 
 
@@ -7086,7 +7211,7 @@ _META_TOOL_SCHEMA: Dict[str, Any] = {
                     "consultar_datos, resumen_marketing, resumen_financiero, "
                     "generar_ficha_digital, enviar_ficha_digital, enviar_pdf_telegram, "
                     "generar_reporte_personalizado, "
-                    "ver_presupuesto_paciente, crear_presupuesto, agregar_item_presupuesto, "
+                    "ver_presupuesto_paciente, listar_presupuestos_paciente, crear_presupuesto, agregar_item_presupuesto, "
                     "modificar_item_presupuesto, eliminar_item_presupuesto, "
                     "generar_pdf_presupuesto, enviar_presupuesto_email, aprobar_presupuesto, "
                     "enviar_presupuesto_whatsapp, sincronizar_turnos_presupuesto, "
@@ -7387,6 +7512,8 @@ async def execute_nova_tool(
             return await _consultar_datos(args, tenant_id, user_role)
         elif name == "ver_presupuesto_paciente":
             return await _ver_presupuesto_paciente(args, tenant_id)
+        elif name == "listar_presupuestos_paciente":
+            return await _listar_presupuestos_paciente(args, tenant_id, user_role)
         elif name == "aprobar_presupuesto":
             return await _aprobar_presupuesto(args, tenant_id, user_role, user_id)
         elif name == "crear_presupuesto":
@@ -7431,6 +7558,8 @@ async def execute_nova_tool(
         # O. Treatment Plans
         elif name == "ver_presupuesto_paciente":
             return await _ver_presupuesto_paciente(args, tenant_id)
+        elif name == "listar_presupuestos_paciente":
+            return await _listar_presupuestos_paciente(args, tenant_id, user_role)
         elif name == "aprobar_presupuesto":
             return await _aprobar_presupuesto(args, tenant_id, user_role, user_id)
         elif name == "crear_presupuesto":
