@@ -3,7 +3,7 @@ import { useTranslation } from '../context/LanguageContext';
 import {
   FileText, Plus, Download, Mail, Trash2, Edit,
   RefreshCw, Loader2, X, ChevronLeft, AlertTriangle,
-  Send, Save, Eye, Lock, Check, AlertCircle
+  Send, Save, Eye, Lock, Check, AlertCircle, MessageCircle
 } from 'lucide-react';
 import DOMPurify from 'dompurify';
 import api from '../api/axios';
@@ -18,6 +18,8 @@ interface DigitalRecord {
   updated_at?: string | null;
   sent_to_email?: string | null;
   sent_at?: string | null;
+  sent_to_whatsapp?: string | null;
+  sent_via_whatsapp_at?: string | null;
   generation_warnings?: string[];
 }
 
@@ -151,6 +153,8 @@ export default function DigitalRecordsTab({ patientId, patientEmail, refreshKey 
   const [emailTo, setEmailTo] = useState('');
   const [sending, setSending] = useState(false);
   const [emailStatus, setEmailStatus] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
+  const [whatsappStatus, setWhatsappStatus] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
+  const [whatsappSending, setWhatsappSending] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -237,6 +241,26 @@ export default function DigitalRecordsTab({ patientId, patientEmail, refreshKey 
       const detail = err?.response?.data?.detail || 'Error al enviar el email. Intentá de nuevo.';
       setEmailStatus({ type: 'error', msg: detail });
     } finally { setSending(false); }
+  };
+
+  const handleSendWhatsApp = async (record: DigitalRecord) => {
+    if (!record) return;
+    if (!confirm(`¿Enviar "${record.title}" por WhatsApp al paciente?`)) return;
+    setWhatsappSending(true);
+    setWhatsappStatus(null);
+    try {
+      await api.post(`/admin/patients/${patientId}/digital-records/${record.id}/whatsapp`, {});
+      const now = new Date().toISOString();
+      const updated = { ...record, sent_to_whatsapp: 'enviado', sent_via_whatsapp_at: now, status: 'sent' };
+      setRecords(prev => prev.map(r => r.id === record.id ? updated : r));
+      if (selectedRecord?.id === record.id) setSelectedRecord(updated);
+      setWhatsappStatus({ type: 'success', msg: 'Ficha enviada por WhatsApp' });
+      setTimeout(() => setWhatsappStatus(null), 2500);
+    } catch (err: any) {
+      console.error('Error sending WhatsApp:', err);
+      const detail = err?.response?.data?.detail || 'Error al enviar por WhatsApp. Intentá de nuevo.';
+      setWhatsappStatus({ type: 'error', msg: detail });
+    } finally { setWhatsappSending(false); }
   };
 
   const handleDelete = async (recordId: string) => {
@@ -614,6 +638,16 @@ export default function DigitalRecordsTab({ patientId, patientEmail, refreshKey 
 
           {/* Action buttons — horizontal scroll on mobile */}
           <div className="flex items-center gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-hide">
+            {whatsappStatus && (
+              <div className={`shrink-0 px-2.5 py-1.5 rounded-lg text-[11px] flex items-center gap-1.5 ${
+                whatsappStatus.type === 'success'
+                  ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400'
+                  : 'bg-red-500/10 border border-red-500/20 text-red-400'
+              }`}>
+                {whatsappStatus.type === 'success' ? <Check size={12} /> : <AlertCircle size={12} />}
+                {whatsappStatus.msg}
+              </div>
+            )}
             <button onClick={handleStartEdit} className="flex items-center gap-1.5 px-3 py-2 bg-blue-500/10 border border-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500/20 text-xs whitespace-nowrap shrink-0">
               <Edit size={14} /> Editar
             </button>
@@ -622,6 +656,9 @@ export default function DigitalRecordsTab({ patientId, patientEmail, refreshKey 
             </button>
             <button onClick={() => openEmailModal(record)} className="flex items-center gap-1.5 px-3 py-2 bg-white/[0.06] border border-white/[0.08] text-white/70 rounded-lg hover:bg-white/[0.1] text-xs whitespace-nowrap shrink-0">
               <Mail size={14} /> Email
+            </button>
+            <button onClick={() => handleSendWhatsApp(record)} disabled={whatsappSending} className="flex items-center gap-1.5 px-3 py-2 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-lg hover:bg-emerald-500/20 text-xs whitespace-nowrap shrink-0 disabled:opacity-50">
+              <MessageCircle size={14} /> WhatsApp
             </button>
             <button onClick={() => handleDelete(record.id)} className="flex items-center gap-1.5 px-2.5 py-2 bg-red-500/10 border border-red-500/20 text-red-400 rounded-lg hover:bg-red-500/20 text-xs whitespace-nowrap shrink-0">
               <Trash2 size={14} />
@@ -651,6 +688,12 @@ export default function DigitalRecordsTab({ patientId, patientEmail, refreshKey 
             <p className="text-[11px] text-white/40 flex items-center gap-1">
               <Send size={11} /> {t('digitalRecords.sentTo')}: {record.sent_to_email}
               {record.sent_at && ` — ${new Date(record.sent_at).toLocaleString('es-AR')}`}
+            </p>
+          )}
+          {record.sent_via_whatsapp_at && (
+            <p className="text-[11px] text-white/40 flex items-center gap-1">
+              <MessageCircle size={11} /> Enviado por WhatsApp
+              {` — ${new Date(record.sent_via_whatsapp_at).toLocaleString('es-AR')}`}
             </p>
           )}
         </div>
@@ -708,6 +751,9 @@ export default function DigitalRecordsTab({ patientId, patientEmail, refreshKey 
                   </button>
                   <button onClick={() => openEmailModal(record)} className="flex items-center gap-1 px-2 py-1.5 bg-white/[0.06] border border-white/[0.08] text-white/50 rounded-lg hover:bg-white/[0.1] text-xs whitespace-nowrap shrink-0">
                     <Mail size={13} /> Email
+                  </button>
+                  <button onClick={() => handleSendWhatsApp(record)} disabled={whatsappSending} className="flex items-center gap-1 px-2 py-1.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-lg hover:bg-emerald-500/20 text-xs whitespace-nowrap shrink-0 disabled:opacity-50">
+                    <MessageCircle size={13} /> WhatsApp
                   </button>
                   <button onClick={() => handleDelete(record.id)} className="flex items-center gap-1 px-2 py-1.5 bg-red-500/10 border border-red-500/20 text-red-400 rounded-lg hover:bg-red-500/20 text-xs whitespace-nowrap shrink-0">
                     <Trash2 size={13} />
