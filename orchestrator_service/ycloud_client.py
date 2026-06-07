@@ -126,18 +126,22 @@ class YCloudClient:
                 logger.error(f"ycloud_send_image_error: to={to} error={str(e)}")
                 raise
 
-    async def upload_media(self, file_path: str) -> str:
+    async def upload_media(self, file_path: str, phone_number: str) -> str:
         """
         Sube un archivo a YCloud Media API y devuelve el media_id.
         
         Args:
             file_path: Ruta local al archivo a subir.
+            phone_number: Número de teléfono E.164 desde el cual se va a enviar
+                el mensaje (YCloud requiere este número en el path del endpoint).
         
         Returns:
             Media ID (string) para usar en send_document_by_media_id.
         """
         import mimetypes
-        endpoint = f"{self.base_url}/whatsapp/media"
+        # YCloud: POST /v2/whatsapp/media/{phoneNumber}/upload
+        # (el path incluye el phoneNumber; no se manda messaging_product)
+        endpoint = f"{self.base_url}/whatsapp/media/{phone_number}/upload"
         mime_type, _ = mimetypes.guess_type(file_path)
         if not mime_type:
             mime_type = "application/octet-stream"
@@ -153,7 +157,6 @@ class YCloudClient:
                     file_content = f.read()
                 files = {
                     "file": (os.path.basename(file_path), file_content, mime_type),
-                    "messaging_product": (None, "whatsapp"),
                 }
                 response = await client.post(
                     endpoint, files=files, headers=upload_headers, timeout=30.0

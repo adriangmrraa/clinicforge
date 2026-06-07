@@ -3215,7 +3215,7 @@ async def _preparar_y_enviar_presupuesto(args: Dict, tenant_id: int, user_role: 
             
         from ycloud_client import normalize_phone_e164
         clean_phone = normalize_phone_e164(patient_phone.strip())
-        from core.credentials import YCLOUD_API_KEY
+        from core.credentials import YCLOUD_API_KEY, get_tenant_credential
         api_key = await get_tenant_credential(tenant_id, YCLOUD_API_KEY)
         if not api_key:
             return "El presupuesto fue creado y aprobado, pero las credenciales de YCloud no están configuradas."
@@ -3234,7 +3234,7 @@ async def _preparar_y_enviar_presupuesto(args: Dict, tenant_id: int, user_role: 
         
         try:
             # Subir PDF a YCloud Media API primero (más confiable que URL firmada)
-            media_id = await yc.upload_media(pdf_path)
+            media_id = await yc.upload_media(pdf_path, phone_number=from_number)
             await yc.send_document_by_media_id(
                 to_number=clean_phone,
                 media_id=media_id,
@@ -3558,7 +3558,7 @@ async def _enviar_presupuesto_whatsapp(args: Dict, tenant_id: int, user_role: st
     from ycloud_client import normalize_phone_e164
     clean_phone = normalize_phone_e164(plan["phone_number"].strip())
 
-    from core.credentials import YCLOUD_API_KEY
+    from core.credentials import YCLOUD_API_KEY, get_tenant_credential
     api_key = await get_tenant_credential(tenant_id, YCLOUD_API_KEY)
     if not api_key:
         return "YCloud no está configurado."
@@ -3576,7 +3576,7 @@ async def _enviar_presupuesto_whatsapp(args: Dict, tenant_id: int, user_role: st
     caption = f"Hola {patient_full_name}, te adjuntamos el presupuesto de tu tratamiento."
 
     try:
-        media_id = await yc.upload_media(pdf_path)
+        media_id = await yc.upload_media(pdf_path, phone_number=from_number)
         await yc.send_document_by_media_id(
             to_number=clean_phone, media_id=media_id, filename=filename,
             caption=caption, from_number=from_number,

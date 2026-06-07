@@ -15377,7 +15377,7 @@ async def send_treatment_plan_whatsapp(
             caption = custom_msg if custom_msg else f"Hola, te adjuntamos el presupuesto del tratamiento solicitado. ¡Cualquier duda nos avisas!"
             try:
                 # Subir PDF a YCloud Media API
-                media_id = await yc.upload_media(pdf_path)
+                media_id = await yc.upload_media(pdf_path, phone_number=from_number)
                 await yc.send_document_by_media_id(
                     to_number=clean_phone,
                     media_id=media_id,
