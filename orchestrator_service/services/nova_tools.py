@@ -1560,6 +1560,31 @@ IMPORTANTE — REGLAS QUIRÚRGICAS:
             "required": [],
         },
     },
+    # O6b. Enviar presupuesto por WhatsApp
+    # -------------------------------------------------------------------------
+    {
+        "type": "function",
+        "name": "enviar_presupuesto_whatsapp",
+        "description": "Genera el PDF de un presupuesto existente y lo envía por WhatsApp al paciente. Antes de enviar, ejecutá ver_presupuesto_paciente para confirmar los detalles con el usuario.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "plan_id": {
+                    "type": "string",
+                    "description": "ID UUID del plan (opcional si se provee patient_id o patient_name)",
+                },
+                "patient_id": {
+                    "type": "integer",
+                    "description": "ID del paciente — toma el plan activo más reciente (opcional)",
+                },
+                "patient_name": {
+                    "type": "string",
+                    "description": "Nombre del paciente para buscar (opcional)",
+                },
+            },
+            "required": [],
+        },
+    },
     # O7. Editar facturación de turno
     # -------------------------------------------------------------------------
     {
@@ -3207,13 +3232,25 @@ async def _preparar_y_enviar_presupuesto(args: Dict, tenant_id: int, user_role: 
         filename = f"Presupuesto_{patient_full_name.replace(' ', '_')}.pdf"
         caption = f"Hola {patient_full_name}, te adjuntamos el presupuesto de tu tratamiento."
         
-        await yc.send_document(
-            to_number=clean_phone,
-            document_url=signed_pdf_url,
-            filename=filename,
-            caption=caption,
-            from_number=from_number,
-        )
+        try:
+            # Subir PDF a YCloud Media API primero (más confiable que URL firmada)
+            media_id = await yc.upload_media(pdf_path)
+            await yc.send_document_by_media_id(
+                to_number=clean_phone,
+                media_id=media_id,
+                filename=filename,
+                caption=caption,
+                from_number=from_number,
+            )
+        except Exception:
+            logger.warning("YCloud media upload failed in _preparar_y_enviar_presupuesto, falling back to signed URL")
+            await yc.send_document(
+                to_number=clean_phone,
+                document_url=signed_pdf_url,
+                filename=filename,
+                caption=caption,
+                from_number=from_number,
+            )
         
         # Registrar mensaje en chat_messages y conv
         conv_id = await db.pool.fetchval(
@@ -3475,6 +3512,79 @@ async def _eliminar_item_presupuesto(args: Dict, tenant_id: int, user_role: str)
 
     logger.info(f"Nova: eliminar_item_presupuesto → item {item_id} ({item_desc}) eliminado del plan {plan_id}")
     return f"✅ Item eliminado de *{plan_name}*: {item_desc}\nTotal del plan recalculado."
+
+
+async def _enviar_presupuesto_whatsapp(args: Dict, tenant_id: int, user_role: str) -> str:
+    """Envía un presupuesto existente por WhatsApp al paciente."""
+    if user_role not in ("ceo", "secretary", "professional"):
+        return _role_error("enviar_presupuesto_whatsapp", ["ceo", "secretary", "professional"])
+
+    plan_id = args.get("plan_id")
+    patient_id = args.get("patient_id")
+    patient_name = args.get("patient_name")
+
+    if not plan_id:
+        if patient_id:
+            row = await db.pool.fetchrow(
+                "SELECT id FROM treatment_plans WHERE patient_id = $1 AND tenant_id = $2 AND status IN ('draft', 'approved', 'in_progress') ORDER BY created_at DESC LIMIT 1",
+                patient_id, tenant_id,
+            )
+            plan_id = str(row["id"]) if row else None
+        elif patient_name:
+            rows = await db.pool.fetch(
+                "SELECT tp.id FROM treatment_plans tp JOIN patients p ON tp.patient_id = p.id AND tp.tenant_id = $2 WHERE LOWER(CONCAT(p.first_name, ' ', COALESCE(p.last_name, ''))) LIKE LOWER($1) AND tp.tenant_id = $2 AND tp.status IN ('draft', 'approved', 'in_progress') ORDER BY tp.created_at DESC LIMIT 1",
+                f"%{patient_name}%", tenant_id,
+            )
+            plan_id = str(rows[0]["id"]) if rows else None
+
+    if not plan_id:
+        return "Necesito plan_id, patient_id o patient_name para encontrar el presupuesto."
+
+    # Generar PDF
+    from services.budget_service import generate_budget_pdf, gather_budget_data
+    pdf_path = await generate_budget_pdf(db.pool, plan_id, tenant_id)
+    if not pdf_path:
+        return "Error: No se pudo generar el PDF del presupuesto."
+
+    # Obtener paciente
+    plan = await db.pool.fetchrow(
+        "SELECT p.first_name, p.last_name, p.phone_number FROM treatment_plans tp JOIN patients p ON tp.patient_id = p.id WHERE tp.id = $1 AND tp.tenant_id = $2",
+        plan_id, tenant_id,
+    )
+    if not plan or not plan["phone_number"]:
+        return "El paciente no tiene número de teléfono configurado."
+
+    patient_full_name = f"{plan['first_name']} {plan['last_name'] or ''}".strip()
+    from ycloud_client import normalize_phone_e164
+    clean_phone = normalize_phone_e164(plan["phone_number"].strip())
+
+    from core.credentials import YCLOUD_API_KEY
+    api_key = await get_tenant_credential(tenant_id, YCLOUD_API_KEY)
+    if not api_key:
+        return "YCloud no está configurado."
+
+    from_number = await db.pool.fetchval(
+        "SELECT bot_phone_number FROM tenants WHERE id = $1", tenant_id
+    )
+    if not from_number:
+        from_number = await get_tenant_credential(tenant_id, "YCLOUD_WHATSAPP_NUMBER")
+
+    from ycloud_client import YCloudClient
+    yc = YCloudClient(api_key=api_key, business_number=from_number)
+
+    filename = f"Presupuesto_{patient_full_name.replace(' ', '_')}.pdf"
+    caption = f"Hola {patient_full_name}, te adjuntamos el presupuesto de tu tratamiento."
+
+    try:
+        media_id = await yc.upload_media(pdf_path)
+        await yc.send_document_by_media_id(
+            to_number=clean_phone, media_id=media_id, filename=filename,
+            caption=caption, from_number=from_number,
+        )
+    except Exception:
+        return "Ocurrió un error al enviar el presupuesto por WhatsApp. Intentalo de nuevo."
+
+    return f"✅ Presupuesto enviado por WhatsApp a {patient_full_name} ({clean_phone})"
 
 
 async def _generar_pdf_presupuesto(args: Dict, tenant_id: int, user_role: str) -> str:
@@ -6979,7 +7089,7 @@ _META_TOOL_SCHEMA: Dict[str, Any] = {
                     "ver_presupuesto_paciente, crear_presupuesto, agregar_item_presupuesto, "
                     "modificar_item_presupuesto, eliminar_item_presupuesto, "
                     "generar_pdf_presupuesto, enviar_presupuesto_email, aprobar_presupuesto, "
-                    "sincronizar_turnos_presupuesto, "
+                    "enviar_presupuesto_whatsapp, sincronizar_turnos_presupuesto, "
                     "editar_facturacion_turno, registrar_pago_plan, "
                     "gestionar_usuarios, gestionar_obra_social, "
                     "generar_pdf_liquidacion, enviar_liquidacion_email, "
@@ -7291,6 +7401,8 @@ async def execute_nova_tool(
             return await _eliminar_item_presupuesto(args, tenant_id, user_role)
         elif name == "generar_pdf_presupuesto":
             return await _generar_pdf_presupuesto(args, tenant_id, user_role)
+        elif name == "enviar_presupuesto_whatsapp":
+            return await _enviar_presupuesto_whatsapp(args, tenant_id, user_role)
         elif name == "resumen_marketing":
             return await _resumen_marketing(args, tenant_id, user_role)
         elif name == "resumen_financiero":
@@ -7333,6 +7445,8 @@ async def execute_nova_tool(
             return await _generar_pdf_presupuesto(args, tenant_id, user_role)
         elif name == "enviar_presupuesto_email":
             return await _enviar_presupuesto_email(args, tenant_id, user_role)
+        elif name == "enviar_presupuesto_whatsapp":
+            return await _enviar_presupuesto_whatsapp(args, tenant_id, user_role)
         elif name == "editar_facturacion_turno":
             return await _editar_facturacion_turno(args, tenant_id, user_role)
         elif name == "gestionar_usuarios":

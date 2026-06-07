@@ -15373,15 +15373,28 @@ async def send_treatment_plan_whatsapp(
             )
             sent_content = f"[Template: {template_name}]"
         else:
-            # Enviar documento PDF directamente con la descripción
+            # Enviar documento PDF: primero subir a YCloud Media API, luego enviar por media_id
             caption = custom_msg if custom_msg else f"Hola, te adjuntamos el presupuesto del tratamiento solicitado. ¡Cualquier duda nos avisas!"
-            await yc.send_document(
-                to_number=clean_phone,
-                document_url=signed_pdf_url,
-                filename=filename,
-                caption=caption,
-                from_number=from_number,
-            )
+            try:
+                # Subir PDF a YCloud Media API
+                media_id = await yc.upload_media(pdf_path)
+                await yc.send_document_by_media_id(
+                    to_number=clean_phone,
+                    media_id=media_id,
+                    filename=filename,
+                    caption=caption,
+                    from_number=from_number,
+                )
+            except Exception:
+                # Fallback: intentar con URL firmada por si ORCHESTRATOR_PUBLIC_URL está configurado
+                logger.warning("YCloud media upload failed, falling back to signed URL")
+                await yc.send_document(
+                    to_number=clean_phone,
+                    document_url=signed_pdf_url,
+                    filename=filename,
+                    caption=caption,
+                    from_number=from_number,
+                )
             sent_content = f"{caption} (PDF adjunto: {filename})"
 
         # 7. Registrar en el historial de chats de la clínica

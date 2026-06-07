@@ -126,6 +126,96 @@ class YCloudClient:
                 logger.error(f"ycloud_send_image_error: to={to} error={str(e)}")
                 raise
 
+    async def upload_media(self, file_path: str) -> str:
+        """
+        Sube un archivo a YCloud Media API y devuelve el media_id.
+        
+        Args:
+            file_path: Ruta local al archivo a subir.
+        
+        Returns:
+            Media ID (string) para usar en send_document_by_media_id.
+        """
+        import mimetypes
+        endpoint = f"{self.base_url}/whatsapp/media"
+        mime_type, _ = mimetypes.guess_type(file_path)
+        if not mime_type:
+            mime_type = "application/octet-stream"
+
+        upload_headers = {
+            "X-API-Key": self.api_key,
+            "Accept": "application/json",
+        }
+
+        async with httpx.AsyncClient() as client:
+            try:
+                with open(file_path, "rb") as f:
+                    file_content = f.read()
+                files = {
+                    "file": (os.path.basename(file_path), file_content, mime_type),
+                    "messaging_product": (None, "whatsapp"),
+                }
+                response = await client.post(
+                    endpoint, files=files, headers=upload_headers, timeout=30.0
+                )
+                response.raise_for_status()
+                data = response.json()
+                media_id = data.get("id") or data.get("media_id", "")
+                logger.info(f"✅ YCloud media uploaded: {media_id} ({file_path})")
+                return media_id
+            except httpx.HTTPStatusError as e:
+                logger.error(
+                    f"ycloud_upload_media_failed: file={file_path} status={e.response.status_code} body={e.response.text[:300]}"
+                )
+                raise
+            except Exception as e:
+                logger.error(f"ycloud_upload_media_error: file={file_path} error={str(e)}")
+                raise
+
+    async def send_document_by_media_id(
+        self,
+        to_number: str,
+        media_id: str,
+        filename: str,
+        caption: Optional[str] = None,
+        from_number: Optional[str] = None,
+    ) -> dict[str, Any]:
+        """
+        Envía un documento PDF/file a través de YCloud usando un media_id previamente subido.
+        """
+        endpoint = f"{self.base_url}/whatsapp/messages/sendDirectly"
+        sender = from_number or self.business_number
+        payload = {
+            "to": to_number,
+            "type": "document",
+            "document": {
+                "id": media_id,
+                "filename": filename
+            }
+        }
+        if caption:
+            payload["document"]["caption"] = caption
+        if sender:
+            payload["from"] = sender
+
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.post(
+                    endpoint, json=payload, headers=self.headers, timeout=15.0
+                )
+                response.raise_for_status()
+                data = response.json()
+                logger.info(f"✅ YCloud document sent to {to_number} via media_id: {data.get('id')}")
+                return data
+            except httpx.HTTPStatusError as e:
+                logger.error(
+                    f"ycloud_send_document_failed: to={to_number} status={e.response.status_code} body={e.response.text[:200]}"
+                )
+                raise
+            except Exception as e:
+                logger.error(f"ycloud_send_document_error: to={to_number} error={str(e)}")
+                raise
+
     async def send_document(
         self,
         to_number: str,
@@ -135,7 +225,7 @@ class YCloudClient:
         from_number: Optional[str] = None,
     ) -> dict[str, Any]:
         """
-        Envía un documento PDF/file a través de YCloud.
+        Envía un documento PDF/file a través de YCloud usando URL pública.
         """
         endpoint = f"{self.base_url}/whatsapp/messages/sendDirectly"
         sender = from_number or self.business_number
