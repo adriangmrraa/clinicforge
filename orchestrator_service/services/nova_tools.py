@@ -1277,7 +1277,7 @@ IMPORTANTE — REGLAS QUIRÚRGICAS:
     {
         "type": "function",
         "name": "enviar_ficha_digital",
-        "description": "Enviar una ficha digital por email con el PDF adjunto. Si no se especifica record_id, envía la más reciente del paciente. Si no se especifica email, usa el email del paciente.",
+        "description": "Enviar una ficha digital por email con el PDF adjunto. Si no se especifica record_id, envía la más reciente del paciente. Si no se especifica email, usa el email del paciente. Si el paciente tiene varias fichas y no sabés cuál, ejecutá listar_fichas_digitales_paciente primero para desambiguar.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -1292,6 +1292,93 @@ IMPORTANTE — REGLAS QUIRÚRGICAS:
                 "email": {
                     "type": "string",
                     "description": "Email de destino (opcional, usa el del paciente si no se especifica)",
+                },
+            },
+            "required": ["patient_id"],
+        },
+    },
+    # M2. CRUD + list fichas digitales via Telegram
+    # -------------------------------------------------------------------------
+    {
+        "type": "function",
+        "name": "listar_fichas_digitales_paciente",
+        "description": "Lista las fichas digitales de un paciente (título, tipo, estado, fecha, ID) sin mostrar el HTML completo. Usala cuando el usuario mencione 'la ficha' de un paciente que puede tener varias y necesites desambiguar antes de editar/eliminar/enviar. Si el paciente tiene 1 sola ficha, la devuelve con su ID. Si tiene varias, devuelve lista numerada para que el bot pida aclaración.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "patient_id": {
+                    "type": "integer",
+                    "description": "ID del paciente (opcional si se busca por nombre)",
+                },
+                "patient_name": {
+                    "type": "string",
+                    "description": "Nombre del paciente para buscar (opcional si se usa patient_id)",
+                },
+                "tipo_documento": {
+                    "type": "string",
+                    "enum": [
+                        "clinical_report",
+                        "post_surgery",
+                        "odontogram_art",
+                        "authorization_request",
+                    ],
+                    "description": "Filtrar por tipo de documento (opcional)",
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "name": "editar_ficha_digital",
+        "description": "Edita el título o el contenido HTML de una ficha digital existente. Si se modifica html_content, el PDF se regenerará automáticamente la próxima vez que se envíe. ANTES de editar: (1) si no sabés a qué ficha se refiere el usuario, ejecutá listar_fichas_digitales_paciente para desambiguar, (2) confirmá con el usuario qué campo quiere modificar.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "record_id": {
+                    "type": "string",
+                    "description": "ID (UUID) de la ficha digital a editar",
+                },
+                "title": {
+                    "type": "string",
+                    "description": "Nuevo título de la ficha (opcional)",
+                },
+                "html_content": {
+                    "type": "string",
+                    "description": "Nuevo contenido HTML completo de la ficha (opcional). Si se pasa, el PDF se regenerará en el próximo envío.",
+                },
+            },
+            "required": ["record_id"],
+        },
+    },
+    {
+        "type": "function",
+        "name": "eliminar_ficha_digital",
+        "description": "Elimina una ficha digital (registro en BD + archivo PDF en disco). ANTES de eliminar: (1) ejecutá listar_fichas_digitales_paciente si no sabés el ID, (2) pedí confirmación explícita al usuario mostrando el título de la ficha.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "record_id": {
+                    "type": "string",
+                    "description": "ID (UUID) de la ficha digital a eliminar",
+                },
+            },
+            "required": ["record_id"],
+        },
+    },
+    {
+        "type": "function",
+        "name": "enviar_ficha_digital_whatsapp",
+        "description": "Envía una ficha digital existente por WhatsApp al paciente con el PDF adjunto. El teléfono se toma del paciente. Si el usuario no aclara cuál ficha y el paciente tiene varias, ejecutá listar_fichas_digitales_paciente primero para desambiguar.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "patient_id": {
+                    "type": "integer",
+                    "description": "ID del paciente",
+                },
+                "record_id": {
+                    "type": "string",
+                    "description": "ID (UUID) de la ficha digital a enviar (opcional — si no se especifica, envía la más reciente)",
                 },
             },
             "required": ["patient_id"],
@@ -7210,6 +7297,7 @@ _META_TOOL_SCHEMA: Dict[str, Any] = {
                     "obtener_registros, actualizar_registro, crear_registro, contar_registros, "
                     "consultar_datos, resumen_marketing, resumen_financiero, "
                     "generar_ficha_digital, enviar_ficha_digital, enviar_pdf_telegram, "
+                    "listar_fichas_digitales_paciente, editar_ficha_digital, eliminar_ficha_digital, enviar_ficha_digital_whatsapp, "
                     "generar_reporte_personalizado, "
                     "ver_presupuesto_paciente, listar_presupuestos_paciente, crear_presupuesto, agregar_item_presupuesto, "
                     "modificar_item_presupuesto, eliminar_item_presupuesto, "
@@ -7554,6 +7642,14 @@ async def execute_nova_tool(
             return await _enviar_pdf_telegram(args, tenant_id)
         elif name == "generar_reporte_personalizado":
             return await _generar_reporte_personalizado(args, tenant_id)
+        elif name == "listar_fichas_digitales_paciente":
+            return await _listar_fichas_digitales_paciente(args, tenant_id, user_role)
+        elif name == "editar_ficha_digital":
+            return await _editar_ficha_digital(args, tenant_id, user_role)
+        elif name == "eliminar_ficha_digital":
+            return await _eliminar_ficha_digital(args, tenant_id, user_role)
+        elif name == "enviar_ficha_digital_whatsapp":
+            return await _enviar_ficha_digital_whatsapp(args, tenant_id, user_role)
 
         # O. Treatment Plans
         elif name == "ver_presupuesto_paciente":
@@ -10550,6 +10646,341 @@ async def _enviar_ficha_digital(args: Dict, tenant_id: int) -> str:
     except Exception as e:
         logger.error(f"_enviar_ficha_digital error: {e}", exc_info=True)
         return f"Error: {str(e)}"
+
+
+async def _listar_fichas_digitales_paciente(args: Dict, tenant_id: int, user_role: str) -> str:
+    """
+    Lista las fichas digitales de un paciente para desambiguar.
+
+    A diferencia de _generar_ficha_digital, esta tool NO muestra el HTML
+    completo. Solo devuelve título, tipo, estado, fecha y UUID de cada
+    ficha. Se usa cuando el usuario menciona 'la ficha' pero no específica
+    cuál y hay varias.
+    """
+    if user_role not in ("ceo", "secretary", "professional"):
+        return _role_error("listar_fichas_digitales_paciente", ["ceo", "secretary", "professional"])
+
+    patient_id = args.get("patient_id")
+    patient_name = args.get("patient_name")
+    tipo_documento = args.get("tipo_documento")
+
+    # 1. Resolver paciente
+    if patient_id:
+        patient = await db.pool.fetchrow(
+            "SELECT id, first_name, last_name FROM patients WHERE id = $1 AND tenant_id = $2",
+            int(patient_id),
+            tenant_id,
+        )
+        if not patient:
+            return f"No encontré un paciente con ID {patient_id}."
+    elif patient_name:
+        patients = await db.pool.fetch(
+            "SELECT id, first_name, last_name FROM patients WHERE tenant_id = $1 AND LOWER(first_name || ' ' || COALESCE(last_name, '')) LIKE $2",
+            tenant_id,
+            f"%{patient_name.lower()}%",
+        )
+        if not patients:
+            return f"No encontré ningún paciente con nombre '{patient_name}'."
+        if len(patients) > 1:
+            names = ", ".join(
+                [f"{p['first_name']} {p['last_name']}" for p in patients[:5]]
+            )
+            return f"Hay múltiples pacientes con ese nombre: {names}. Por favor usá el patient_id."
+        patient = patients[0]
+    else:
+        return "Necesito patient_id o patient_name para listar las fichas."
+
+    # 2. Obtener fichas del paciente
+    type_filter = "AND r.template_type = $3" if tipo_documento else ""
+    query = f"""
+        SELECT r.id, r.title, r.template_type, r.status, r.created_at
+        FROM patient_digital_records r
+        WHERE r.patient_id = $1 AND r.tenant_id = $2 {type_filter}
+        ORDER BY r.created_at DESC
+    """
+    if tipo_documento:
+        records = await db.pool.fetch(query, patient["id"], tenant_id, tipo_documento)
+    else:
+        records = await db.pool.fetch(query, patient["id"], tenant_id)
+
+    if not records:
+        full_name = f"{patient['first_name']} {patient['last_name'] or ''}".strip()
+        return f"El paciente {full_name} no tiene fichas digitales generadas."
+
+    full_name = f"{patient['first_name']} {patient['last_name'] or ''}".strip()
+    type_labels = {
+        "clinical_report": "Informe Clínico",
+        "post_surgery": "Post-Quirúrgico",
+        "odontogram_art": "Evaluación Odontológica",
+        "authorization_request": "Solicitud de Autorización",
+    }
+    status_emoji = {"draft": "📝", "sent": "📤", "final": "✅"}
+
+    if len(records) == 1:
+        r = records[0]
+        tlabel = type_labels.get(r["template_type"], r["template_type"])
+        semoji = status_emoji.get(r["status"], "❓")
+        date_str = r["created_at"].strftime("%Y-%m-%d") if r["created_at"] else "?"
+        return (
+            f"{full_name} tiene 1 ficha digital:\n"
+            f"{semoji} *{r['title']}* — {tlabel} — {date_str} [ID: {r['id']}]\n"
+            f"Usá este ID para editar, eliminar o enviar."
+        )
+
+    # Múltiples: lista numerada para desambiguar
+    lines = [f"📋 *{full_name} tiene {len(records)} fichas digitales:*\n"]
+    for i, r in enumerate(records, 1):
+        tlabel = type_labels.get(r["template_type"], r["template_type"])
+        semoji = status_emoji.get(r["status"], "❓")
+        date_str = r["created_at"].strftime("%Y-%m-%d") if r["created_at"] else "?"
+        lines.append(f"{i}. {semoji} *{r['title']}*\n   {tlabel} — {date_str} [ID: {r['id']}]")
+    lines.append("\nDecile al bot cuál querés (por número o por título) y la acción a realizar.")
+    return "\n".join(lines)
+
+
+async def _editar_ficha_digital(args: Dict, tenant_id: int, user_role: str) -> str:
+    """Edita el título o html_content de una ficha digital existente."""
+    if user_role not in ("ceo", "secretary"):
+        return _role_error("editar_ficha_digital", ["ceo", "secretary"])
+
+    record_id = args.get("record_id")
+    new_title = args.get("title")
+    new_html = args.get("html_content")
+
+    if not record_id:
+        return "Necesito el record_id de la ficha a editar."
+    if new_title is None and new_html is None:
+        return "Necesito al menos un campo para modificar (title o html_content)."
+
+    try:
+        # Verificar que existe
+        row = await db.pool.fetchrow(
+            "SELECT id, title FROM patient_digital_records WHERE id = $1 AND tenant_id = $2",
+            record_id,
+            tenant_id,
+        )
+        if not row:
+            return f"No encontré la ficha con ID {record_id}."
+
+        old_title = row["title"]
+
+        # Si se modifica html_content, invalidar pdf_path para forzar regeneración
+        if new_html is not None:
+            await db.pool.execute(
+                """UPDATE patient_digital_records
+                   SET title = COALESCE($1, title),
+                       html_content = $2,
+                       pdf_path = NULL,
+                       pdf_generated_at = NULL,
+                       updated_at = NOW()
+                   WHERE id = $3 AND tenant_id = $4""",
+                new_title,
+                new_html,
+                record_id,
+                tenant_id,
+            )
+        else:
+            # Solo título
+            await db.pool.execute(
+                """UPDATE patient_digital_records
+                   SET title = $1, updated_at = NOW()
+                   WHERE id = $2 AND tenant_id = $3""",
+                new_title,
+                record_id,
+                tenant_id,
+            )
+
+        await _nova_emit(
+            "DIGITAL_RECORD_UPDATED",
+            {"record_id": record_id, "tenant_id": tenant_id},
+        )
+
+        changes = []
+        if new_title and new_title != old_title:
+            changes.append(f"título: '{old_title}' → '{new_title}'")
+        if new_html is not None:
+            changes.append("HTML actualizado (PDF se regenerará al enviar)")
+
+        logger.info(f"Nova: editar_ficha_digital → {record_id} ({', '.join(changes)})")
+        return f"✅ Ficha editada:\n{chr(10).join(changes)}"
+
+    except Exception as e:
+        logger.error(f"_editar_ficha_digital error: {e}", exc_info=True)
+        return f"Error al editar: {str(e)}"
+
+
+async def _eliminar_ficha_digital(args: Dict, tenant_id: int, user_role: str) -> str:
+    """Elimina una ficha digital (registro + PDF en disco)."""
+    if user_role not in ("ceo", "secretary"):
+        return _role_error("eliminar_ficha_digital", ["ceo", "secretary"])
+
+    record_id = args.get("record_id")
+    if not record_id:
+        return "Necesito el record_id de la ficha a eliminar."
+
+    try:
+        # Verificar que existe y obtener pdf_path
+        row = await db.pool.fetchrow(
+            "SELECT id, title, pdf_path, patient_id FROM patient_digital_records WHERE id = $1 AND tenant_id = $2",
+            record_id,
+            tenant_id,
+        )
+        if not row:
+            return f"No encontré la ficha con ID {record_id}."
+
+        title = row["title"]
+        pdf_path = row["pdf_path"]
+
+        # Eliminar PDF del disco si existe
+        if pdf_path and os.path.exists(pdf_path):
+            try:
+                os.remove(pdf_path)
+                logger.info(f"PDF eliminado: {pdf_path}")
+            except OSError as e:
+                logger.warning(f"No se pudo eliminar el PDF {pdf_path}: {e}")
+
+        # Eliminar registro
+        await db.pool.execute(
+            "DELETE FROM patient_digital_records WHERE id = $1 AND tenant_id = $2",
+            record_id,
+            tenant_id,
+        )
+
+        await _nova_emit(
+            "DIGITAL_RECORD_DELETED",
+            {"record_id": record_id, "tenant_id": tenant_id, "patient_id": row["patient_id"]},
+        )
+
+        logger.info(f"Nova: eliminar_ficha_digital → {record_id} ({title})")
+        return f"✅ Ficha eliminada: *{title}*"
+
+    except Exception as e:
+        logger.error(f"_eliminar_ficha_digital error: {e}", exc_info=True)
+        return f"Error al eliminar: {str(e)}"
+
+
+async def _enviar_ficha_digital_whatsapp(args: Dict, tenant_id: int, user_role: str) -> str:
+    """Envía una ficha digital existente por WhatsApp al paciente con PDF adjunto."""
+    if user_role not in ("ceo", "secretary", "professional"):
+        return _role_error("enviar_ficha_digital_whatsapp", ["ceo", "secretary", "professional"])
+
+    patient_id = args.get("patient_id")
+    record_id = args.get("record_id")
+
+    if not patient_id:
+        return "Necesito el patient_id para enviar la ficha por WhatsApp."
+
+    try:
+        # 1. Obtener ficha
+        if record_id:
+            row = await db.pool.fetchrow(
+                """SELECT id, html_content, pdf_path, title FROM patient_digital_records
+                   WHERE id = $1 AND patient_id = $2 AND tenant_id = $3""",
+                record_id,
+                int(patient_id),
+                tenant_id,
+            )
+        else:
+            row = await db.pool.fetchrow(
+                """SELECT id, html_content, pdf_path, title FROM patient_digital_records
+                   WHERE patient_id = $1 AND tenant_id = $2
+                   ORDER BY created_at DESC LIMIT 1""",
+                int(patient_id),
+                tenant_id,
+            )
+
+        if not row:
+            return "No se encontró ninguna ficha digital para este paciente."
+
+        record_id = str(row["id"])
+        title = row["title"]
+
+        # 2. Asegurar PDF
+        pdf_path = row["pdf_path"]
+        if not pdf_path or not os.path.exists(pdf_path):
+            from services.digital_records_service import generate_pdf
+
+            output_dir = f"/app/uploads/digital_records/{tenant_id}"
+            os.makedirs(output_dir, exist_ok=True)
+            pdf_path = f"{output_dir}/{record_id}.pdf"
+            await generate_pdf(row["html_content"], pdf_path)
+            await db.pool.execute(
+                "UPDATE patient_digital_records SET pdf_path = $1, pdf_generated_at = NOW() WHERE id = $2 AND tenant_id = $3",
+                pdf_path,
+                record_id,
+                tenant_id,
+            )
+
+        # 3. Obtener paciente y teléfono
+        patient = await db.pool.fetchrow(
+            "SELECT first_name, last_name, phone_number FROM patients WHERE id = $1 AND tenant_id = $2",
+            int(patient_id),
+            tenant_id,
+        )
+        if not patient or not patient["phone_number"]:
+            return "El paciente no tiene un número de teléfono configurado."
+
+        patient_full_name = f"{patient['first_name']} {patient['last_name'] or ''}".strip()
+
+        from ycloud_client import normalize_phone_e164
+        clean_phone = normalize_phone_e164(patient["phone_number"].strip())
+
+        # 4. Credenciales YCloud
+        from core.credentials import YCLOUD_API_KEY, get_tenant_credential
+        api_key = await get_tenant_credential(tenant_id, YCLOUD_API_KEY)
+        if not api_key:
+            return "YCloud no está configurado."
+
+        from_number = await db.pool.fetchval(
+            "SELECT bot_phone_number FROM tenants WHERE id = $1", tenant_id
+        )
+        if not from_number:
+            from_number = await get_tenant_credential(tenant_id, "YCLOUD_WHATSAPP_NUMBER")
+
+        from ycloud_client import YCloudClient
+        yc = YCloudClient(api_key=api_key, business_number=from_number)
+
+        safe_title = (title or "documento").replace(" ", "_").replace("/", "-")
+        filename = f"{safe_title}.pdf"
+        caption = f"Hola {patient_full_name}, te adjuntamos tu ficha digital. ¡Cualquier duda nos avisas!"
+
+        try:
+            media_id = await yc.upload_media(pdf_path, phone_number=from_number)
+            await yc.send_document_by_media_id(
+                to_number=clean_phone, media_id=media_id, filename=filename,
+                caption=caption, from_number=from_number,
+            )
+        except Exception:
+            logger.exception("YCloud media upload failed in nova _enviar_ficha_digital_whatsapp")
+            return "Ocurrió un error al enviar la ficha por WhatsApp. Intentalo de nuevo."
+
+        # 5. Marcar como enviado
+        await db.pool.execute(
+            """UPDATE patient_digital_records
+               SET sent_to_whatsapp = $1, sent_via_whatsapp_at = NOW(),
+                   status = 'sent', updated_at = NOW()
+               WHERE id = $2 AND tenant_id = $3""",
+            clean_phone,
+            record_id,
+            tenant_id,
+        )
+
+        await _nova_emit(
+            "DIGITAL_RECORD_SENT_WHATSAPP",
+            {
+                "patient_id": int(patient_id),
+                "record_id": record_id,
+                "sent_to": clean_phone,
+                "tenant_id": tenant_id,
+            },
+        )
+
+        logger.info(f"Nova: enviar_ficha_digital_whatsapp → {record_id} → {clean_phone}")
+        return f"✅ Ficha *{title}* enviada por WhatsApp a {patient_full_name} ({clean_phone})"
+
+    except Exception as e:
+        logger.error(f"_enviar_ficha_digital_whatsapp error: {e}", exc_info=True)
+        return f"Error al enviar por WhatsApp: {str(e)}"
 
 
 async def _enviar_pdf_telegram(args: Dict, tenant_id: int) -> str:
