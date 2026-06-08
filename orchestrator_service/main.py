@@ -1745,6 +1745,7 @@ async def check_availability(
     exclude_dates: Optional[str] = None,
     min_time: Optional[str] = None,
     preferred_days: Optional[str] = None,
+    insurance_provider: Optional[str] = None,
 ):
     """
     Consulta la disponibilidad REAL de turnos para una fecha. Llamar UNA sola vez por pregunta del paciente.
@@ -1763,6 +1764,7 @@ async def check_availability(
     exclude_dates: (Opcional) Fechas específicas que el paciente RECHAZÓ, separadas por coma en formato YYYY-MM-DD. Ej: "2026-06-03", "2026-06-03,2026-06-05". Si el paciente dijo "el 3 de junio no puedo" o "mañana no puedo", pasá esas fechas acá para EXCLUIRLAS de los resultados. SIEMPRE pasar las fechas rechazadas por el paciente en TODAS las búsquedas siguientes.
     min_time: (Opcional) Hora MÍNIMA a partir de la cual buscar, en formato HH:MM (ej: "14:30", "15:00"). Es un FILTRO DURO: todos los slots antes de esa hora se EXCLUYEN. Usar SOLO cuando el paciente dice "después de las X", "a partir de las X", "recién a las X". Si se combina con time_preference, ambos filtros se aplican (intersección). Si min_time es más estricto que el límite de time_preference, min_time gana.
     preferred_days: (Opcional) Días de la semana que el paciente PREFIERE, separados por coma. Ej: "lunes,miércoles,viernes". La tool calcula automáticamente los días NO preferidos y los excluye. Si el paciente menciona varios días, pasalos TODOS — NUNCA le pidas que elija uno solo. Si se combina con exclude_days, gana la intersección (preferred menos excluded).
+    insurance_provider: (Opcional) Nombre de la obra social del paciente (ej. 'OSDE', 'Galeno'). PASALO SIEMPRE si el paciente mencionó tener obra social, para aplicar correctamente los filtros de agenda.
     La tool devuelve 2 opciones concretas de horario con sede. Presentá las opciones al paciente tal cual las recibís.
     """
     try:
@@ -2228,10 +2230,26 @@ async def check_availability(
                 logger.info(f"📅 Excluding dates: {_excluded_dates} from results")
 
         # ── SEMÁFORO DE OBRAS SOCIALES ──
-        if patient_row and patient_row.get("insurance_is_active"):
+        # Check explicit insurance_provider first, then fallback to patient_row
+        _mode = "immediate"
+        _delay = 0
+        _prov = None
+        
+        if insurance_provider:
+            tip_row = await db.pool.fetchrow(
+                "SELECT scheduling_mode, scheduling_delay_days FROM tenant_insurance_providers WHERE tenant_id = $1 AND provider_name ILIKE $2 AND is_active = true",
+                tenant_id, f"%{insurance_provider.strip()}%"
+            )
+            if tip_row:
+                _mode = tip_row.get("scheduling_mode") or "immediate"
+                _delay = tip_row.get("scheduling_delay_days") or 0
+                _prov = insurance_provider
+        elif patient_row and patient_row.get("insurance_is_active"):
             _mode = patient_row.get("scheduling_mode") or "immediate"
             _delay = patient_row.get("scheduling_delay_days") or 0
             _prov = patient_row.get("insurance_provider")
+            
+        if _prov:
             if _mode == "blocked":
                 logger.warning(f"🚫 SEMAPHORE: Blocked scheduling for patient {_ca_patient_id} due to insurance '{_prov}'")
                 return f"Por el momento tenemos suspendida temporalmente la atención por la cobertura {_prov}. Si te interesa, podemos ofrecerte un turno particular. ¿Querés que busquemos disponibilidad de forma particular?"
