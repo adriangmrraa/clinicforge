@@ -288,9 +288,30 @@ export default function LiquidationManager({ periodStart, periodEnd, formatCurre
   };
 
   const formatPeriod = (start: string, end: string) => {
-    const d = new Date(start + 'T00:00:00');
+    const sDate = new Date(start + 'T00:00:00');
+    const eDate = new Date(end + 'T00:00:00');
+    
+    // Check if it is a single full month
+    const isFullMonth = sDate.getDate() === 1 && 
+      eDate.getMonth() === sDate.getMonth() && 
+      eDate.getFullYear() === sDate.getFullYear() &&
+      new Date(eDate.getFullYear(), eDate.getMonth() + 1, 0).getDate() === eDate.getDate();
+      
     const months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-    return `${months[d.getMonth()]} ${d.getFullYear()}`;
+    
+    if (isFullMonth) {
+      return `${months[sDate.getMonth()]} ${sDate.getFullYear()}`;
+    }
+    
+    // If it's not a full month, show the start and end dates formatted
+    const formatSingleDate = (d: Date) => {
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = months[d.getMonth()];
+      const year = d.getFullYear();
+      return `${day} ${month} ${year}`;
+    };
+    
+    return `${formatSingleDate(sDate)} — ${formatSingleDate(eDate)}`;
   };
 
   if (error && liquidations.length === 0) {
