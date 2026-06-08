@@ -1139,6 +1139,7 @@ export default function ChatsView() {
         return {
           color: 'text-pink-600',
           bgColor: 'bg-[#E1306C]',
+          textColor: 'text-white',
           hoverBg: 'hover:bg-pink-500/10',
           selectedBg: 'bg-pink-500/10',
           borderColor: 'border-pink-500',
@@ -1149,6 +1150,7 @@ export default function ChatsView() {
         return {
           color: 'text-blue-600',
           bgColor: 'bg-[#1877F2]',
+          textColor: 'text-white',
           hoverBg: 'hover:bg-blue-500/10',
           selectedBg: 'bg-blue-500/10',
           borderColor: 'border-blue-500',
@@ -1157,11 +1159,12 @@ export default function ChatsView() {
         };
       case 'whatsapp':
         return {
-          color: 'text-green-600',
-          bgColor: 'bg-[#25D366]',
-          hoverBg: 'hover:bg-green-500/10',
-          selectedBg: 'bg-green-500/10',
-          borderColor: 'border-green-500',
+          color: 'text-[#005C4B]',
+          bgColor: 'bg-[#005C4B]',
+          textColor: 'text-[#E9EDEF]',
+          hoverBg: 'hover:bg-[#005C4B]/20',
+          selectedBg: 'bg-[#005C4B]/20',
+          borderColor: 'border-[#005C4B]',
           icon: <MessageCircle size={12} className="text-white" />,
           label: 'WhatsApp'
         };
@@ -1169,6 +1172,7 @@ export default function ChatsView() {
         return {
           color: 'text-white/60',
           bgColor: 'bg-gray-600',
+          textColor: 'text-white',
           hoverBg: 'hover:bg-white/[0.04]',
           selectedBg: 'bg-white/[0.04]',
           borderColor: 'border-gray-500',
@@ -1617,7 +1621,7 @@ export default function ChatsView() {
                           ? 'bg-white/[0.06] border border-white/[0.08] text-white'
                           : message.is_derivhumano
                             ? 'bg-orange-500/10 border border-orange-500/20 text-orange-400'
-                            : `${platform.bgColor} text-white`
+                            : `${platform.bgColor} ${platform.textColor || 'text-white'}`
                           }`}
                       >
                         {message.is_derivhumano && (
