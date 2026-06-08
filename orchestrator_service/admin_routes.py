@@ -6219,15 +6219,24 @@ async def update_patient(
     summary="Eliminar (soft-delete) un paciente",
 )
 async def delete_patient(id: int, tenant_id: int = Depends(get_resolved_tenant_id)):
-    """Marcar paciente como eliminado. Aislado por tenant_id (Regla de Oro)."""
+    """Eliminar paciente físicamente (hard-delete). Las FKs tienen CASCADE/SET NULL."""
     try:
-        result = await db.pool.execute(
-            "UPDATE patients SET status = 'deleted', updated_at = NOW() WHERE id = $1 AND tenant_id = $2",
-            id,
-            tenant_id,
+        # Verificar que el paciente existe antes de borrar
+        row = await db.pool.fetchrow(
+            "SELECT id, first_name, last_name, phone_number FROM patients WHERE id = $1 AND tenant_id = $2",
+            id, tenant_id,
         )
-        if result == "UPDATE 0":
+        if not row:
             raise HTTPException(status_code=404, detail="Paciente no encontrado")
+
+        await db.pool.execute(
+            "DELETE FROM patients WHERE id = $1 AND tenant_id = $2",
+            id, tenant_id,
+        )
+        logger.info(
+            f"🗑️ Patient {id} ({row['first_name']} {row['last_name'] or ''} - {row['phone_number']}) "
+            f"permanently deleted (tenant {tenant_id})"
+        )
         return {"status": "deleted", "id": id}
     except HTTPException:
         raise
