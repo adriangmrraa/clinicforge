@@ -51,14 +51,26 @@ async def create_execution_for_event(
                 continue
 
             # --- Check no duplicate execution running ---
-            existing = await pool.fetchval(
-                """SELECT id FROM automation_executions
-                   WHERE playbook_id = $1 AND tenant_id = $2 AND phone_number = $3
-                     AND status IN ('running', 'waiting_response', 'paused')""",
-                pb_id, tenant_id, phone_number,
-            )
+            # Dedup by appointment_id when available (each appointment gets its own execution).
+            # For triggers without appointment_id (e.g. new_lead), fall back to phone_number.
+            if appointment_id:
+                existing = await pool.fetchval(
+                    """SELECT id FROM automation_executions
+                       WHERE playbook_id = $1 AND tenant_id = $2 AND appointment_id = $3
+                         AND status IN ('running', 'waiting_response', 'paused')""",
+                    pb_id, tenant_id, appointment_id,
+                )
+                dup_key = f"appointment {appointment_id}"
+            else:
+                existing = await pool.fetchval(
+                    """SELECT id FROM automation_executions
+                       WHERE playbook_id = $1 AND tenant_id = $2 AND phone_number = $3
+                         AND status IN ('running', 'waiting_response', 'paused')""",
+                    pb_id, tenant_id, phone_number,
+                )
+                dup_key = phone_number
             if existing:
-                logger.info(f"⏭️ Playbook {pb_id} already running for {phone_number} (exec {existing})")
+                logger.info(f"⏭️ Playbook {pb_id} already running for {dup_key} (exec {existing})")
                 continue
 
             # --- Load first step to calculate initial delay ---
