@@ -66,6 +66,7 @@ function cleanStepForPost(s: StepData, idx: number): Record<string, any> {
     template_vars: safeDict(s.template_vars),
     message_text: s.message_text || null,
     instruction_source: s.instruction_source || 'from_treatment',
+    instruction_type: s.instruction_type || 'post',
     custom_instructions: s.custom_instructions || null,
     notify_channel: s.notify_channel || 'telegram',
     notify_message: s.notify_message || null,

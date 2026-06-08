@@ -1156,6 +1156,7 @@ class AutomationStep(Base):
     template_vars = Column(JSONB, server_default=text("'{}'::jsonb"))
     message_text = Column(Text)
     instruction_source = Column(Text, server_default="from_treatment")
+    instruction_type = Column(Text, server_default="post")
     custom_instructions = Column(Text)
     notify_channel = Column(Text, server_default="telegram")
     notify_message = Column(Text)

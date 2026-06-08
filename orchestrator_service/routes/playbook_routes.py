@@ -100,9 +100,6 @@ def _ensure_list(v: Any) -> list:
 
 
 class StepCreate(BaseModel):
-    class Config:
-        extra = "ignore"
-
     step_label: Optional[str] = None
     action_type: str = "send_text"
     delay_minutes: Optional[int] = 0
@@ -113,6 +110,7 @@ class StepCreate(BaseModel):
     template_vars: Optional[Any] = {}
     message_text: Optional[str] = None
     instruction_source: Optional[str] = "from_treatment"
+    instruction_type: Optional[str] = "post"
     custom_instructions: Optional[str] = None
     notify_channel: Optional[str] = "telegram"
     notify_message: Optional[str] = None
@@ -136,6 +134,7 @@ class StepCreate(BaseModel):
 
 class StepUpdate(StepCreate):
     action_type: Optional[str] = None
+    instruction_type: Optional[str] = "post"
 
 
 # ========================
@@ -859,11 +858,11 @@ async def _insert_step(playbook_id: int, order: int, data: dict) -> dict:
         INSERT INTO automation_steps
         (playbook_id, step_order, step_label, action_type, delay_minutes,
          schedule_hour_min, schedule_hour_max, template_name, template_lang, template_vars,
-         message_text, instruction_source, custom_instructions,
+         message_text, instruction_source, instruction_type, custom_instructions,
          notify_channel, notify_message, update_field, update_value,
          wait_timeout_minutes, response_rules, on_no_response, on_unclassified,
          on_response_next_step, on_no_response_next_step)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
         RETURNING *
     """,
         playbook_id, order,
@@ -877,6 +876,7 @@ async def _insert_step(playbook_id: int, order: int, data: dict) -> dict:
         json.dumps(tv),
         data.get("message_text"),
         data.get("instruction_source", "from_treatment"),
+        data.get("instruction_type", "post"),
         data.get("custom_instructions"),
         data.get("notify_channel", "telegram"),
         data.get("notify_message"),
