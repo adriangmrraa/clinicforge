@@ -618,9 +618,13 @@ def _format_post_instructions(instructions, treatment_name: str) -> list[str]:
 
     # Detect legacy timed-sequence list
     if isinstance(instructions, list):
-        # Take the first entry ("Inmediato") as the immediate post-op instructions
+        # Take the first entry ("Inmediato" / immediate) as the post-op instructions
         immediate = instructions[0] if instructions else {}
-        text = immediate.get("text", "") if isinstance(immediate, dict) else str(immediate)
+        if isinstance(immediate, dict):
+            # The data may use "text" (legacy) or "content" (newer UI format) as the key
+            text = immediate.get("text") or immediate.get("content") or ""
+        else:
+            text = str(immediate)
         if text.strip():
             bubbles.append(f"📋 Instrucciones post-tratamiento para {treatment_name}:")
             bubbles.append(text.strip())
