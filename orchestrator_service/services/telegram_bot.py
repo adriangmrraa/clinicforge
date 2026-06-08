@@ -1173,6 +1173,227 @@ async def _handle_start(update: Update, context) -> None:
     )
 
 
+# ── Send Instructions Command ─────────────────────────────────────────────
+
+
+async def _send_instrucciones_to_patient(
+    reply_method,
+    tenant_id: int,
+    patient: dict,
+    instruction_type: str,
+) -> None:
+    """Send pre/post instructions to a patient via WhatsApp.
+
+    Finds the relevant appointment (next future for 'pre', latest past for 'post'),
+    loads the treatment instructions from treatment_types, formats them using
+    the existing playbook_executor formatters, and sends via ResponseSender.
+
+    Args:
+        reply_method: An async callable used to reply to the user (e.g. update.message.reply_text)
+        tenant_id: Tenant ID for data isolation
+        patient: Patient dict with id, first_name, last_name, phone_number
+        instruction_type: 'pre' or 'post'
+    """
+    from db import db as db_pool
+    from jobs.playbook_executor import _format_pre_instructions, _format_post_instructions, _parse_jsonb_field
+    from services.response_sender import ResponseSender
+
+    patient_id = patient["id"]
+    phone = patient["phone_number"]
+    name = f"{patient['first_name']} {patient['last_name'] or ''}".strip()
+
+    async def reply(text: str, **kwargs):
+        """Shorthand to reply with consistent markdown by default."""
+        kwargs.setdefault("parse_mode", ParseMode.MARKDOWN)
+        await reply_method(text, **kwargs)
+
+    # Find the latest relevant appointment
+    if instruction_type == "pre":
+        apt = await db_pool.fetchrow("""
+            SELECT a.id, a.appointment_datetime, a.appointment_type AS type
+            FROM appointments a
+            WHERE a.tenant_id = $1 AND a.patient_id = $2
+              AND a.appointment_datetime >= NOW()
+              AND a.status IN ('scheduled', 'confirmed')
+            ORDER BY a.appointment_datetime ASC
+            LIMIT 1
+        """, tenant_id, patient_id)
+    else:
+        apt = await db_pool.fetchrow("""
+            SELECT a.id, a.appointment_datetime, a.appointment_type AS type
+            FROM appointments a
+            WHERE a.tenant_id = $1 AND a.patient_id = $2
+              AND a.appointment_datetime < NOW()
+            ORDER BY a.appointment_datetime DESC
+            LIMIT 1
+        """, tenant_id, patient_id)
+
+    if not apt:
+        label = "próximo turno futuro" if instruction_type == "pre" else "turno pasado"
+        await reply(f"❌ *{name}* no tiene {label}.")
+        return
+
+    apt_type = apt["type"]
+    if not apt_type:
+        await reply(f"❌ El turno de *{name}* no tiene tipo de tratamiento asignado.")
+        return
+
+    # Load instructions from treatment_types
+    field = "pre_instructions" if instruction_type == "pre" else "post_instructions"
+    row = await db_pool.fetchrow(
+        f"SELECT {field}, name FROM treatment_types WHERE tenant_id = $1 AND code = $2",
+        tenant_id, apt_type,
+    )
+
+    if not row:
+        await reply(f"❌ No encontré el tratamiento *'{apt_type}'* en el sistema.")
+        return
+
+    instructions = _parse_jsonb_field(row[field] if row else None)
+    treatment_name = row["name"] if row else apt_type
+
+    # Format bubbles using the same logic as playbook_executor
+    if instruction_type == "pre":
+        if isinstance(instructions, dict):
+            bubbles = _format_pre_instructions(instructions, treatment_name)
+        else:
+            bubbles = [str(instructions)] if instructions else []
+    else:
+        bubbles = _format_post_instructions(instructions, treatment_name)
+
+    if not bubbles or all(not (b or "").strip() for b in bubbles):
+        await reply(f"ℹ️ *{treatment_name}* no tiene instrucciones {instruction_type} cargadas.")
+        return
+
+    # Find the patient's WhatsApp conversation
+    conv = await db_pool.fetchrow(
+        "SELECT id, provider, channel, external_account_id, external_chatwoot_id "
+        "FROM chat_conversations WHERE tenant_id = $1 AND external_user_id = $2 "
+        "ORDER BY updated_at DESC LIMIT 1",
+        tenant_id, phone,
+    )
+
+    if not conv:
+        await reply(f"❌ *{name}* no tiene conversación activa de WhatsApp.")
+        return
+
+    # Send each bubble as a separate WhatsApp message
+    sent_count = 0
+    for i, bubble in enumerate(bubbles):
+        if not (bubble or "").strip():
+            continue
+        await ResponseSender.send_sequence(
+            tenant_id=tenant_id,
+            external_user_id=phone,
+            conversation_id=str(conv["id"]),
+            provider=conv.get("provider") or "ycloud",
+            channel=conv.get("channel") or "whatsapp",
+            account_id=str(conv.get("external_account_id") or ""),
+            cw_conv_id=str(conv.get("external_chatwoot_id") or ""),
+            messages_text=bubble.strip(),
+        )
+        sent_count += 1
+        if i < len(bubbles) - 1:
+            await asyncio.sleep(2)
+
+    type_label = "post-tratamiento" if instruction_type == "post" else "pre-tratamiento"
+    await reply(
+        f"✅ Instrucciones *{type_label}* de *{treatment_name}* enviadas a {name} "
+        f"({sent_count} mensaje{'s' if sent_count > 1 else ''})."
+    )
+
+
+async def _handle_instrucciones(update: Update, context) -> None:
+    """Handle /instrucciones command.
+
+    Usage: /instrucciones [pre|post] Nombre del paciente
+
+    Sends pre/post treatment instructions to the patient via WhatsApp
+    based on their latest relevant appointment.
+    """
+    chat_id = update.effective_chat.id
+    tenant_id = context.bot_data.get("tenant_id", 1)
+
+    user_info = await _verify_user(tenant_id, chat_id)
+    if not user_info:
+        await update.message.reply_text("🔒 No tenés autorización.")
+        return
+
+    # Parse: /instrucciones post Juan Pérez
+    text = (update.message.text or "").strip()
+    parts = text.split(maxsplit=2)
+
+    if len(parts) < 3:
+        await update.message.reply_text(
+            "📋 *Usá:* `/instrucciones [pre|post] Nombre del paciente`\n\n"
+            "Ejemplos:\n"
+            "• `/instrucciones post Juan Pérez`\n"
+            "• `/instrucciones pre María García`",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
+    instruction_type = parts[1].lower()
+    if instruction_type not in ("pre", "post"):
+        await update.message.reply_text(
+            "❌ El tipo debe ser `pre` o `post`.", parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
+    patient_query = parts[2].strip()
+    if not patient_query:
+        await update.message.reply_text("❌ Decime el nombre del paciente.")
+        return
+
+    # Search patients by name
+    from db import db as db_pool
+    like_q = f"%{patient_query}%"
+    patients = await db_pool.fetch(
+        """
+        SELECT id, first_name, last_name, phone_number, dni
+        FROM patients
+        WHERE tenant_id = $1
+          AND (first_name || ' ' || COALESCE(last_name, '')) ILIKE $2
+          AND status = 'active'
+        ORDER BY
+          CASE
+            WHEN LOWER(first_name || ' ' || COALESCE(last_name, '')) = LOWER($3) THEN 0
+            ELSE 1
+          END,
+          last_name, first_name
+        LIMIT 10
+        """,
+        tenant_id, like_q, patient_query,
+    )
+
+    if not patients:
+        await update.message.reply_text(
+            f"❌ No encontré ningún paciente '*{patient_query}*'.",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
+    if len(patients) == 1:
+        await _send_instrucciones_to_patient(update.message.reply_text, tenant_id, patients[0], instruction_type)
+        return
+
+    # Multiple matches — let the user pick with inline keyboard
+    keyboard = []
+    for p in patients:
+        label = f"{p['first_name']} {p['last_name'] or ''}".strip()
+        tel = p['phone_number'] or ''
+        if tel:
+            label += f" ☎️{tel[-4:]}"
+        keyboard.append([
+            InlineKeyboardButton(label, callback_data=f"inst:{instruction_type}:{p['id']}")
+        ])
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text(
+        "Varios pacientes coinciden. ¿Cuál es?",
+        reply_markup=reply_markup,
+    )
+
+
 async def _handle_help(update: Update, context) -> None:
     chat_id = update.effective_chat.id
     tenant_id = context.bot_data.get("tenant_id", 1)
@@ -1235,6 +1456,28 @@ async def _handle_callback(update: Update, context) -> None:
         )
         return
 
+    # Handle inst: callback (patient selection for send_instructions)
+    if query.data.startswith("inst:"):
+        chat_id = update.effective_chat.id
+        tenant_id = context.bot_data.get("tenant_id", 1)
+        user_info = await _verify_user(tenant_id, chat_id)
+        if not user_info:
+            await query.message.reply_text("🔒 No tenés autorización.")
+            return
+        parts = query.data.split(":", 2)
+        if len(parts) == 3:
+            _, inst_type, patient_id_str = parts
+            patient_id = int(patient_id_str)
+            from db import db as db_pool
+            patient = await db_pool.fetchrow(
+                "SELECT id, first_name, last_name, phone_number, dni FROM patients WHERE id = $1 AND tenant_id = $2",
+                patient_id, tenant_id,
+            )
+            if patient:
+                await query.message.reply_text(f"✅ Seleccionaste {patient['first_name']} {patient['last_name'] or ''}. Enviando...")
+                await _send_instrucciones_to_patient(query.message.reply_text, tenant_id, patient, inst_type)
+        return
+
     action_text = QUICK_ACTION_MAP.get(query.data)
     if not action_text:
         return
@@ -1293,6 +1536,8 @@ async def _start_bot_polling(tenant_id: int, bot_token: str, clinic_name: str):
         app.add_handler(CommandHandler("start", _handle_start))
         app.add_handler(CommandHandler("help", _handle_help))
         app.add_handler(CommandHandler("ayuda", _handle_help))
+        app.add_handler(CommandHandler("instrucciones", _handle_instrucciones))
+        app.add_handler(CommandHandler("send_instructions", _handle_instrucciones))
         app.add_handler(CommandHandler("status", lambda u, c: _handle_text(
             type('FakeUpdate', (), {'message': type('Msg', (), {'text': 'Dame resumen rápido: agenda hoy + pendientes + presupuestos', 'reply_text': u.message.reply_text})(), 'effective_chat': u.effective_chat})(),
             c
