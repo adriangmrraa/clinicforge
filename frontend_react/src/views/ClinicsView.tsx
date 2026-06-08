@@ -2928,17 +2928,17 @@ export default function ClinicsView() {
                                 <p className="text-xs text-white/30">{t('settings.insurance.fields.aiTemplatePlaceholder')}</p>
                             </div>
                             <div className="space-y-1">
-                                <label className="text-sm font-semibold text-white/60">{t('settings.insurance.schedulingMode') || 'Modo de Agendamiento'}</label>
+                                <label className="text-sm font-semibold text-white/60">{t('settings.insurance.fields.schedulingMode') || 'Modo de Agendamiento'}</label>
                                 <select value={insuranceForm.scheduling_mode || 'immediate'} onChange={e => setInsuranceForm(p => ({ ...p, scheduling_mode: e.target.value as any }))}
                                     className="w-full px-4 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white outline-none">
-                                    <option value="immediate" className="bg-[#0f1525]">{t('settings.insurance.modeImmediate') || 'Inmediato (Verde)'}</option>
-                                    <option value="delayed" className="bg-[#0f1525]">{t('settings.insurance.modeDelayed') || 'Diferido (Amarillo)'}</option>
-                                    <option value="blocked" className="bg-[#0f1525]">{t('settings.insurance.modeBlocked') || 'Bloqueado (Rojo)'}</option>
+                                    <option value="immediate" className="bg-[#0f1525]">{t('settings.insurance.fields.modeImmediate') || 'Inmediato (Verde)'}</option>
+                                    <option value="delayed" className="bg-[#0f1525]">{t('settings.insurance.fields.modeDelayed') || 'Diferido (Amarillo)'}</option>
+                                    <option value="blocked" className="bg-[#0f1525]">{t('settings.insurance.fields.modeBlocked') || 'Bloqueado (Rojo)'}</option>
                                 </select>
                             </div>
                             {insuranceForm.scheduling_mode === 'delayed' && (
                                 <div className="space-y-1">
-                                    <label className="text-sm font-semibold text-white/60">{t('settings.insurance.delayDays') || 'Días de diferimiento (Ej. 30)'}</label>
+                                    <label className="text-sm font-semibold text-white/60">{t('settings.insurance.fields.delayDays') || 'Días de diferimiento (Ej. 40)'}</label>
                                     <input type="number" min="0" value={insuranceForm.scheduling_delay_days ?? ''} onChange={e => setInsuranceForm(p => ({ ...p, scheduling_delay_days: e.target.value ? Number(e.target.value) : undefined }))}
                                         className="w-full px-4 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white outline-none" />
                                 </div>
