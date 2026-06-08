@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Settings, BarChart3, Zap, ZapOff, Play, Clock, Send } from 'lucide-react';
+import { Settings, BarChart3, Zap, ZapOff, Play, Clock, Send, Trash2 } from 'lucide-react';
 import { useTranslation } from '../../context/LanguageContext';
 import api from '../../api/axios';
 
@@ -24,6 +24,7 @@ interface PlaybookCardProps {
   onConfigure: (id: number) => void;
   onToggle: (id: number) => void;
   onStats: (id: number) => void;
+  onDelete: (id: number) => void;
 }
 
 const CATEGORY_COLORS: Record<string, { bg: string; text: string; border: string }> = {
@@ -44,7 +45,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   custom: 'Personalizado',
 };
 
-export default function PlaybookCard({ playbook, onConfigure, onToggle, onStats }: PlaybookCardProps) {
+export default function PlaybookCard({ playbook, onConfigure, onToggle, onStats, onDelete }: PlaybookCardProps) {
   const { t } = useTranslation();
   const colors = CATEGORY_COLORS[playbook.category] || CATEGORY_COLORS.custom;
   const stats = playbook.stats_cache || {};
@@ -162,6 +163,13 @@ export default function PlaybookCard({ playbook, onConfigure, onToggle, onStats 
         >
           <Settings size={14} />
           {t('playbooks.configure')}
+        </button>
+        <button
+          onClick={() => onDelete(playbook.id)}
+          className="p-2 text-white/40 hover:text-red-400 hover:bg-red-500/[0.08] rounded-lg transition-colors"
+          title="Eliminar regla"
+        >
+          <Trash2 size={16} />
         </button>
       </div>
     </div>

@@ -186,6 +186,17 @@ export default function AutomationView() {
     setConfigModal({ open: true, playbookId: id });
   };
 
+  const handleDelete = async (id: number) => {
+    if (!confirm('¿Eliminar esta regla de automatización? Se borrarán todos sus pasos y ejecuciones.')) return;
+    try {
+      await api.delete(`/admin/playbooks/${id}`);
+      await loadPlaybooks();
+    } catch (e: any) {
+      const msg = e?.response?.data?.detail || 'Error al eliminar la regla';
+      alert(msg);
+    }
+  };
+
   const filteredPlaybooks = categoryFilter === 'all'
     ? playbooks
     : playbooks.filter(p => p.category === categoryFilter);
@@ -280,6 +291,7 @@ export default function AutomationView() {
                     playbook={pb}
                     onConfigure={handleConfigure}
                     onToggle={handleToggle}
+                    onDelete={handleDelete}
                   />
                 ))}
                 {filteredPlaybooks.length === 0 && (
