@@ -1,0 +1,115 @@
+Esta es la regla de pre tratamiento que tengo, pero sin embargo no se mandan las instrucciones pre tratamiento cuando agendo un turno. Pero actualmente no se manda nada. El problema que noto es que cuando quiero marcar el check de post tratamiento o pre tratamiento y guardo los cambios  , no persiste el check en pre o post, entiendes? entonces no queda guardado nunca, ya que cuando bvuelvo a ingresar a la regla, no aparece marcado ni post ni pre.
+
+
+Regla de automatizacion:
+
+Identidad
+Dale un nombre claro que describa el objetivo de esta estrategia. La categoría te ayuda a organizarlas visualmente en la galería.
+
+Nombre de la estrategia
+Pretratamiento
+Categoría
+Clínico
+Descripción (qué hace y para qué)
+Manda las instrucciones pre tratamiento al instante en que se agenda un turno
+¿Cuándo se activa?
+Elegí qué evento dispara esta secuencia. Por ejemplo, "Turno completado" se activa cuando la doctora marca un turno como atendido.
+
+
+📅 Turno creado
+¿Para quién?
+Filtrá para qué tratamientos aplica esta estrategia. Si no seleccionás ninguno, se aplica a todos.
+
+Filtrar por tratamientos (vacío = todos)
+ATM
+Consulta de Cirugía C
+Consulta de Cirugía S
+Consulta General
+Consulta Urgencia
+Endolifting
+Blanqueamiento Diamante
+Carillas/Estetica Anterior
+Estética Facial Avanzada
+Estética Facial Simple
+Implante Complejo (Protocolo CIMA)
+Implante Guiado Tomográficamente
+Implante Simple (Protocolo RISA)
+Endodoncia
+Restauración Compleja
+Restauración Simple
+Control Ortodoncia
+Ortodoncia
+Control / Revisión
+Limpieza Dental
+Injerto / Regeneración Ósea
+Rehabilitación Compleja
+Rehabilitación Integral
+Rehabilitación Simple
+Secuencia de pasos (1)
+Armá la secuencia paso a paso. Cada paso se ejecuta después del anterior con el delay que configures. Usá ⬆️⬇️ para reordenar.
+
+📋 Regla de WhatsApp: Para iniciar una conversación o reabrir después de 24h sin respuesta, es obligatorio usar una Plantilla HSM aprobada. Los mensajes de texto libre solo funcionan dentro de la ventana de 24h. Los mensajes al equipo por Telegram no tienen esta restricción.
+
+Mandar instrucciones pre tratamiento
+Paso 1 · Instrucciones
+1
+Mandar instrucciones pre tratamiento
+
+Nombre del paso
+Mandar instrucciones pre tratamiento
+Tipo de acción
+Enviar instrucciones del tratamiento
+Envía automáticamente las instrucciones post-operatorias configuradas en el tratamiento.
+
+¿Cuándo ejecutar?
+0
+
+Inmediato
+Inmediato
+30min
+1h
+2h
+3h
+6h
+12h
+24h
+48h
+7d
+30d
+
+---------------Aqui en esta seccion es que no puedo marcar ni pre ni post. Y debes solucionarlo. Y el objetivo de esta regla es que se manden la sinstrucciones pre tratamiento de ciertos tratamientos, al instante en que se agenda el turno, entiendes? Peor no funciona, actualmente no funciona digamos. La idea es que se agarre la informacion que esta guardada en cada tratamiento en la seccion de instrucciones pre tratamiento y que eso se junte todo en un mensaje digamos y que sea enviado, ok?-----------
+
+Tipo de instrucción
+Pre-tratamiento
+Post-tratamiento
+Fuente de instrucciones
+Del tratamiento (automático)
+Personalizadas
+Manejo de respuestas
+Reglas por palabras clave
+Definí grupos de palabras clave para clasificar respuestas automáticamente. Incluí conjugaciones: "dolor", "duele", "me duele". Separalas con coma. El sistema busca coincidencia exacta de cada palabra en el mensaje.
+
+Agregar regla de palabras clave
+Si no responde
+¿Qué hacer si el paciente no responde en el tiempo configurado?
+
+
+Continuar al siguiente paso
+Si la respuesta no se clasifica
+¿Qué hacer si la respuesta del paciente no coincide con ninguna palabra clave ni botón?
+
+
+Pasar al agente IA
+Agregar paso
+Controles de seguridad
+Controlá cuántos mensajes por día puede recibir un paciente y en qué horarios. La secuencia se detiene automáticamente si el paciente agenda, si un humano toma el chat, o si pide que no le escriban más.
+
+Máximo mensajes/día
+2 por día
+Enviar desde
+7:00
+Enviar hasta
+21:00
+Detener si el paciente agenda
+Detener si interviene un humano
+Detener si el paciente pide no recibir más

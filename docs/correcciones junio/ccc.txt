@@ -1,0 +1,23 @@
+INFO:     connection closed
+{"event": "\ud83d\udd0c Client disconnected: r6ggHVeCObMrA8D0AAAB"}
+INFO:     10.11.0.23:54612 - "WebSocket /socket.io/?EIO=4&transport=websocket" [accepted]
+INFO:     connection open
+{"event": "\ud83d\udd0c Client connected: wzO4o-Y4E9EZwn3PAAAF \u2192 room tenant:1"}
+{"event": "\ud83d\udcdd audit_log: status_changed apt=f73cc6eb-6e15-4a27-a47b-cf9d95de0767 actor=staff_user/13c7441d-91bd-4324-bb08-3ebf425e0046 channel=web_admin"}
+{"event": "\ud83d\udce1 Socket event APPOINTMENT_UPDATED emitted without tenant_id \u2014 broadcasting to all"}
+{"event": "\ud83d\udce1 Socket event emitted: APPOINTMENT_UPDATED (tenant=None)"}
+{"event": "\ud83d\udccb Playbook trigger: appointment_completed for f73cc6eb-6e15-4a27-a47b-cf9d95de0767"}
+{"event": "\ud83d\ude80 Created execution 222 for playbook 266 (trigger=appointment_completed, phone=+5493704868421, next_at=2026-06-08 12:08:51.579300+00:00)"}
+{"event": "\ud83d\udcdd audit_log: status_changed apt=f73cc6eb-6e15-4a27-a47b-cf9d95de0767 actor=staff_user/13c7441d-91bd-4324-bb08-3ebf425e0046 channel=web_admin"}
+{"event": "\ud83d\udce1 Socket event APPOINTMENT_UPDATED emitted without tenant_id \u2014 broadcasting to all"}
+{"event": "\ud83d\udce1 Socket event emitted: APPOINTMENT_UPDATED (tenant=None)"}
+
+
+nuevos logs:
+
+{"event": "\u2699\ufe0f Playbook executor: 1 pending executions"}
+{"event": "\u25b6\ufe0f Executing step 0 (send_instructions) for execution 222"}
+{"event": "send_instructions: apt_type='cirugia_compleja', field='post_instructions', row_found=True"}
+{"event": "send_instructions: instructions_type=list, value=[{\"timing\": \"immediate\", \"content\": \"Es esperable presentar inflamaci\u00f3n o molestias leves durante las primeras horas posteriores al procedimiento.\\nAplicar fr\u00edo local externo en la zona intervenida durante las primeras 24 horas.\\nEvitar enjuagues, escupir o realizar movimientos de succi\u00f3n en las primeras horas.\\nMantener reposo relativo y evitar esfuerzos f\u00edsicos.\\nIndicar dieta blanda y evitar alimentos calientes durante las primeras 24\u201348 horas.\\nNo fumar ni consumir alcohol durante el per\u00edodo de cicatrizaci\u00f3n.\\nMantener higiene bucal cuidadosa, seg\u00fan indicaci\u00f3n profesional.\\nCumplir con la medicaci\u00f3n indicada.\\nAnte cualquier s\u00edntoma fuera de lo esperado, comunicarse con el consultorio.\"}, {\"timing\": \"24h\", \"content\": \"Hola, \u00bfc\u00f3mo est\u00e1s?\\n\\nTe escribo para saber c\u00f3mo evolucionaste despu\u00e9s del procedimiento.\\n\\n\u00bfTuviste dolor, inflamaci\u00f3n o alguna molestia fuera de lo esperado?\\n\\nSi quer\u00e9s, pod\u00e9s contarme c\u00f3mo te sent\u00eds y te orientamos.\"}]"}
+{"event": "send_instructions: no instructions found, skipping"}
+{"event": "\u2705 Execution 222 completed (all steps done)"}

@@ -1,0 +1,62 @@
+Asi me llego el mensaje de instrucciones pre tratamiento, ahora si llega:
+
+
+[8:06 a. m., 8/6/2026] Dra Laura Delgado Clinica: "fasting_hours": null, "general_notes": "Los procedimientos quirúrgicos se indican siempre bajo diagnóstico previo y planificación individualizada.\nEl tipo de intervención, el ámbito (consultorio o quirófano) y la anestesia se definen según cada caso, priorizando la seguridad del paciente.\nSe brindarán todas las indicaciones pre y postoperatorias correspondientes al momento del tratamiento.", "what_to_bring": ["Si contás con estudios previos (radiografías, tomografía u otros), podés traerlos.
+
+[8:06 a. m., 8/6/2026] Dra Laura Delgado Clinica: En caso de requerir autorización, se indicará el procedimiento durante la consulta."], "fasting_required": null, "medications_to_take": ["Tomar la medicación indicada por el profesional según cada caso."], "medications_to_avoid": ["Evitar la ingesta de aspirina, antiinflamatorios o anticoagulantes sin indicación médica previa a la cirugía.
+
+[8:06 a. m., 8/6/2026] Dra Laura Delgado Clinica: En caso de medicación habitual, se evaluará cada situación en forma individual."], "preparation_days_before": null}
+
+
+----
+
+
+Noto dos errores que tenes que solucionar. La seccion de Notas generales no es para el paciente, eso e smas interno, por lo que no debe mandarse como instruccion pre tratamiento. Y otra cosa es que se debe limpiar el mensaje, debe ser un mensaje limpio digamos, ordenado, sin corchetes, entiendes? En este caso deberia ser algo asi el mensaje:
+
+
+Te dejo las instrucciones pretratamiento para (TRATAMIENTO EN CUESTION):
+
+(En otra burbuja aparte): Si contás con estudios previos (radiografías, tomografía u otros), podés traerlos. En caso de requerir autorización, se indicará el procedimiento durante la consulta.
+
+(En otra burbuja aparte): Tomar la medicación indicada por el profesional según cada caso. Evitar la ingesta de aspirina, antiinflamatorios o anticoagulantes sin indicación médica previa a la cirugía. En caso de medicación habitual, se evaluará cada situación en forma individual. 
+
+
+----
+
+Esto debe aplciar tambien para las instrucciones post tratamiento, ok? Lo que se usa en post tratamiento son secuencias programadas digamos. Osea hay instrucciones ahi cargadas, y de ahi se debe obtener el mensaje para el cliente, en este caso en cirugia esta una regla que dice inmediatamente, que eso no importa digamos, lo que importa es el mensaje que esta seteado como post tratamiento, es lo que se debe obtener y mandarse como indicacion post tratamiento, entiendes? Osea de ahi se debe obtener el mensaje digamos. 
+
+En el caso de cirugia compleja que es el tratamiento con el que estoy haciendo la spruebas tengo esto en pos trata,miento: 
+
+Instrucciones Post-tratamiento
+Protocolo de recuperación
+Secuencia programada
+Modo legacy: secuencia de mensajes con timing programado.
+
+1- Esto es lo primero que tengo ahi, y es el que se debe mandar como instruccion post tratamiento, el que dice inmediato seria inmediato cuando la regla lo diga digamos, ok?:
+
+Inmediato
+
+Es esperable presentar inflamación o molestias leves durante las primeras horas posteriores al procedimiento.
+Aplicar frío local externo en la zona intervenida durante las primeras 24 horas.
+Evitar enjuagues, escupir o realizar movimientos de succión en las primeras horas.
+Mantener reposo relativo y evitar esfuerzos físicos.
+Indicar dieta blanda y evitar alimentos calientes durante las primeras 24–48 horas.
+No fumar ni consumir alcohol durante el período de cicatrización.
+Mantener higiene bucal cuidadosa, según indicación profesional.
+Cumplir con la medicación indicada.
+Ante cualquier síntoma fuera de lo esperado, comunicarse con el consultorio.
+
+
+2- Y esto esta como algo extra, pero esto no se usaria digamos, osea no interesa. Solo se debe usar para instruccion post tratamiento lo que esta como inmediato, ya que este mensaje a las 24 horas no se podria mandar porque no hay ventana de 24 horas digamos, aca corresponderia hacer otra regla y que sea enviar una plantilla hsm papra preguntar como se sintio leugo de la operacion y demas, entiendes?:
+
+A las 24 horas
+
+Hola, ¿cómo estás?
+
+Te escribo para saber cómo evolucionaste después del procedimiento.
+
+¿Tuviste dolor, inflamación o alguna molestia fuera de lo esperado?
+
+Si querés, podés contarme cómo te sentís y te orientamos.
+Agregar instrucción
+

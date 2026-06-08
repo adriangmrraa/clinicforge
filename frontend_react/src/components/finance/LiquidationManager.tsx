@@ -288,8 +288,8 @@ export default function LiquidationManager({ periodStart, periodEnd, formatCurre
   };
 
   const formatPeriod = (start: string, end: string) => {
-    const sDate = new Date(start + 'T00:00:00');
-    const eDate = new Date(end + 'T00:00:00');
+    const sDate = new Date(start && start.includes('T') ? start : start + 'T00:00:00');
+    const eDate = new Date(end && end.includes('T') ? end : end + 'T00:00:00');
     
     // Check if it is a single full month
     const isFullMonth = sDate.getDate() === 1 && 
@@ -682,7 +682,7 @@ export default function LiquidationManager({ periodStart, periodEnd, formatCurre
                                       className="flex items-center justify-between bg-white/[0.03] rounded-lg px-3 py-2 text-xs"
                                     >
                                       <span className="text-white/50">
-                                        {new Date(payout.payment_date + 'T00:00:00').toLocaleDateString('es-AR')}
+                                        {payout.payment_date ? new Date(payout.payment_date.includes('T') ? payout.payment_date : payout.payment_date + 'T00:00:00').toLocaleDateString('es-AR') : '-'}
                                       </span>
                                       <span className="text-white/60 capitalize">{payout.payment_method}</span>
                                       {payout.reference_number && (
@@ -881,7 +881,7 @@ function TreatmentGroupDetail({ group, formatCurrency }: { group: TreatmentGroup
           {group.sessions.map((session, si) => (
             <div key={si} className="flex items-center justify-between text-xs py-1.5 border-t border-white/[0.03]">
               <span className="text-white/40">
-                {new Date(session.date + 'T00:00:00').toLocaleDateString('es-AR')}
+                {session.date ? new Date(session.date.includes('T') ? session.date : session.date + 'T00:00:00').toLocaleDateString('es-AR') : '-'}
               </span>
               <span className="text-white/50">{session.billing_notes || session.payment_status}</span>
               <span className="text-white/60">{formatCurrency(session.billing_amount)}</span>

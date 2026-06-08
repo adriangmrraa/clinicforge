@@ -120,7 +120,7 @@ export default function ProfessionalLiquidationsView() {
   };
 
   const formatPeriod = (start: string, end: string) => {
-    const d = new Date(start + 'T00:00:00');
+    const d = new Date(start && start.includes('T') ? start : start + 'T00:00:00');
     const months = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
     return `${months[d.getMonth()]} ${d.getFullYear()}`;
   };
@@ -301,7 +301,7 @@ export default function ProfessionalLiquidationsView() {
                         <div className="text-center">
                           <p className="text-[10px] text-white/30 uppercase">{t('professional_liquidations.paid_on', 'Pagado el')}</p>
                           <p className="font-medium text-emerald-400 text-xs">
-                            {new Date(liq.paid_at + 'T00:00:00').toLocaleDateString('es-AR')}
+                            {liq.paid_at ? new Date(liq.paid_at.includes('T') ? liq.paid_at : liq.paid_at + 'T00:00:00').toLocaleDateString('es-AR') : '-'}
                           </p>
                         </div>
                       )}
@@ -392,7 +392,7 @@ export default function ProfessionalLiquidationsView() {
                               className="flex items-center justify-between bg-white/[0.03] rounded-lg px-3 py-2 text-xs"
                             >
                               <span className="text-white/50">
-                                {new Date(payout.payment_date + 'T00:00:00').toLocaleDateString('es-AR')}
+                                {payout.payment_date ? new Date(payout.payment_date.includes('T') ? payout.payment_date : payout.payment_date + 'T00:00:00').toLocaleDateString('es-AR') : '-'}
                               </span>
                               <span className="text-white/60 capitalize">{payout.payment_method}</span>
                               {payout.reference_number && (
@@ -470,7 +470,7 @@ function TreatmentGroupCard({ group, formatCurrency }: { group: TreatmentGroup; 
           {group.sessions.map((session, si) => (
             <div key={si} className="flex items-center justify-between text-xs py-1.5 border-t border-white/[0.03]">
               <span className="text-white/40">
-                {new Date(session.date + 'T00:00:00').toLocaleDateString('es-AR')}
+                {session.date ? new Date(session.date.includes('T') ? session.date : session.date + 'T00:00:00').toLocaleDateString('es-AR') : '-'}
               </span>
               <span className="text-white/50">{session.description}</span>
               <span className="text-white/60">{formatCurrency(session.amount)}</span>

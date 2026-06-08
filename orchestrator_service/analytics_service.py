@@ -451,11 +451,32 @@ class AnalyticsService:
             # --- Aggregation in Python ---
             # professionals_map: { prof_id: { meta, summary, treatment_groups_map } }
             # treatment_groups_map: { group_key: { meta, sessions, totals } }
-            # group_key = (patient_id, f"plan:{plan_id}") for plan appointments
-            #           = (patient_id, treatment_code)    for legacy appointments
+            # group_key = (patient_id, treatment_code)
             professionals_map: dict = {}
             all_patient_ids: set = set()
             plan_ids_found: set = set()
+
+            for row in rows:
+                plan_id = row["plan_id"]
+                plan_status = row["plan_status"]
+                if plan_id and plan_status in ("approved", "in_progress"):
+                    plan_ids_found.add(plan_id)
+
+            plan_paid_map: dict = {}
+            if plan_ids_found:
+                plan_payment_rows = await db.pool.fetch(
+                    """
+                    SELECT plan_id, COALESCE(SUM(amount), 0) AS total_paid
+                    FROM treatment_plan_payments
+                    WHERE tenant_id = $1 AND plan_id = ANY($2)
+                    GROUP BY plan_id
+                    """,
+                    tenant_id,
+                    list(plan_ids_found),
+                )
+                plan_paid_map = {
+                    r["plan_id"]: float(r["total_paid"]) for r in plan_payment_rows
+                }
 
             for row in rows:
                 prof_id = row["professional_id"]
@@ -464,6 +485,8 @@ class AnalyticsService:
                 billing_amount = float(row["billing_amount"] or 0)
                 pstatus = row["payment_status"] or "pending"
                 plan_id = row["plan_id"]
+                plan_status = row["plan_status"]
+                plan_approved_total = float(row["plan_approved_total"] or 0)
 
                 # Initialise professional entry
                 if prof_id not in professionals_map:
@@ -484,52 +507,28 @@ class AnalyticsService:
                 prof_entry = professionals_map[prof_id]
                 tg_map = prof_entry["treatment_groups_map"]
 
-                # Group by plan_id when linked to a plan, otherwise by (patient_id, treatment_code)
-                if plan_id:
-                    group_key = (pat_id, f"plan:{plan_id}")
-                    plan_ids_found.add(plan_id)
-                else:
-                    group_key = (pat_id, treatment_code)
+                # Unified group key by (patient_id, treatment_code)
+                group_key = (pat_id, treatment_code)
 
                 # Initialise treatment group
                 if group_key not in tg_map:
-                    if plan_id:
-                        tg_map[group_key] = {
-                            "patient_id": pat_id,
-                            "patient_name": (row["patient_name"] or "").strip(),
-                            "patient_phone": row["patient_phone"] or "",
-                            "treatment_code": treatment_code,
-                            "treatment_name": row["plan_name"] or "Plan sin nombre",
-                            "type": "plan",
-                            "plan_id": str(plan_id),
-                            "plan_name": row["plan_name"],
-                            "plan_status": row["plan_status"],
-                            "approved_total": float(row["plan_approved_total"] or 0),
-                            "sessions": [],
-                            # total_billed will be overwritten after plan_payments query
-                            "total_billed": float(row["plan_approved_total"] or 0),
-                            "total_paid": 0.0,
-                            "total_pending": 0.0,
-                            "session_count": 0,
-                        }
-                    else:
-                        tg_map[group_key] = {
-                            "patient_id": pat_id,
-                            "patient_name": (row["patient_name"] or "").strip(),
-                            "patient_phone": row["patient_phone"] or "",
-                            "treatment_code": treatment_code,
-                            "treatment_name": row["treatment_name"]
-                            or treatment_code
-                            or "Sin tratamiento",
-                            "type": "appointment",
-                            "plan_id": None,
-                            "plan_name": None,
-                            "sessions": [],
-                            "total_billed": 0.0,
-                            "total_paid": 0.0,
-                            "total_pending": 0.0,
-                            "session_count": 0,
-                        }
+                    tg_map[group_key] = {
+                        "patient_id": pat_id,
+                        "patient_name": (row["patient_name"] or "").strip(),
+                        "patient_phone": row["patient_phone"] or "",
+                        "treatment_code": treatment_code,
+                        "treatment_name": row["treatment_name"]
+                        or treatment_code
+                        or "Sin tratamiento",
+                        "type": "appointment",
+                        "plan_id": None,
+                        "plan_name": None,
+                        "sessions": [],
+                        "total_billed": 0.0,
+                        "total_paid": 0.0,
+                        "total_pending": 0.0,
+                        "session_count": 0,
+                    }
 
                 group = tg_map[group_key]
 
@@ -546,6 +545,33 @@ class AnalyticsService:
                 excluded_from_totals = appt_status in ("cancelled", "no_show")
                 billing_for_totals = 0.0 if excluded_from_totals else billing_amount
 
+                if not excluded_from_totals:
+                    is_prop_plan = plan_id and plan_status in ("approved", "in_progress")
+                    if is_prop_plan:
+                        total_plan_paid = plan_paid_map.get(plan_id, 0.0)
+                        if plan_approved_total > 0:
+                            ratio = total_plan_paid / plan_approved_total
+                            if ratio > 1.0:
+                                ratio = 1.0
+                        else:
+                            ratio = 0.0
+                        paid_for_appt = billing_for_totals * ratio
+                    else:
+                        paid_for_appt = billing_for_totals if pstatus == 'paid' else 0.0
+                else:
+                    paid_for_appt = 0.0
+
+                pending_for_appt = max(billing_for_totals - paid_for_appt, 0.0)
+
+                display_payment_status = pstatus
+                if not excluded_from_totals and plan_id and plan_status in ("approved", "in_progress"):
+                    if paid_for_appt >= billing_for_totals:
+                        display_payment_status = 'paid'
+                    elif paid_for_appt > 0:
+                        display_payment_status = 'partial'
+                    else:
+                        display_payment_status = 'pending'
+
                 group["sessions"].append(
                     {
                         "appointment_id": row["appointment_id"],
@@ -554,68 +580,29 @@ class AnalyticsService:
                         else None,
                         "status": appt_status,
                         "billing_amount": billing_amount,  # original, always shown
-                        "payment_status": pstatus,
+                        "amount": billing_amount,  # compatibility duplicate
+                        "payment_status": display_payment_status,
                         "billing_notes": row["billing_notes"],
                         "clinical_notes": merged_notes,
+                        "description": row["billing_notes"] or display_payment_status,  # compatibility duplicate
                     }
                 )
 
-                # Accumulate group totals (cancelled/no_show count 0)
-                # For plan groups: billed/paid/pending come from plan-level payment query below
-                # For appointment groups: accumulate per-session billing as before
+                # Accumulate group totals
                 group["session_count"] += 1
-                if group.get("type") != "plan":
-                    group["total_billed"] += billing_for_totals
-                    if not excluded_from_totals:
-                        if pstatus == "paid":
-                            group["total_paid"] += billing_for_totals
-                        else:
-                            group["total_pending"] += billing_for_totals
+                group["total_billed"] += billing_for_totals
+                group["total_paid"] += paid_for_appt
+                group["total_pending"] += pending_for_appt
 
                 # Accumulate professional summary
-                # For plan groups we defer the amount contribution until after plan_payments query
                 summary = prof_entry["summary"]
-                if group.get("type") != "plan":
-                    summary["billed"] += billing_for_totals
-                    if not excluded_from_totals:
-                        if pstatus == "paid":
-                            summary["paid"] += billing_for_totals
-                        else:
-                            summary["pending"] += billing_for_totals
+                summary["billed"] += billing_for_totals
+                summary["paid"] += paid_for_appt
+                summary["pending"] += pending_for_appt
                 summary["appointments"] += 1
                 summary["patients"].add(pat_id)
 
                 all_patient_ids.add(pat_id)
-
-            # --- Fetch plan payments and resolve plan group totals ---
-            if plan_ids_found:
-                plan_payment_rows = await db.pool.fetch(
-                    """
-                    SELECT plan_id, COALESCE(SUM(amount), 0) AS total_paid
-                    FROM treatment_plan_payments
-                    WHERE tenant_id = $1 AND plan_id = ANY($2)
-                    GROUP BY plan_id
-                    """,
-                    tenant_id,
-                    list(plan_ids_found),
-                )
-                plan_paid_map: dict = {
-                    str(r["plan_id"]): float(r["total_paid"]) for r in plan_payment_rows
-                }
-
-                # Update plan groups with correct paid/pending and add to professional summary
-                for prof_entry in professionals_map.values():
-                    summary = prof_entry["summary"]
-                    for group in prof_entry["treatment_groups_map"].values():
-                        if group.get("type") != "plan":
-                            continue
-                        paid = plan_paid_map.get(group["plan_id"], 0.0)
-                        group["total_paid"] = paid
-                        group["total_pending"] = max(group["total_billed"] - paid, 0.0)
-                        # Now contribute plan amounts to professional summary
-                        summary["billed"] += group["total_billed"]
-                        summary["paid"] += group["total_paid"]
-                        summary["pending"] += group["total_pending"]
 
             # --- Build final response structure ---
             total_billed = 0.0
@@ -653,13 +640,14 @@ class AnalyticsService:
                             "patient_phone": g["patient_phone"],
                             "treatment_code": g["treatment_code"],
                             "treatment_name": g["treatment_name"],
-                            "type": g.get("type", "appointment"),
-                            "plan_id": g.get("plan_id"),
-                            "plan_name": g.get("plan_name"),
-                            "plan_status": g.get("plan_status"),
-                            "approved_total": g.get("approved_total"),
+                            "type": "appointment",
+                            "plan_id": None,
+                            "plan_name": None,
+                            "plan_status": None,
+                            "approved_total": None,
                             "sessions": g["sessions"],
                             "total_billed": round(g["total_billed"], 2),
+                            "total": round(g["total_billed"], 2),  # compatibility duplicate
                             "total_paid": round(g["total_paid"], 2),
                             "total_pending": round(g["total_pending"], 2),
                             "session_count": g["session_count"],

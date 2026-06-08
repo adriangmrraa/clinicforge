@@ -148,10 +148,17 @@ class LiquidationService:
                 COALESCE(a.billing_amount, tt.base_price, 0) AS billing_amount,
                 tt.code AS treatment_code,
                 tt.name AS treatment_name,
-                a.plan_item_id
+                a.plan_item_id,
+                tpi.plan_id,
+                tp.approved_total AS plan_approved_total,
+                tp.status AS plan_status
             FROM appointments a
             LEFT JOIN treatment_types tt
                 ON tt.code = a.appointment_type AND tt.tenant_id = $1
+            LEFT JOIN treatment_plan_items tpi
+                ON tpi.id = a.plan_item_id AND tpi.tenant_id = $1
+            LEFT JOIN treatment_plans tp
+                ON tp.id = tpi.plan_id AND tp.tenant_id = $1
             WHERE a.tenant_id = $1
               AND a.professional_id = $2
               AND a.appointment_datetime >= $3
@@ -178,6 +185,29 @@ class LiquidationService:
                 detail="No se encontraron turnos registrados para este profesional en el período especificado."
             )
 
+        # Collect plan IDs to fetch payments in bulk
+        plan_ids = set()
+        for row in appt_rows:
+            p_id = row.get("plan_id")
+            p_status = row.get("plan_status")
+            if p_id and p_status in ("approved", "in_progress"):
+                plan_ids.add(p_id)
+
+        plan_paid_map = {}
+        if plan_ids:
+            plan_payment_rows = await pool.fetch(
+                """
+                SELECT plan_id, COALESCE(SUM(amount), 0) AS total_paid
+                FROM treatment_plan_payments
+                WHERE tenant_id = $1 AND plan_id = ANY($2)
+                GROUP BY plan_id
+                """,
+                tenant_id,
+                list(plan_ids),
+            )
+            for r in plan_payment_rows:
+                plan_paid_map[r["plan_id"]] = Decimal(str(r["total_paid"]))
+
         # 4. Calculate totals with point-in-time commission lookup
         total_billed = Decimal("0")
         total_paid = Decimal("0")
@@ -190,6 +220,9 @@ class LiquidationService:
             appt_date = row["appointment_datetime"].date() if row["appointment_datetime"] else period_start
             appt_status = row["appointment_status"] or ""
             pstatus = row["payment_status"] or "pending"
+            plan_id = row.get("plan_id")
+            plan_status = row.get("plan_status")
+            plan_approved_total = row.get("plan_approved_total")
 
             excluded = appt_status in ("cancelled", "no_show")
             billing_for_totals = Decimal("0") if excluded else billing
@@ -212,12 +245,26 @@ class LiquidationService:
 
             total_billed += billing_for_totals
 
-            if not excluded and pstatus == 'paid':
-                appt_commission = billing_for_totals * (
+            if not excluded:
+                is_prop_plan = plan_id and plan_status in ("approved", "in_progress")
+                if is_prop_plan:
+                    plan_approved_total_dec = Decimal(str(plan_approved_total or 0))
+                    total_plan_paid = plan_paid_map.get(plan_id, Decimal("0"))
+                    if plan_approved_total_dec > 0:
+                        ratio = total_plan_paid / plan_approved_total_dec
+                        if ratio > Decimal("1.0"):
+                            ratio = Decimal("1.0")
+                    else:
+                        ratio = Decimal("0")
+                    paid_for_appt = billing_for_totals * ratio
+                else:
+                    paid_for_appt = billing_for_totals if pstatus == 'paid' else Decimal("0")
+
+                appt_commission = paid_for_appt * (
                     Decimal(str(appt_commission_pct)) / Decimal("100")
                 )
                 total_commission += appt_commission
-                total_paid += billing_for_totals
+                total_paid += paid_for_appt
 
         total_pending = total_billed - total_paid
         if total_pending < 0:
@@ -444,85 +491,12 @@ class LiquidationService:
         plan_ids_found = set()
 
         for row in appt_rows:
-            pat_id = row["patient_id"]
-            treatment_code = row["treatment_code"] or ""
-            billing_amount = float(row["billing_amount"] or 0)
-            pstatus = row["payment_status"] or "pending"
             plan_id = row["plan_id"]
-
-            # Group key
-            if plan_id:
-                group_key = (pat_id, f"plan:{plan_id}")
+            plan_status = row["plan_status"]
+            if plan_id and plan_status in ("approved", "in_progress"):
                 plan_ids_found.add(plan_id)
-            else:
-                group_key = (pat_id, treatment_code)
 
-            if group_key not in treatment_groups_map:
-                if plan_id:
-                    treatment_groups_map[group_key] = {
-                        "patient_id": pat_id,
-                        "patient_name": (row["patient_name"] or "").strip(),
-                        "patient_phone": row["patient_phone"] or "",
-                        "treatment_code": treatment_code,
-                        "treatment_name": row["plan_name"] or "Plan sin nombre",
-                        "type": "plan",
-                        "plan_id": str(plan_id),
-                        "plan_name": row["plan_name"],
-                        "plan_status": row["plan_status"],
-                        "approved_total": float(row["plan_approved_total"] or 0),
-                        "sessions": [],
-                        "total_billed": float(row["plan_approved_total"] or 0),
-                        "total_paid": 0.0,
-                        "total_pending": 0.0,
-                        "session_count": 0,
-                    }
-                else:
-                    treatment_groups_map[group_key] = {
-                        "patient_id": pat_id,
-                        "patient_name": (row["patient_name"] or "").strip(),
-                        "patient_phone": row["patient_phone"] or "",
-                        "treatment_code": treatment_code,
-                        "treatment_name": row["treatment_name"]
-                        or treatment_code
-                        or "Sin tratamiento",
-                        "type": "appointment",
-                        "plan_id": None,
-                        "plan_name": None,
-                        "sessions": [],
-                        "total_billed": 0.0,
-                        "total_paid": 0.0,
-                        "total_pending": 0.0,
-                        "session_count": 0,
-                    }
-
-            group = treatment_groups_map[group_key]
-            appt_status = row["appointment_status"] or ""
-            excluded = appt_status in ("cancelled", "no_show")
-            billing_for_totals = 0.0 if excluded else billing_amount
-
-            group["sessions"].append(
-                {
-                    "appointment_id": row["appointment_id"],
-                    "date": row["appointment_datetime"].isoformat()
-                    if row["appointment_datetime"]
-                    else None,
-                    "status": appt_status,
-                    "billing_amount": billing_amount,
-                    "payment_status": pstatus,
-                    "billing_notes": row["billing_notes"],
-                }
-            )
-
-            group["session_count"] += 1
-            if group.get("type") != "plan":
-                group["total_billed"] += billing_for_totals
-                if not excluded:
-                    if pstatus == "paid":
-                        group["total_paid"] += billing_for_totals
-                    else:
-                        group["total_pending"] += billing_for_totals
-
-        # Fetch plan payments
+        plan_paid_map = {}
         if plan_ids_found:
             plan_payment_rows = await pool.fetch(
                 """
@@ -535,15 +509,88 @@ class LiquidationService:
                 list(plan_ids_found),
             )
             plan_paid_map = {
-                str(r["plan_id"]): float(r["total_paid"]) for r in plan_payment_rows
+                r["plan_id"]: float(r["total_paid"]) for r in plan_payment_rows
             }
 
-            for group in treatment_groups_map.values():
-                if group.get("type") != "plan":
-                    continue
-                paid = plan_paid_map.get(group["plan_id"], 0.0)
-                group["total_paid"] = paid
-                group["total_pending"] = max(group["total_billed"] - paid, 0.0)
+        for row in appt_rows:
+            pat_id = row["patient_id"]
+            treatment_code = row["treatment_code"] or ""
+            billing_amount = float(row["billing_amount"] or 0)
+            pstatus = row["payment_status"] or "pending"
+            plan_id = row["plan_id"]
+            plan_status = row["plan_status"]
+            plan_approved_total = float(row["plan_approved_total"] or 0)
+
+            # Unified group key by (patient_id, treatment_code)
+            group_key = (pat_id, treatment_code)
+
+            if group_key not in treatment_groups_map:
+                treatment_groups_map[group_key] = {
+                    "patient_id": pat_id,
+                    "patient_name": (row["patient_name"] or "").strip(),
+                    "patient_phone": row["patient_phone"] or "",
+                    "treatment_code": treatment_code,
+                    "treatment_name": row["treatment_name"]
+                    or treatment_code
+                    or "Sin tratamiento",
+                    "sessions": [],
+                    "total_billed": 0.0,
+                    "total_paid": 0.0,
+                    "total_pending": 0.0,
+                    "session_count": 0,
+                }
+
+            group = treatment_groups_map[group_key]
+            appt_status = row["appointment_status"] or ""
+            excluded = appt_status in ("cancelled", "no_show")
+            billing_for_totals = 0.0 if excluded else billing_amount
+
+            if not excluded:
+                is_prop_plan = plan_id and plan_status in ("approved", "in_progress")
+                if is_prop_plan:
+                    total_plan_paid = plan_paid_map.get(plan_id, 0.0)
+                    if plan_approved_total > 0:
+                        ratio = total_plan_paid / plan_approved_total
+                        if ratio > 1.0:
+                            ratio = 1.0
+                    else:
+                        ratio = 0.0
+                    paid_for_appt = billing_for_totals * ratio
+                else:
+                    paid_for_appt = billing_for_totals if pstatus == 'paid' else 0.0
+            else:
+                paid_for_appt = 0.0
+
+            pending_for_appt = max(billing_for_totals - paid_for_appt, 0.0)
+
+            display_payment_status = pstatus
+            if not excluded and plan_id and plan_status in ("approved", "in_progress"):
+                if paid_for_appt >= billing_for_totals:
+                    display_payment_status = 'paid'
+                elif paid_for_appt > 0:
+                    display_payment_status = 'partial'
+                else:
+                    display_payment_status = 'pending'
+
+            group["sessions"].append(
+                {
+                    "appointment_id": row["appointment_id"],
+                    "date": row["appointment_datetime"].isoformat()
+                    if row["appointment_datetime"]
+                    else None,
+                    "status": appt_status,
+                    "billing_amount": billing_amount,
+                    "amount": billing_amount,  # compatibility duplicate
+                    "payment_status": display_payment_status,
+                    "billing_notes": row["billing_notes"],
+                    "description": row["billing_notes"] or display_payment_status,  # compatibility duplicate
+                }
+            )
+
+            group["session_count"] += 1
+            group["total_billed"] += billing_for_totals
+            group["total_paid"] += paid_for_appt
+            group["total_pending"] += pending_for_appt
 
         # Sort treatment groups by total_billed DESC
         groups_sorted = sorted(
@@ -559,13 +606,14 @@ class LiquidationService:
                     "patient_phone": g["patient_phone"],
                     "treatment_code": g["treatment_code"],
                     "treatment_name": g["treatment_name"],
-                    "type": g.get("type", "appointment"),
-                    "plan_id": g.get("plan_id"),
-                    "plan_name": g.get("plan_name"),
-                    "plan_status": g.get("plan_status"),
-                    "approved_total": g.get("approved_total"),
+                    "type": "appointment",
+                    "plan_id": None,
+                    "plan_name": None,
+                    "plan_status": None,
+                    "approved_total": None,
                     "sessions": g["sessions"],
                     "total_billed": round(g["total_billed"], 2),
+                    "total": round(g["total_billed"], 2),  # compatibility duplicate
                     "total_paid": round(g["total_paid"], 2),
                     "total_pending": round(g["total_pending"], 2),
                     "session_count": g["session_count"],
@@ -605,8 +653,8 @@ class LiquidationService:
                 "id": record["id"],
                 "tenant_id": record["tenant_id"],
                 "professional_id": record["professional_id"],
-                "professional_name": record["professional_name"],
-                "specialty": record["specialty"],
+                "professional_name": record.get("professional_name"),
+                "specialty": record.get("specialty"),
                 "period_start": str(record["period_start"]),
                 "period_end": str(record["period_end"]),
                 "total_billed": float(record["total_billed"]),
@@ -616,17 +664,17 @@ class LiquidationService:
                 "commission_amount": float(record["commission_amount"]),
                 "payout_amount": float(record["payout_amount"]),
                 "status": record["status"],
-                "generated_at": record["generated_at"].isoformat()
-                if record["generated_at"]
+                "generated_at": record.get("generated_at").isoformat()
+                if record.get("generated_at")
                 else None,
-                "approved_at": record["approved_at"].isoformat()
-                if record["approved_at"]
+                "approved_at": record.get("approved_at").isoformat()
+                if record.get("approved_at")
                 else None,
-                "paid_at": record["paid_at"].isoformat() if record["paid_at"] else None,
+                "paid_at": record.get("paid_at").isoformat() if record.get("paid_at") else None,
                 "generated_by": record["generated_by"],
-                "notes": record["notes"] or {},
-                "created_at": record["created_at"].isoformat()
-                if record["created_at"]
+                "notes": record.get("notes") or {},
+                "created_at": record.get("created_at").isoformat()
+                if record.get("created_at")
                 else None,
             },
             "treatment_groups": treatment_groups_out,
@@ -1184,36 +1232,78 @@ class LiquidationService:
 
         if not rows:
             # Pre-populate default commission overrides from the specifications
-            db_types = await pool.fetch(
+            dynamic_rows = await pool.fetch(
                 """
                 SELECT code, name FROM treatment_types
-                WHERE tenant_id = $1 AND code = ANY($2)
+                WHERE tenant_id = $1
+                  AND (
+                     LOWER(code) LIKE '%endo%' OR LOWER(name) LIKE '%endo%' OR
+                     LOWER(code) LIKE '%orto%' OR LOWER(name) LIKE '%orto%' OR
+                     LOWER(code) LIKE '%consult%' OR LOWER(name) LIKE '%consult%'
+                  )
                 """,
                 tenant_id,
-                ["root_canal", "orthodontics", "consultation"]
             )
-            name_map = {r["code"]: r["name"] for r in db_types}
 
-            per_treatment = [
-                {
-                    "treatment_code": "root_canal",
-                    "treatment_name": name_map.get("root_canal", "Endodoncia"),
-                    "commission_pct": 60.0,
-                    "clinic_pct": 40.0,
-                },
-                {
-                    "treatment_code": "orthodontics",
-                    "treatment_name": name_map.get("orthodontics", "Ortodoncia"),
-                    "commission_pct": 50.0,
-                    "clinic_pct": 50.0,
-                },
-                {
-                    "treatment_code": "consultation",
-                    "treatment_name": name_map.get("consultation", "Consulta General"),
-                    "commission_pct": 40.0,
-                    "clinic_pct": 60.0,
-                }
-            ]
+            per_treatment = []
+            if dynamic_rows:
+                for r in dynamic_rows:
+                    code_lower = (r["code"] or "").lower()
+                    name_lower = (r["name"] or "").lower()
+
+                    if "endo" in code_lower or "endo" in name_lower:
+                        comm = 60.0
+                        cl = 40.0
+                    elif "orto" in code_lower or "orto" in name_lower:
+                        comm = 50.0
+                        cl = 50.0
+                    elif "consult" in code_lower or "consult" in name_lower:
+                        comm = 40.0
+                        cl = 60.0
+                    else:
+                        continue
+
+                    per_treatment.append(
+                        {
+                            "treatment_code": r["code"],
+                            "treatment_name": r["name"] or r["code"],
+                            "commission_pct": comm,
+                            "clinic_pct": cl,
+                        }
+                    )
+
+            if not per_treatment:
+                db_types = await pool.fetch(
+                    """
+                    SELECT code, name FROM treatment_types
+                    WHERE tenant_id = $1 AND code = ANY($2)
+                    """,
+                    tenant_id,
+                    ["root_canal", "orthodontics", "consultation"]
+                )
+                name_map = {r["code"]: r["name"] for r in db_types}
+
+                per_treatment = [
+                    {
+                        "treatment_code": "root_canal",
+                        "treatment_name": name_map.get("root_canal", "Endodoncia"),
+                        "commission_pct": 60.0,
+                        "clinic_pct": 40.0,
+                    },
+                    {
+                        "treatment_code": "orthodontics",
+                        "treatment_name": name_map.get("orthodontics", "Ortodoncia"),
+                        "commission_pct": 50.0,
+                        "clinic_pct": 50.0,
+                    },
+                    {
+                        "treatment_code": "consultation",
+                        "treatment_name": name_map.get("consultation", "Consulta General"),
+                        "commission_pct": 40.0,
+                        "clinic_pct": 60.0,
+                    }
+                ]
+
             default_commission_pct = 40.0
             default_clinic_pct = 60.0
         else:
@@ -1342,19 +1432,38 @@ class LiquidationService:
         )
 
         # 2. Upsert default commission
-        await pool.execute(
+        existing_default = await pool.fetchrow(
             """
-            INSERT INTO professional_commissions (
-                tenant_id, professional_id, commission_pct, clinic_pct, treatment_code
-            ) VALUES ($1, $2, $3, $4, NULL)
-            ON CONFLICT (tenant_id, professional_id, COALESCE(treatment_code, '__default__'))
-            DO UPDATE SET commission_pct = $3, clinic_pct = $4, updated_at = NOW()
+            SELECT id FROM professional_commissions
+            WHERE tenant_id = $1 AND professional_id = $2 AND treatment_code IS NULL
             """,
             tenant_id,
             professional_id,
-            default_commission_pct,
-            default_clinic_pct,
         )
+        if existing_default:
+            await pool.execute(
+                """
+                UPDATE professional_commissions
+                SET commission_pct = $3, clinic_pct = $4, updated_at = NOW()
+                WHERE tenant_id = $1 AND professional_id = $2 AND treatment_code IS NULL
+                """,
+                tenant_id,
+                professional_id,
+                default_commission_pct,
+                default_clinic_pct,
+            )
+        else:
+            await pool.execute(
+                """
+                INSERT INTO professional_commissions (
+                    tenant_id, professional_id, commission_pct, clinic_pct, treatment_code
+                ) VALUES ($1, $2, $3, $4, NULL)
+                """,
+                tenant_id,
+                professional_id,
+                default_commission_pct,
+                default_clinic_pct,
+            )
 
         # 3. Record history for default if it changed
         if old_default:
@@ -1391,20 +1500,41 @@ class LiquidationService:
                 treatment_code,
             )
 
-            await pool.execute(
+            existing_override = await pool.fetchrow(
                 """
-                INSERT INTO professional_commissions (
-                    tenant_id, professional_id, commission_pct, clinic_pct, treatment_code
-                ) VALUES ($1, $2, $3, $4, $5)
-                ON CONFLICT (tenant_id, professional_id, COALESCE(treatment_code, '__default__'))
-                DO UPDATE SET commission_pct = $3, clinic_pct = $4, updated_at = NOW()
+                SELECT id FROM professional_commissions
+                WHERE tenant_id = $1 AND professional_id = $2 AND treatment_code = $3
                 """,
                 tenant_id,
                 professional_id,
-                commission_pct,
-                clinic_pct,
                 treatment_code,
             )
+            if existing_override:
+                await pool.execute(
+                    """
+                    UPDATE professional_commissions
+                    SET commission_pct = $3, clinic_pct = $4, updated_at = NOW()
+                    WHERE tenant_id = $1 AND professional_id = $2 AND treatment_code = $5
+                    """,
+                    tenant_id,
+                    professional_id,
+                    commission_pct,
+                    clinic_pct,
+                    treatment_code,
+                )
+            else:
+                await pool.execute(
+                    """
+                    INSERT INTO professional_commissions (
+                        tenant_id, professional_id, commission_pct, clinic_pct, treatment_code
+                    ) VALUES ($1, $2, $3, $4, $5)
+                    """,
+                    tenant_id,
+                    professional_id,
+                    commission_pct,
+                    clinic_pct,
+                    treatment_code,
+                )
 
             # Record history for override
             if old_override:
