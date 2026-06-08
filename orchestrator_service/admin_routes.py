@@ -2013,6 +2013,103 @@ async def remove_silence(
     return {"status": "removed", "phone": phone, "tenant_id": tenant_id}
 
 
+@router.post(
+    "/chat/force-ai-processing", dependencies=[Depends(verify_admin_token)], tags=["Chat"]
+)
+async def force_ai_processing(
+    payload: dict,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    allowed_ids: List[int] = Depends(get_allowed_tenant_ids),
+):
+    """Fuerza el procesamiento del último mensaje por la IA."""
+    phone = payload.get("phone")
+    tenant_id = payload.get("tenant_id")
+    if not phone or tenant_id is None:
+        raise HTTPException(status_code=400, detail="phone y tenant_id requeridos")
+    if tenant_id not in allowed_ids:
+        raise HTTPException(status_code=403, detail="No tienes acceso a esta clínica.")
+        
+    # 1. Un-silence the bot
+    await db.pool.execute(
+        """
+        UPDATE patients
+        SET human_handoff_requested = FALSE,
+            human_override_until = NULL,
+            updated_at = NOW()
+        WHERE tenant_id = $1 AND phone_number = $2
+        """,
+        tenant_id,
+        phone,
+    )
+    
+    await db.pool.execute(
+        """
+        UPDATE chat_conversations
+        SET human_override_until = NULL,
+            updated_at = NOW()
+        WHERE tenant_id = $1 AND external_user_id = $2
+        """,
+        tenant_id,
+        phone,
+    )
+    
+    await emit_appointment_event(
+        "HUMAN_OVERRIDE_CHANGED",
+        {
+            "phone_number": phone,
+            "tenant_id": tenant_id,
+            "enabled": False,
+        },
+        request,
+    )
+    
+    # 2. Get the last user message to pass as context
+    has_tenant = await db.check_column_exists("chat_messages", "tenant_id")
+    if has_tenant:
+        last_msg = await db.pool.fetchrow(
+            """
+            SELECT content FROM chat_messages 
+            WHERE from_number = $1 AND tenant_id = $2 AND role = 'user'
+            ORDER BY created_at DESC LIMIT 1
+            """, phone, tenant_id
+        )
+    else:
+        last_msg = await db.pool.fetchrow(
+            """
+            SELECT content FROM chat_messages 
+            WHERE from_number = $1 AND role = 'user'
+            ORDER BY created_at DESC LIMIT 1
+            """, phone
+        )
+        
+    conv = await db.pool.fetchrow(
+        "SELECT id, provider, channel FROM chat_conversations WHERE external_user_id = $1 AND tenant_id = $2 ORDER BY updated_at DESC LIMIT 1",
+        phone, tenant_id
+    )
+    
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversación no encontrada")
+        
+    conv_id = conv["id"]
+    provider = conv["provider"] or "chatwoot"
+    channel = conv["channel"] or "whatsapp"
+    content = last_msg["content"] if last_msg else ""
+    
+    from services.buffer_task import process_buffer_task
+    background_tasks.add_task(
+        process_buffer_task,
+        tenant_id=tenant_id,
+        conversation_id=str(conv_id),
+        external_user_id=phone,
+        messages=[content],
+        provider=provider,
+        channel=channel
+    )
+    
+    return {"status": "processing", "phone": phone, "tenant_id": tenant_id}
+
+
 @router.get("/internal/credentials/{name}", tags=["Internal"])
 async def get_internal_credential(name: str, x_internal_token: str = Header(None)):
     """Permite a servicios internos obtener credenciales de forma segura."""

@@ -938,6 +938,44 @@ export default function ChatsView() {
     });
   };
 
+  const handleForceAIProcessing = async () => {
+    if (!selectedSession) return;
+    try {
+      setShowToast({
+        id: Date.now().toString(),
+        type: 'info',
+        title: 'Forzando IA...',
+        message: 'Reenviando el último mensaje al agente...',
+      });
+      await api.post('/admin/chat/force-ai-processing', {
+        phone: selectedSession.phone_number,
+        tenant_id: selectedSession.tenant_id,
+      });
+      // Actualización local para quitar el silencio si lo hubiera
+      const updateFn = (s: ChatSession) => s.phone_number === selectedSession.phone_number
+        ? { ...s, status: 'active' as const, human_override_until: undefined, last_derivhumano_at: undefined }
+        : s;
+
+      setSessions(prev => prev.map(updateFn));
+      setSelectedSession(prev => prev ? updateFn(prev) : null);
+      
+      setShowToast({
+        id: Date.now().toString(),
+        type: 'success',
+        title: 'IA Activada',
+        message: 'El mensaje fue reenviado exitosamente a la IA.',
+      });
+    } catch (error) {
+      console.error('Error forzando IA:', error);
+      setShowToast({
+        id: Date.now().toString(),
+        type: 'error',
+        title: 'Error',
+        message: 'No se pudo forzar el procesamiento por IA.',
+      });
+    }
+  };
+
   const handleRemoveSilence = async () => {
     if (!selectedSession || !selectedSession.human_override_until) return;
 
@@ -1886,6 +1924,14 @@ export default function ChatsView() {
                             title={t('chats.link_chat_to_patient') || 'Vincular chat a paciente'}
                           >
                             <LinkIcon size={12} /> {t('chats.link_chat_to_patient') || 'Vincular a paciente'}
+                          </button>
+                          {/* Forzar Procesamiento IA */}
+                          <button
+                            onClick={handleForceAIProcessing}
+                            className="w-full py-2 px-3 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 hover:text-indigo-200 border border-indigo-500/20 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1.5"
+                            title="Forzar a la IA a procesar el último mensaje recibido"
+                          >
+                            <Activity size={12} /> Forzar Procesamiento IA
                           </button>
                         </div>
                       </div>
