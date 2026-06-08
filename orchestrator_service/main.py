@@ -8067,6 +8067,27 @@ async def check_insurance_coverage(insurance_provider: str) -> str:
         # 4. Format response based on status
         status = row["status"]
         name = row["provider_name"]
+        
+        # Save the insurance to the patient's record if it is accepted or restricted
+        if status in ("accepted", "restricted"):
+            phone_for_lookup = current_customer_phone.get()
+            if phone_for_lookup:
+                phone_digits = __import__('re').sub(r"\D", "", phone_for_lookup)
+                try:
+                    await db.pool.execute(
+                        """
+                        UPDATE patients 
+                        SET insurance_provider = $1 
+                        WHERE tenant_id = $2 
+                          AND (REGEXP_REPLACE(phone_number, '[^0-9]', '', 'g') = $3
+                               OR instagram_psid = $4 
+                               OR facebook_psid = $4)
+                        """,
+                        name, tenant_id, phone_digits, phone_for_lookup
+                    )
+                except Exception as e:
+                    logger.warning(f"Could not save insurance provider to patient: {e}")
+
         if row.get("ai_response_template"):
             return row["ai_response_template"]
         prepaid_note = " (prepaga)" if row.get("is_prepaid") else ""
