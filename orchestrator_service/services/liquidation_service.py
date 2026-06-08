@@ -199,7 +199,7 @@ class LiquidationService:
                 """
                 SELECT plan_id, COALESCE(SUM(amount), 0) AS total_paid
                 FROM treatment_plan_payments
-                WHERE tenant_id = $1 AND plan_id = ANY($2)
+                WHERE tenant_id = $1 AND plan_id = ANY($2::uuid[])
                 GROUP BY plan_id
                 """,
                 tenant_id,
@@ -502,7 +502,7 @@ class LiquidationService:
                 """
                 SELECT plan_id, COALESCE(SUM(amount), 0) AS total_paid
                 FROM treatment_plan_payments
-                WHERE tenant_id = $1 AND plan_id = ANY($2)
+                WHERE tenant_id = $1 AND plan_id = ANY($2::uuid[])
                 GROUP BY plan_id
                 """,
                 tenant_id,
@@ -1276,7 +1276,7 @@ class LiquidationService:
                 db_types = await pool.fetch(
                     """
                     SELECT code, name FROM treatment_types
-                    WHERE tenant_id = $1 AND code = ANY($2)
+                    WHERE tenant_id = $1 AND code = ANY($2::text[])
                     """,
                     tenant_id,
                     ["root_canal", "orthodontics", "consultation"]
@@ -1588,7 +1588,7 @@ class LiquidationService:
                 DELETE FROM professional_commissions
                 WHERE tenant_id = $1
                   AND professional_id = $2
-                  AND treatment_code = ANY($3)
+                  AND treatment_code = ANY($3::text[])
                 """,
                 tenant_id,
                 professional_id,
@@ -1649,9 +1649,9 @@ class LiquidationService:
                 default_clinic = float(current["clinic_pct"])
                 source = "current_config"
             else:
-                # Step 3: No config exists
-                default_pct = 0.0
-                default_clinic = 100.0
+                # Step 3: No config exists — fallback to default splits
+                default_pct = 40.0
+                default_clinic = 60.0
                 source = "default_zero"
 
         # Step 4: Same for per-treatment overrides (point-in-time)
@@ -1706,10 +1706,47 @@ class LiquidationService:
                     "clinic_pct": float(row["clinic_pct"]),
                 }
 
+        # Step 5.5: If no current config exists, pre-populate default overrides dynamically
         if source == "default_zero":
+            dynamic_rows = await pool.fetch(
+                """
+                SELECT code, name FROM treatment_types
+                WHERE tenant_id = $1
+                  AND (
+                     LOWER(code) LIKE '%endo%' OR LOWER(name) LIKE '%endo%' OR
+                     LOWER(code) LIKE '%orto%' OR LOWER(name) LIKE '%orto%' OR
+                     LOWER(code) LIKE '%consult%' OR LOWER(name) LIKE '%consult%'
+                  )
+                """,
+                tenant_id,
+            )
+            if dynamic_rows:
+                for r in dynamic_rows:
+                    code_lower = (r["code"] or "").lower()
+                    name_lower = (r["name"] or "").lower()
+                    if "endo" in code_lower or "endo" in name_lower:
+                        comm = 60.0
+                        cl = 40.0
+                    elif "orto" in code_lower or "orto" in name_lower:
+                        comm = 50.0
+                        cl = 50.0
+                    elif "consult" in code_lower or "consult" in name_lower:
+                        comm = 40.0
+                        cl = 60.0
+                    else:
+                        continue
+                    overrides[r["code"]] = {
+                        "commission_pct": comm,
+                        "clinic_pct": cl,
+                    }
+            else:
+                overrides["root_canal"] = {"commission_pct": 60.0, "clinic_pct": 40.0}
+                overrides["orthodontics"] = {"commission_pct": 50.0, "clinic_pct": 50.0}
+                overrides["consultation"] = {"commission_pct": 40.0, "clinic_pct": 60.0}
+
             logger.warning(
                 "get_commission_config_at_date: no config for professional %s, "
-                "tenant %s at %s. Using 0%% default.",
+                "tenant %s at %s. Using default splits (40%% default, dynamic overrides).",
                 professional_id,
                 tenant_id,
                 target_date,

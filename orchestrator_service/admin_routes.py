@@ -17092,7 +17092,7 @@ async def upsert_professional_commissions(
         existing_treatments = await db.pool.fetch(
             """
             SELECT code FROM treatment_types
-            WHERE tenant_id = $1 AND code = ANY($2)
+            WHERE tenant_id = $1 AND code = ANY($2::text[])
             """,
             tenant_id,
             treatment_codes,
