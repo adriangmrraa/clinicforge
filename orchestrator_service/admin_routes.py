@@ -17051,9 +17051,9 @@ async def upsert_professional_commissions(
     professional_id: int,
     body: UpsertCommissionBody,
     tenant_id: int = Depends(get_resolved_tenant_id),
-    user_data: dict = Depends(verify_admin_token),
+    user_data = Depends(verify_admin_token),
 ):
-    changed_by = user_data.get("email", "admin")
+    changed_by = getattr(user_data, "email", "admin") or "admin"
     """
     EP-FC-10: Creates or updates commission configuration for a professional.
     Now supports clinic_pct, effective_date, and saves change history.
