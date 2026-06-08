@@ -216,12 +216,9 @@ async def _execute_step(pool, execution: dict, step: dict) -> bool:
 
     # Resolve variables
     from services.playbook_variables import resolve_variables, substitute_variables
-    exec_ctx = execution.get("context") or {}
-    if isinstance(exec_ctx, str):
-        try:
-            exec_ctx = json.loads(exec_ctx)
-        except (json.JSONDecodeError, TypeError):
-            exec_ctx = {}
+    exec_ctx = _parse_jsonb_field(execution.get("context") or {})
+    if not isinstance(exec_ctx, dict):
+        exec_ctx = {}
     variables = await resolve_variables(
         pool, tenant_id, phone,
         appointment_id=execution.get("appointment_id"),
@@ -551,69 +548,135 @@ Respondé SOLO con el mensaje a enviar, o "NO_ENVIAR" si no corresponde."""
         return False
 
 
-def _format_instructions_text(instructions: dict, instruction_type: str) -> str:
-    """Formatea instrucciones pre/post como texto legible para WhatsApp."""
+def _parse_jsonb_field(value):
+    """Parse a JSONB field that might be stored as a JSON string inside JSONB."""
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, list):
+        return value
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except (json.JSONDecodeError, TypeError):
+            return value
+    return value
+
+
+def _format_pre_instructions(instructions: dict, treatment_name: str) -> list[str]:
+    """Format pre-treatment instructions as separate message bubbles."""
+    bubbles = []
+
+    # Intro bubble
+    intro = f"Te dejo las instrucciones pre-tratamiento para {treatment_name}:"
+    bubbles.append(intro)
+
+    # What to bring
+    bring = instructions.get("what_to_bring") or []
+    if bring:
+        clean = [s.strip() for s in bring if s and s.strip()]
+        if clean:
+            bubbles.append("\n".join(f"• {s}" for s in clean))
+
+    # Medications
+    meds_take = instructions.get("medications_to_take") or []
+    meds_avoid = instructions.get("medications_to_avoid") or []
+    meds_parts = []
+    if meds_take:
+        clean = [s.strip() for s in meds_take if s and s.strip()]
+        meds_parts.extend(clean)
+    if meds_avoid:
+        clean = [s.strip() for s in meds_avoid if s and s.strip()]
+        meds_parts.extend(clean)
+    if meds_parts:
+        bubbles.append("\n".join(f"• {s}" for s in meds_parts))
+
+    # Fasting
+    fasting = instructions.get("fasting_required")
+    if fasting:
+        hrs = instructions.get("fasting_hours")
+        txt = "🍽️ Ayuno requerido."
+        if hrs:
+            txt += f" No comer {hrs} horas antes del turno."
+        bubbles.append(txt)
+
+    # Preparation days
+    days = instructions.get("preparation_days_before")
+    if days:
+        bubbles.append(f"⏰ Preparación: comenzar {days} día(s) antes del turno.")
+
+    return bubbles
+
+
+def _format_post_instructions(instructions, treatment_name: str) -> list[str]:
+    """Format post-treatment instructions as separate message bubbles.
+
+    Handles two shapes:
+    - Legacy timed-sequence list: [{"name": "Inmediato", "text": "..."}, ...]
+    - Structured dict: {"care_duration_days": ..., "dietary_restrictions": [...], ...}
+    """
+    bubbles = []
+
+    # Detect legacy timed-sequence list
+    if isinstance(instructions, list):
+        # Take the first entry ("Inmediato") as the immediate post-op instructions
+        immediate = instructions[0] if instructions else {}
+        text = immediate.get("text", "") if isinstance(immediate, dict) else str(immediate)
+        if text.strip():
+            bubbles.append(f"📋 Instrucciones post-tratamiento para {treatment_name}:")
+            bubbles.append(text.strip())
+        return bubbles
+
+    if not isinstance(instructions, dict):
+        return bubbles
+
+    # Structured dict format
+    intro = f"📋 Instrucciones post-tratamiento para {treatment_name}:"
+    bubbles.append(intro)
+
+    care_days = instructions.get("care_duration_days")
+    if care_days:
+        bubbles[0] += f" (cuidados por {care_days} día(s))"
+
     parts = []
 
-    if instruction_type == "pre":
-        title = "📋 Indicaciones pre-tratamiento"
-        days = instructions.get("preparation_days_before")
-        if days:
-            parts.append(f"⏰ Preparación: {days} día(s) antes")
-        fasting = instructions.get("fasting_required")
-        if fasting:
-            hrs = instructions.get("fasting_hours")
-            parts.append(f"🍽️ Ayuno requerido: {'sí' if hrs else ''}{f' ({hrs} horas)' if hrs else ''}")
-        meds_avoid = instructions.get("medications_to_avoid") or []
-        if meds_avoid:
-            parts.append("🚫 Evitar medicación: " + ", ".join(meds_avoid))
-        meds_take = instructions.get("medications_to_take") or []
-        if meds_take:
-            parts.append("💊 Tomar: " + ", ".join(meds_take))
-        bring = instructions.get("what_to_bring") or []
-        if bring:
-            parts.append("🎒 Traer: " + ", ".join(bring))
-        notes = instructions.get("general_notes")
-        if notes:
-            parts.append(f"📝 {notes}")
+    diet = instructions.get("dietary_restrictions") or []
+    if diet:
+        parts.append("\n".join(f"• {s}" for s in diet if s))
 
-    elif instruction_type == "post":
-        title = "📋 Indicaciones post-tratamiento"
-        care_days = instructions.get("care_duration_days")
-        if care_days:
-            parts.append(f"⏰ Cuidados por {care_days} día(s)")
-        diet = instructions.get("dietary_restrictions") or []
-        if diet:
-            parts.append("🍽️ Dieta: " + ", ".join(diet))
-        activity = instructions.get("activity_restrictions") or []
-        if activity:
-            parts.append("🚫 Actividades: " + ", ".join(activity))
-        meds_ok = instructions.get("allowed_medications") or []
+    activity = instructions.get("activity_restrictions") or []
+    if activity:
+        parts.append("\n".join(f"• {s}" for s in activity if s))
+
+    meds_ok = instructions.get("allowed_medications") or []
+    meds_no = instructions.get("prohibited_medications") or []
+    if meds_ok or meds_no:
+        pm = []
         if meds_ok:
-            parts.append("✅ Medicación permitida: " + ", ".join(meds_ok))
-        meds_no = instructions.get("prohibited_medications") or []
+            pm.extend(f"✅ {s}" for s in meds_ok if s)
         if meds_no:
-            parts.append("🚫 Evitar: " + ", ".join(meds_no))
-        sutures = instructions.get("sutures_removal_day")
-        if sutures:
-            parts.append(f"🧵 Retiro de puntos: día {sutures}")
-        normal = instructions.get("normal_symptoms") or []
-        if normal:
-            parts.append("✅ Síntomas normales: " + ", ".join(normal))
-        alarm = instructions.get("alarm_symptoms") or []
-        if alarm:
-            parts.append("⚠️ Síntomas de alarma: " + ", ".join(alarm))
-        escalation = instructions.get("escalation_message")
-        if escalation:
-            parts.append(f"📞 {escalation}")
+            pm.extend(f"🚫 {s}" for s in meds_no if s)
+        parts.append("\n".join(pm))
 
-    if not parts:
-        notes = instructions.get("general_notes")
-        if notes:
-            return notes
-        return ""
+    sutures = instructions.get("sutures_removal_day")
+    if sutures:
+        parts.append(f"🧵 Retiro de puntos: día {sutures}")
 
-    return title + "\n\n" + "\n\n".join(parts)
+    normal = instructions.get("normal_symptoms") or []
+    if normal:
+        parts.append("\n".join(f"✅ {s}" for s in normal if s))
+
+    alarm = instructions.get("alarm_symptoms") or []
+    if alarm:
+        parts.append("\n".join(f"⚠️ {s}" for s in alarm if s))
+
+    escalation = instructions.get("escalation_message")
+    if escalation:
+        parts.append(f"📞 {escalation}")
+
+    if parts:
+        bubbles.append("\n\n".join(parts))
+
+    return bubbles
 
 
 async def _action_send_instructions(pool, tenant_id, phone, step, execution) -> bool:
@@ -623,15 +686,15 @@ async def _action_send_instructions(pool, tenant_id, phone, step, execution) -> 
         instruction_type = step.get("instruction_type") or "post"
 
         if source == "custom":
-            text = step.get("custom_instructions") or ""
+            bubbles = [step.get("custom_instructions") or ""]
+            if not bubbles[0]:
+                logger.info("send_instructions: custom instructions empty, skipping")
+                return True
         else:
             # Load from treatment_types
-            exec_ctx = execution.get("context") or {}
-            if isinstance(exec_ctx, str):
-                try:
-                    exec_ctx = json.loads(exec_ctx)
-                except (json.JSONDecodeError, TypeError):
-                    exec_ctx = {}
+            exec_ctx = _parse_jsonb_field(execution.get("context") or {})
+            if not isinstance(exec_ctx, dict):
+                exec_ctx = {}
             apt_type = exec_ctx.get("appointment_type")
             if not apt_type:
                 if execution.get("appointment_id"):
@@ -642,24 +705,28 @@ async def _action_send_instructions(pool, tenant_id, phone, step, execution) -> 
             if apt_type:
                 field = "pre_instructions" if instruction_type == "pre" else "post_instructions"
                 row = await pool.fetchrow(
-                    f"SELECT {field} FROM treatment_types WHERE tenant_id = $1 AND code = $2",
+                    f"SELECT {field}, name FROM treatment_types WHERE tenant_id = $1 AND code = $2",
                     tenant_id, apt_type,
                 )
-                instructions = row[field] if row else None
-                if instructions and isinstance(instructions, dict):
-                    text = _format_instructions_text(instructions, instruction_type)
-                elif instructions and isinstance(instructions, str):
-                    text = instructions
-                else:
-                    text = ""
-            else:
-                text = ""
+                instructions = _parse_jsonb_field(row[field] if row else None)
+                treatment_name = row["name"] if row else apt_type
 
-        if not text:
+                if instruction_type == "pre":
+                    if isinstance(instructions, dict):
+                        bubbles = _format_pre_instructions(instructions, treatment_name)
+                    else:
+                        bubbles = [str(instructions)] if instructions else []
+                else:
+                    # Post-treatment: handles both list (timed sequence) and dict
+                    bubbles = _format_post_instructions(instructions, treatment_name)
+            else:
+                bubbles = []
+
+        if not bubbles:
             logger.info("send_instructions: no instructions found, skipping")
             return True  # Not a failure, just nothing to send
 
-        # Send via text
+        # Send each bubble as a separate message
         conv = await pool.fetchrow(
             "SELECT id, provider, channel, external_account_id, external_chatwoot_id "
             "FROM chat_conversations WHERE tenant_id = $1 AND external_user_id = $2 "
@@ -668,15 +735,20 @@ async def _action_send_instructions(pool, tenant_id, phone, step, execution) -> 
         )
         if conv:
             from services.response_sender import ResponseSender
-            await ResponseSender.send_sequence(
-                tenant_id=tenant_id, external_user_id=phone,
-                conversation_id=str(conv["id"]),
-                provider=conv.get("provider") or "ycloud",
-                channel=conv.get("channel") or "whatsapp",
-                account_id=str(conv.get("external_account_id") or ""),
-                cw_conv_id=str(conv.get("external_chatwoot_id") or ""),
-                messages_text=text,
-            )
+            for i, bubble in enumerate(bubbles):
+                if not bubble.strip():
+                    continue
+                await ResponseSender.send_sequence(
+                    tenant_id=tenant_id, external_user_id=phone,
+                    conversation_id=str(conv["id"]),
+                    provider=conv.get("provider") or "ycloud",
+                    channel=conv.get("channel") or "whatsapp",
+                    account_id=str(conv.get("external_account_id") or ""),
+                    cw_conv_id=str(conv.get("external_chatwoot_id") or ""),
+                    messages_text=bubble.strip(),
+                )
+                if i < len(bubbles) - 1:
+                    await asyncio.sleep(2)  # Small delay between bubbles for natural feel
 
         await _update_message_counters(pool, tenant_id, phone, step)
         return True
