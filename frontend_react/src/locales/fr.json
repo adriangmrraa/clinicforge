@@ -1062,7 +1062,12 @@
         "requiresCopay": "Nécessite une participation",
         "copayNotes": "Détails de la participation",
         "aiTemplate": "Réponse personnalisée de l'assistant",
-        "aiTemplatePlaceholder": "Laisser vide pour utiliser la réponse par défaut"
+        "aiTemplatePlaceholder": "Laisser vide pour utiliser la réponse par défaut",
+        "schedulingMode": "Mode de planification (Sémaphore)",
+        "modeImmediate": "Immédiat (Vert)",
+        "modeDelayed": "Différé (Jaune)",
+        "modeBlocked": "Bloqué (Rouge)",
+        "delayDays": "Jours de différé"
       },
       "errors": {
         "nameRequired": "Le nom est obligatoire",

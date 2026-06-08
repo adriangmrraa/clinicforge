@@ -9483,6 +9483,8 @@ class InsuranceProviderCreate(BaseModel):
     requires_copay: bool = True
     copay_notes: Optional[str] = None
     ai_response_template: Optional[str] = None
+    scheduling_mode: Optional[Literal["immediate", "delayed", "blocked"]] = "immediate"
+    scheduling_delay_days: Optional[int] = 0
     sort_order: int = 0
     is_active: bool = True
 
@@ -9498,6 +9500,8 @@ class InsuranceProviderUpdate(BaseModel):
     requires_copay: bool = True
     copay_notes: Optional[str] = None
     ai_response_template: Optional[str] = None
+    scheduling_mode: Optional[Literal["immediate", "delayed", "blocked"]] = "immediate"
+    scheduling_delay_days: Optional[int] = 0
     sort_order: int = 0
     is_active: bool = True
 
@@ -9600,7 +9604,7 @@ async def list_insurance_providers(tenant_id: int = Depends(get_resolved_tenant_
         """
         SELECT id, provider_name, status, coverage_by_treatment, is_prepaid,
                employee_discount_percent, default_copay_percent, external_target,
-               requires_copay, copay_notes, ai_response_template, sort_order, is_active,
+               requires_copay, copay_notes, ai_response_template, scheduling_mode, scheduling_delay_days, sort_order, is_active,
                created_at, updated_at
         FROM tenant_insurance_providers
         WHERE tenant_id = $1
@@ -9654,9 +9658,9 @@ async def create_insurance_provider(
         INSERT INTO tenant_insurance_providers (
             tenant_id, provider_name, status, coverage_by_treatment, is_prepaid,
             employee_discount_percent, default_copay_percent, external_target,
-            requires_copay, copay_notes, ai_response_template, sort_order, is_active,
+            requires_copay, copay_notes, ai_response_template, scheduling_mode, scheduling_delay_days, sort_order, is_active,
             created_at, updated_at
-        ) VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), NOW())
+        ) VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW(), NOW())
         RETURNING id
         """,
         tenant_id,
@@ -9670,6 +9674,8 @@ async def create_insurance_provider(
         data.requires_copay,
         data.copay_notes,
         data.ai_response_template,
+        data.scheduling_mode,
+        data.scheduling_delay_days,
         data.sort_order,
         data.is_active,
     )
@@ -9719,9 +9725,9 @@ async def update_insurance_provider(
             provider_name = $1, status = $2, coverage_by_treatment = $3::jsonb,
             is_prepaid = $4, employee_discount_percent = $5, default_copay_percent = $6,
             external_target = $7, requires_copay = $8, copay_notes = $9,
-            ai_response_template = $10, sort_order = $11, is_active = $12,
+            ai_response_template = $10, scheduling_mode = $11, scheduling_delay_days = $12, sort_order = $13, is_active = $14,
             updated_at = NOW()
-        WHERE id = $13 AND tenant_id = $14
+        WHERE id = $15 AND tenant_id = $16
         """,
         provider_name,
         data.status,
@@ -9733,6 +9739,8 @@ async def update_insurance_provider(
         data.requires_copay,
         data.copay_notes,
         data.ai_response_template,
+        data.scheduling_mode,
+        data.scheduling_delay_days,
         data.sort_order,
         data.is_active,
         provider_id,

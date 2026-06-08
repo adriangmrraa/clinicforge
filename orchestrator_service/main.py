@@ -1878,6 +1878,10 @@ async def check_availability(
                         SELECT
                             p.id,
                             p.assigned_professional_id,
+                            p.insurance_provider,
+                            tip.scheduling_mode,
+                            tip.scheduling_delay_days,
+                            tip.is_active AS insurance_is_active,
                             COUNT(a.id) FILTER (
                                 WHERE a.payment_status IN ('pending', 'partial')
                                   AND a.appointment_datetime < NOW()
@@ -1890,11 +1894,12 @@ async def check_availability(
                             ), 0) AS unpaid_total
                         FROM patients p
                         LEFT JOIN appointments a ON a.patient_id = p.id AND a.tenant_id = p.tenant_id
+                        LEFT JOIN tenant_insurance_providers tip ON p.insurance_provider = tip.provider_name AND tip.tenant_id = p.tenant_id
                         WHERE p.tenant_id = $1
                           AND (REGEXP_REPLACE(p.phone_number, '[^0-9]', '', 'g') = $2
                                OR p.instagram_psid = $3
                                OR p.facebook_psid = $3)
-                        GROUP BY p.id
+                        GROUP BY p.id, tip.scheduling_mode, tip.scheduling_delay_days, tip.is_active
                         LIMIT 1
                         """,
                         tenant_id,
@@ -2213,15 +2218,28 @@ async def check_availability(
         # Parse exclude_dates into a set of date objects
         _excluded_dates: set = set()
         if exclude_dates:
-            try:
-                for _date_str in exclude_dates.split(","):
-                    _date_str = _date_str.strip()
-                    if _date_str:
-                        _excluded_dates.add(datetime.strptime(_date_str, "%Y-%m-%d").date())
-            except ValueError as _e:
-                logger.warning(f"Invalid exclude_dates format: {exclude_dates}, error: {_e}")
-        if _excluded_dates:
-            logger.info(f"📅 Excluding specific dates: {_excluded_dates} from results")
+            for _dstr in exclude_dates.split(","):
+                _dstr = _dstr.strip()
+                try:
+                    _excluded_dates.add(date.fromisoformat(_dstr))
+                except Exception:
+                    pass
+            if _excluded_dates:
+                logger.info(f"📅 Excluding dates: {_excluded_dates} from results")
+
+        # ── SEMÁFORO DE OBRAS SOCIALES ──
+        if patient_row and patient_row.get("insurance_is_active"):
+            _mode = patient_row.get("scheduling_mode") or "immediate"
+            _delay = patient_row.get("scheduling_delay_days") or 0
+            _prov = patient_row.get("insurance_provider")
+            if _mode == "blocked":
+                logger.warning(f"🚫 SEMAPHORE: Blocked scheduling for patient {_ca_patient_id} due to insurance '{_prov}'")
+                return f"Por el momento tenemos suspendida temporalmente la atención por la cobertura {_prov}. Si te interesa, podemos ofrecerte un turno particular. ¿Querés que busquemos disponibilidad de forma particular?"
+            elif _mode == "delayed" and _delay > 0:
+                min_allowed_date = today_date + timedelta(days=_delay)
+                if target_date < min_allowed_date:
+                    logger.info(f"⏳ SEMAPHORE: Delayed scheduling for patient {_ca_patient_id} (insurance '{_prov}'). Adjusted target_date from {target_date} to {min_allowed_date}")
+                    target_date = min_allowed_date
 
         # 0. B) Auto-avanzar si el día está cerrado (clínica o profesional)
         # En vez de retornar error, buscamos el próximo día válido automáticamente.
@@ -10320,6 +10338,11 @@ CUANDO DETECTES ESTO (solo si NO aplica la excepción de arriba):
   2. Si el usuario te responde de manera ambigua o no numérica ante el pedido del DNI (ej: "Así es", "Sí", "Eso es"), debés insistir educadamente en que te pase los números del DNI.
   3. PROHIBICIÓN ABSOLUTA CONTRA LOOPS Y RE-OFERTAS: NUNCA llames a `check_availability` para buscar disponibilidad, ni ofrezcas horarios alternativos o nuevos profesionales, a menos que el paciente te pida explícitamente reprogramar o cancelar el turno pre-reservado.
   4. PREGUNTAS LATERALES: Si el paciente realiza una consulta lateral (ej: medios de pago, obras sociales aceptadas), respondé a su pregunta brevemente y solicitá inmediatamente los datos faltantes (DNI/nombre) para concretar su reserva.
+
+⚠️ REGLA CRÍTICA: OBRAS SOCIALES Y SEMÁFORO (OBLIGATORIO ANTES DE AGENDAR):
+- Si el paciente quiere agendar un turno y AÚN NO mencionó su obra social o cobertura, DEBÉS preguntarle: "¿Contás con alguna obra social o te atenderías de forma particular?"
+- NO LLAMES a `check_availability` hasta que el paciente confirme su cobertura (particular o nombre de obra social).
+- Esto es obligatorio porque el sistema usa el Semáforo de Obras Sociales para determinar demoras o bloqueos de agenda.
 
 ## REGLA DE REACTIVACIÓN TRAS INTERVENCIÓN HUMANA (OBLIGATORIA)
 ⚠️ ESTA REGLA SOLO APLICA CUANDO EL HUMAN_OVERRIDE ESTÁ DESACTIVADO.

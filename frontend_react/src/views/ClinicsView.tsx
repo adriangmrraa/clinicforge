@@ -2927,6 +2927,22 @@ export default function ClinicsView() {
                                     className="w-full px-4 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/20 focus:ring-2 focus:ring-blue-500 outline-none resize-none text-sm" />
                                 <p className="text-xs text-white/30">{t('settings.insurance.fields.aiTemplatePlaceholder')}</p>
                             </div>
+                            <div className="space-y-1">
+                                <label className="text-sm font-semibold text-white/60">{t('settings.insurance.schedulingMode') || 'Modo de Agendamiento'}</label>
+                                <select value={insuranceForm.scheduling_mode || 'immediate'} onChange={e => setInsuranceForm(p => ({ ...p, scheduling_mode: e.target.value as any }))}
+                                    className="w-full px-4 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white outline-none">
+                                    <option value="immediate" className="bg-[#0f1525]">{t('settings.insurance.modeImmediate') || 'Inmediato (Verde)'}</option>
+                                    <option value="delayed" className="bg-[#0f1525]">{t('settings.insurance.modeDelayed') || 'Diferido (Amarillo)'}</option>
+                                    <option value="blocked" className="bg-[#0f1525]">{t('settings.insurance.modeBlocked') || 'Bloqueado (Rojo)'}</option>
+                                </select>
+                            </div>
+                            {insuranceForm.scheduling_mode === 'delayed' && (
+                                <div className="space-y-1">
+                                    <label className="text-sm font-semibold text-white/60">{t('settings.insurance.delayDays') || 'Días de diferimiento (Ej. 30)'}</label>
+                                    <input type="number" min="0" value={insuranceForm.scheduling_delay_days ?? ''} onChange={e => setInsuranceForm(p => ({ ...p, scheduling_delay_days: e.target.value ? Number(e.target.value) : undefined }))}
+                                        className="w-full px-4 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white outline-none" />
+                                </div>
+                            )}
                             <div className="flex gap-3 pt-2">
                                 <button type="button" onClick={() => setInsuranceModalOpen(false)} className="flex-1 py-2 text-white/70 font-medium hover:bg-white/[0.04] rounded-lg transition-all">{t('common.cancel')}</button>
                                 <button type="submit" disabled={insuranceSaving} className="flex-1 py-2 bg-white text-[#0a0e1a] font-bold rounded-lg hover:bg-white/90 transition-all disabled:opacity-50 flex items-center justify-center gap-2">

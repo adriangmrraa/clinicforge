@@ -327,6 +327,8 @@ class TenantInsuranceProvider(Base):
     requires_copay = Column(Boolean, nullable=False, server_default="true")
     copay_notes = Column(Text, nullable=True)
     ai_response_template = Column(Text, nullable=True)
+    scheduling_mode = Column(String(20), nullable=False, default="immediate", server_default="immediate")
+    scheduling_delay_days = Column(Integer, nullable=True, default=0, server_default="0")
     sort_order = Column(Integer, nullable=False, server_default="0")
     is_active = Column(Boolean, nullable=False, server_default="true")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
