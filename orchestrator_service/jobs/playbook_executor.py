@@ -216,10 +216,16 @@ async def _execute_step(pool, execution: dict, step: dict) -> bool:
 
     # Resolve variables
     from services.playbook_variables import resolve_variables, substitute_variables
+    exec_ctx = execution.get("context") or {}
+    if isinstance(exec_ctx, str):
+        try:
+            exec_ctx = json.loads(exec_ctx)
+        except (json.JSONDecodeError, TypeError):
+            exec_ctx = {}
     variables = await resolve_variables(
         pool, tenant_id, phone,
         appointment_id=execution.get("appointment_id"),
-        context=execution.get("context") or {},
+        context=exec_ctx,
     )
 
     if action == "send_template":
@@ -620,7 +626,13 @@ async def _action_send_instructions(pool, tenant_id, phone, step, execution) -> 
             text = step.get("custom_instructions") or ""
         else:
             # Load from treatment_types
-            apt_type = (execution.get("context") or {}).get("appointment_type")
+            exec_ctx = execution.get("context") or {}
+            if isinstance(exec_ctx, str):
+                try:
+                    exec_ctx = json.loads(exec_ctx)
+                except (json.JSONDecodeError, TypeError):
+                    exec_ctx = {}
+            apt_type = exec_ctx.get("appointment_type")
             if not apt_type:
                 if execution.get("appointment_id"):
                     apt_type = await pool.fetchval(
