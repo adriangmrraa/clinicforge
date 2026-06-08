@@ -157,7 +157,6 @@ class LiquidationService:
               AND a.appointment_datetime >= $3
               AND a.appointment_datetime < ($4::date + INTERVAL '1 day')
               AND a.status != 'deleted'
-              AND a.payment_status = 'paid'
             ORDER BY a.appointment_datetime
             """,
             tenant_id,
@@ -176,6 +175,11 @@ class LiquidationService:
             billing = Decimal(str(row["billing_amount"] or 0))
             treatment_code = row["treatment_code"] or ""
             appt_date = row["appointment_datetime"].date() if row["appointment_datetime"] else period_start
+            appt_status = row["appointment_status"] or ""
+            pstatus = row["payment_status"] or "pending"
+
+            excluded = appt_status in ("cancelled", "no_show")
+            billing_for_totals = Decimal("0") if excluded else billing
 
             # Point-in-time commission lookup for THIS appointment's date
             config_at_date = await self.get_commission_config_at_date(
@@ -190,15 +194,17 @@ class LiquidationService:
                 appt_commission_pct = config_at_date["default_commission_pct"]
 
             if config_at_date["source"] == "default_zero":
-                treatments_without_commission.append(treatment_code)
+                if treatment_code not in treatments_without_commission:
+                    treatments_without_commission.append(treatment_code)
 
-            appt_commission = billing * (
-                Decimal(str(appt_commission_pct)) / Decimal("100")
-            )
-            total_commission += appt_commission
-            total_billed += billing
-            # All appointments are paid (filtered above)
-            total_paid += billing
+            total_billed += billing_for_totals
+
+            if not excluded and pstatus == 'paid':
+                appt_commission = billing_for_totals * (
+                    Decimal(str(appt_commission_pct)) / Decimal("100")
+                )
+                total_commission += appt_commission
+                total_paid += billing_for_totals
 
         total_pending = total_billed - total_paid
         if total_pending < 0:
@@ -274,10 +280,12 @@ class LiquidationService:
         # 1. Get list of active professionals
         professionals = await pool.fetch(
             """
-            SELECT id, first_name, last_name
-            FROM professionals
-            WHERE tenant_id = $1 AND is_active = true
-            ORDER BY id
+            SELECT p.id, p.first_name, p.last_name
+            FROM professionals p
+            INNER JOIN users u ON p.user_id = u.id
+            WHERE p.tenant_id = $1 AND p.is_active = true
+              AND u.role IN ('professional', 'ceo')
+            ORDER BY p.id
             """,
             tenant_id,
         )
@@ -410,7 +418,6 @@ class LiquidationService:
               AND a.appointment_datetime >= $3
               AND a.appointment_datetime < ($4::date + INTERVAL '1 day')
               AND a.status != 'deleted'
-              AND a.payment_status = 'paid'
             ORDER BY pat.id, a.appointment_type, a.appointment_datetime
             """,
             tenant_id,

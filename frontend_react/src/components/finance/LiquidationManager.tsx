@@ -799,6 +799,18 @@ export default function LiquidationManager({ periodStart, periodEnd, formatCurre
           </div>
         </div>
       )}
+      {/* Commission Editor Modal */}
+      {commissionEditorProf && (
+        <CommissionEditor
+          professionalId={commissionEditorProf.id}
+          professionalName={commissionEditorProf.name}
+          onClose={() => setCommissionEditorProf(null)}
+          onSuccess={() => {
+            setCommissionEditorProf(null);
+            fetchLiquidations();
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -845,18 +857,6 @@ function TreatmentGroupDetail({ group, formatCurrency }: { group: TreatmentGroup
         </div>
       )}
 
-      {/* Commission Editor Modal */}
-      {commissionEditorProf && (
-        <CommissionEditor
-          professionalId={commissionEditorProf.id}
-          professionalName={commissionEditorProf.name}
-          onClose={() => setCommissionEditorProf(null)}
-          onSuccess={() => {
-            setCommissionEditorProf(null);
-            fetchLiquidations();
-          }}
-        />
-      )}
     </div>
   );
 }

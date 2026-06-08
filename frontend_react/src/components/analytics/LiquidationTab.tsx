@@ -11,6 +11,7 @@ import type { LiquidationResponse, LiquidationProfessional } from '../../types/l
 // ProfessionalAccordion is created by another agent — import path is consistent
 // with the analytics directory convention used across this folder.
 import ProfessionalAccordion from './ProfessionalAccordion';
+import LiquidationManager from '../finance/LiquidationManager';
 
 interface LiquidationTabProps {
   startDate: string;
@@ -237,14 +238,6 @@ const LiquidationTab: React.FC<LiquidationTabProps> = ({
           </button>
         )}
 
-        {isCEO && (
-          <a
-            href="/finanzas?tab=liquidaciones"
-            className="ml-auto flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 transition-colors"
-          >
-            {t('liquidation.view_in_finance', 'Ver en Finanzas')} <ExternalLink size={12} />
-          </a>
-        )}
       </div>
 
       {/* Summary cards */}
@@ -308,6 +301,16 @@ const LiquidationTab: React.FC<LiquidationTabProps> = ({
           </div>
         )
       )}
+
+      {/* Persistent Liquidations Manager */}
+      <div className="mt-8 pt-8 border-t border-white/[0.04]">
+        <h3 className="text-lg font-semibold text-white mb-4">Gestión de Liquidaciones</h3>
+        <LiquidationManager 
+          periodStart={startDate} 
+          periodEnd={endDate} 
+          formatCurrency={formatCurrency} 
+        />
+      </div>
     </div>
   );
 };

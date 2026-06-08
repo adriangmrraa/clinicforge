@@ -6,7 +6,7 @@ import api from '../api/axios';
 import PageHeader from '../components/PageHeader';
 import GlassCard from '../components/GlassCard';
 import FinancialDashboard from '../components/finance/FinancialDashboard';
-import LiquidationManager from '../components/finance/LiquidationManager';
+
 import ReconciliationView from '../components/finance/ReconciliationView';
 import type { DashboardData } from '../types/finance';
 
@@ -28,7 +28,7 @@ function formatCurrency(amount: number): string {
   }).format(amount);
 }
 
-type TabKey = 'dashboard' | 'liquidaciones' | 'conciliacion';
+type TabKey = 'dashboard' | 'conciliacion';
 
 export default function FinancialCommandCenterView() {
   const { t } = useTranslation();
@@ -76,7 +76,6 @@ export default function FinancialCommandCenterView() {
 
   const tabs: { key: TabKey; label: string; icon: JSX.Element }[] = [
     { key: 'dashboard', label: t('finance.tab_dashboard'), icon: <BarChart3 size={16} /> },
-    { key: 'liquidaciones', label: t('finance.tab_liquidations'), icon: <FileText size={16} /> },
     { key: 'conciliacion', label: t('finance.tab_reconciliation'), icon: <Scale size={16} /> },
   ];
 
@@ -159,13 +158,7 @@ export default function FinancialCommandCenterView() {
           />
         )}
 
-        {activeTab === 'liquidaciones' && (
-          <LiquidationManager
-            periodStart={periodStart}
-            periodEnd={periodEnd}
-            formatCurrency={formatCurrency}
-          />
-        )}
+
 
         {activeTab === 'conciliacion' && (
           <ReconciliationView
