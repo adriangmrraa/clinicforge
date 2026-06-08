@@ -708,8 +708,10 @@ async def _action_send_instructions(pool, tenant_id, phone, step, execution) -> 
                     f"SELECT {field}, name FROM treatment_types WHERE tenant_id = $1 AND code = $2",
                     tenant_id, apt_type,
                 )
+                logger.info(f"send_instructions: apt_type='{apt_type}', field='{field}', row_found={row is not None}")
                 instructions = _parse_jsonb_field(row[field] if row else None)
                 treatment_name = row["name"] if row else apt_type
+                logger.info(f"send_instructions: instructions_type={type(instructions).__name__}, value={json.dumps(instructions, ensure_ascii=False) if instructions else 'None'}")
 
                 if instruction_type == "pre":
                     if isinstance(instructions, dict):
@@ -720,6 +722,7 @@ async def _action_send_instructions(pool, tenant_id, phone, step, execution) -> 
                     # Post-treatment: handles both list (timed sequence) and dict
                     bubbles = _format_post_instructions(instructions, treatment_name)
             else:
+                logger.info(f"send_instructions: apt_type is empty (exec_ctx keys={list(exec_ctx.keys()) if isinstance(exec_ctx, dict) else 'N/A'})")
                 bubbles = []
 
         if not bubbles:
