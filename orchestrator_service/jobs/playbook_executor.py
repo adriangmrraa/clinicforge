@@ -119,6 +119,21 @@ async def _process_execution(pool, execution: dict, now: datetime):
     logger.info(f"▶️ Executing step {current_order} ({step['action_type']}) for execution {exec_id}")
     success = await _execute_step(pool, execution, step)
 
+    # Notify Telegram when a patient-facing action was executed
+    if success and step["action_type"] in ("send_template", "send_text", "send_ai_message", "send_instructions"):
+        try:
+            patient_name = None
+            if execution.get("patient_id"):
+                patient_row = await pool.fetchrow(
+                    "SELECT first_name, last_name FROM patients WHERE id = $1 AND tenant_id = $2",
+                    execution["patient_id"], tenant_id,
+                )
+                if patient_row:
+                    patient_name = f"{patient_row['first_name']} {patient_row['last_name'] or ''}".strip()
+            await _notify_telegram_action(pool, tenant_id, execution, step, patient_name)
+        except Exception as notify_err:
+            logger.warning(f"📢 Telegram notification error for execution {exec_id}: {notify_err}")
+
     # Log event
     await pool.execute(
         """INSERT INTO automation_events (execution_id, step_id, event_type, event_data)
@@ -1282,6 +1297,74 @@ async def check_leads_without_booking():
 
     except Exception as e:
         logger.error(f"❌ check_leads_without_booking error: {e}")
+
+
+# ── Telegram Notification for Actions ────────────────────────────────────
+
+_MESSAGE_ACTIONS_LABELS = {
+    "send_template": "📨 Plantilla",
+    "send_text": "💬 Texto libre",
+    "send_ai_message": "🤖 Mensaje IA",
+    "send_instructions": "📋 Instrucciones",
+}
+
+_ACTION_EMOJIS = {
+    "send_template": "📨",
+    "send_text": "💬",
+    "send_ai_message": "🤖",
+    "send_instructions": "📋",
+}
+
+
+async def _notify_telegram_action(
+    pool,
+    tenant_id: int,
+    execution: dict,
+    step: dict,
+    patient_name: Optional[str],
+) -> None:
+    """Send a Telegram notification to all authorized users after a patient-facing action."""
+    try:
+        from services.telegram_notifier import send_proactive_message
+
+        action_type = step["action_type"]
+        emoji = _ACTION_EMOJIS.get(action_type, "⚡")
+        playbook_name = execution.get("playbook_name") or "Sin nombre"
+        phone = execution.get("phone_number") or "?"
+
+        # Build detail line depending on action type
+        detail_parts = []
+        if action_type == "send_template":
+            tmpl = step.get("template_name") or step.get("template_id") or "—"
+            detail_parts.append(f"Plantilla: <code>{tmpl}</code>")
+        elif action_type == "send_instructions":
+            inst_type = step.get("instruction_type") or "post"
+            label = "post-tratamiento" if inst_type == "post" else "pre-tratamiento"
+            detail_parts.append(f"Instrucciones <b>{label}</b>")
+        elif action_type == "send_text":
+            text = (step.get("message_text") or "")[:80]
+            if text:
+                detail_parts.append(f"Texto: <i>{text}</i>")
+        elif action_type == "send_ai_message":
+            detail_parts.append("Mensaje generado por IA")
+
+        detail = ""
+        if detail_parts:
+            detail = f"\n{detail_parts[0]}"
+
+        patient_line = f"👤 {patient_name}" if patient_name else f"📱 <code>{phone}</code>"
+
+        message = (
+            f"🤖 <b>Playbook ejecutado</b>\n"
+            f"📋 Regla: <b>{playbook_name}</b>\n"
+            f"{emoji} Acción: {_MESSAGE_ACTIONS_LABELS.get(action_type, action_type)}{detail}\n"
+            f"{patient_line}\n"
+            f"✅ Ejecutado correctamente"
+        )
+
+        await send_proactive_message(tenant_id, message)
+    except Exception as e:
+        logger.warning(f"📢 _notify_telegram_action error: {e}")
 
 
 # Register with scheduler
