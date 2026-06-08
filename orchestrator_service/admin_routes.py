@@ -7923,26 +7923,6 @@ async def update_appointment_status(
             except Exception as ge:
                 logger.warning(f"Error deleting GCal event: {ge}")
 
-        if (
-            payload.status == "completed"
-            and apt["status"] != "completed"
-            and apt["phone_number"]
-        ):
-            # Disparar feedback automático en background
-            try:
-                background_tasks.add_task(
-                    trigger_feedback_after_delay,
-                    appointment_id=int(id) if str(id).isdigit() else id,
-                    tenant_id=tenant_id,
-                    patient_name=f"{apt['first_name'] or ''} {apt['last_name'] or ''}".strip()
-                    or "paciente",
-                    phone_number=apt["phone_number"],
-                    delay_minutes=45,
-                )
-                logger.info(f"⏰ Feedback programado para turno {id}")
-            except Exception as e:
-                logger.error(f"Error programando feedback: {e}")
-
         # 2. Emitir evento según el nuevo estado
         appointment_data_dict = (
             dict(appointment_data) if appointment_data else {"id": id}
