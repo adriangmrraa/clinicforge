@@ -13836,7 +13836,7 @@ async def list_patient_treatment_plans(
                 "name": row["name"],
                 "status": row["status"],
                 "estimated_total": float(row["estimated_total"]),
-                "approved_total": row["approved_total"],
+                "approved_total": float(row["approved_total"]) if row["approved_total"] is not None else None,
                 "approved_by": row["approved_by"],
                 "approved_at": row["approved_at"].isoformat()
                 if row["approved_at"]
@@ -14000,7 +14000,7 @@ async def create_treatment_plan(
         "name": plan["name"],
         "status": plan["status"],
         "estimated_total": float(plan["estimated_total"]),
-        "approved_total": plan["approved_total"],
+        "approved_total": float(plan["approved_total"]) if plan["approved_total"] is not None else None,
         "approved_by": plan["approved_by"],
         "approved_at": plan["approved_at"].isoformat() if plan["approved_at"] else None,
         "notes": plan["notes"],
@@ -14204,7 +14204,7 @@ async def get_treatment_plan_detail(
         "name": plan["name"],
         "status": plan["status"],
         "estimated_total": float(plan["estimated_total"]),
-        "approved_total": plan["approved_total"],
+        "approved_total": float(plan["approved_total"]) if plan["approved_total"] is not None else None,
         "approved_by": plan["approved_by"],
         "approved_by_name": plan.get("approved_by") or None,
         "approved_at": plan["approved_at"].isoformat() if plan["approved_at"] else None,
@@ -14582,7 +14582,7 @@ async def update_treatment_plan(
         "name": updated_plan["name"],
         "status": updated_plan["status"],
         "estimated_total": float(updated_plan["estimated_total"]),
-        "approved_total": updated_plan["approved_total"],
+        "approved_total": float(updated_plan["approved_total"]) if updated_plan["approved_total"] is not None else None,
         "approved_by": updated_plan["approved_by"],
         "approved_at": updated_plan["approved_at"].isoformat()
         if updated_plan["approved_at"]
