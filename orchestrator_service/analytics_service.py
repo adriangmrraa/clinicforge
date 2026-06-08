@@ -409,16 +409,25 @@ class AnalyticsService:
                     cr.clinical_notes,
                     cr.diagnosis,
                     a.plan_item_id,
-                    tpi.plan_id,
-                    tp.name AS plan_name,
-                    tp.approved_total AS plan_approved_total,
-                    tp.status AS plan_status
+                    COALESCE(tpi.plan_id, active_tp.id) AS plan_id,
+                    COALESCE(tp.name, active_tp.plan_name) AS plan_name,
+                    COALESCE(tp.approved_total, active_tp.approved_total) AS plan_approved_total,
+                    COALESCE(tp.status, active_tp.status) AS plan_status
                 FROM appointments a
                 JOIN professionals p ON p.id = a.professional_id AND p.tenant_id = $1
                 JOIN patients pat ON pat.id = a.patient_id AND pat.tenant_id = $1
                 LEFT JOIN treatment_types tt ON tt.code = a.appointment_type AND tt.tenant_id = $1
                 LEFT JOIN treatment_plan_items tpi ON tpi.id = a.plan_item_id AND tpi.tenant_id = $1
                 LEFT JOIN treatment_plans tp ON tp.id = tpi.plan_id AND tp.tenant_id = $1
+                LEFT JOIN LATERAL (
+                    SELECT id, name AS plan_name, approved_total, status
+                    FROM treatment_plans
+                    WHERE tenant_id = $1
+                      AND patient_id = a.patient_id
+                      AND status IN ('approved', 'in_progress')
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                ) active_tp ON tpi.plan_id IS NULL
                 LEFT JOIN LATERAL (
                     SELECT cr2.clinical_notes, cr2.diagnosis
                     FROM clinical_records cr2
@@ -443,6 +452,7 @@ class AnalyticsService:
                   END,
                   a.appointment_datetime
             """
+
 
             rows = await db.pool.fetch(
                 query, tenant_id, start_date, end_date, *extra_params

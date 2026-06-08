@@ -88,51 +88,71 @@ class LiquidationService:
                 period_end,
             )
             if existing:
-                # Check for zombie placeholder (crash between INSERT and UPDATE)
-                if float(existing["total_billed"] or 0) == 0 and existing["generated_by"] == "system":
-                    logger.warning(
-                        "generate_liquidation: zombie placeholder %s found for prof %s, "
-                        "period %s-%s. Deleting and regenerating.",
-                        existing["id"],
-                        professional_id,
-                        period_start,
-                        period_end,
-                    )
-                    await pool.execute(
-                        "DELETE FROM liquidation_records WHERE id = $1",
-                        existing["id"],
-                    )
-                    # Fall through to generate fresh
-                else:
+                existing_status = existing["status"] or "generated"
+                # If already approved or paid, preserve it — do not overwrite
+                if existing_status in ("approved", "paid"):
                     logger.info(
-                        "generate_liquidation: existing record %s for prof %s, period %s-%s",
+                        "generate_liquidation: existing %s record %s for prof %s, period %s-%s — skipping recalculation",
+                        existing_status,
                         existing["id"],
                         professional_id,
                         period_start,
                         period_end,
                     )
                     return dict(existing)
+                # For generated/draft: recalculate using existing ID
+                logger.info(
+                    "generate_liquidation: recalculating %s record %s for prof %s, period %s-%s",
+                    existing_status,
+                    existing["id"],
+                    professional_id,
+                    period_start,
+                    period_end,
+                )
+                # Invalidate cached PDF so it gets regenerated with correct data
+                await self.invalidate_liquidation_pdf(tenant_id, existing["id"])
 
         placeholder_id = placeholder["id"] if placeholder else None
 
-        # If we deleted a zombie, we need a fresh placeholder
+        # If existing record is being recalculated, reuse its ID directly
+        # (set by the recalculate branch above; skip the new INSERT)
         if placeholder_id is None:
-            new_placeholder = await pool.fetchrow(
+            # Check if we're in recalculate mode (existing not None and status was generated/draft)
+            # We need to recover the existing ID — re-query since 'existing' may be out of scope
+            recover = await pool.fetchrow(
                 """
-                INSERT INTO liquidation_records (
-                    tenant_id, professional_id, period_start, period_end,
-                    total_billed, total_paid, total_pending,
-                    commission_pct, commission_amount, payout_amount,
-                    status, generated_by, notes
-                ) VALUES ($1::int, $2::int, $3::date, $4::date, 0, 0, 0, 0, 0, 0, 'generated', 'system', '{}')
-                RETURNING id
+                SELECT id FROM liquidation_records
+                WHERE tenant_id = $1
+                  AND professional_id = $2
+                  AND period_start = $3
+                  AND period_end = $4
                 """,
                 tenant_id,
                 professional_id,
                 period_start,
                 period_end,
             )
-            placeholder_id = new_placeholder["id"] if new_placeholder else None
+            if recover:
+                placeholder_id = recover["id"]
+            else:
+                # Truly new record — insert fresh placeholder
+                new_placeholder = await pool.fetchrow(
+                    """
+                    INSERT INTO liquidation_records (
+                        tenant_id, professional_id, period_start, period_end,
+                        total_billed, total_paid, total_pending,
+                        commission_pct, commission_amount, payout_amount,
+                        status, generated_by, notes
+                    ) VALUES ($1::int, $2::int, $3::date, $4::date, 0, 0, 0, 0, 0, 0, 'generated', 'system', '{}')
+                    RETURNING id
+                    """,
+                    tenant_id,
+                    professional_id,
+                    period_start,
+                    period_end,
+                )
+                placeholder_id = new_placeholder["id"] if new_placeholder else None
+
 
         # 3. Query ONLY PAID appointments in the period for this professional
         #    DLD-91: "Solo se liquidan tratamientos cobrados."
@@ -149,9 +169,9 @@ class LiquidationService:
                 tt.code AS treatment_code,
                 tt.name AS treatment_name,
                 a.plan_item_id,
-                tpi.plan_id,
-                tp.approved_total AS plan_approved_total,
-                tp.status AS plan_status
+                COALESCE(tpi.plan_id, active_tp.id) AS plan_id,
+                COALESCE(tp.approved_total, active_tp.approved_total) AS plan_approved_total,
+                COALESCE(tp.status, active_tp.status) AS plan_status
             FROM appointments a
             LEFT JOIN treatment_types tt
                 ON tt.code = a.appointment_type AND tt.tenant_id = $1
@@ -159,6 +179,15 @@ class LiquidationService:
                 ON tpi.id = a.plan_item_id AND tpi.tenant_id = $1
             LEFT JOIN treatment_plans tp
                 ON tp.id = tpi.plan_id AND tp.tenant_id = $1
+            LEFT JOIN LATERAL (
+                SELECT id, approved_total, status
+                FROM treatment_plans
+                WHERE tenant_id = $1
+                  AND patient_id = a.patient_id
+                  AND status IN ('approved', 'in_progress')
+                ORDER BY created_at DESC
+                LIMIT 1
+            ) active_tp ON tpi.plan_id IS NULL
             WHERE a.tenant_id = $1
               AND a.professional_id = $2
               AND a.appointment_datetime >= $3
@@ -464,15 +493,24 @@ class LiquidationService:
                 pat.phone_number AS patient_phone,
                 tt.code AS treatment_code,
                 tt.name AS treatment_name,
-                tpi.plan_id,
-                tp.name AS plan_name,
-                tp.approved_total AS plan_approved_total,
-                tp.status AS plan_status
+                COALESCE(tpi.plan_id, active_tp.id) AS plan_id,
+                COALESCE(tp.name, active_tp.plan_name) AS plan_name,
+                COALESCE(tp.approved_total, active_tp.approved_total) AS plan_approved_total,
+                COALESCE(tp.status, active_tp.status) AS plan_status
             FROM appointments a
             JOIN patients pat ON pat.id = a.patient_id AND pat.tenant_id = $1
             LEFT JOIN treatment_types tt ON tt.code = a.appointment_type AND tt.tenant_id = $1
             LEFT JOIN treatment_plan_items tpi ON tpi.id = a.plan_item_id AND tpi.tenant_id = $1
             LEFT JOIN treatment_plans tp ON tp.id = tpi.plan_id AND tp.tenant_id = $1
+            LEFT JOIN LATERAL (
+                SELECT id, name AS plan_name, approved_total, status
+                FROM treatment_plans
+                WHERE tenant_id = $1
+                  AND patient_id = a.patient_id
+                  AND status IN ('approved', 'in_progress')
+                ORDER BY created_at DESC
+                LIMIT 1
+            ) active_tp ON tpi.plan_id IS NULL
             WHERE a.tenant_id = $1
               AND a.professional_id = $2
               AND a.appointment_datetime >= $3
@@ -485,6 +523,7 @@ class LiquidationService:
             period_start,
             period_end,
         )
+
 
         # 3. Group by patient → treatment (same aggregation as analytics_service)
         treatment_groups_map = {}
@@ -1683,15 +1722,15 @@ class LiquidationService:
             """
             SELECT commission_pct, clinic_pct, treatment_code
             FROM professional_commissions
-            WHERE tenant_id = $1
-              AND professional_id = $2
+            WHERE tenant_id = $1::int
+              AND professional_id = $2::int
               AND treatment_code IS NOT NULL
               AND treatment_code NOT IN (
                   SELECT DISTINCT treatment_code FROM commission_history
-                  WHERE tenant_id = $1
-                    AND professional_id = $2
+                  WHERE tenant_id = $1::int
+                    AND professional_id = $2::int
                     AND treatment_code IS NOT NULL
-                    AND effective_date <= $3
+                    AND effective_date <= $3::date
               )
               AND treatment_code IS NOT NULL
             """,
