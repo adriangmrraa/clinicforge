@@ -165,6 +165,19 @@ class LiquidationService:
             period_end,
         )
 
+        # Check if there are any appointments at all for this period
+        if not appt_rows:
+            if placeholder_id:
+                await pool.execute(
+                    "DELETE FROM liquidation_records WHERE id = $1 AND tenant_id = $2",
+                    placeholder_id,
+                    tenant_id,
+                )
+            raise HTTPException(
+                status_code=400,
+                detail="No se encontraron turnos registrados para este profesional en el período especificado."
+            )
+
         # 4. Calculate totals with point-in-time commission lookup
         total_billed = Decimal("0")
         total_paid = Decimal("0")
@@ -1159,31 +1172,68 @@ class LiquidationService:
         """
         rows = await pool.fetch(
             """
-            SELECT commission_pct, clinic_pct, treatment_code
-            FROM professional_commissions
-            WHERE tenant_id = $1 AND professional_id = $2
-            ORDER BY treatment_code NULLS FIRST
+            SELECT pc.commission_pct, pc.clinic_pct, pc.treatment_code, tt.name AS treatment_name
+            FROM professional_commissions pc
+            LEFT JOIN treatment_types tt ON tt.code = pc.treatment_code AND tt.tenant_id = pc.tenant_id
+            WHERE pc.tenant_id = $1 AND pc.professional_id = $2
+            ORDER BY pc.treatment_code NULLS FIRST
             """,
             tenant_id,
             professional_id,
         )
 
-        default_commission_pct = 0.0
-        default_clinic_pct = 100.0
-        per_treatment = []
+        if not rows:
+            # Pre-populate default commission overrides from the specifications
+            db_types = await pool.fetch(
+                """
+                SELECT code, name FROM treatment_types
+                WHERE tenant_id = $1 AND code = ANY($2)
+                """,
+                tenant_id,
+                ["root_canal", "orthodontics", "consultation"]
+            )
+            name_map = {r["code"]: r["name"] for r in db_types}
 
-        for row in rows:
-            if row["treatment_code"] is None:
-                default_commission_pct = float(row["commission_pct"])
-                default_clinic_pct = float(row["clinic_pct"])
-            else:
-                per_treatment.append(
-                    {
-                        "treatment_code": row["treatment_code"],
-                        "commission_pct": float(row["commission_pct"]),
-                        "clinic_pct": float(row["clinic_pct"]),
-                    }
-                )
+            per_treatment = [
+                {
+                    "treatment_code": "root_canal",
+                    "treatment_name": name_map.get("root_canal", "Endodoncia"),
+                    "commission_pct": 60.0,
+                    "clinic_pct": 40.0,
+                },
+                {
+                    "treatment_code": "orthodontics",
+                    "treatment_name": name_map.get("orthodontics", "Ortodoncia"),
+                    "commission_pct": 50.0,
+                    "clinic_pct": 50.0,
+                },
+                {
+                    "treatment_code": "consultation",
+                    "treatment_name": name_map.get("consultation", "Consulta General"),
+                    "commission_pct": 40.0,
+                    "clinic_pct": 60.0,
+                }
+            ]
+            default_commission_pct = 40.0
+            default_clinic_pct = 60.0
+        else:
+            default_commission_pct = 0.0
+            default_clinic_pct = 100.0
+            per_treatment = []
+
+            for row in rows:
+                if row["treatment_code"] is None:
+                    default_commission_pct = float(row["commission_pct"])
+                    default_clinic_pct = float(row["clinic_pct"])
+                else:
+                    per_treatment.append(
+                        {
+                            "treatment_code": row["treatment_code"],
+                            "treatment_name": row["treatment_name"] or row["treatment_code"],
+                            "commission_pct": float(row["commission_pct"]),
+                            "clinic_pct": float(row["clinic_pct"]),
+                        }
+                    )
 
         result = {
             "professional_id": professional_id,
@@ -1200,12 +1250,12 @@ class LiquidationService:
         # If no config at all, add warning
         if not rows:
             result["warning"] = (
-                "Sin configuración de comisiones. Se aplica 0% "
-                "(profesional recibe 100%)."
+                "Sin configuración de comisiones. Mostrando valores predeterminados "
+                "(Endodoncia 60/40, Ortodoncia 50/50, Consulta General 40/60)."
             )
             logger.warning(
                 "get_commission_config: no config for professional %s, tenant %s. "
-                "Using 0%% default.",
+                "Using default template.",
                 professional_id,
                 tenant_id,
             )
@@ -1297,7 +1347,7 @@ class LiquidationService:
             INSERT INTO professional_commissions (
                 tenant_id, professional_id, commission_pct, clinic_pct, treatment_code
             ) VALUES ($1, $2, $3, $4, NULL)
-            ON CONFLICT (tenant_id, professional_id, treatment_code)
+            ON CONFLICT (tenant_id, professional_id, COALESCE(treatment_code, '__default__'))
             DO UPDATE SET commission_pct = $3, clinic_pct = $4, updated_at = NOW()
             """,
             tenant_id,
@@ -1346,7 +1396,7 @@ class LiquidationService:
                 INSERT INTO professional_commissions (
                     tenant_id, professional_id, commission_pct, clinic_pct, treatment_code
                 ) VALUES ($1, $2, $3, $4, $5)
-                ON CONFLICT (tenant_id, professional_id, treatment_code)
+                ON CONFLICT (tenant_id, professional_id, COALESCE(treatment_code, '__default__'))
                 DO UPDATE SET commission_pct = $3, clinic_pct = $4, updated_at = NOW()
                 """,
                 tenant_id,

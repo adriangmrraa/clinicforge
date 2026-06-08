@@ -17609,6 +17609,56 @@ async def send_liquidation_email_endpoint(
         raise HTTPException(status_code=500, detail="Error interno del servidor")
 
 
+# =============================================================================
+# DELETE /admin/liquidations/{liquidation_id}
+# =============================================================================
+@router.delete(
+    "/liquidations/{liquidation_id}",
+    tags=["Liquidaciones"],
+    summary="Eliminar una liquidación profesional",
+)
+async def delete_liquidation_endpoint(
+    liquidation_id: int,
+    user_data=Depends(verify_admin_token),
+    resolved_tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """Elimina una liquidación. Soberanía: filtrado estricto por tenant_id."""
+    logger.info("=== DELETE /admin/liquidations/%s ===", liquidation_id)
+    try:
+        record = await db.pool.fetchrow(
+            "SELECT id, status FROM liquidation_records WHERE id = $1 AND tenant_id = $2",
+            liquidation_id,
+            resolved_tenant_id,
+        )
+        if not record:
+            raise HTTPException(
+                status_code=404,
+                detail="Liquidación no encontrada",
+            )
+        
+        await db.pool.execute(
+            "DELETE FROM liquidation_records WHERE id = $1 AND tenant_id = $2",
+            liquidation_id,
+            resolved_tenant_id,
+        )
+        
+        pdf_path = f"/app/uploads/liquidations/{resolved_tenant_id}/{liquidation_id}.pdf"
+        if os.path.exists(pdf_path):
+            try:
+                os.remove(pdf_path)
+            except Exception as e:
+                logger.warning("Failed to delete cached PDF file: %s", str(e))
+                
+        return {"success": True, "message": "Liquidación eliminada correctamente"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error deleting liquidation: %s", str(e), exc_info=True)
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
+
+
+
 # ---------------------------------------------------------------------------
 # T1.3 — Telegram Authorized Users CRUD
 # ---------------------------------------------------------------------------

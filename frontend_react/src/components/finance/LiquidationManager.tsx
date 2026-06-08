@@ -16,6 +16,7 @@ import {
   Settings,
   CheckCircle2,
   XCircle,
+  Trash2,
 } from 'lucide-react';
 import { useTranslation } from '../../context/LanguageContext';
 import api from '../../api/axios';
@@ -217,6 +218,21 @@ export default function LiquidationManager({ periodStart, periodEnd, formatCurre
       showToast('error', err.response?.data?.detail || 'Error al descargar PDF');
     } finally {
       setPdfLoading(null);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!window.confirm("¿Estás seguro de que deseas eliminar esta liquidación?")) return;
+    setUpdating(id);
+    try {
+      await api.delete(`/admin/liquidations/${id}`);
+      showToast('success', 'Liquidación eliminada correctamente');
+      fetchLiquidations();
+    } catch (err: any) {
+      console.error('Error deleting liquidation:', err);
+      showToast('error', err.response?.data?.detail || 'Error al eliminar la liquidación');
+    } finally {
+      setUpdating(null);
     }
   };
 
@@ -516,6 +532,13 @@ export default function LiquidationManager({ periodStart, periodEnd, formatCurre
                                 </button>
                               </>
                             )}
+                            <button
+                              onClick={() => handleDelete(liq.id)}
+                              className="p-1.5 hover:bg-red-500/10 rounded-lg text-white/40 hover:text-red-400 transition-colors"
+                              title={t('common.delete') || 'Eliminar'}
+                            >
+                              <Trash2 size={14} />
+                            </button>
                           </div>
                         </td>
                       </tr>

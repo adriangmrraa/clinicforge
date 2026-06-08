@@ -142,3 +142,67 @@ async def test_update_liquidation_status_blocks_approved_if_missing_commission()
         
         assert exc_info.value.status_code == 400
         assert "Hay tratamientos sin comisión configurada: Endodoncia" in exc_info.value.detail
+
+
+@pytest.mark.asyncio
+async def test_get_commission_config_returns_defaults_when_empty():
+    """
+    Test that get_commission_config returns default commission splits (Endodoncia, Ortodoncia, Consulta General)
+    when no configuration row is found in the database.
+    """
+    service = LiquidationService()
+    tenant_id = 1
+    professional_id = 42
+
+    mock_pool = MagicMock()
+    # No rows returned for professional commissions
+    mock_pool.fetch = AsyncMock(side_effect=[
+        [],  # Fetch rows in get_commission_config
+        [
+            {"code": "root_canal", "name": "Endodoncia"},
+            {"code": "orthodontics", "name": "Ortodoncia"},
+            {"code": "consultation", "name": "Consulta General"},
+        ],  # Fetch rows in get_commission_config for defaults
+        []   # Fetch rows in get_commission_history
+    ])
+
+    config = await service.get_commission_config(mock_pool, tenant_id, professional_id)
+
+    assert config["default_commission_pct"] == 40.0
+    assert config["default_clinic_pct"] == 60.0
+    assert len(config["per_treatment"]) == 3
+    assert config["per_treatment"][0]["treatment_code"] == "root_canal"
+    assert config["per_treatment"][0]["commission_pct"] == 60.0
+    assert config["per_treatment"][0]["clinic_pct"] == 40.0
+
+
+@pytest.mark.asyncio
+async def test_generate_liquidation_raises_http_exception_if_no_appointments():
+    """
+    Test that generate_liquidation raises HTTPException with 400 status code
+    and cleans up placeholder when there are no appointments in the period.
+    """
+    service = LiquidationService()
+    tenant_id = 1
+    professional_id = 42
+    period_start = date(2026, 6, 1)
+    period_end = date(2026, 6, 30)
+    generated_by = "test@clinicforge.com"
+
+    mock_pool = MagicMock()
+    # Return placeholder on first insert, then return empty array for appointments
+    mock_pool.fetchrow = AsyncMock(return_value={"id": 100})
+    mock_pool.fetch = AsyncMock(return_value=[])  # Empty appt_rows
+    mock_pool.execute = AsyncMock()  # For DELETE query
+
+    with pytest.raises(HTTPException) as exc_info:
+        await service.generate_liquidation(
+            mock_pool, tenant_id, professional_id, period_start, period_end, generated_by
+        )
+
+    assert exc_info.value.status_code == 400
+    assert "No se encontraron turnos registrados" in exc_info.value.detail
+    # Check that DELETE placeholder was executed
+    mock_pool.execute.assert_called_once()
+    args, _ = mock_pool.execute.call_args
+    assert "DELETE FROM liquidation_records" in args[0]
