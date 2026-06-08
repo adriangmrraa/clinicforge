@@ -78,7 +78,7 @@ async def create_execution_for_event(
                    RETURNING id""",
                 pb_id, tenant_id, patient_id, phone_number,
                 appointment_id, next_at,
-                json.dumps(context or {}),
+                context or {},
             )
 
             created_ids.append(exec_id)
