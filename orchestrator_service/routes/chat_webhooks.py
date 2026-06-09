@@ -1045,11 +1045,16 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                 try:
                     _apt_row = await pool.fetchrow(
                         """UPDATE appointments SET status = 'confirmed', updated_at = NOW()
-                           WHERE tenant_id = $1 AND patient_id = (
-                               SELECT id FROM patients WHERE phone_number = $2 AND tenant_id = $1 LIMIT 1
-                           ) AND status IN ('scheduled', 'pending')
-                           AND appointment_datetime > NOW()
-                           ORDER BY appointment_datetime ASC
+                           WHERE id = (
+                               SELECT a.id FROM appointments a
+                               INNER JOIN patients p ON a.patient_id = p.id AND p.tenant_id = a.tenant_id
+                               WHERE a.tenant_id = $1
+                               AND REGEXP_REPLACE(p.phone_number, '[^0-9]', '', 'g') = REGEXP_REPLACE($2, '[^0-9]', '', 'g')
+                               AND a.status IN ('scheduled', 'pending')
+                               AND a.appointment_datetime > NOW()
+                               ORDER BY a.appointment_datetime ASC
+                               LIMIT 1
+                           )
                            RETURNING id, appointment_datetime, appointment_type""",
                         tenant_id, msg.external_user_id,
                     )
@@ -1114,11 +1119,16 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                         """UPDATE appointments SET status = 'cancelled',
                                cancellation_reason = 'Cancelado por paciente (botón WhatsApp)',
                                cancellation_by = 'patient', updated_at = NOW()
-                           WHERE tenant_id = $1 AND patient_id = (
-                               SELECT id FROM patients WHERE phone_number = $2 AND tenant_id = $1 LIMIT 1
-                           ) AND status IN ('scheduled', 'confirmed', 'pending')
-                           AND appointment_datetime > NOW()
-                           ORDER BY appointment_datetime ASC
+                           WHERE id = (
+                               SELECT a.id FROM appointments a
+                               INNER JOIN patients p ON a.patient_id = p.id AND p.tenant_id = a.tenant_id
+                               WHERE a.tenant_id = $1
+                               AND REGEXP_REPLACE(p.phone_number, '[^0-9]', '', 'g') = REGEXP_REPLACE($2, '[^0-9]', '', 'g')
+                               AND a.status IN ('scheduled', 'confirmed', 'pending')
+                               AND a.appointment_datetime > NOW()
+                               ORDER BY a.appointment_datetime ASC
+                               LIMIT 1
+                           )
                            RETURNING id, appointment_datetime""",
                         tenant_id, msg.external_user_id,
                     )
@@ -1193,8 +1203,8 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                     logger.info(f"🔄 Reschedule button tapped by {msg.external_user_id} tenant={tenant_id}")
                 except Exception as _resch_err:
                     logger.error(f"❌ Reschedule button reply failed: {_resch_err}")
-                # DON'T continue — let it flow to the AI agent so it can handle the reschedule conversation
-                pass
+                # Allow AI agent to handle the reschedule conversation after the initial reply
+                # but do NOT double-respond: the bot already sent the opening message above.
 
             # --- Playbook V2: Check if patient has active execution waiting for response ---
             if not msg.is_agent and _btn_text not in _CONFIRM_BUTTONS and _btn_text not in _CANCEL_BUTTONS:

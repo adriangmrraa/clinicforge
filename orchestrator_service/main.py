@@ -8803,8 +8803,12 @@ async def confirm_appointment(
                 return "ERROR: No se encontró ningún turno programado o pendiente en el futuro para este paciente."
             
             patient_row = await db.pool.fetchrow(
-                "SELECT id, first_name, last_name FROM patients WHERE phone_number = $1 AND tenant_id = $2 AND status != 'deleted' LIMIT 1",
-                phone, tenant_id
+                """SELECT id, first_name, last_name FROM patients
+                   WHERE tenant_id = $1
+                   AND REGEXP_REPLACE(phone_number, '[^0-9]', '', 'g') = REGEXP_REPLACE($2, '[^0-9]', '', 'g')
+                   AND status != 'deleted'
+                   LIMIT 1""",
+                tenant_id, phone
             )
             if not patient_row:
                 return "ERROR: No se encontró ningún turno programado o pendiente en el futuro para este paciente."

@@ -2767,6 +2767,25 @@ Si el paciente pide un turno para {min_apt_date} o después, continuar normalmen
         logger.exception("process_buffer_task_fatal_error", exc_info=e)
         response_text = "Disculpas, estoy experimentando intermitencias. Consultame de nuevo en unos minutos."
         media_urls = []
+    finally:
+        # Reset ContextVars to avoid state leakage between concurrent background tasks
+        _ctx_vars = []
+        try:
+            from main import (  # type: ignore
+                current_customer_phone as _cv_phone,
+                current_tenant_id as _cv_tenant,
+                current_patient_id as _cv_patient,
+                current_source_channel as _cv_channel,
+                current_tenant_tz as _cv_tz,
+            )
+            _ctx_vars = [_cv_phone, _cv_tenant, _cv_patient, _cv_channel, _cv_tz]
+        except Exception:
+            pass
+        for _cv in _ctx_vars:
+            try:
+                _cv.set(None)
+            except Exception:
+                pass
 
     # --- SAFETY STRIP: remove any leaked internal tags before sending ---
     if response_text:
