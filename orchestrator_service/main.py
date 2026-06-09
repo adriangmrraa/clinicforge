@@ -1731,6 +1731,156 @@ async def get_tenant_calendar_provider(tenant_id: int) -> str:
     return cp if cp in ("google", "local") else "local"
 
 
+TREATMENT_SYNONYM_MAP = {
+    # Prevención
+    "limpieza": "Limpieza",
+    "profilaxis": "Limpieza",
+    "sarro": "Limpieza",
+    "control": "Control",
+    "revisión": "Control",
+    "revision": "Control",
+    "chequeo": "Control",
+    # Consultas
+    "consulta": "Consulta",
+    "evaluación": "Consulta",
+    "evaluacion": "Consulta",
+    "dolor": "Urgencia",
+    "emergencia": "Urgencia",
+    "urgente": "Urgencia",
+    # Operatoria
+    "caries": "Restauración",
+    "empaste": "Restauración",
+    "arreglar": "Restauración",
+    "restauración": "Restauración",
+    "restauracion": "Restauración",
+    "conducto": "Endodoncia",
+    "matar nervio": "Endodoncia",
+    # Estética Facial
+    "blanqueamiento": "Blanqueamiento",
+    "blanqueo": "Blanqueamiento",
+    "carillas": "Estética",
+    "diseño sonrisa": "Estética",
+    "diseño de sonrisa": "Estética",
+    "botox": "Estética",
+    "bioestimulación": "Estética",
+    "armonización": "Estética",
+    "armonizacion": "Estética",
+    # Endolifting
+    "endolifting": "Endolifting",
+    "endolift": "Endolifting",
+    "tensado": "Endolifting",
+    "rejuvenecimiento": "Endolifting",
+    # Cirugía
+    "cirugía": "Cirugía",
+    "cirugia": "Cirugía",
+    "operación": "Cirugía",
+    "operacion": "Cirugía",
+    "sacar muela": "Cirugía",
+    "extraer": "Cirugía",
+    "extraccion": "Cirugía",
+    "extracción": "Cirugía",
+    "muela de juicio": "Cirugía",
+    "muelas de juicio": "Cirugía",
+    "tercer molar": "Cirugía",
+    # Implantes
+    "implante": "Implante",
+    "implantes": "Implante",
+    "tornillo": "Implante",
+    # Regeneración Ósea
+    "injerto": "Injerto",
+    "regeneración ósea": "Regeneración",
+    "regeneracion osea": "Regeneración",
+    "hueso": "Regeneración",
+    # Rehabilitación / Prótesis
+    "prótesis": "Rehabilitación",
+    "protesis": "Rehabilitación",
+    "puente": "Rehabilitación",
+    "corona": "Rehabilitación",
+    "funda": "Rehabilitación",
+    "rehabilitación": "Rehabilitación",
+    "rehabilitacion": "Rehabilitación",
+    # Ortodoncia
+    "ortodoncia": "Ortodoncia",
+    "brackets": "Ortodoncia",
+    "alineadores": "Ortodoncia",
+    # Encías (mapea a Consulta General ya que no hay tratamiento específico)
+    "encías": "Consulta",
+    "encias": "Consulta",
+    "gingivitis": "Consulta",
+    # ATM
+    "atm": "ATM",
+    "mandíbula": "ATM",
+    "mandibula": "ATM",
+    "articulación": "ATM",
+    "articulacion": "ATM",
+    "bruxismo": "ATM",
+    "chasquido": "ATM",
+}
+
+async def resolve_canonical_treatment(tenant_id: int, term: str) -> Optional[dict]:
+    """
+    Intenta resolver un término coloquial o nombre de tratamiento a su registro canónico en la DB.
+    Aplica TREATMENT_SYNONYM_MAP y búsquedas ILIKE.
+    Devuelve el registro de treatment_types o None.
+    """
+    if not term:
+        return None
+        
+    term_clean = term.strip().lower()
+    
+    # 1. Búsqueda directa exacta/parcial en la base de datos (name, code, patient_display_name)
+    row = await db.pool.fetchrow(
+        """
+        SELECT id, code, name, base_price, default_duration_minutes, patient_display_name,
+               is_high_ticket, consultation_duration_minutes, consultation_requirements, priority
+        FROM treatment_types
+        WHERE tenant_id = $1 
+          AND (name ILIKE $2 OR code ILIKE $2 OR patient_display_name ILIKE $2)
+          AND is_active = true AND is_available_for_booking = true
+        LIMIT 1
+        """,
+        tenant_id,
+        f"%{term}%"
+    )
+    if row:
+        return dict(row)
+        
+    # 2. Si no hay match directo, probar con el mapa de sinónimos
+    # Match flexible: si la clave del mapa está dentro de term_clean, o viceversa.
+    canonical_target = None
+    for key, val in TREATMENT_SYNONYM_MAP.items():
+        if key in term_clean or term_clean in key:
+            canonical_target = val
+            break
+            
+    if canonical_target:
+        # Fallbacks clínicos lógicos para búsquedas cruzadas (ej: Cirugía <-> Extracción)
+        targets = [canonical_target]
+        if canonical_target == "Cirugía":
+            targets.append("Extracc")  # Coincide con Extraccion, Extracción, etc.
+        elif canonical_target == "Extracción":
+            targets.append("Cirug")    # Coincide con Cirugía, Cirugia
+            
+        for target in targets:
+            row = await db.pool.fetchrow(
+                """
+                SELECT id, code, name, base_price, default_duration_minutes, patient_display_name,
+                       is_high_ticket, consultation_duration_minutes, consultation_requirements, priority
+                FROM treatment_types
+                WHERE tenant_id = $1 
+                  AND (name ILIKE $2 OR patient_display_name ILIKE $2)
+                  AND is_active = true AND is_available_for_booking = true
+                LIMIT 1
+                """,
+                tenant_id,
+                f"%{target}%"
+            )
+            if row:
+                return dict(row)
+            
+    return None
+
+
 # --- TOOLS DENTALES ---
 
 
@@ -2391,19 +2541,11 @@ async def check_availability(
         avail_price = None
         treatment_priority = "medium"  # Default; overridden if treatment found
         if treatment_name:
-            t_data = await db.pool.fetchrow(
-                """
-                SELECT id, default_duration_minutes, base_price, name, priority,
-                       is_high_ticket, consultation_duration_minutes, consultation_requirements
-                FROM treatment_types
-                WHERE tenant_id = $1 AND (name ILIKE $2 OR code ILIKE $2 OR patient_display_name ILIKE $2) AND is_active = true AND is_available_for_booking = true
-                LIMIT 1
-            """,
-                tenant_id,
-                f"%{treatment_name}%",
-            )
+            t_data = await resolve_canonical_treatment(tenant_id, treatment_name)
             if not t_data:
                 return "❌ Ese tratamiento no está en la lista de servicios de esta clínica. Los horarios solo se pueden consultar para tratamientos que devuelve 'list_services'. Llamá a list_services y usá solo uno de esos nombres para consultar disponibilidad."
+            # Guardamos el nombre canónico exacto para que persista en el flujo y en el estado
+            treatment_name = t_data["name"]
             # High-ticket: use consultation duration for slot search
             if t_data.get("is_high_ticket"):
                 duration = t_data.get("consultation_duration_minutes") or 30
@@ -3814,22 +3956,16 @@ async def book_appointment(
         final_duration = duration_minutes
         treatment_display_name = "Consulta"
         treatment_price = None
-        if treatment_reason and (final_duration is None or final_duration == 30):
-            t_data = await db.pool.fetchrow(
-                """
-                SELECT code, name, default_duration_minutes, base_price,
-                       is_high_ticket, consultation_duration_minutes, consultation_requirements
-                FROM treatment_types
-                WHERE tenant_id = $1 AND (name ILIKE $2 OR code ILIKE $2 OR patient_display_name ILIKE $2) AND is_active = true AND is_available_for_booking = true
-                ORDER BY (LOWER(name) = LOWER($3) OR LOWER(code) = LOWER($3) OR LOWER(patient_display_name) = LOWER($3)) DESC, name ASC
-                LIMIT 1
-            """,
-                tenant_id,
-                f"%{treatment_reason}%",
-                treatment_reason,
-            )
+        t_data = None
+        if treatment_reason:
+            t_data = await resolve_canonical_treatment(tenant_id, treatment_reason)
             if not t_data:
                 return "❌ Ese tratamiento no está disponible en esta clínica. Los únicos que se pueden agendar son los que devuelve la tool 'list_services'. Llamá a list_services y ofrecé solo esos al paciente; si pide otro, decile que en esta sede solo se agendan los de esa lista."
+            treatment_reason = t_data["name"]
+
+        treatment_code = None
+        treatment_display_name = ""
+        if t_data and (final_duration is None or final_duration == 30):
             # High-ticket: book consultation duration, not treatment duration
             _book_is_ht = t_data.get("is_high_ticket", False)
             if _book_is_ht:
@@ -3850,20 +3986,7 @@ async def book_appointment(
             logger.info(
                 f"📅 BOOK TREATMENT: code={treatment_code} name={treatment_display_name} duration={final_duration}min price={treatment_price} high_ticket={_book_is_ht}"
             )
-        elif treatment_reason:
-            t_data = await db.pool.fetchrow(
-                """
-                SELECT code, name, base_price FROM treatment_types
-                WHERE tenant_id = $1 AND (name ILIKE $2 OR code ILIKE $2 OR patient_display_name ILIKE $2) AND is_active = true AND is_available_for_booking = true
-                ORDER BY (LOWER(name) = LOWER($3) OR LOWER(code) = LOWER($3) OR LOWER(patient_display_name) = LOWER($3)) DESC, name ASC
-                LIMIT 1
-            """,
-                tenant_id,
-                f"%{treatment_reason}%",
-                treatment_reason,
-            )
-            if not t_data:
-                return "❌ Ese tratamiento no está disponible en esta clínica. Los únicos que se pueden agendar son los que devuelve la tool 'list_services'. Llamá a list_services y ofrecé solo esos al paciente; si pide otro, decile que en esta sede solo se agendan los de esa lista."
+        elif t_data:
             treatment_code = t_data["code"]
             treatment_display_name = t_data["name"] or treatment_reason
             treatment_price = (
@@ -5718,94 +5841,6 @@ async def list_services(category: str = None, patient_term: str = ""):
     category: Filtro opcional (consultas, prevencion, operatoria, estetica_facial, endolifting, cirugia, implantes, regeneracion_osea, rehabilitacion, ortodoncia)
     patient_term: Término coloquial del paciente (ej: "limpieza", "sacar muela"). Se mapea automáticamente al nombre canónico.
     """
-    # Internal synonym map: colloquial terms → canonical treatment names
-    # Matched against treatment_types.name via partial (case-insensitive) match.
-    _SYNONYM_MAP = {
-        # Prevención
-        "limpieza": "Limpieza",
-        "profilaxis": "Limpieza",
-        "sarro": "Limpieza",
-        "control": "Control",
-        "revisión": "Control",
-        "revision": "Control",
-        "chequeo": "Control",
-        # Consultas
-        "consulta": "Consulta",
-        "evaluación": "Consulta",
-        "evaluacion": "Consulta",
-        "dolor": "Urgencia",
-        "emergencia": "Urgencia",
-        "urgente": "Urgencia",
-        # Operatoria
-        "caries": "Restauración",
-        "empaste": "Restauración",
-        "arreglar": "Restauración",
-        "restauración": "Restauración",
-        "restauracion": "Restauración",
-        "conducto": "Endodoncia",
-        "matar nervio": "Endodoncia",
-        # Estética Facial
-        "blanqueamiento": "Blanqueamiento",
-        "blanqueo": "Blanqueamiento",
-        "carillas": "Estética",
-        "diseño sonrisa": "Estética",
-        "diseño de sonrisa": "Estética",
-        "botox": "Estética",
-        "bioestimulación": "Estética",
-        "armonización": "Estética",
-        "armonizacion": "Estética",
-        # Endolifting
-        "endolifting": "Endolifting",
-        "endolift": "Endolifting",
-        "tensado": "Endolifting",
-        "rejuvenecimiento": "Endolifting",
-        # Cirugía
-        "cirugía": "Cirugía",
-        "cirugia": "Cirugía",
-        "operación": "Cirugía",
-        "operacion": "Cirugía",
-        "sacar muela": "Cirugía",
-        "extraer": "Cirugía",
-        "extraccion": "Cirugía",
-        "extracción": "Cirugía",
-        "muela de juicio": "Cirugía",
-        "muelas de juicio": "Cirugía",
-        "tercer molar": "Cirugía",
-        # Implantes
-        "implante": "Implante",
-        "implantes": "Implante",
-        "tornillo": "Implante",
-        # Regeneración Ósea
-        "injerto": "Injerto",
-        "regeneración ósea": "Regeneración",
-        "regeneracion osea": "Regeneración",
-        "hueso": "Regeneración",
-        # Rehabilitación / Prótesis
-        "prótesis": "Rehabilitación",
-        "protesis": "Rehabilitación",
-        "puente": "Rehabilitación",
-        "corona": "Rehabilitación",
-        "funda": "Rehabilitación",
-        "rehabilitación": "Rehabilitación",
-        "rehabilitacion": "Rehabilitación",
-        # Ortodoncia
-        "ortodoncia": "Ortodoncia",
-        "brackets": "Ortodoncia",
-        "alineadores": "Ortodoncia",
-        # Encías (mapea a Consulta General ya que no hay tratamiento específico)
-        "encías": "Consulta",
-        "encias": "Consulta",
-        "gingivitis": "Consulta",
-        # ATM
-        "atm": "ATM",
-        "mandíbula": "ATM",
-        "mandibula": "ATM",
-        "articulación": "ATM",
-        "articulacion": "ATM",
-        "bruxismo": "ATM",
-        "chasquido": "ATM",
-    }
-
     tenant_id = current_tenant_id.get()
     try:
         query = """SELECT tt.id, tt.code, tt.name, tt.patient_display_name, tt.base_price, tt.priority
@@ -5820,7 +5855,12 @@ async def list_services(category: str = None, patient_term: str = ""):
 
         # If patient_term provided and no exact match, try synonym mapping
         if patient_term and rows:
-            canonical = _SYNONYM_MAP.get(patient_term.lower().strip())
+            term_clean = patient_term.lower().strip()
+            canonical = None
+            for key, val in TREATMENT_SYNONYM_MAP.items():
+                if key in term_clean or term_clean in key:
+                    canonical = val
+                    break
             if canonical:
                 matched = [
                     r
@@ -10423,6 +10463,19 @@ CUANDO DETECTES ESTO (solo si NO aplica la excepción de arriba):
 - Cuando el paciente proporcione su DNI para confirmar el slot pre-reservado (ej: tras `confirm_slot` o durante el proceso de reserva), debés llamar a `book_appointment` de inmediato en ese mismo turno.
 - Ignorá cualquier descripción clínica o comentario sobre dolor/molestia que acompañe al DNI en ese mensaje (no des contención clínica ni desvíes el flujo hasta confirmar).
 - Queda PROHIBIDO disparar la regla de "DETECCIÓN DE PACIENTE EXISTENTE SIN DATOS EN SISTEMA (MIGRACIÓN)" o derivar a humano (`derivhumano`) en este punto. El ingreso del DNI es parte del flujo normal de agendamiento y debe culminar con la ejecución de `book_appointment`.
+
+⚠️ REGLAS CRÍTICAS PARA ESTADO SLOT_LOCKED:
+- Si el paciente tiene un turno pre-reservado (estado `SLOT_LOCKED`):
+   1. Tu única misión es recolectar el nombre completo y el número de DNI (numérico de 7 a 11 dígitos, ej: 12345678) para confirmar y agendar el turno usando `book_appointment`. EXCEPCIÓN — PACIENTE EXTRANJERO: Si el paciente no tiene DNI argentino, aceptá pasaporte, cédula extranjera u otro documento de identidad sin exigir formato numérico.
+  2. Si el usuario te responde de manera ambigua o no numérica ante el pedido del DNI (ej: "Así es", "Sí", "Eso es"), debés insistir educadamente en que te pase los números del DNI.
+  3. PROHIBICIÓN ABSOLUTA CONTRA LOOPS Y RE-OFERTAS: NUNCA llames a `check_availability` para buscar disponibilidad, ni ofrezcas horarios alternativos o nuevos profesionales, a menos que el paciente te pida explícitamente reprogramar o cancelar el turno pre-reservado.
+  4. PREGUNTAS LATERALES: Si el paciente realiza una consulta lateral (ej: medios de pago, obras sociales aceptadas), respondé a su pregunta brevemente y solicitá inmediatamente los datos faltantes (DNI/nombre) para concretar su reserva.
+
+ ⚠️ REGLA DE PERSISTENCIA DEL TRATAMIENTO DE LA AGENDA (INQUEBRANTABLE):
+ - Si identificaste que el tratamiento correcto en el sistema es diferente al término del paciente (ej: el paciente pide "extracción de muelas" pero en el sistema se agenda como "Consulta de Cirugía S") y el paciente dio su consentimiento (dijo "sí", "dale", "avancemos", etc.) o se avanzó con ese turno:
+    1. Debés usar de manera obligatoria y exclusiva el nombre exacto de la agenda (ej: "Consulta de Cirugía S") en todos los pasos de confirmación y agendamiento (`confirm_slot` y `book_appointment`).
+    2. Queda TERMINANTEMENTE PROHIBIDO volver a usar el término coloquial o inicial del paciente (como "extracción de muelas") en las llamadas a las tools una vez acordado el servicio correcto del sistema.
+    3. Si el paciente te pasa sus datos (nombre, DNI) después de haber acordado el servicio correcto, llamá a `book_appointment` con el nombre correcto de la agenda ("Consulta de Cirugía S"), NUNCA con el término del paciente.
 
 ⚠️ REGLAS CRÍTICAS PARA ESTADO SLOT_LOCKED:
 - Si el paciente tiene un turno pre-reservado (estado `SLOT_LOCKED`):

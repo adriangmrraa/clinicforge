@@ -17,7 +17,21 @@ depends_on = None
 
 def upgrade():
     # Fix collation version mismatch (idempotent — no-op if versions match)
-    op.execute("ALTER DATABASE postgres REFRESH COLLATION VERSION")
+    # Check if the current user is the owner of the current database or a superuser
+    connection = op.get_bind()
+    try:
+        is_owner_or_superuser = connection.execute(
+            "SELECT pg_catalog.pg_get_userbyid(d.datdba) = current_user OR EXISTS (SELECT 1 FROM pg_roles WHERE rolname = current_user AND rolsuper = true) "
+            "FROM pg_catalog.pg_database d WHERE d.datname = current_database()"
+        ).scalar()
+        
+        if is_owner_or_superuser:
+            db_name = connection.execute("SELECT current_database()").scalar()
+            op.execute(f"ALTER DATABASE {db_name} REFRESH COLLATION VERSION")
+    except Exception as e:
+        # If any check fails, do not block the migration
+        print(f"Warning: Collation refresh skipped. Reason: {e}")
+
     op.execute(
         "CREATE INDEX IF NOT EXISTS idx_insurance_provider_name_trgm "
         "ON tenant_insurance_providers USING gin(provider_name gin_trgm_ops)"
