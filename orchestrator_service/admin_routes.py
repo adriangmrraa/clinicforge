@@ -558,6 +558,29 @@ async def get_patient_clinical_context(
             phone,
         )
 
+    if not patient:
+        # 1b. Check if a chat_conversation has linked_patient_id for this phone
+        conv = await db.pool.fetchrow(
+            """
+            SELECT linked_patient_id FROM chat_conversations
+            WHERE tenant_id = $1 AND external_user_id = $2 AND linked_patient_id IS NOT NULL
+            LIMIT 1
+        """,
+            tenant_id,
+            phone,
+        )
+        if conv:
+            patient = await db.pool.fetchrow(
+                """
+                SELECT id, first_name, last_name, phone_number, status, urgency_level, urgency_reason, preferred_schedule,
+                       acquisition_source, meta_ad_id, meta_ad_headline, meta_ad_body, external_ids, medical_history
+                FROM patients
+                WHERE id = $1 AND tenant_id = $2 AND status != 'deleted'
+            """,
+                conv["linked_patient_id"],
+                tenant_id,
+            )
+
     if patient:
         from core.auth import log_pii_access
 
@@ -1472,6 +1495,8 @@ async def get_chat_sessions(
                         p.phone_number,
                         p.id as patient_id,
                         p.first_name || ' ' || COALESCE(p.last_name, '') as patient_name,
+                        cc.linked_patient_id,
+                        linked_p.first_name || ' ' || COALESCE(linked_p.last_name, '') as linked_patient_name,
                         cm.content as last_message,
                         cm.created_at as last_message_time,
                         p.human_handoff_requested,
@@ -1484,6 +1509,8 @@ async def get_chat_sessions(
                         END as status,
                         urgency.urgency_level
                     FROM patients p
+                    LEFT JOIN chat_conversations cc ON cc.tenant_id = p.tenant_id AND cc.channel = 'whatsapp' AND replace(regexp_replace(cc.external_user_id, '\D', '', 'g'), '549', '54') = replace(regexp_replace(p.phone_number, '[^0-9]', '', 'g'), '549', '54')
+                    LEFT JOIN patients linked_p ON linked_p.id = cc.linked_patient_id AND linked_p.tenant_id = p.tenant_id
                     LEFT JOIN LATERAL (
                         SELECT content, created_at FROM chat_messages
                         WHERE replace(regexp_replace(from_number, '[^0-9]', '', 'g'), '549', '54') = replace(regexp_replace(p.phone_number, '[^0-9]', '', 'g'), '549', '54')
@@ -1519,6 +1546,8 @@ async def get_chat_sessions(
                         p.phone_number,
                         p.id as patient_id,
                         p.first_name || ' ' || COALESCE(p.last_name, '') as patient_name,
+                        linked_p.id as linked_patient_id,
+                        linked_p.first_name || ' ' || COALESCE(linked_p.last_name, '') as linked_patient_name,
                         cm.content as last_message,
                         cm.created_at as last_message_time,
                         p.human_handoff_requested,
@@ -1535,6 +1564,7 @@ async def get_chat_sessions(
                         cc.id as conversation_id
                     FROM patients p
                     LEFT JOIN chat_conversations cc ON cc.tenant_id = p.tenant_id AND cc.channel = 'whatsapp' AND replace(regexp_replace(cc.external_user_id, '\D', '', 'g'), '549', '54') = replace(regexp_replace(p.phone_number, '[^0-9]', '', 'g'), '549', '54')
+                    LEFT JOIN patients linked_p ON linked_p.id = cc.linked_patient_id AND linked_p.tenant_id = p.tenant_id
                     LEFT JOIN LATERAL (
                         SELECT content, created_at FROM chat_messages
                         WHERE tenant_id = $1 AND replace(regexp_replace(from_number, '[^0-9]', '', 'g'), '549', '54') = replace(regexp_replace(p.phone_number, '[^0-9]', '', 'g'), '549', '54') AND conversation_id = cc.id
@@ -1684,6 +1714,8 @@ async def get_chat_sessions(
                 "phone_number": row["phone_number"],
                 "patient_id": row["patient_id"],
                 "patient_name": row["patient_name"],
+                "linked_patient_id": row.get("linked_patient_id"),
+                "linked_patient_name": row.get("linked_patient_name"),
                 "tenant_id": tenant_id,
                 "last_message": row["last_message"] or "",
                 "last_message_time": row["last_message_time"].isoformat()

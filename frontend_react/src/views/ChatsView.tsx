@@ -1300,26 +1300,31 @@ export default function ChatsView() {
                           {session.is_window_open === false ? <Lock size={10} className="text-white" /> : platform.icon}
                         </div>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex justify-between items-baseline mb-0.5">
-                          <span className="flex items-center gap-1.5 min-w-0">
-                            <span className={`font-semibold truncate text-white`}>
-                              {session.patient_name || session.phone_number}
-                            </span>
-                            {session.patient_id ? (
-                              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 shrink-0">
-                                {t('chats.badge_patient')}
+                        <div className="flex-1 min-w-0">
+                            <div className="flex justify-between items-baseline mb-0.5">
+                              <span className="flex items-center gap-1.5 min-w-0">
+                                <span className={`font-semibold truncate text-white`}>
+                                  {session.patient_name || session.phone_number}
+                                </span>
+                                {session.patient_id ? (
+                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 shrink-0">
+                                    {t('chats.badge_patient')}
+                                  </span>
+                                ) : (
+                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/20 shrink-0">
+                                    {t('chats.badge_lead')}
+                                  </span>
+                                )}
                               </span>
-                            ) : (
-                              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/20 shrink-0">
-                                {t('chats.badge_lead')}
+                              <span className={`text-[10px] font-bold ${platform.color} shrink-0 ml-1`}>
+                                {platform.label}
                               </span>
+                            </div>
+                            {session.linked_patient_name && (
+                              <p className="text-[11px] text-white/40 truncate mt-0.5">
+                                {t('chats.linked_as', { name: session.linked_patient_name })}
+                              </p>
                             )}
-                          </span>
-                          <span className={`text-[10px] font-bold ${platform.color} shrink-0 ml-1`}>
-                            {platform.label}
-                          </span>
-                        </div>
                         <div className="flex justify-between items-center">
                           <p className={`text-sm truncate pr-4 ${session.unread_count > 0 ? 'text-white font-medium' : 'text-white/40'}`}>
                             {session.last_message || t('chats.no_messages')}
@@ -1385,6 +1390,11 @@ export default function ChatsView() {
                           {platform.label}
                         </span>
                       </div>
+                      {item.linked_patient_name && (
+                        <p className="text-[11px] text-white/40 truncate mt-0.5 mb-1">
+                          {t('chats.linked_as', { name: item.linked_patient_name })}
+                        </p>
+                      )}
                       <div className="flex justify-between items-center">
                         <p className={`text-sm truncate pr-4 ${item.unread_count > 0 ? 'text-white font-medium' : 'text-white/40'}`}>
                           {item.last_message || t('chats.no_messages')}
@@ -2110,6 +2120,13 @@ export default function ChatsView() {
           const phone = selectedSession?.phone_number || selectedChatwoot?.external_user_id;
           const tid = selectedSession?.tenant_id || selectedTenantId;
           if (phone) fetchPatientContext(phone, tid ?? undefined);
+          // Refresh WhatsApp sessions and Chatwoot summary lists
+          if (tid) {
+            fetchSessions(tid);
+            chatsApi.fetchChatsSummary({ limit: 50, channel: currentChannelFilter === 'all' ? undefined : currentChannelFilter })
+              .then(list => setChatwootList(list))
+              .catch(err => console.error("Error refreshing chatwoot summary after link:", err));
+          }
         }}
         currentPatientId={(patientContext as any)?.patient?.id || 0}
         currentPatientName={selectedSession?.patient_name || selectedChatwoot?.name || ''}

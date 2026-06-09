@@ -526,6 +526,7 @@
   "chats": {
     "badge_patient": "Paciente",
     "badge_lead": "Lead",
+    "linked_as": "→ {name}",
     "title": "Conversaciones",
     "select_clinic": "Seleccionar clínica",
     "no_sessions": "Sin conversaciones",

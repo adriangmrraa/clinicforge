@@ -354,7 +354,8 @@ async def process_buffer_task(
     pool = get_pool()
     row = await pool.fetchrow(
         """
-        SELECT provider, external_chatwoot_id, external_account_id, channel
+        SELECT provider, external_chatwoot_id, external_account_id, channel,
+               linked_patient_id, linked_at
         FROM chat_conversations
         WHERE id = $1 AND tenant_id = $2
         """,
@@ -434,6 +435,34 @@ async def process_buffer_task(
         current_customer_phone.set(external_user_id)
         current_tenant_id.set(tenant_id)
         current_source_channel.set(channel or "whatsapp")
+
+        # ── Patient resolution: linked_patient_id or phone fallback ──
+        resolved_patient_phone = None
+        linked_patient_id = row.get("linked_patient_id")
+        if linked_patient_id:
+            linked_patient_row = await pool.fetchrow(
+                "SELECT id, phone_number FROM patients WHERE id = $1 AND tenant_id = $2",
+                linked_patient_id,
+                tenant_id,
+            )
+            if linked_patient_row:
+                current_patient_id.set(linked_patient_row["id"])
+                resolved_patient_phone = linked_patient_row["phone_number"]
+                logger.info(
+                    f"🔗 Patient resolved via linked_patient_id={linked_patient_id} phone={resolved_patient_phone}"
+                )
+        if current_patient_id.get() is None:
+            patient_by_phone = await pool.fetchrow(
+                "SELECT id, phone_number FROM patients WHERE tenant_id = $1 AND phone_number = $2",
+                tenant_id,
+                external_user_id,
+            )
+            if patient_by_phone:
+                current_patient_id.set(patient_by_phone["id"])
+                resolved_patient_phone = patient_by_phone["phone_number"]
+                logger.info(
+                    f"📞 Patient resolved via phone={external_user_id} id={patient_by_phone['id']}"
+                )
 
         # TIER 3 cap.1 — resolve tenant timezone once per request and bind it.
         # All datetime constructors via get_active_tz() / get_now_arg() will honor it.
@@ -990,10 +1019,14 @@ async def process_buffer_task(
                 )
 
             # Load linked minor patients (children) via guardian_phone
+            # Use ANY() to match both chat phone and resolved patient phone when linked
+            _guardian_phones = [external_user_id]
+            if resolved_patient_phone and resolved_patient_phone not in _guardian_phones:
+                _guardian_phones.append(resolved_patient_phone)
             minor_rows = await pool.fetch(
-                "SELECT id, first_name, last_name, dni, phone_number, anamnesis_token FROM patients WHERE tenant_id = $1 AND guardian_phone = $2",
+                "SELECT id, first_name, last_name, dni, phone_number, anamnesis_token FROM patients WHERE tenant_id = $1 AND guardian_phone = ANY($2::text[])",
                 tenant_id,
-                external_user_id,
+                _guardian_phones,
             )
             if minor_rows:
                 identity_lines.append("• HIJOS/MENORES VINCULADOS:")
@@ -2096,11 +2129,14 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
 
             # Check if interlocutor has linked minors — if so, ask who the file belongs to
             try:
+                _guardian_phones = [external_user_id]
+                if resolved_patient_phone and resolved_patient_phone not in _guardian_phones:
+                    _guardian_phones.append(resolved_patient_phone)
                 minor_count = (
                     await pool.fetchval(
-                        "SELECT COUNT(*) FROM patients WHERE tenant_id = $1 AND guardian_phone = $2",
+                        "SELECT COUNT(*) FROM patients WHERE tenant_id = $1 AND guardian_phone = ANY($2::text[])",
                         tenant_id,
-                        external_user_id,
+                        _guardian_phones,
                     )
                     or 0
                 )

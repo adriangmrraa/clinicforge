@@ -199,6 +199,17 @@ current_tenant_id: ContextVar[int] = ContextVar("current_tenant_id", default=1)
 current_source_channel: ContextVar[Optional[str]] = ContextVar(
     "current_source_channel", default=None
 )
+
+
+# ── Patient resolution helper for tools ──
+def get_patient_id_by_context() -> Optional[int]:
+    """Return the current patient ID from ContextVar, or None if not set.
+
+    Tools should call this instead of directly accessing current_patient_id.
+    When this returns None, tools fall back to phone-based patient lookup
+    to preserve backward compatibility.
+    """
+    return current_patient_id.get()
 # Active tenant timezone for the current request. Set by buffer_task / FastAPI deps.
 # `get_active_tz()` reads this with ARG_TZ fallback.
 current_tenant_tz: ContextVar[Optional[Any]] = ContextVar(
@@ -3515,6 +3526,13 @@ async def book_appointment(
     tenant_id = current_tenant_id.get()
     logger.info(f"📊 BOOKING_FLOW | book_appointment ENTRY | tenant={tenant_id} phone={chat_phone} slot_index={slot_index} interpreted_date={interpreted_date!r} date_time={date_time!r} name={first_name!r} {last_name!r} dni={dni!r} treatment={treatment_reason!r}")
 
+    # Patient context: if linked or resolved, use existing patient record
+    _ctx_patient_id = get_patient_id_by_context()
+    if _ctx_patient_id:
+        logger.info(
+            f"📅 BOOK: using context patient_id={_ctx_patient_id} for booking flow"
+        )
+
     # Safety net: if LLM passes generic "consulta"/"consulta general" but conversation
     # state has a specific treatment from check_availability, use that instead.
     _original_treatment = treatment_reason
@@ -3643,16 +3661,26 @@ async def book_appointment(
         )
     elif is_minor:
         # Minor: use parent phone + -M{N} suffix
+        # Use resolved patient's phone as guardian_phone_value when linked
+        guardian_phone_value = chat_phone
+        _ctx_pid_minor = get_patient_id_by_context()
+        if _ctx_pid_minor:
+            _ctx_minor_row = await db.pool.fetchrow(
+                "SELECT phone_number FROM patients WHERE id = $1 AND tenant_id = $2",
+                _ctx_pid_minor,
+                tenant_id,
+            )
+            if _ctx_minor_row:
+                guardian_phone_value = _ctx_minor_row["phone_number"]
         minor_count = (
             await db.pool.fetchval(
                 "SELECT COUNT(*) FROM patients WHERE tenant_id = $1 AND guardian_phone = $2",
                 tenant_id,
-                chat_phone,
+                guardian_phone_value,
             )
             or 0
         )
         phone = f"{chat_phone}-M{minor_count + 1}"
-        guardian_phone_value = chat_phone
     elif patient_phone:
         # Adult third party: use their phone
         phone = re.sub(r"[^\d+]", "", str(patient_phone).strip())
@@ -5321,16 +5349,27 @@ async def list_my_appointments():
     Lista TODOS los turnos del paciente — futuros Y anteriores. Es el historial completo.
     Usar SIEMPRE cuando pregunten si tienen turno, cuándo es su próximo turno, qué turnos tienen, historial, turnos pasados, etc.
     """
-    phone = current_customer_phone.get()
-    if not phone:
-        return "No pude identificar tu número. Escribime desde el mismo WhatsApp con el que te registraste."
-    tenant_id = current_tenant_id.get()
-    phone_digits = normalize_phone_digits(phone)
+    p_id = get_patient_id_by_context()
+    if not p_id:
+        phone = current_customer_phone.get()
+        if not phone:
+            return "No pude identificar tu número. Escribime desde el mismo WhatsApp con el que te registraste."
+        tenant_id = current_tenant_id.get()
+        phone_digits = normalize_phone_digits(phone)
+        p_row = await db.pool.fetchrow(
+            "SELECT id FROM patients WHERE tenant_id = $1 AND REGEXP_REPLACE(phone_number, '[^0-9]', '', 'g') = $2",
+            tenant_id,
+            phone_digits,
+        )
+        if not p_row:
+            return "Sin turnos. ¿Agendamos?"
+        p_id = p_row["id"]
+    else:
+        tenant_id = current_tenant_id.get()
     try:
         now = get_now_arg()
         logger.info(
-            f"[list_my_appointments] tenant={tenant_id} "
-            f"input_phone='{phone}' normalized='{phone_digits}'"
+            f"[list_my_appointments] tenant={tenant_id} patient_id={p_id}"
         )
         rows = await db.pool.fetch(
             """
@@ -5339,13 +5378,11 @@ async def list_my_appointments():
                    a.payment_status, a.billing_amount,
                    p_prof.consultation_price as prof_consultation_price
             FROM appointments a
-            JOIN patients p ON a.patient_id = p.id
             LEFT JOIN professionals p_prof ON a.professional_id = p_prof.id
-            WHERE p.tenant_id = $1 AND REGEXP_REPLACE(p.phone_number, '[^0-9]', '', 'g') = $2
+            WHERE a.patient_id = $1
             ORDER BY a.appointment_datetime DESC
         """,
-            tenant_id,
-            phone_digits,
+            p_id,
         )
         logger.info(f"[list_my_appointments] results_count={len(rows)}")
         if not rows:
@@ -5396,12 +5433,24 @@ async def cancel_appointment(date_query: str):
     Cancela un turno existente.
     date_query: Fecha del turno a cancelar (ej: 'mañana', '2025-05-10', 'el martes')
     """
-    phone = current_customer_phone.get()
-    if not phone:
-        return "⚠️ No pude identificar tu teléfono. Por favor, contactame de nuevo."
-
-    tenant_id = current_tenant_id.get()
-    phone_digits = normalize_phone_digits(phone)
+    p_id = get_patient_id_by_context()
+    phone = None
+    if not p_id:
+        phone = current_customer_phone.get()
+        if not phone:
+            return "⚠️ No pude identificar tu teléfono. Por favor, contactame de nuevo."
+        tenant_id = current_tenant_id.get()
+        phone_digits = normalize_phone_digits(phone)
+        p_row = await db.pool.fetchrow(
+            "SELECT id FROM patients WHERE tenant_id = $1 AND REGEXP_REPLACE(phone_number, '[^0-9]', '', 'g') = $2",
+            tenant_id,
+            phone_digits,
+        )
+        if not p_row:
+            return f"No encontré ningún turno activo para el día {date_query}. ¿Querés que revisemos otra fecha?"
+        p_id = p_row["id"]
+    else:
+        tenant_id = current_tenant_id.get()
     try:
         target_date = parse_date(date_query)
         if target_date is None:
@@ -5411,14 +5460,13 @@ async def cancel_appointment(date_query: str):
             SELECT a.id, a.google_calendar_event_id, a.billing_amount, a.payment_status,
                    a.appointment_datetime, a.professional_id, tt.name as treatment_name
             FROM appointments a
-            JOIN patients p ON a.patient_id = p.id
             LEFT JOIN treatment_types tt ON a.appointment_type = tt.code
-            WHERE p.tenant_id = $1 AND REGEXP_REPLACE(p.phone_number, '[^0-9]', '', 'g') = $2 AND DATE(a.appointment_datetime) = $3
+            WHERE a.patient_id = $1 AND a.tenant_id = $2 AND DATE(a.appointment_datetime) = $3
             AND a.status IN ('scheduled', 'confirmed')
             LIMIT 1
         """,
+            p_id,
             tenant_id,
-            phone_digits,
             target_date,
         )
         if not apt:
@@ -5534,11 +5582,34 @@ async def reschedule_appointment(original_date: str, new_date_time: str, interpr
     new_date_time: Nueva fecha y hora deseada (ej: 'mañana 15:00')
     interpreted_date: (Opcional) Fecha y hora exacta elegida por el paciente en formato YYYY-MM-DD HH:MM. Usar cuando el paciente elige de opciones ofrecidas por check_availability.
     """
-    phone = current_customer_phone.get()
-    if not phone:
-        return "⚠️ No pude identificar tu teléfono."
-    tenant_id = current_tenant_id.get()
-    phone_digits = normalize_phone_digits(phone)
+    p_id = get_patient_id_by_context()
+    phone = None
+    if not p_id:
+        phone = current_customer_phone.get()
+        if not phone:
+            return "⚠️ No pude identificar tu teléfono."
+        tenant_id = current_tenant_id.get()
+        phone_digits = normalize_phone_digits(phone)
+        p_row = await db.pool.fetchrow(
+            "SELECT id, phone_number FROM patients WHERE tenant_id = $1 AND REGEXP_REPLACE(phone_number, '[^0-9]', '', 'g') = $2",
+            tenant_id,
+            phone_digits,
+        )
+        if p_row:
+            p_id = p_row["id"]
+            phone = p_row["phone_number"]
+        else:
+            # Use chat phone as reference even if patient not in DB
+            phone = current_customer_phone.get()
+    else:
+        tenant_id = current_tenant_id.get()
+        # Fetch phone for slot_offer key
+        _p_row = await db.pool.fetchrow(
+            "SELECT phone_number FROM patients WHERE id = $1 AND tenant_id = $2",
+            p_id,
+            tenant_id,
+        )
+        phone = _p_row["phone_number"] if _p_row else current_customer_phone.get()
     try:
         orig_date = parse_date(original_date)
         if orig_date is None:
@@ -5581,19 +5652,35 @@ async def reschedule_appointment(original_date: str, new_date_time: str, interpr
         except Exception as _rv_err:
             logger.warning(f"[RESCHEDULE] slot_offer check failed (non-blocking): {_rv_err}")
 
-        apt = await db.pool.fetchrow(
-            """
-            SELECT a.id, a.google_calendar_event_id, a.professional_id, a.duration_minutes, a.appointment_datetime
-            FROM appointments a
-            JOIN patients p ON a.patient_id = p.id
-            WHERE p.tenant_id = $1 AND REGEXP_REPLACE(p.phone_number, '[^0-9]', '', 'g') = $2 AND DATE(a.appointment_datetime) = $3
-            AND a.status IN ('scheduled', 'confirmed')
-            LIMIT 1
-        """,
-            tenant_id,
-            phone_digits,
-            orig_date,
-        )
+        # Use p_id directly if resolved via context, otherwise phone digits
+        if p_id:
+            apt = await db.pool.fetchrow(
+                """
+                SELECT a.id, a.google_calendar_event_id, a.professional_id, a.duration_minutes, a.appointment_datetime
+                FROM appointments a
+                WHERE a.patient_id = $1 AND a.tenant_id = $2 AND DATE(a.appointment_datetime) = $3
+                AND a.status IN ('scheduled', 'confirmed')
+                LIMIT 1
+            """,
+                p_id,
+                tenant_id,
+                orig_date,
+            )
+        else:
+            phone_digits = normalize_phone_digits(phone)
+            apt = await db.pool.fetchrow(
+                """
+                SELECT a.id, a.google_calendar_event_id, a.professional_id, a.duration_minutes, a.appointment_datetime
+                FROM appointments a
+                JOIN patients p ON a.patient_id = p.id
+                WHERE p.tenant_id = $1 AND REGEXP_REPLACE(p.phone_number, '[^0-9]', '', 'g') = $2 AND DATE(a.appointment_datetime) = $3
+                AND a.status IN ('scheduled', 'confirmed')
+                LIMIT 1
+            """,
+                tenant_id,
+                phone_digits,
+                orig_date,
+            )
         if not apt:
             return f"No encontré tu turno para el {original_date}. ¿Podrías confirmarme la fecha original?"
 
@@ -6270,9 +6357,12 @@ async def save_patient_anamnesis(
     La tool actualiza el campo medical_history (JSONB) en la tabla patients
     con todos estos datos, preservando cualquier información previa.
     """
-    phone = current_customer_phone.get()
-    if not phone:
-        return "❌ Error: No pude identificar tu teléfono. Reinicia la conversación."
+    p_id = get_patient_id_by_context()
+    phone = None
+    if not p_id:
+        phone = current_customer_phone.get()
+        if not phone:
+            return "❌ Error: No pude identificar tu teléfono. Reinicia la conversación."
 
     tenant_id = current_tenant_id.get()
 
@@ -6295,29 +6385,43 @@ async def save_patient_anamnesis(
         # Filtrar valores None para no sobreescribir con nulls
         filtered_data = {k: v for k, v in anamnesis_data.items() if v is not None}
 
-        # Actualizar el campo medical_history (normalización de teléfono para match robusto)
-        phone_digits = normalize_phone_digits(phone)
-        row = await db.pool.fetchrow(
-            """
-            UPDATE patients 
-            SET medical_history = COALESCE(medical_history, '{}'::jsonb) || $1::jsonb,
-                updated_at = NOW()
-            WHERE tenant_id = $2 AND REGEXP_REPLACE(phone_number, '[^0-9]', '', 'g') = $3
-            RETURNING id
-        """,
-            json.dumps(filtered_data),
-            tenant_id,
-            phone_digits,
-        )
+        if p_id:
+            row = await db.pool.fetchrow(
+                """
+                UPDATE patients
+                SET medical_history = COALESCE(medical_history, '{}'::jsonb) || $1::jsonb,
+                    updated_at = NOW()
+                WHERE id = $2 AND tenant_id = $3
+                RETURNING id
+            """,
+                json.dumps(filtered_data),
+                p_id,
+                tenant_id,
+            )
+        else:
+            # Fallback: phone-based lookup
+            phone_digits = normalize_phone_digits(phone)
+            row = await db.pool.fetchrow(
+                """
+                UPDATE patients
+                SET medical_history = COALESCE(medical_history, '{}'::jsonb) || $1::jsonb,
+                    updated_at = NOW()
+                WHERE tenant_id = $2 AND REGEXP_REPLACE(phone_number, '[^0-9]', '', 'g') = $3
+                RETURNING id
+            """,
+                json.dumps(filtered_data),
+                tenant_id,
+                phone_digits,
+            )
 
         if not row:
             logger.warning(
-                f"save_patient_anamnesis: paciente no encontrado phone={phone} tenant={tenant_id}"
+                f"save_patient_anamnesis: paciente no encontrado phone={phone} tenant={tenant_id} p_id={p_id}"
             )
             return "❌ No se encontró un paciente con este número de teléfono. Asegúrate de haber agendado un turno primero con 'book_appointment'."
 
         logger.info(
-            f"✅ Anamnesis guardada para paciente {phone} (tenant={tenant_id}) patient_id={row['id']} campos={list(filtered_data.keys())}"
+            f"✅ Anamnesis guardada para paciente (tenant={tenant_id}) patient_id={row['id']} campos={list(filtered_data.keys())}"
         )
 
         # Notificar al dashboard para refrescar AnamnesisPanel en tiempo real
@@ -6376,46 +6480,79 @@ async def save_patient_email(email: str, patient_phone: Optional[str] = None):
             "❌ Ese formato no parece un email válido. Revisalo y escribilo de nuevo."
         )
     try:
-        # If patient_phone provided (third party / minor), use that to find the patient
-        target_phone = (
-            patient_phone.strip() if patient_phone and patient_phone.strip() else phone
-        )
-        phone_digits = normalize_phone_digits(target_phone)
-        row = await db.pool.fetchrow(
-            """
-            UPDATE patients
-            SET email = $1, updated_at = NOW()
-            WHERE tenant_id = $2 AND REGEXP_REPLACE(phone_number, '[^0-9]', '', 'g') = $3
-            RETURNING id
-        """,
-            email_clean,
-            tenant_id,
-            phone_digits,
-        )
-        # Fallback: if third party phone didn't match (e.g. minor with -M1 suffix), try exact match
-        if not row and patient_phone:
+        # If patient_phone explicitly provided (third party / minor), use existing phone-based flow
+        if patient_phone and patient_phone.strip():
+            target_phone = patient_phone.strip()
+            phone_digits = normalize_phone_digits(target_phone)
             row = await db.pool.fetchrow(
                 """
                 UPDATE patients
                 SET email = $1, updated_at = NOW()
-                WHERE tenant_id = $2 AND phone_number = $3
+                WHERE tenant_id = $2 AND REGEXP_REPLACE(phone_number, '[^0-9]', '', 'g') = $3
                 RETURNING id
             """,
                 email_clean,
                 tenant_id,
-                target_phone,
+                phone_digits,
+            )
+            # Fallback: try exact match (e.g. minor with -M1 suffix)
+            if not row:
+                row = await db.pool.fetchrow(
+                    """
+                    UPDATE patients
+                    SET email = $1, updated_at = NOW()
+                    WHERE tenant_id = $2 AND phone_number = $3
+                    RETURNING id
+                """,
+                    email_clean,
+                    tenant_id,
+                    target_phone,
+                )
+            if not row:
+                return "No encontré la ficha del paciente. Asegurate de haber agendado primero."
+            logger.info(
+                f"✅ save_patient_email OK target_phone={target_phone} tenant={tenant_id} patient_id={row['id']}"
+            )
+            return "✅ Guardé el email correctamente."
+
+        # No explicit patient_phone — try ContextVar first, then chat phone
+        p_id = get_patient_id_by_context()
+        if p_id:
+            row = await db.pool.fetchrow(
+                """
+                UPDATE patients
+                SET email = $1, updated_at = NOW()
+                WHERE id = $2 AND tenant_id = $3
+                RETURNING id
+            """,
+                email_clean,
+                p_id,
+                tenant_id,
+            )
+        else:
+            phone_digits = normalize_phone_digits(phone)
+            row = await db.pool.fetchrow(
+                """
+                UPDATE patients
+                SET email = $1, updated_at = NOW()
+                WHERE tenant_id = $2 AND REGEXP_REPLACE(phone_number, '[^0-9]', '', 'g') = $3
+                RETURNING id
+            """,
+                email_clean,
+                tenant_id,
+                phone_digits,
             )
         if not row:
             # Patient not in DB yet — save email to lead context for later
             try:
                 from services.lead_context import merge as lead_ctx_merge
 
-                await lead_ctx_merge(tenant_id, target_phone, {"email": email_clean})
+                await lead_ctx_merge(tenant_id, phone, {"email": email_clean})
             except Exception:
                 pass
             return "No encontré la ficha del paciente. Asegurate de haber agendado primero."
         logger.info(
-            f"✅ save_patient_email OK target_phone={target_phone} tenant={tenant_id} patient_id={row['id']}"
+            f"✅ save_patient_email OK tenant={tenant_id} patient_id={row['id']}"
         )
         return "✅ Guardé el email correctamente."
     except Exception as e:
@@ -6490,38 +6627,72 @@ async def save_patient_birth_date(
         return "❌ Fecha de nacimiento fuera de rango. Verificá el año."
 
     try:
-        target_phone = (
-            patient_phone.strip() if patient_phone and patient_phone.strip() else phone
-        )
-        phone_digits = normalize_phone_digits(target_phone)
-        row = await db.pool.fetchrow(
-            """
-            UPDATE patients
-            SET birth_date = $1, updated_at = NOW()
-            WHERE tenant_id = $2 AND REGEXP_REPLACE(phone_number, '[^0-9]', '', 'g') = $3
-            RETURNING id
-        """,
-            parsed_date,
-            tenant_id,
-            phone_digits,
-        )
-        # Fallback: minor with -M1 suffix — try exact match
-        if not row and patient_phone:
+        # If patient_phone explicitly provided (third party / minor), use existing phone-based flow
+        if patient_phone and patient_phone.strip():
+            target_phone = patient_phone.strip()
+            phone_digits = normalize_phone_digits(target_phone)
             row = await db.pool.fetchrow(
                 """
                 UPDATE patients
                 SET birth_date = $1, updated_at = NOW()
-                WHERE tenant_id = $2 AND phone_number = $3
+                WHERE tenant_id = $2 AND REGEXP_REPLACE(phone_number, '[^0-9]', '', 'g') = $3
                 RETURNING id
             """,
                 parsed_date,
                 tenant_id,
-                target_phone,
+                phone_digits,
+            )
+            # Fallback: minor with -M1 suffix — try exact match
+            if not row:
+                row = await db.pool.fetchrow(
+                    """
+                    UPDATE patients
+                    SET birth_date = $1, updated_at = NOW()
+                    WHERE tenant_id = $2 AND phone_number = $3
+                    RETURNING id
+                """,
+                    parsed_date,
+                    tenant_id,
+                    target_phone,
+                )
+            if not row:
+                return "No encontré la ficha del paciente. Asegurate de haber agendado primero."
+            logger.info(
+                f"✅ save_patient_birth_date OK target_phone={target_phone} tenant={tenant_id} patient_id={row['id']} birth_date={parsed_date}"
+            )
+            return f"✅ Guardé tu fecha de nacimiento ({parsed_date.strftime('%d/%m/%Y')}) correctamente."
+
+        # No explicit patient_phone — try ContextVar first, then chat phone
+        p_id = get_patient_id_by_context()
+        if p_id:
+            row = await db.pool.fetchrow(
+                """
+                UPDATE patients
+                SET birth_date = $1, updated_at = NOW()
+                WHERE id = $2 AND tenant_id = $3
+                RETURNING id
+            """,
+                parsed_date,
+                p_id,
+                tenant_id,
+            )
+        else:
+            phone_digits = normalize_phone_digits(phone)
+            row = await db.pool.fetchrow(
+                """
+                UPDATE patients
+                SET birth_date = $1, updated_at = NOW()
+                WHERE tenant_id = $2 AND REGEXP_REPLACE(phone_number, '[^0-9]', '', 'g') = $3
+                RETURNING id
+            """,
+                parsed_date,
+                tenant_id,
+                phone_digits,
             )
         if not row:
             return "No encontré la ficha del paciente. Asegurate de haber agendado primero."
         logger.info(
-            f"✅ save_patient_birth_date OK target_phone={target_phone} tenant={tenant_id} patient_id={row['id']} birth_date={parsed_date}"
+            f"✅ save_patient_birth_date OK tenant={tenant_id} patient_id={row['id']} birth_date={parsed_date}"
         )
         return f"✅ Guardé tu fecha de nacimiento ({parsed_date.strftime('%d/%m/%Y')}) correctamente."
     except Exception as e:
@@ -6611,19 +6782,31 @@ async def get_patient_anamnesis():
     Obtiene la ficha médica (anamnesis) del paciente actual.
     Usar cuando el paciente dice que ya completó el formulario de ficha médica, para verificar y confirmar los datos guardados.
     """
-    phone = current_customer_phone.get()
-    if not phone:
-        return "No pude identificar tu número."
-    tenant_id = current_tenant_id.get()
-    phone_digits = normalize_phone_digits(phone)
+    p_id = get_patient_id_by_context()
+    if not p_id:
+        phone = current_customer_phone.get()
+        if not phone:
+            return "No pude identificar tu número."
+        tenant_id = current_tenant_id.get()
+        phone_digits = normalize_phone_digits(phone)
+        p_row = await db.pool.fetchrow(
+            "SELECT id FROM patients WHERE tenant_id = $1 AND REGEXP_REPLACE(phone_number, '[^0-9]', '', 'g') = $2",
+            tenant_id,
+            phone_digits,
+        )
+        if not p_row:
+            return "No encontré tu ficha. Asegurate de estar registrado/a."
+        p_id = p_row["id"]
+    else:
+        tenant_id = current_tenant_id.get()
     try:
         row = await db.pool.fetchrow(
             """
             SELECT first_name, last_name, medical_history FROM patients
-            WHERE tenant_id = $1 AND REGEXP_REPLACE(phone_number, '[^0-9]', '', 'g') = $2
+            WHERE id = $1 AND tenant_id = $2
         """,
+            p_id,
             tenant_id,
-            phone_digits,
         )
         if not row:
             return "No encontré tu ficha. Asegurate de estar registrado/a."
@@ -7867,32 +8050,43 @@ async def get_patient_payment_status():
     2. Turnos futuros con sus pagos de seña
     Usar cuando el paciente pregunta sobre pagos, señas, deudas, cuánto debe, cuotas, o saldo.
     """
-    phone = current_customer_phone.get()
-    if not phone:
-        return "No pude identificar tu número."
-    tenant_id = current_tenant_id.get()
-    phone_digits = normalize_phone_digits(phone)
+    p_id = get_patient_id_by_context()
+    if not p_id:
+        phone = current_customer_phone.get()
+        if not phone:
+            return "No pude identificar tu número."
+        tenant_id = current_tenant_id.get()
+        phone_digits = normalize_phone_digits(phone)
+        p_row = await db.pool.fetchrow(
+            "SELECT id FROM patients WHERE tenant_id = $1 AND REGEXP_REPLACE(phone_number, '[^0-9]', '', 'g') = $2",
+            tenant_id,
+            phone_digits,
+        )
+        if not p_row:
+            return "No encontré tu ficha de paciente."
+        p_id = p_row["id"]
+    else:
+        tenant_id = current_tenant_id.get()
     try:
         lines = []
 
-        # 1. Treatment plan / budget info
+        # 1. Treatment plan / budget info — query by patient_id
         plan_row = await db.pool.fetchrow(
             """
             SELECT tp.id, tp.name, tp.status, tp.estimated_total, tp.approved_total,
                    tp.notes,
                    COALESCE(SUM(tpp.amount), 0) AS total_paid
             FROM treatment_plans tp
-            JOIN patients p ON p.id = tp.patient_id AND p.tenant_id = tp.tenant_id
             LEFT JOIN treatment_plan_payments tpp ON tpp.plan_id = tp.id AND tpp.tenant_id = tp.tenant_id
             WHERE tp.tenant_id = $1
-              AND REGEXP_REPLACE(p.phone_number, '[^0-9]', '', 'g') = $2
+              AND tp.patient_id = $2
               AND tp.status IN ('draft', 'approved', 'in_progress')
             GROUP BY tp.id
             ORDER BY tp.created_at DESC
             LIMIT 1
             """,
             tenant_id,
-            phone_digits,
+            p_id,
         )
         if plan_row:
             approved = float(
@@ -7964,7 +8158,7 @@ async def get_patient_payment_status():
                         f"    {pdate} | ${int(float(pp['amount'] or 0))} | {method} | {pp['notes'] or ''}"
                     )
 
-        # 2. Appointment-level payment info (señas)
+        # 2. Appointment-level payment info (señas) — query by patient_id
         rows = await db.pool.fetch(
             """
             SELECT a.appointment_datetime, a.appointment_type, a.status,
@@ -7972,15 +8166,13 @@ async def get_patient_payment_status():
                    p_prof.consultation_price as prof_price,
                    p_prof.first_name as prof_name
             FROM appointments a
-            JOIN patients p ON a.patient_id = p.id
             LEFT JOIN professionals p_prof ON a.professional_id = p_prof.id
-            WHERE p.tenant_id = $1 AND REGEXP_REPLACE(p.phone_number, '[^0-9]', '', 'g') = $2
+            WHERE a.patient_id = $1
             AND a.appointment_datetime >= NOW()
             AND a.status IN ('scheduled', 'confirmed')
             ORDER BY a.appointment_datetime ASC
         """,
-            tenant_id,
-            phone_digits,
+            p_id,
         )
         if rows:
             if lines:
@@ -8017,12 +8209,14 @@ async def get_patient_clinical_history():
     Obtiene el historial clínico completo del paciente (diagnósticos, notas, tratamientos realizados).
     Usar cuando el paciente pregunta sobre su historial, tratamientos anteriores, o la clínica necesita contexto clínico.
     """
-    phone = current_customer_phone.get()
-    if not phone:
-        return "No pude identificar tu número."
-    tenant_id = current_tenant_id.get()
-    phone_digits = normalize_phone_digits(phone)
-    try:
+    p_id = get_patient_id_by_context()
+    patient_name = None
+    if not p_id:
+        phone = current_customer_phone.get()
+        if not phone:
+            return "No pude identificar tu número."
+        tenant_id = current_tenant_id.get()
+        phone_digits = normalize_phone_digits(phone)
         patient = await db.pool.fetchrow(
             """
             SELECT id, first_name, last_name FROM patients
@@ -8033,6 +8227,17 @@ async def get_patient_clinical_history():
         )
         if not patient:
             return "No encontré tu ficha de paciente."
+        p_id = patient["id"]
+        patient_name = f"{patient['first_name']} {patient.get('last_name', '')}".strip()
+    else:
+        tenant_id = current_tenant_id.get()
+        p_row = await db.pool.fetchrow(
+            "SELECT first_name, last_name FROM patients WHERE id = $1 AND tenant_id = $2",
+            p_id,
+            tenant_id,
+        )
+        patient_name = f"{p_row['first_name']} {p_row.get('last_name', '')}".strip() if p_row else ""
+    try:
         rows = await db.pool.fetch(
             """
             SELECT cr.record_date, cr.diagnosis, cr.clinical_notes, cr.treatments, cr.recommendations,
@@ -8042,12 +8247,12 @@ async def get_patient_clinical_history():
             WHERE cr.patient_id = $1 AND cr.tenant_id = $2
             ORDER BY cr.record_date DESC LIMIT 10
         """,
-            patient["id"],
+            p_id,
             tenant_id,
         )
         if not rows:
             return "No hay registros clínicos guardados todavía."
-        name = f"{patient['first_name']} {patient.get('last_name', '')}".strip()
+        name = patient_name or ""
         lines = [f"Historial de {name} ({len(rows)} registros):"]
         for r in rows:
             dt = r["record_date"].strftime("%d/%m/%y") if r["record_date"] else "—"
@@ -8070,12 +8275,14 @@ async def get_patient_odontogram():
     Obtiene el odontograma actual del paciente (estado de cada pieza dental).
     Usar cuando el paciente pregunta sobre el estado de sus dientes, piezas, o la clínica necesita ver el odontograma.
     """
-    phone = current_customer_phone.get()
-    if not phone:
-        return "No pude identificar tu número."
-    tenant_id = current_tenant_id.get()
-    phone_digits = normalize_phone_digits(phone)
-    try:
+    p_id = get_patient_id_by_context()
+    patient_name = None
+    if not p_id:
+        phone = current_customer_phone.get()
+        if not phone:
+            return "No pude identificar tu número."
+        tenant_id = current_tenant_id.get()
+        phone_digits = normalize_phone_digits(phone)
         patient = await db.pool.fetchrow(
             """
             SELECT id, first_name, last_name FROM patients
@@ -8086,6 +8293,17 @@ async def get_patient_odontogram():
         )
         if not patient:
             return "No encontré tu ficha de paciente."
+        p_id = patient["id"]
+        patient_name = f"{patient['first_name']} {patient.get('last_name', '')}".strip()
+    else:
+        tenant_id = current_tenant_id.get()
+        p_row = await db.pool.fetchrow(
+            "SELECT first_name, last_name FROM patients WHERE id = $1 AND tenant_id = $2",
+            p_id,
+            tenant_id,
+        )
+        patient_name = f"{p_row['first_name']} {p_row.get('last_name', '')}".strip() if p_row else ""
+    try:
         # Get latest clinical record with odontogram
         record = await db.pool.fetchrow(
             """
@@ -8093,7 +8311,7 @@ async def get_patient_odontogram():
             WHERE patient_id = $1 AND tenant_id = $2 AND odontogram_data IS NOT NULL
             ORDER BY record_date DESC LIMIT 1
         """,
-            patient["id"],
+            p_id,
             tenant_id,
         )
         if not record or not record["odontogram_data"]:
@@ -8103,7 +8321,7 @@ async def get_patient_odontogram():
             odata = json.loads(odata)
         if not isinstance(odata, dict) or len(odata) == 0:
             return "Odontograma vacío — todas las piezas sanas."
-        name = f"{patient['first_name']} {patient.get('last_name', '')}".strip()
+        name = patient_name or ""
         modified = (
             {k: v for k, v in odata.items() if v.get("state", "healthy") != "healthy"}
             if isinstance(odata, dict)

@@ -199,6 +199,7 @@ async def send_appointment_reminders():
                         tenant_id, apt["phone_number"],
                         template_name, template_lang, components,
                         patient_name=f"{apt['first_name'] or ''} {apt.get('last_name') or ''}".strip(),
+                        patient_id=apt.get("patient_id"),
                         appointment_info={
                             "treatment": apt.get("appointment_type") or "Consulta",
                             "date": formatted_date,
@@ -243,6 +244,7 @@ async def _send_template(
     tenant_id: int, phone: str,
     template_name: str, language_code: str, components: list,
     patient_name: str = "",
+    patient_id: Optional[int] = None,
     appointment_info: dict = None,
 ) -> tuple:
     """
@@ -390,8 +392,8 @@ async def _send_template(
             else:
                 conv_id = _uuid.uuid4()
                 await _db.pool.execute(
-                    "INSERT INTO chat_conversations (id, tenant_id, channel, provider, external_user_id, display_name, last_message_preview, status, updated_at) VALUES ($1, $2, 'whatsapp', 'ycloud', $3, $4, $5, 'active', NOW())",
-                    conv_id, tenant_id, phone, patient_name or None, f"[Recordatorio: {template_name}]",
+                    "INSERT INTO chat_conversations (id, tenant_id, channel, provider, external_user_id, display_name, last_message_preview, status, updated_at, linked_patient_id) VALUES ($1, $2, 'whatsapp', 'ycloud', $3, $4, $5, 'active', NOW(), $6)",
+                    conv_id, tenant_id, phone, patient_name or None, f"[Recordatorio: {template_name}]", patient_id,
                 )
 
             # Persist message with full clinical context
@@ -427,7 +429,7 @@ async def _send_template(
         return False, "exception", None
 
 
-async def _send_text(tenant_id: int, phone: str, message: str, patient_name: str = "") -> bool:
+async def _send_text(tenant_id: int, phone: str, message: str, patient_name: str = "", patient_id: Optional[int] = None) -> bool:
     """Send a text message via YCloud and persist in chat_messages."""
     try:
         from db import db
@@ -468,8 +470,8 @@ async def _send_text(tenant_id: int, phone: str, message: str, patient_name: str
             else:
                 conv_id = _uuid.uuid4()
                 await db.pool.execute(
-                    "INSERT INTO chat_conversations (id, tenant_id, channel, provider, external_user_id, display_name, last_message_preview, status, updated_at) VALUES ($1, $2, 'whatsapp', 'ycloud', $3, $4, $5, 'active', NOW())",
-                    conv_id, tenant_id, phone, patient_name or None, message[:200],
+                    "INSERT INTO chat_conversations (id, tenant_id, channel, provider, external_user_id, display_name, last_message_preview, status, updated_at, linked_patient_id) VALUES ($1, $2, 'whatsapp', 'ycloud', $3, $4, $5, 'active', NOW(), $6)",
+                    conv_id, tenant_id, phone, patient_name or None, message[:200], patient_id,
                 )
 
             await db.pool.execute(

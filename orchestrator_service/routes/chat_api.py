@@ -50,6 +50,8 @@ class ChatSummaryResponse(BaseModel):
     last_derivhumano_at: Optional[str] = None
     meta: Dict[str, Any]
     unread_count: int
+    linked_patient_id: Optional[int] = None
+    linked_patient_name: Optional[str] = None
 
 
 from admin_routes import get_resolved_tenant_id
@@ -85,8 +87,10 @@ async def chats_summary(
         SELECT c.id, c.tenant_id, c.channel, c.provider, c.external_user_id, c.display_name,
                c.last_message_preview AS last_message, c.last_message_at AS last_message_at,
                c.last_user_message_at, c.status, c.human_override_until, c.last_derivhumano_at, c.meta, c.last_read_at,
-               c.linked_patient_id
+               c.linked_patient_id,
+               lp.first_name || ' ' || COALESCE(lp.last_name, '') AS linked_patient_name
         FROM chat_conversations c
+        LEFT JOIN patients lp ON lp.id = c.linked_patient_id AND lp.tenant_id = c.tenant_id
         WHERE {where}
         ORDER BY c.last_message_at DESC NULLS LAST
         LIMIT ${lim_off_1} OFFSET ${lim_off_2}
@@ -169,6 +173,7 @@ async def chats_summary(
                 "meta": meta,
                 "unread_count": unread or 0,
                 "linked_patient_id": r["linked_patient_id"],
+                "linked_patient_name": r.get("linked_patient_name"),
             }
         )
     logger.info(

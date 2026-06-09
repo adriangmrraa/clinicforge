@@ -511,6 +511,7 @@
   "chats": {
     "badge_patient": "Patient",
     "badge_lead": "Lead",
+    "linked_as": "→ {name}",
     "title": "Conversations",
     "select_clinic": "Select clinic",
     "no_sessions": "No conversations",
