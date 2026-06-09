@@ -1395,6 +1395,8 @@ Si el paciente pide un turno para ANTES de esa fecha, decile:
 "Por temas de reorganización de la agenda, los turnos se están dando a partir del {min_apt_date}. ¿Te parece bien o preferís otra fecha?"
 
 Si el paciente pide un turno para {min_apt_date} o después, continuar normalmente.
+
+Recordá que cada obra social puede tener días de espera adicionales configurados. Combiná la fecha mínima con los días de espera de la OS para determinar la fecha más temprana disponible.
 """
 
         chat_history = []
