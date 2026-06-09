@@ -3460,6 +3460,55 @@ def _clean_str(val: Any) -> Optional[str]:
 
 
 @tool
+async def find_patient(query: str):
+    """
+    Busca pacientes en el sistema por nombre, apellido, DNI o teléfono.
+    
+    Args:
+        query: texto a buscar (nombre, apellido, DNI o teléfono)
+    
+    RETORNA: Lista de pacientes encontrados con ID, nombre, teléfono, DNI.
+    Solo busca dentro de la clínica actual (tenant_id).
+    El agente DEBE usar esta herramienta cuando el paciente pregunta por un tercero
+    o cuando necesita verificar si una persona ya está registrada.
+    """
+    tenant_id = current_tenant_id.get()
+    if not tenant_id:
+        return "Error: No se pudo identificar la clínica actual."
+    
+    from services.database import get_db
+    db = await get_db()
+    
+    like_pattern = f"%{query}%"
+    rows = await db.pool.fetch(
+        """
+        SELECT id, first_name, last_name, phone_number, dni 
+        FROM patients 
+        WHERE tenant_id = $1 
+          AND (first_name ILIKE $2 OR last_name ILIKE $2 OR phone_number ILIKE $2 OR dni ILIKE $2)
+        ORDER BY first_name
+        LIMIT 10
+        """,
+        tenant_id, like_pattern
+    )
+    
+    if not rows:
+        return "No se encontraron pacientes con ese criterio de búsqueda."
+    
+    result = "Pacientes encontrados:\n"
+    for r in rows:
+        name = f"{r['first_name']} {r.get('last_name', '')}".strip()
+        phone = r.get('phone_number', '') or ''
+        dni = r.get('dni', '') or ''
+        result += f"• ID:{r['id']} — {name} | 📞 {phone}"
+        if dni:
+            result += f" | DNI: {dni}"
+        result += "\n"
+    
+    return result
+
+
+@tool
 async def book_appointment(
     date_time: str,
     treatment_reason: str,
@@ -4985,6 +5034,22 @@ async def book_appointment(
                 logger.warning(
                     f"[conversation_state] set_state in book_appointment failed (non-blocking): {state_err}"
                 )
+
+            # Auto-link third party to conversation for future context
+            if phone and is_third_party:
+                try:
+                    conv = await db.pool.fetchrow(
+                        "SELECT id FROM chat_conversations WHERE tenant_id = $1 AND phone_number = $2",
+                        tenant_id, chat_phone
+                    )
+                    if conv:
+                        await db.pool.execute(
+                            "UPDATE chat_conversations SET linked_patient_id = (SELECT id FROM patients WHERE tenant_id = $1 AND phone_number = $2) WHERE id = $3",
+                            tenant_id, phone, conv['id']
+                        )
+                        logger.info(f"🔗 Auto-linked third party {phone} to conversation {conv['id']}")
+                except Exception as link_err:
+                    logger.warning(f"Auto-link failed (non-blocking): {link_err}")
 
             return result
         else:
@@ -10206,6 +10271,21 @@ REGLAS DE USO DEL CONTEXTO DEL PACIENTE:
 • Si tiene "miedo" o "experiencia negativa" en su MEMORIA → SIEMPRE ser empático y tranquilizador desde el primer mensaje, sin que el paciente lo pida.
 • NUNCA ignores el contexto del paciente. Es información REAL de la base de datos.
 
+REGLAS DE AGENDAMIENTO PARA TERCEROS (FAMILIARES):
+• Si el paciente dice "es para mi mamá/papá/hijo/hermano/esposo/esposa", "quiero turno para [nombre]", o similar → está pidiendo turno para un TERCERO.
+• DETECTAR automáticamente: cualquier referencia a "mi mamá", "mi papá", "mi hijo", "mi marido/esposo", "mi señora/esposa", "mi hermano", "mi abuelo" + tratamiento/turno = tercero.
+• PASOS para booking de tercero:
+  1. Preguntá nombre completo de la persona para quien es el turno
+  2. Si es ADULTO (no menor): pedí número de teléfono del tercero para localizarlo en el sistema
+  3. Si es MENOR: no hace falta teléfono, el sistema lo vincula automáticamente
+  4. Usá `find_patient(nombre)` para buscar si el tercero ya existe en el sistema
+  5. Si existe → podés consultar sus datos
+  6. Si NO existe → pedí los datos que faltan para registrarlo
+  7. Llamá `book_appointment` con patient_phone="teléfono" para adulto, is_minor=true para menor
+• DESPUÉS de agendar al tercero exitosamente → queda VINCULADO al chat. Las próximas consultas serán sobre EL/ella, no sobre vos.
+• Si después de vincular al tercero el paciente vuelve a pedir algo para sí mismo → preguntá "¿Esto es para vos o para [nombre]?"
+• MANTENÉ siempre claro QUIÉN es el sujeto de cada acción. Si hay duda, preguntá.
+
 REGLA SUPREMA DE HERRAMIENTAS (TOOLS) — LEER 3 VECES:
 • Cuando una herramienta (tool) retorna un resultado, ESE ES EL RESULTADO REAL. No lo contradigas.
 • Si una tool retorna "✅ ..." → la acción FUE EXITOSA. Confirmá al paciente.
@@ -10924,7 +11004,7 @@ URGENCIAS: Si el paciente dice "dolor/urgente/emergencia" → seguir FLUJO F2 CO
 
 PROACTIVIDAD (LO MÁS IMPORTANTE):
 Sos AGENTE DE VENTAS. Cada mensaje tuyo: ejecutar tool O hacer 1 pregunta. Nada más.
-• Paciente dice tratamiento → check_availability INMEDIATO.
+• Paciente dice tratamiento o quiere sacar turno → PREGUNTAR obra social PRIMERO antes de check_availability. NUNCA llamar check_availability sin saber si es particular o tiene OS.
 • Paciente dice "buscame fecha"/"agendame"/"dale" → EJECUTAR, no preguntar.
 • Paciente dice "cualquiera"/"no tengo preferencia" → elegí próximo día hábil y ejecutá.
 • PROHIBIDO: "te gustaría agendar?", listar tratamientos si ya dijo cuál, "estoy aquí para ayudarte!", 2+ preguntas sin tool.
