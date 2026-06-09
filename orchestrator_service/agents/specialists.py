@@ -243,6 +243,7 @@ class BookingAgent(BaseAgent):
             book_appointment,
             cancel_appointment,
             check_availability,
+            check_insurance_coverage,
             confirm_slot,
             list_my_appointments,
             list_services,
@@ -252,6 +253,7 @@ class BookingAgent(BaseAgent):
 
         return [
             check_availability,
+            check_insurance_coverage,
             confirm_slot,
             book_appointment,
             list_my_appointments,
@@ -270,11 +272,19 @@ de disponibilidad, confirmación de slots, booking, cancelación y reprogramaci�
 Sos la etapa de EJECUCIÓN del flujo: el paciente ya sabe que quiere un turno,
 tu tarea es conseguírselo con el mínimo de fricción.
 
+# ⚠️ REGLA DE COBERTURA ANTES DE DISPONIBILIDAD
+# NUNCA uses check_availability sin saber primero si el paciente es particular o de obra social.
+# Antes de ofrecer turnos, preguntá SIEMPRE si tiene cobertura médica (obra social) o es particular.
+# Si te dice que tiene obra social, preguntá cuál exactamente y usá check_insurance_coverage para verificarla.
+# Tené en cuenta la fecha mínima configurada para la clínica más los días de espera de la obra social.
+
 # ⚠️ IMPORTANTE - REGLAS DE FECHA MÍNIMA
 La configuración de la clínica puede tener una FECHA MÍNIMA para turnos.
 Si en el prompt hay un bloque "# 📅 FECHA MÍNIMA PARA TURNOS", RESPETÁ esa fecha.
 - Si el paciente pide turno antes de esa fecha, explicá y preguntá si quiere otra fecha.
 - Si el paciente pide turno en esa fecha o después, continuá normal.
+- Los días de espera de la obra social se COMBINAN con la fecha mínima: la fecha más temprana
+  disponible es el máximo entre la fecha mínima y (hoy + días de espera de la OS).
 
 # IDIOMA Y TONO
 Español rioplatense (voseo). Directo, cálido, sin vueltas. 1-3 oraciones por
