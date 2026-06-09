@@ -514,31 +514,56 @@ async def get_patient_clinical_context(
         else resolved_tenant_id
     )
 
-    # 1. Resolver paciente (por Teléfono o por ID de Plataforma)
-    # Si el "phone" no empieza con + o no son solo números, lo tratamos como plataforma_id
-    is_pure_platform_id = not (phone.startswith("+") or phone.isdigit())
-
+    # 1. Resolver paciente (por linked_patient_id PRIMERO, luego teléfono)
+    # Si el chat tiene paciente vinculado, ese es el contexto que debe mostrar
     patient = None
-    if not is_pure_platform_id:
-        # Generar múltiples variantes de formato para matchear (argentino)
-        phone_variants = generate_phone_variants(phone)
-        # Loggear para debug
-        logger.info(f"🔍 Buscando paciente por teléfono: variants={phone_variants}")
-        placeholders = ", ".join(f"${i+2}" for i in range(len(phone_variants)))
+
+    # 1a. Check linked_patient_id FIRST — si el chat tiene paciente vinculado, priorizar
+    conv = await db.pool.fetchrow(
+        """
+        SELECT linked_patient_id FROM chat_conversations
+        WHERE tenant_id = $1 AND external_user_id = $2 AND linked_patient_id IS NOT NULL
+        LIMIT 1
+    """,
+        tenant_id,
+        phone,
+    )
+    if conv:
         patient = await db.pool.fetchrow(
-            f"""
+            """
             SELECT id, first_name, last_name, phone_number, status, urgency_level, urgency_reason, preferred_schedule,
                    acquisition_source, meta_ad_id, meta_ad_headline, meta_ad_body, external_ids, medical_history
-            FROM patients 
-            WHERE tenant_id = $1 AND phone_number IN ({placeholders})
-            AND status != 'deleted'
+            FROM patients
+            WHERE id = $1 AND tenant_id = $2 AND status != 'deleted'
         """,
+            conv["linked_patient_id"],
             tenant_id,
-            *phone_variants,
         )
 
+    # 1b. Fallback: buscar por teléfono
     if not patient:
-        # Buscar por external_ids (IG/FB), instagram_psid, facebook_psid
+        # Si el "phone" no empieza con + o no son solo números, lo tratamos como plataforma_id
+        is_pure_platform_id = not (phone.startswith("+") or phone.isdigit())
+        if not is_pure_platform_id:
+            # Generar múltiples variantes de formato para matchear (argentino)
+            phone_variants = generate_phone_variants(phone)
+            # Loggear para debug
+            logger.info(f"🔍 Buscando paciente por teléfono: variants={phone_variants}")
+            placeholders = ", ".join(f"${i+2}" for i in range(len(phone_variants)))
+            patient = await db.pool.fetchrow(
+                f"""
+                SELECT id, first_name, last_name, phone_number, status, urgency_level, urgency_reason, preferred_schedule,
+                       acquisition_source, meta_ad_id, meta_ad_headline, meta_ad_body, external_ids, medical_history
+                FROM patients 
+                WHERE tenant_id = $1 AND phone_number IN ({placeholders})
+                AND status != 'deleted'
+            """,
+                tenant_id,
+                *phone_variants,
+            )
+
+    # 1c. Fallback: buscar por external_ids (IG/FB), instagram_psid, facebook_psid
+    if not patient:
         patient = await db.pool.fetchrow(
             """
             SELECT id, first_name, last_name, phone_number, status, urgency_level, urgency_reason, preferred_schedule,
@@ -557,29 +582,6 @@ async def get_patient_clinical_context(
             tenant_id,
             phone,
         )
-
-    if not patient:
-        # 1b. Check if a chat_conversation has linked_patient_id for this phone
-        conv = await db.pool.fetchrow(
-            """
-            SELECT linked_patient_id FROM chat_conversations
-            WHERE tenant_id = $1 AND external_user_id = $2 AND linked_patient_id IS NOT NULL
-            LIMIT 1
-        """,
-            tenant_id,
-            phone,
-        )
-        if conv:
-            patient = await db.pool.fetchrow(
-                """
-                SELECT id, first_name, last_name, phone_number, status, urgency_level, urgency_reason, preferred_schedule,
-                       acquisition_source, meta_ad_id, meta_ad_headline, meta_ad_body, external_ids, medical_history
-                FROM patients
-                WHERE id = $1 AND tenant_id = $2 AND status != 'deleted'
-            """,
-                conv["linked_patient_id"],
-                tenant_id,
-            )
 
     if patient:
         from core.auth import log_pii_access
