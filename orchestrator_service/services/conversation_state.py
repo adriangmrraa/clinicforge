@@ -147,6 +147,7 @@ async def set_state(
             "booking_attempts": (_existing or {}).get("booking_attempts", 0),
             "availability_attempts": (_existing or {}).get("availability_attempts", 0),
             "anchor_date": (_existing or {}).get("anchor_date"),
+            "insurance_asked": (_existing or {}).get("insurance_asked", False),
             "updated_at": _dt.now().isoformat(),
         }
 
@@ -400,3 +401,30 @@ async def set_anchor_date(tenant_id: int, phone_number: str, anchor_date: str) -
         )
     except Exception as e:
         logger.warning(f"[conversation_state] set_anchor_date failed: {e}")
+
+
+# ── Insurance Asked Helpers ─────────────────────────────────────────
+
+
+async def mark_insurance_asked(tenant_id: int, phone_number: str) -> None:
+    """Marca que ya se preguntó sobre cobertura en esta conversación."""
+    try:
+        payload = await get_state(tenant_id, phone_number) or {}
+        if not isinstance(payload, dict):
+            payload = {}
+        payload["insurance_asked"] = True
+        await _raw_write(tenant_id, phone_number, payload, ttl=CONVSTATE_TTL)
+    except Exception as e:
+        logger.warning(f"[insurance_asked] Error marking insurance_asked: {e}")
+
+
+async def has_insurance_been_asked(tenant_id: int, phone_number: str) -> bool:
+    """Verifica si ya se preguntó sobre cobertura en esta conversación."""
+    try:
+        payload = await get_state(tenant_id, phone_number)
+        if not isinstance(payload, dict):
+            return False
+        return payload.get("insurance_asked", False)
+    except Exception as e:
+        logger.warning(f"[insurance_asked] Error checking insurance_asked: {e}")
+        return False
