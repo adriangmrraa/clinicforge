@@ -41,7 +41,7 @@ ALL_BLOCK_KEYS: tuple[str, ...] = (
 # Per-specialist block whitelist (REQ-4.1 / design D3).
 SPECIALIST_BLOCKS: dict[str, list[str]] = {
     "reception": ["clinic_basics", "faqs_section", "holidays_section"],
-    "booking":   ["clinic_basics", "holidays_section", "derivation_rules_section", "sede_info_text"],
+    "booking":   ["clinic_basics", "insurance_section", "holidays_section", "derivation_rules_section", "sede_info_text"],
     "triage":    ["clinic_basics", "special_conditions_block"],
     "billing":   ["clinic_basics", "insurance_section", "payment_section", "bank_info"],
     "anamnesis": ["clinic_basics", "special_conditions_block"],
