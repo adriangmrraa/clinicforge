@@ -37,6 +37,7 @@ class CanonicalMessage(BaseModel):
     
     # Contenido
     content: Optional[str] = None
+    button_id: Optional[str] = None  # Stable button/payload ID from interactive or template replies
     media: List[MediaItem] = Field(default_factory=list)
     
     # Metadata

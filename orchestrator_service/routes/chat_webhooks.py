@@ -1016,6 +1016,10 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
             # normal message. We intercept it HERE before the AI agent so the
             # confirmation/reschedule is processed instantly without LLM cost.
             _btn_text = (msg.content or "").strip().lower()
+            _btn_id = (getattr(msg, 'button_id', None) or "").strip().upper()  # Stable ID from button payload
+            _CONFIRM_IDS = {"BTN_CONFIRM", "CONFIRM", "BTN_CONFIRMAR", "CONFIRMAR"}
+            _RESCHEDULE_IDS = {"BTN_RESCHEDULE", "RESCHEDULE", "BTN_REPROGRAMAR", "REPROGRAMAR"}
+            _CANCEL_IDS = {"BTN_CANCEL", "CANCEL", "BTN_CANCELAR", "CANCELAR"}
             _CONFIRM_BUTTONS = {
                 # Template 5: Recordatorio de Asistencia
                 "confirmar asistencia ✅", "confirmar asistencia",
@@ -1041,7 +1045,12 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                 "quiero cancelar", "cancelar turno", "cancelar",
             }
 
-            if not msg.is_agent and _btn_text in _CONFIRM_BUTTONS:
+            # Match by stable ID first (reliable), fall back to display text
+            _is_confirm = _btn_id in _CONFIRM_IDS or _btn_text in _CONFIRM_BUTTONS
+            _is_reschedule = _btn_id in _RESCHEDULE_IDS or _btn_text in _RESCHEDULE_BUTTONS
+            _is_cancel = _btn_id in _CANCEL_IDS or _btn_text in _CANCEL_BUTTONS
+
+            if not msg.is_agent and _is_confirm:
                 try:
                     _apt_row = await pool.fetchrow(
                         """UPDATE appointments SET status = 'confirmed', updated_at = NOW()
@@ -1113,7 +1122,7 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                 except Exception as _conf_err:
                     logger.error(f"❌ Appointment confirm button failed: {_conf_err}")
 
-            if not msg.is_agent and _btn_text in _CANCEL_BUTTONS:
+            if not msg.is_agent and _is_cancel:
                 try:
                     _cancel_row = await pool.fetchrow(
                         """UPDATE appointments SET status = 'cancelled',
@@ -1183,7 +1192,7 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                 except Exception as _cancel_err:
                     logger.error(f"❌ Cancel button failed: {_cancel_err}")
 
-            if not msg.is_agent and _btn_text in _RESCHEDULE_BUTTONS:
+            if not msg.is_agent and _is_reschedule:
                 try:
                     _resched_msg = (
                         "Entendemos 😊 No hay problema. Contame qué día y horario "
@@ -1207,7 +1216,7 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                 # but do NOT double-respond: the bot already sent the opening message above.
 
             # --- Playbook V2: Check if patient has active execution waiting for response ---
-            if not msg.is_agent and _btn_text not in _CONFIRM_BUTTONS and _btn_text not in _CANCEL_BUTTONS:
+            if not msg.is_agent and not _is_confirm and not _is_cancel:
                 try:
                     from jobs.playbook_executor import handle_patient_response
                     handled = await handle_patient_response(pool, tenant_id, msg.external_user_id, msg.content or "")
