@@ -5,8 +5,13 @@ from orchestrator_service.main import check_availability
 
 @pytest.mark.asyncio
 async def test_check_availability_blocked_insurance():
-    with patch("orchestrator_service.main.db.pool.fetchrow", new_callable=AsyncMock) as mock_fetchrow, \
-         patch("orchestrator_service.main.db.pool.fetch", new_callable=AsyncMock) as mock_fetch, \
+    mock_pool = MagicMock()
+    mock_fetchrow = AsyncMock()
+    mock_fetch = AsyncMock()
+    mock_pool.fetchrow = mock_fetchrow
+    mock_pool.fetch = mock_fetch
+    
+    with patch("orchestrator_service.main.db.pool", mock_pool), \
          patch("orchestrator_service.main.current_tenant_id") as mock_tenant_id, \
          patch("orchestrator_service.main.current_customer_phone") as mock_phone:
         
@@ -29,16 +34,21 @@ async def test_check_availability_blocked_insurance():
             }
         ]
         
-        mock_fetch.return_value = []
-
-        result = await check_availability("mañana")
+        mock_fetch.return_value = [{"id": 1, "first_name": "Dr", "last_name": "Test", "google_calendar_id": None, "working_hours": {}, "is_priority_professional": False}]
+        
+        result = await check_availability.coroutine("mañana", "2026-06-09", "any")
         assert "Por el momento tenemos suspendida temporalmente la atención por la cobertura OSDE" in result
 
 
 @pytest.mark.asyncio
 async def test_check_availability_delayed_insurance():
-    with patch("orchestrator_service.main.db.pool.fetchrow", new_callable=AsyncMock) as mock_fetchrow, \
-         patch("orchestrator_service.main.db.pool.fetch", new_callable=AsyncMock) as mock_fetch, \
+    mock_pool = MagicMock()
+    mock_fetchrow = AsyncMock()
+    mock_fetch = AsyncMock()
+    mock_pool.fetchrow = mock_fetchrow
+    mock_pool.fetch = mock_fetch
+    
+    with patch("orchestrator_service.main.db.pool", mock_pool), \
          patch("orchestrator_service.main.current_tenant_id") as mock_tenant_id, \
          patch("orchestrator_service.main.current_customer_phone") as mock_phone, \
          patch("orchestrator_service.main.get_now_arg") as mock_now, \
@@ -82,7 +92,7 @@ async def test_check_availability_delayed_insurance():
         # "mañana" would mean target_date = June 9th. But delay is 5 days, so minimum date is June 13th.
         # It should adjust the target_date and then fail to find slots or find slots on June 13th.
         # Since working_hours are empty, it will fall through to "No encontré días con atención disponible"
-        result = await check_availability("mañana")
+        result = await check_availability.coroutine("mañana", "2026-06-09", "any")
         
         # The main thing is it shouldn't return the blocked message, it should process normally.
         # We check that it didn't return the blocked string
