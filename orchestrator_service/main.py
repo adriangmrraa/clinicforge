@@ -11680,7 +11680,7 @@ FORMATO CANÓNICO PARA TOOLS:
 • treatment_reason: Nombre exacto de 'list_services'.
 
 RE-INTENTO INTELIGENTE (BOOKING FAILURES):
-• Si book_appointment devuelve ❌ o ⚠️ por turno ocupado o conflicto:
+• Si book_appointment devuelve ❌, ⚠️, o [BOOK_ERROR:...] por turno ocupado o conflicto:
   1) Llamá check_availability DE NUEVO para ese día (la disponibilidad pudo cambiar).
   2) Presentá las nuevas opciones al paciente.
   3) NO adivinés horarios. NO iterés hora por hora.
