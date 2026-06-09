@@ -8803,15 +8803,15 @@ async def list_professionals(
 ):
     """
     Lista profesionales aprobados y activos. CEO ve todos los de sus sedes; secretary/professional solo los de su clínica.
-    Solo se incluyen profesionales cuyo usuario tiene status = 'active' (aprobados por el CEO).
+    Solo se incluyen profesionales cuyo usuario tiene status = 'active' (aprobados por el CEO) o no tienen usuario asociado aún.
     """
-    # Solo listar profesionales dentales aprobados (u.role IN ('professional', 'ceo') y u.status = 'active').
-    base_join = "FROM professionals p INNER JOIN users u ON p.user_id = u.id AND u.role IN ('professional', 'ceo') AND u.status = 'active'"
+    # Solo listar profesionales dentales aprobados (u.role IN ('professional', 'ceo') y u.status = 'active') o sin usuario asociado.
+    base_join = "FROM professionals p LEFT JOIN users u ON p.user_id = u.id AND u.role IN ('professional', 'ceo') AND u.status = 'active'"
     # CEO (varias sedes): listar profesionales de todas las sedes permitidas
     if len(allowed_ids) > 1:
         try:
             rows = await db.pool.fetch(
-                f"SELECT p.id, p.first_name, p.last_name, p.specialty, p.registration_id, p.is_active, p.tenant_id, p.is_priority_professional {base_join} WHERE p.tenant_id = ANY($1::int[])",
+                f"SELECT p.id, p.first_name, p.last_name, p.specialty, p.registration_id, p.is_active, p.tenant_id, p.is_priority_professional {base_join} WHERE p.tenant_id = ANY($1::int[]) AND (p.user_id IS NULL OR u.id IS NOT NULL)",
                 allowed_ids,
             )
             return [dict(row) for row in rows]
@@ -8824,7 +8824,7 @@ async def list_professionals(
             ):
                 try:
                     rows = await db.pool.fetch(
-                        f"SELECT p.id, p.first_name, p.specialty, p.is_active, p.tenant_id {base_join} WHERE p.tenant_id = ANY($1::int[])",
+                        f"SELECT p.id, p.first_name, p.specialty, p.is_active, p.tenant_id {base_join} WHERE p.tenant_id = ANY($1::int[]) AND (p.user_id IS NULL OR u.id IS NOT NULL)",
                         allowed_ids,
                     )
                     return [
@@ -8835,7 +8835,7 @@ async def list_professionals(
                     pass
             try:
                 rows = await db.pool.fetch(
-                    "SELECT p.id, p.first_name, p.last_name, p.specialty, p.is_active, p.is_priority_professional FROM professionals p INNER JOIN users u ON p.user_id = u.id AND u.role IN ('professional', 'ceo') AND u.status = 'active' WHERE p.tenant_id = ANY($1::int[])",
+                    "SELECT p.id, p.first_name, p.last_name, p.specialty, p.is_active, p.is_priority_professional FROM professionals p LEFT JOIN users u ON p.user_id = u.id AND u.role IN ('professional', 'ceo') AND u.status = 'active' WHERE p.tenant_id = ANY($1::int[]) AND (p.user_id IS NULL OR u.id IS NOT NULL)",
                     allowed_ids,
                 )
                 return [dict(row) for row in rows]
@@ -8843,7 +8843,7 @@ async def list_professionals(
                 pass
         try:
             rows = await db.pool.fetch(
-                "SELECT p.id, p.first_name, p.last_name, p.specialty, p.is_active FROM professionals p INNER JOIN users u ON p.user_id = u.id AND u.role IN ('professional', 'ceo') AND u.status = 'active' WHERE p.tenant_id = ANY($1::int[])",
+                "SELECT p.id, p.first_name, p.last_name, p.specialty, p.is_active FROM professionals p LEFT JOIN users u ON p.user_id = u.id AND u.role IN ('professional', 'ceo') AND u.status = 'active' WHERE p.tenant_id = ANY($1::int[]) AND (p.user_id IS NULL OR u.id IS NOT NULL)",
                 allowed_ids,
             )
             return [dict(row) | {"is_priority_professional": False} for row in rows]
@@ -8854,7 +8854,7 @@ async def list_professionals(
     tenant_id = resolved_tenant_id
     try:
         rows = await db.pool.fetch(
-            f"SELECT p.id, p.first_name, p.last_name, p.specialty, p.registration_id, p.is_active, p.is_priority_professional {base_join} WHERE p.tenant_id = $1",
+            f"SELECT p.id, p.first_name, p.last_name, p.specialty, p.registration_id, p.is_active, p.is_priority_professional {base_join} WHERE p.tenant_id = $1 AND (p.user_id IS NULL OR u.id IS NOT NULL)",
             tenant_id,
         )
         return [dict(row) for row in rows]
@@ -8863,7 +8863,7 @@ async def list_professionals(
 
     try:
         rows = await db.pool.fetch(
-            "SELECT p.id, p.first_name, p.specialty, p.is_active FROM professionals p INNER JOIN users u ON p.user_id = u.id AND u.role IN ('professional', 'ceo') AND u.status = 'active' WHERE p.tenant_id = $1",
+            "SELECT p.id, p.first_name, p.specialty, p.is_active FROM professionals p LEFT JOIN users u ON p.user_id = u.id AND u.role IN ('professional', 'ceo') AND u.status = 'active' WHERE p.tenant_id = $1 AND (p.user_id IS NULL OR u.id IS NOT NULL)",
             tenant_id,
         )
         return [
@@ -8874,7 +8874,7 @@ async def list_professionals(
 
     try:
         rows = await db.pool.fetch(
-            "SELECT p.id, p.first_name, p.last_name, p.specialty, p.is_active FROM professionals p INNER JOIN users u ON p.user_id = u.id AND u.role IN ('professional', 'ceo') AND u.status = 'active' WHERE p.tenant_id = $1",
+            "SELECT p.id, p.first_name, p.last_name, p.specialty, p.is_active FROM professionals p LEFT JOIN users u ON p.user_id = u.id AND u.role IN ('professional', 'ceo') AND u.status = 'active' WHERE p.tenant_id = $1 AND (p.user_id IS NULL OR u.id IS NOT NULL)",
             tenant_id,
         )
         return [dict(row) | {"is_priority_professional": False} for row in rows]
@@ -8882,7 +8882,7 @@ async def list_professionals(
         logger.warning(f"list_professionals fallback (no tenant) failed: {e}")
     try:
         rows = await db.pool.fetch(
-            "SELECT p.id, p.first_name, p.specialty, p.is_active FROM professionals p INNER JOIN users u ON p.user_id = u.id AND u.role IN ('professional', 'ceo') AND u.status = 'active' WHERE p.tenant_id = $1",
+            "SELECT p.id, p.first_name, p.specialty, p.is_active FROM professionals p LEFT JOIN users u ON p.user_id = u.id AND u.role IN ('professional', 'ceo') AND u.status = 'active' WHERE p.tenant_id = $1 AND (p.user_id IS NULL OR u.id IS NOT NULL)",
             tenant_id,
         )
         return [

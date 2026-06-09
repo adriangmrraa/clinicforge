@@ -1170,8 +1170,9 @@ async def _get_slots_for_extra_day(
 
     query = """SELECT p.id, p.first_name, p.last_name, p.google_calendar_id, p.working_hours
                 FROM professionals p
-                INNER JOIN users u ON p.user_id = u.id AND u.role IN ('professional', 'ceo') AND u.status = 'active'
-                WHERE p.is_active = true AND p.tenant_id = $1"""
+                LEFT JOIN users u ON p.user_id = u.id
+                WHERE p.is_active = true AND p.tenant_id = $1
+                AND (p.user_id IS NULL OR (u.status = 'active' AND u.role IN ('professional', 'ceo')))"""
     params = [tenant_id]
     if clean_name:
         query += " AND (p.first_name ILIKE $2 OR p.last_name ILIKE $2 OR (p.first_name || ' ' || COALESCE(p.last_name, '')) ILIKE $2)"
@@ -1461,8 +1462,9 @@ async def pick_representative_slots(
         # query already executed earlier in check_availability; professionals are
         # cached in the process for this call). We need the IDs scoped correctly.
         _prof_query = """SELECT p.id FROM professionals p
-                         INNER JOIN users u ON p.user_id = u.id AND u.role IN ('professional', 'ceo') AND u.status = 'active'
-                         WHERE p.is_active = true AND p.tenant_id = $1"""
+                         LEFT JOIN users u ON p.user_id = u.id
+                         WHERE p.is_active = true AND p.tenant_id = $1
+                         AND (p.user_id IS NULL OR (u.status = 'active' AND u.role IN ('professional', 'ceo')))"""
         _prof_params = [tenant_id]
         if professional_name:
             _clean = re.sub(
@@ -1566,37 +1568,37 @@ async def pick_representative_slots(
         # Skip excluded specific dates (patient rejected this exact date)
         if excluded_dates and extra_date in excluded_dates:
             continue
-            extra_day_en = DAYS_EN[extra_date.weekday()]
-            extra_day_cfg = tenant_wh.get(extra_day_en, {})
-            if extra_day_cfg and not extra_day_cfg.get("enabled", True):
-                continue
-            if not extra_day_cfg and extra_date.weekday() == 6:
-                continue
-            try:
-                extra_slots = await _get_slots_for_extra_day(
-                    extra_date,
-                    tenant_id,
-                    tenant_wh,
-                    professional_name,
-                    treatment_name,
-                    duration,
-                    time_preference=time_preference,
-                    prefetched_appointments=_prefetched_apts,
-                    prefetched_gcal_blocks=_prefetched_blocks,
-                    min_time=min_time,
-                )
-            except Exception as e:
-                logger.warning(f"Error getting range day slots for {extra_date}: {e}")
-                continue
-            if extra_slots:
-                days_with_slots.append(
-                    {
-                        "date": extra_date,
-                        "slots": extra_slots,
-                        "sede": _resolve_sede_text(extra_day_cfg, tenant_row),
-                        "day_en": extra_day_en,
-                    }
-                )
+        extra_day_en = DAYS_EN[extra_date.weekday()]
+        extra_day_cfg = tenant_wh.get(extra_day_en, {})
+        if extra_day_cfg and not extra_day_cfg.get("enabled", True):
+            continue
+        if not extra_day_cfg and extra_date.weekday() == 6:
+            continue
+        try:
+            extra_slots = await _get_slots_for_extra_day(
+                extra_date,
+                tenant_id,
+                tenant_wh,
+                professional_name,
+                treatment_name,
+                duration,
+                time_preference=time_preference,
+                prefetched_appointments=_prefetched_apts,
+                prefetched_gcal_blocks=_prefetched_blocks,
+                min_time=min_time,
+            )
+        except Exception as e:
+            logger.warning(f"Error getting range day slots for {extra_date}: {e}")
+            continue
+        if extra_slots:
+            days_with_slots.append(
+                {
+                    "date": extra_date,
+                    "slots": extra_slots,
+                    "sede": _resolve_sede_text(extra_day_cfg, tenant_row),
+                    "day_en": extra_day_en,
+                }
+            )
 
         if days_with_slots:
             # Distribuir: elegir días espaciados dentro del rango
@@ -1927,6 +1929,28 @@ async def check_availability(
                 logger.debug(
                     f"patient lookup (assignment + debt) skipped: {_assign_err}"
                 )
+
+        # Persist insurance provider in patient record and lead_context if provided
+        if insurance_provider:
+            if _ca_patient_id:
+                try:
+                    await db.pool.execute(
+                        "UPDATE patients SET insurance_provider = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3",
+                        insurance_provider.strip(),
+                        _ca_patient_id,
+                        tenant_id,
+                    )
+                    logger.info(f"📅 check_availability: Updated insurance_provider to '{insurance_provider}' for patient {_ca_patient_id}")
+                except Exception as e:
+                    logger.warning(f"📅 check_availability: Failed to update patient insurance: {e}")
+            _ca_phone = current_customer_phone.get()
+            if _ca_phone:
+                try:
+                    from services.lead_context import merge as lead_ctx_merge
+                    await lead_ctx_merge(tenant_id, _ca_phone, {"insurance_provider": insurance_provider.strip()})
+                    logger.info(f"📅 check_availability: Merged insurance_provider '{insurance_provider}' into lead_context")
+                except Exception as e:
+                    logger.warning(f"📅 check_availability: Failed to merge insurance into lead_context: {e}")
 
         # 0b. DERIVATION RULES: if no professional specified and no forced assignment,
         # check if treatment matches a derivation rule. Rules are evaluated in priority order.
@@ -3272,6 +3296,16 @@ def _match_option_number(patient_text: str, offered_slots: list) -> Optional[int
     return None
 
 
+def _clean_str(val: Any) -> Optional[str]:
+    if val is None:
+        return None
+    s = str(val).strip()
+    s_lower = s.lower()
+    if s_lower in ("", "none", "null", "undefined", "null null", "none none"):
+        return None
+    return s
+
+
 @tool
 async def book_appointment(
     date_time: str,
@@ -3438,8 +3472,21 @@ async def book_appointment(
         except Exception:
             pass
 
-    # --- Resolve patient phone based on booking type ---
     is_third_party = bool(patient_phone) or bool(is_minor) or bool(is_art)
+
+    # Recuperar obra social de lead_context
+    lead_insurance = None
+    if not is_third_party:
+        try:
+            from services.lead_context import get as lead_ctx_get
+            lead_data = await lead_ctx_get(tenant_id, chat_phone)
+            lead_insurance = lead_data.get("insurance_provider")
+            if lead_insurance:
+                lead_insurance = lead_insurance.strip()
+                logger.info(f"📅 BOOK: Retrieved insurance_provider '{lead_insurance}' from lead_context")
+        except Exception as e:
+            logger.warning(f"📅 BOOK: Failed to retrieve insurance from lead_context: {e}")
+
     guardian_phone_value = None
     if is_art:
         # ART derivation: create/find fictitious patient keyed by DNI
@@ -3678,12 +3725,8 @@ async def book_appointment(
                 msg=f"No se puede agendar el {apt_datetime.strftime('%d/%m/%Y')}: es feriado ({_hol_name}). Por favor elegí otro día.",
                 action="Pick another day; do NOT retry this date"
             )
-        first_name = (
-            str(first_name).strip() if first_name and str(first_name).strip() else None
-        )
-        last_name = (
-            str(last_name).strip() if last_name and str(last_name).strip() else None
-        )
+        first_name = _clean_str(first_name)
+        last_name = _clean_str(last_name)
         dni_raw = str(dni).strip() if dni and str(dni).strip() else None
         dni = (
             re.sub(r"\D", "", dni_raw) if dni_raw else None
@@ -3851,14 +3894,14 @@ async def book_appointment(
         if is_art:
             # ART: search by synthetic phone OR by DNI (in case patient was created before)
             existing_patient = await db.pool.fetchrow(
-                "SELECT id, status, phone_number FROM patients WHERE tenant_id = $1 AND phone_number = $2",
+                "SELECT id, status, phone_number, insurance_provider FROM patients WHERE tenant_id = $1 AND phone_number = $2",
                 tenant_id,
                 phone,
             )
             if not existing_patient and dni:
                 _art_dni_search = re.sub(r"\D", "", str(dni).strip())
                 existing_patient = await db.pool.fetchrow(
-                    "SELECT id, status, phone_number FROM patients WHERE tenant_id = $1 AND dni = $2 AND patient_source = 'art'",
+                    "SELECT id, status, phone_number, insurance_provider FROM patients WHERE tenant_id = $1 AND dni = $2 AND patient_source = 'art'",
                     tenant_id,
                     _art_dni_search,
                 )
@@ -3868,14 +3911,14 @@ async def book_appointment(
             # Minor: search by guardian_phone + DNI or guardian_phone + name
             if dni:
                 existing_patient = await db.pool.fetchrow(
-                    "SELECT id, status, phone_number FROM patients WHERE tenant_id = $1 AND guardian_phone = $2 AND dni = $3",
+                    "SELECT id, status, phone_number, insurance_provider FROM patients WHERE tenant_id = $1 AND guardian_phone = $2 AND dni = $3",
                     tenant_id,
                     guardian_phone_value,
                     dni,
                 )
             if not existing_patient and first_name:
                 existing_patient = await db.pool.fetchrow(
-                    "SELECT id, status, phone_number FROM patients WHERE tenant_id = $1 AND guardian_phone = $2 AND first_name = $3",
+                    "SELECT id, status, phone_number, insurance_provider FROM patients WHERE tenant_id = $1 AND guardian_phone = $2 AND first_name = $3",
                     tenant_id,
                     guardian_phone_value,
                     first_name,
@@ -3884,13 +3927,13 @@ async def book_appointment(
                 phone = existing_patient["phone_number"]  # Reuse existing -M{N}
         else:
             existing_patient = await db.pool.fetchrow(
-                "SELECT id, status, phone_number FROM patients WHERE tenant_id = $1 AND phone_number = $2",
+                "SELECT id, status, phone_number, insurance_provider FROM patients WHERE tenant_id = $1 AND phone_number = $2",
                 tenant_id,
                 phone,
             )
             if not existing_patient and dni:
                 existing_patient = await db.pool.fetchrow(
-                    "SELECT id, status, phone_number FROM patients WHERE tenant_id = $1 AND dni = $2",
+                    "SELECT id, status, phone_number, insurance_provider FROM patients WHERE tenant_id = $1 AND dni = $2",
                     tenant_id,
                     dni,
                 )
@@ -4197,6 +4240,9 @@ async def book_appointment(
         # 4. Crear/actualizar paciente SOLO cuando hay disponibilidad confirmada (Spec 2026-03-13)
         # PROTECCIÓN: Si es turno para tercero, NO tocar el registro del interlocutor
         if existing_patient:
+            db_insurance = existing_patient.get("insurance_provider")
+            new_insurance = db_insurance if db_insurance else lead_insurance
+
             await db.pool.execute(
                 """
                 UPDATE patients
@@ -4209,6 +4255,7 @@ async def book_appointment(
                     first_touch_source = COALESCE($7, first_touch_source),
                     phone_number = COALESCE($9, phone_number),
                     guardian_phone = COALESCE($10, guardian_phone),
+                    insurance_provider = COALESCE($11, insurance_provider),
                     status = 'active',
                     updated_at = NOW()
                 WHERE id = $8
@@ -4223,6 +4270,7 @@ async def book_appointment(
                 existing_patient["id"],
                 phone,
                 guardian_phone_value,
+                new_insurance,
             )
             patient_id = existing_patient["id"]
         else:
@@ -4236,7 +4284,7 @@ async def book_appointment(
                 _patient_source = "third_party"
 
             # For ART patients: set insurance_provider = 'ART' and notes with company name
-            _insurance_for_insert = "ART" if is_art else None
+            _insurance_for_insert = "ART" if is_art else lead_insurance
             _notes_for_insert = None
             if is_art and art_company_name:
                 _notes_for_insert = f"Derivado por ART: {art_company_name}"
@@ -6773,8 +6821,9 @@ async def confirm_slot(
             prof_row = await db.pool.fetchrow(
                 """
                 SELECT p.id FROM professionals p
-                LEFT JOIN users u ON p.user_id = u.id AND u.role IN ('professional', 'ceo') AND u.status = 'active'
+                LEFT JOIN users u ON p.user_id = u.id
                 WHERE p.is_active = true AND p.tenant_id = $1
+                AND (p.user_id IS NULL OR (u.status = 'active' AND u.role IN ('professional', 'ceo')))
                 AND (p.first_name ILIKE $2 OR p.last_name ILIKE $2 OR (p.first_name || ' ' || COALESCE(p.last_name, '')) ILIKE $2)
                 LIMIT 1
             """,

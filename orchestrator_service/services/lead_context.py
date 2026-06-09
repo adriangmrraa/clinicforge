@@ -143,6 +143,7 @@ _FIELD_LABELS = {
     "minor_first_name": "Nombre del menor",
     "minor_last_name": "Apellido del menor",
     "minor_dni": "DNI del menor",
+    "insurance_provider": "Obra social / Prepaga",
 }
 
 
