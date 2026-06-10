@@ -1514,22 +1514,98 @@ async def process_buffer_task(
                             _fid,
                             tenant_id,
                         )
-                        if _frow:
-                            _fname = f"{_frow['first_name'] or ''} {_frow['last_name'] or ''}".strip()
-                            _fphone = _frow.get("phone_number") or ""
-                            _fctx = f"- {_fname}, tel: {_fphone}" if _fphone else f"- {_fname}"
-                            family_lines.append(_fctx)
+                        if not _frow:
+                            continue
+                        _fname = f"{_frow['first_name'] or ''} {_frow['last_name'] or ''}".strip()
+                        _fphone = _frow.get("phone_number") or ""
+                        _fctx = f"• {_fname}" + (f" (tel: {_fphone})" if _fphone else "")
+                        family_lines.append(_fctx)
+
+                        # Fetch next appointment for this family member
+                        _f_next = await pool.fetchrow(
+                            """SELECT a.appointment_datetime, tt.name as treatment_name,
+                                      prof.first_name as professional_name
+                               FROM appointments a
+                               LEFT JOIN treatment_types tt ON a.appointment_type = tt.code
+                               LEFT JOIN professionals prof ON a.professional_id = prof.id
+                               WHERE a.tenant_id = $1 AND a.patient_id = $2
+                               AND a.appointment_datetime >= NOW()
+                               AND a.status IN ('scheduled', 'confirmed')
+                               ORDER BY a.appointment_datetime ASC LIMIT 1""",
+                            tenant_id, _fid,
+                        )
+                        if _f_next:
+                            _dt = _f_next["appointment_datetime"]
+                            if hasattr(_dt, "astimezone"):
+                                from main import get_active_tz as _fam_tz
+                                _dt = _dt.astimezone(_fam_tz())
+                            _dias = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"]
+                            _dt_str = f"{_dias[_dt.weekday()]} {_dt.strftime('%d/%m/%Y')} a las {_dt.strftime('%H:%M')}"
+                            family_lines.append(
+                                f"  └ PRÓXIMO TURNO: {_f_next['treatment_name'] or 'Consulta'} con Dr/a. {_f_next['professional_name']} el {_dt_str}."
+                            )
+
+                        # Fetch last completed appointment
+                        _f_last = await pool.fetchrow(
+                            """SELECT a.appointment_datetime, tt.name as treatment_name,
+                                      prof.first_name as professional_name, a.status
+                               FROM appointments a
+                               LEFT JOIN treatment_types tt ON a.appointment_type = tt.code
+                               LEFT JOIN professionals prof ON a.professional_id = prof.id
+                               WHERE a.tenant_id = $1 AND a.patient_id = $2
+                               AND a.appointment_datetime < NOW()
+                               AND a.status IN ('completed', 'confirmed', 'scheduled')
+                               ORDER BY a.appointment_datetime DESC LIMIT 1""",
+                            tenant_id, _fid,
+                        )
+                        if _f_last:
+                            _ldt = _f_last["appointment_datetime"]
+                            if hasattr(_ldt, "astimezone"):
+                                from main import get_active_tz as _fam_tz2
+                                _ldt = _ldt.astimezone(_fam_tz2())
+                            _ldias = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"]
+                            _ldt_str = f"{_ldias[_ldt.weekday()]} {_ldt.strftime('%d/%m/%Y')} a las {_ldt.strftime('%H:%M')}"
+                            _days_since = (get_now_arg() - _ldt).days
+                            family_lines.append(
+                                f"  └ ÚLTIMO TURNO: {_f_last['treatment_name'] or 'Consulta'} el {_ldt_str} (hace {_days_since} días). Estado: {_f_last['status']}."
+                            )
+
+                        # Visit count
+                        _f_visits = await pool.fetchval(
+                            "SELECT COUNT(*) FROM appointments WHERE tenant_id = $1 AND patient_id = $2 AND status IN ('completed','confirmed','scheduled')",
+                            tenant_id, _fid,
+                        )
+                        if _f_visits and _f_visits > 0:
+                            family_lines.append(f"  └ Historial: {_f_visits} turnos registrados.")
+
+                        # Latest clinical record
+                        _f_cr = await pool.fetchrow(
+                            """SELECT treatment_plan, diagnosis FROM clinical_records
+                               WHERE tenant_id = $1 AND patient_id = $2
+                               ORDER BY created_at DESC LIMIT 1""",
+                            tenant_id, _fid,
+                        )
+                        if _f_cr:
+                            if _f_cr.get("diagnosis"):
+                                family_lines.append(f"  └ Diagnóstico: {_f_cr['diagnosis']}")
+                            if _f_cr.get("treatment_plan"):
+                                family_lines.append(f"  └ Plan de tratamiento: {_f_cr['treatment_plan']}")
+
                     if family_lines:
                         identity_lines.append("")
                         identity_lines.append("📋 Familiares a cargo desde este chat:")
                         identity_lines.extend(family_lines)
                         identity_lines.append("")
                         identity_lines.append(
-                            "Cuando consultes turnos, documentos o información, "
-                            "INCLUÍ los datos de TODOS los pacientes listados arriba (titular + familiares)."
+                            "REGLAS PARA FAMILIARES: "
+                            "1) list_my_appointments YA incluye turnos de todos los pacientes (titular + familiares). "
+                            "2) Para agendar un turno para un familiar, usá book_appointment con patient_id=<ID_del_familiar>. "
+                            "3) check_availability, cancel_appointment y reschedule_appointment operan sobre el paciente TITULAR del chat. "
+                            "4) SIEMPRE que menciones turnos, datos clínicos o historial, "
+                            "INCLUÍ la información de TODOS los pacientes listados (titular + familiares)."
                         )
                         logger.info(
-                            f"👨‍👩‍👧‍👦 Family context injected: {len(family_lines)} members for {external_user_id}"
+                            f"👨‍👩‍👧‍👦 Family context injected: {len(family_lines)} lines for {len(_family_ids)} members ({external_user_id})"
                         )
             except Exception as _fam_err:
                 logger.debug(f"Family context injection (non-fatal): {_fam_err}")

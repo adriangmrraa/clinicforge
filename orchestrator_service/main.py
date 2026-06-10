@@ -3692,6 +3692,7 @@ async def book_appointment(
     art_company_name: Optional[str] = None,
     interpreted_date: Optional[str] = None,
     slot_index: Optional[int] = None,
+    patient_id: Optional[int] = None,
 ):
     """
     Registra un turno en la BD.
@@ -3703,7 +3704,9 @@ async def book_appointment(
     TURNO PARA TERCEROS: Si el turno NO es para la persona que chatea:
     - Para un ADULTO tercero (amigo, esposa, conocido): OBLIGATORIAMENTE pasá patient_phone con el teléfono del paciente real. is_minor=false.
     - Para un MENOR (hijo/a): NO pases patient_phone. Pasá is_minor=true. El sistema usa el teléfono del padre/madre automáticamente.
-    - Para SÍ MISMO: no pases patient_phone ni is_minor. Flujo normal.
+    - Para un FAMILIAR VINCULADO (madre, padre, etc. que comparte el chat): pasá patient_id con el ID del paciente familiar. 
+      El sistema busca en tus familiares vinculados y agenda para ese paciente directamente.
+    - Para SÍ MISMO: no pases patient_phone, is_minor ni patient_id. Flujo normal.
 
     TURNO ART (Aseguradora de Riesgos del Trabajo): Si quien llama es una empresa/ART derivando a un trabajador accidentado:
     - Pasá is_art=true.
@@ -4261,7 +4264,18 @@ async def book_appointment(
         # 2a. Lectura temprana: verificar si paciente existe (read-only, sin persistir aún)
         # Spec 2026-03-13: No crear paciente hasta confirmar disponibilidad
         existing_patient = None
-        if is_art:
+        # Family member booking: if patient_id is provided and belongs to family, use directly
+        if patient_id is not None:
+            _fam_ids_for_book = current_family_patient_ids.get() or []
+            if patient_id in _fam_ids_for_book or patient_id == get_patient_id_by_context():
+                existing_patient = await db.pool.fetchrow(
+                    "SELECT id, status, phone_number, insurance_provider FROM patients WHERE tenant_id = $1 AND id = $2",
+                    tenant_id, patient_id,
+                )
+                if existing_patient:
+                    phone = existing_patient["phone_number"] or chat_phone
+                    logger.info(f"📅 BOOK via patient_id={patient_id}: {existing_patient['id']}")
+        if existing_patient is None and is_art:
             # ART: search by synthetic phone OR by DNI (in case patient was created before)
             existing_patient = await db.pool.fetchrow(
                 "SELECT id, status, phone_number, insurance_provider FROM patients WHERE tenant_id = $1 AND phone_number = $2",
