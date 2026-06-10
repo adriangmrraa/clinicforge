@@ -2205,7 +2205,7 @@ export default function ChatsView() {
           // Refresh WhatsApp sessions and Chatwoot summary lists
           if (tid) {
             fetchSessions(tid);
-            chatsApi.fetchChatsSummary({ limit: 50, channel: currentChannelFilter === 'all' ? undefined : currentChannelFilter })
+            chatsApi.fetchChatsSummary({ limit: 50, channel: channelFilterRef.current === 'all' ? undefined : channelFilterRef.current })
               .then(list => setChatwootList(list))
               .catch(err => console.error("Error refreshing chatwoot summary after link:", err));
           }
