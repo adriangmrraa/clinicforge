@@ -588,6 +588,58 @@ async def get_patient_clinical_context(
                     "upcoming_appointment": dict(f_upcoming_apt) if f_upcoming_apt else None,
                 })
 
+    # 1a-2. Fallback: si el paciente tiene guardian_phone, buscar al familiar como family_member
+    if patient and not conv:
+        # Legacy link: guardian_phone set via link-guardian, no conversation record yet
+        guardian_phone_val = patient.get("guardian_phone")
+        if guardian_phone_val:
+            guardian_phone_variants = generate_phone_variants(guardian_phone_val)
+            g_placeholders = ", ".join(f"${i+2}" for i in range(len(guardian_phone_variants)))
+            guardian_row = await db.pool.fetchrow(
+                f"""
+                SELECT id, first_name, last_name, phone_number, status
+                FROM patients
+                WHERE tenant_id = $1 AND phone_number IN ({g_placeholders})
+                AND status != 'deleted'
+                LIMIT 1
+            """,
+                tenant_id,
+                *guardian_phone_variants,
+            )
+            if guardian_row:
+                if family_members_data is None:
+                    family_members_data = []
+                g_last_apt = await db.pool.fetchrow(
+                    """
+                    SELECT a.appointment_datetime AS date, a.appointment_type AS type, a.status,
+                           a.duration_minutes, p.first_name as professional_name
+                    FROM appointments a
+                    LEFT JOIN professionals p ON a.professional_id = p.id
+                    WHERE a.tenant_id = $1 AND a.patient_id = $2 AND a.appointment_datetime < NOW()
+                    ORDER BY a.appointment_datetime DESC LIMIT 1
+                """,
+                    tenant_id,
+                    guardian_row["id"],
+                )
+                g_upcoming_apt = await db.pool.fetchrow(
+                    """
+                    SELECT a.appointment_datetime AS date, a.appointment_type AS type, a.status,
+                           a.duration_minutes, p.first_name as professional_name
+                    FROM appointments a
+                    LEFT JOIN professionals p ON a.professional_id = p.id
+                    WHERE a.tenant_id = $1 AND a.patient_id = $2 AND a.appointment_datetime >= NOW()
+                    AND a.status IN ('scheduled', 'confirmed')
+                    ORDER BY a.appointment_datetime ASC LIMIT 1
+                """,
+                    tenant_id,
+                    guardian_row["id"],
+                )
+                family_members_data.append({
+                    "patient": dict(guardian_row),
+                    "last_appointment": dict(g_last_apt) if g_last_apt else None,
+                    "upcoming_appointment": dict(g_upcoming_apt) if g_upcoming_apt else None,
+                })
+
     # 1b. Fallback: buscar por teléfono
     if not patient:
         # Si el "phone" no empieza con + o no son solo números, lo tratamos como plataforma_id
@@ -6600,6 +6652,39 @@ async def link_patient_to_guardian(
         id,
         tenant_id,
     )
+
+    # ALSO update family_patient_ids on the conversation so clinical context and AI see it
+    # Find the conversation by matching patient's phone (same logic as /chat/sessions query)
+    current_phone = current_patient["phone_number"]
+    if current_phone:
+        conv = await db.pool.fetchrow(
+            """
+            SELECT id, linked_patient_id, family_patient_ids
+            FROM chat_conversations
+            WHERE tenant_id = $1 AND channel = 'whatsapp'
+              AND replace(regexp_replace(external_user_id, '\D', '', 'g'), '549', '54')
+                  = replace(regexp_replace($2, '[^0-9]', '', 'g'), '549', '54')
+            LIMIT 1
+            """,
+            tenant_id,
+            current_phone,
+        )
+        if conv:
+            # Append guardian to family_patient_ids (deduped)
+            await db.pool.execute(
+                """
+                UPDATE chat_conversations
+                SET family_patient_ids = array_append(COALESCE(family_patient_ids, '{}'::integer[]), $1)
+                WHERE id = $2 AND tenant_id = $3
+                AND NOT ($1 = ANY(COALESCE(family_patient_ids, '{}'::integer[])))
+                """,
+                guardian_patient_id,
+                conv["id"],
+                tenant_id,
+            )
+            logger.info(
+                f"👨‍👩‍👧‍👦 Also appended guardian {guardian_patient_id} to family_patient_ids of conv {conv['id']}"
+            )
 
     logger.info(
         f"🔗 LINKED: patient {id} ({current_patient['first_name']}) → guardian {guardian_patient_id} ({guardian_patient['first_name']})"
