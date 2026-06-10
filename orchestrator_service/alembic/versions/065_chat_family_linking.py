@@ -5,7 +5,7 @@ so a single chat can manage appointments and context for MULTIPLE patients
 (primary linked_patient_id + family members), without overwriting linked_patient_id.
 
 Revision ID: 065
-Revises: 064
+Revises: 2ea6dcca70ad
 Create Date: 2026-06-10
 """
 from alembic import op
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 
 
 revision = "065"
-down_revision = "064"
+down_revision = "2ea6dcca70ad"
 branch_labels = None
 depends_on = None
 
