@@ -4,7 +4,7 @@ import {
   MessageCircle, Send, Calendar, User, Activity,
   Pause, Play, AlertCircle, Clock, ChevronLeft,
   Search, XCircle, Bell, Volume2, VolumeX,
-  Instagram, Facebook, Lock, ChevronRight, Paperclip, LinkIcon
+  Instagram, Facebook, Lock, ChevronRight, Paperclip, LinkIcon, CalendarCheck
 } from 'lucide-react';
 import api, { setTenantId } from '../api/axios';
 import * as chatsApi from '../api/chats';
@@ -973,6 +973,49 @@ export default function ChatsView() {
         title: 'Error',
         message: 'No se pudo forzar el procesamiento por IA.',
       });
+    }
+  };
+
+  const [forceBookingLoading, setForceBookingLoading] = useState(false);
+
+  const handleForceBooking = async () => {
+    if (!selectedSession || forceBookingLoading) return;
+    setForceBookingLoading(true);
+    try {
+      setShowToast({
+        id: Date.now().toString(),
+        type: 'info',
+        title: 'Forzando Agendamiento...',
+        message: 'La IA retomará el chat para completar el turno.',
+      });
+      await api.post('/admin/chat/force-booking', {
+        phone: selectedSession.phone_number,
+        tenant_id: selectedSession.tenant_id,
+      });
+      // Actualización local para quitar el silencio si lo hubiera
+      const updateFn = (s: ChatSession) => s.phone_number === selectedSession.phone_number
+        ? { ...s, status: 'active' as const, human_override_until: undefined, last_derivhumano_at: undefined }
+        : s;
+
+      setSessions(prev => prev.map(updateFn));
+      setSelectedSession(prev => prev ? updateFn(prev) : null);
+
+      setShowToast({
+        id: Date.now().toString(),
+        type: 'success',
+        title: 'Agendamiento Forzado',
+        message: 'La IA está procesando el agendamiento.',
+      });
+    } catch (error) {
+      console.error('Error forzando agendamiento:', error);
+      setShowToast({
+        id: Date.now().toString(),
+        type: 'error',
+        title: 'Error',
+        message: 'No se pudo forzar el agendamiento.',
+      });
+    } finally {
+      setForceBookingLoading(false);
     }
   };
 
@@ -1946,6 +1989,15 @@ export default function ChatsView() {
                             title="Forzar a la IA a procesar el último mensaje recibido"
                           >
                             <Activity size={12} /> Forzar Procesamiento IA
+                          </button>
+                          {/* Forzar Agendamiento */}
+                          <button
+                            onClick={handleForceBooking}
+                            disabled={forceBookingLoading}
+                            className="w-full py-2 px-3 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 hover:text-emerald-200 border border-emerald-500/20 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50"
+                            title="Forzar a la IA a completar el agendamiento del turno"
+                          >
+                            <CalendarCheck size={12} /> Forzar Agendamiento
                           </button>
                         </div>
                       </div>
