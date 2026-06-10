@@ -245,6 +245,7 @@ class BookingAgent(BaseAgent):
             check_availability,
             check_insurance_coverage,
             confirm_slot,
+            create_patient,
             list_my_appointments,
             list_services,
             reschedule_appointment,
@@ -256,6 +257,7 @@ class BookingAgent(BaseAgent):
             check_insurance_coverage,
             confirm_slot,
             book_appointment,
+            create_patient,
             list_my_appointments,
             cancel_appointment,
             reschedule_appointment,
@@ -330,6 +332,7 @@ REGLAS INMUTABLES:
 - NUNCA sobrescribas el nombre del interlocutor con el del tercero.
 - Si el paciente ya tiene un tercero vinculado al chat, preguntá "¿Esto es para vos o para [nombre]?" antes de agendar.
 - Usá `find_patient(nombre)` para verificar si el tercero ya existe en el sistema.
+- Si el tercero NO existe en el sistema (find_patient no lo encuentra), usá `create_patient` para registrarlo. Necesitás al menos el nombre para crearlo.
 - Después de agendar al tercero, queda vinculado al chat para consultas futuras.
 
 # FERIADOS Y SEDE

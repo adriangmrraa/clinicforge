@@ -29,9 +29,10 @@ except ImportError:
 
 # Date validator for Bug #1 - post-LLM date validation
 try:
-    from services.date_validator import validate_dates_in_response
+    from services.date_validator import validate_dates_in_response, validate_day_of_week
 except ImportError:
     validate_dates_in_response = None
+    validate_day_of_week = None
 
 # Conversation state for Bug #4 - state machine
 try:
@@ -343,6 +344,301 @@ def classify_intent(messages: list) -> set:
     return tags
 
 
+# ═══════════════════════════════════════════════════════════════════
+# v8.3: Multi-entity DNI parsing (resolve-13-booking-errors T5)
+# ═══════════════════════════════════════════════════════════════════
+_DNI_RE = re.compile(r"\b(\d{7,11})\b")
+_ENTITY_MARKER_RE = re.compile(
+    r"\b(?:"
+    r"para mí|\bmi\b(?!\s*(?:mamá|papá|hijo|herman|espos|marido|señora|abuel|tí[ae]|prim))"
+    r"|para\s+(?:él|ella|ellos|ellas|un|una)"
+    r"|para\s+mi\s+(?:mamá|papá|hijo|hija|herman[oa]|espos[oa]|marido|señora|señor|abuel[oa]|tí[oa]|prim[oa]|sobrin[oa]|amig[oa]|compañer[oa])"
+    r"|para\s+(?:\w+\s+)+"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+def extract_multi_dni(messages: list) -> list[dict]:
+    """Extract multiple DNI entities from patient messages.
+    
+    Returns a list of {dni, relationship, inferred_name} dicts.
+    Example: "es para mí DNI 12345678 y para mi mamá DNI 87654321"
+    → [{dni: "12345678", relationship: "self", inferred_name: None},
+        {dni: "87654321", relationship: "mother", inferred_name: None}]
+    """
+    text = " ".join(messages)
+    dnis = _DNI_RE.findall(text)
+    if len(dnis) <= 1:
+        return []  # Single or no DNI — no multi-entity
+
+    # If multiple DNIs found, try to associate each with an entity
+    entities = []
+    # Find all entity markers with their positions
+    markers = []
+    for m in _ENTITY_MARKER_RE.finditer(text):
+        markers.append((m.start(), m.end(), m.group()))
+
+    for dni in dnis:
+        dni_pos = text.find(dni)
+        # Find closest marker before this DNI
+        closest = None
+        closest_dist = float("inf")
+        for start, end, marker in markers:
+            if end <= dni_pos and dni_pos - end < closest_dist:
+                closest = marker
+                closest_dist = dni_pos - end
+        # Infer relationship from marker
+        if closest:
+            cl = closest.lower().strip()
+            if cl in ("para mí", "mi") or cl.startswith("para mí"):
+                relationship = "self"
+            elif "mamá" in cl or "mama" in cl:
+                relationship = "mother"
+            elif "papá" in cl or "papa" in cl:
+                relationship = "father"
+            elif "hijo" in cl or "hija" in cl:
+                relationship = "child"
+            elif "herman" in cl:
+                relationship = "sibling"
+            elif "espos" in cl or "marido" in cl or "señora" in cl or "señor" in cl:
+                relationship = "spouse"
+            elif "abuel" in cl:
+                relationship = "grandparent"
+            elif "tí" in cl or "tia" in cl or "tío" in cl:
+                relationship = "aunt_uncle"
+            else:
+                relationship = "other"
+        else:
+            relationship = "self"  # default
+        entities.append({
+            "dni": dni,
+            "relationship": relationship,
+            "inferred_name": None,
+        })
+    return entities
+
+
+# ═══════════════════════════════════════════════════════════════════
+# v8.3: Compound intent detection (resolve-13-booking-errors T6)
+# ═══════════════════════════════════════════════════════════════════
+_COMPOUND_PATTERNS = [
+    r"(?:también|además).*(?:para|quiero|necesito|darle|agendar|reservar)",
+    r"(?:y|e|,).*(?:también|además)",
+    r"para (?:él|ella|ellos|ellas)",
+    r"y para (?:mi|el|la|un|una)",
+    r"otr[oa]\s+(?:turno|persona|paciente|familiar)",
+    r"también\s+(?:para|quiero|necesito)",
+    r"(?:dos|2|ambos|las dos|los dos)\s+(?:turno|turnos|personas|pacientes)",
+]
+_COMPOUND_RE = re.compile("|".join(_COMPOUND_PATTERNS), re.IGNORECASE)
+
+
+def detect_compound_intent(messages: list) -> bool:
+    """Detect if the patient wants to book for multiple people (compound intent).
+    
+    Returns True if the messages suggest booking for more than one person.
+    Example: "quiero turno para mí y también para mi mamá"
+    """
+    text = " ".join(messages).lower()
+    return bool(_COMPOUND_RE.search(text))
+
+
+# ═══════════════════════════════════════════════════════════════════
+# v8.3: Frustration detection (resolve-13-booking-errors T14 fix)
+# ═══════════════════════════════════════════════════════════════════
+
+_FRUSTRATION_PATTERNS = [
+    # Explicit frustration
+    r"no\s+(entend[eií]s|entiendes|entend[íi]s|comprend[ei]s|captas|escuch[ai]s)",
+    r"(ya\s+)?te\s+(dije|digo|expliqu[ée]|dijimos|estoy diciendo)",
+    r"(est[áa]s\s+en\s+un\s+)?loop",
+    r"(est[áa]s\s+|seg[uú]s\s+|volv[síi]s\s+)repet[ii]endo|repet[ií]s",
+    r"(no\s+)?(es|era)\s+lo\s+que\s+(te\s+)?ped[ií]",
+    r"no\s+es\s+(para\s+m[ií]|eso)",
+    r"te\s+equivoc[ai]s|equivocado|mal\s+entend[íi]s",
+    r"no\s+(quiero|necesito)\s+eso|no\s+es\s+lo\s+que\s+(quiero|necesito)",
+    r"(hablo|habla|vas\s+a\s+entender)\s+con\s+(un|una)\s+(humano|persona|asesor[oa])",
+    r"no\s+(me\s+)?(est[áa]s\s+)?(ayudando|entiendo|sirviendo)",
+    r"dej[aá]\s+(de\s+)?(repetir|decir\s+lo\s+mismo|preguntar\s+lo\s+mismo)",
+    r"(hace\s+)?rato\s+(que\s+)?(te\s+)?(lo\s+)?(estoy\s+)?(diciendo|explicando|pidiendo)",
+]
+
+# ALL-CAPS message (50%+ uppercase excluding numbers)
+_ALL_CAPS_RE = re.compile(
+    r"^(?=[^0-9]*[A-ZÁÉÍÓÚÑ])[A-ZÁÉÍÓÚÑ0-9\s.,;:!¡¿?()\"'-]{15,}$"
+)
+
+# Repeated punctuation indicator
+_REPEATED_PUNCTUATION_RE = re.compile(r"[!¡?¿]{3,}")
+
+
+def _detect_frustration(messages: list) -> int:
+    """Analyze patient messages for frustration signals.
+
+    Returns a count of frustration signals detected (0-3+):
+    - 1 signal: mild frustration
+    - 2 signals: moderate frustration  
+    - 3+ signals: strong frustration → escalate
+
+    Checks:
+    1. Frustration keywords ("no entendés", "ya te dije", etc.)
+    2. ALL-CAPS message (50%+ uppercase)
+    3. Repeated punctuation (!!!, ???)
+    4. Very short repetitive questions
+    """
+    if not messages:
+        return 0
+
+    signals = 0
+    text = messages[-1] if isinstance(messages, list) else messages
+    full_text = " ".join(messages) if isinstance(messages, list) else messages
+
+    # 1. Frustration keyword patterns
+    for pattern in _FRUSTRATION_PATTERNS:
+        if re.search(pattern, text.lower()):
+            signals += 1
+            logger.info(
+                f"🧩 Frustration signal (keyword match): {pattern[:40]!r}"
+            )
+            break  # Only count once for keyword category
+
+    # 2. ALL-CAPS (50%+ uppercase among letters)
+    if len(text) >= 15:
+        letters = [c for c in text if c.isalpha()]
+        if letters:
+            upper_ratio = sum(1 for c in letters if c.isupper()) / len(letters)
+            if upper_ratio >= 0.5:
+                signals += 1
+                logger.info(
+                    f"🧩 Frustration signal (ALL-CAPS, ratio={upper_ratio:.2f})"
+                )
+
+    # 3. Repeated punctuation
+    if _REPEATED_PUNCTUATION_RE.search(text):
+        signals += 1
+        logger.info("🧩 Frustration signal (repeated punctuation)")
+
+    # 4. Very short message (< 30 chars) that repeats from recent history
+    if len(text.strip()) < 30 and len(messages) >= 2:
+        prev_text = messages[-2].strip().lower() if isinstance(messages[-2], str) else ""
+        curr_text = text.strip().lower()
+        if prev_text and curr_text and prev_text == curr_text:
+            signals += 1
+            logger.info("🧩 Frustration signal (exact repeat of previous message)")
+
+    return signals
+
+
+# ═══════════════════════════════════════════════════════════════════
+# v8.3: Agent error post-processing (resolve-13-booking-errors T13 fix)
+# ═══════════════════════════════════════════════════════════════════
+
+# Pattern for [BOOK_ERROR:CODE:CATEGORY] or [BOOK_ERROR:CODE]
+_BOOK_ERROR_RE = re.compile(
+    r"\[BOOK_ERROR:([A-Z_]+)(?::([A-Z_]+))?\]\s*(.*?)(?=\n|$|\.\s|,\s)",
+    re.IGNORECASE,
+)
+
+# Pattern for false system error phrases that the LLM invents
+_FALSE_SYSTEM_ERROR_PHRASES = [
+    "error del sistema",
+    "error del servidor",
+    "ocurrió un error",
+    "hubo un error",
+    "problema técnico",
+    "error interno",
+    "error inesperado",
+    "fallo del sistema",
+    "ocurrió un problema",
+    "el sistema falló",
+    "no pude procesar",
+    "no se pudo completar",
+    "algo salió mal",
+]
+
+# Human-friendly replacements for SYSTEM_ERROR
+_SYSTEM_ERROR_FALLBACK = (
+    "Podés intentarlo de nuevo en unos minutos. "
+    "Si el problema persiste, un asesor va a comunicarse con vos para ayudarte."
+)
+
+
+def _handle_agent_error(response_text: str) -> str:
+    """Post-process LLM response to handle error codes and false system errors.
+
+    1. Strip [BOOK_ERROR:CODE:CATEGORY] prefixes, keep human-readable part
+    2. Replace SYSTEM_ERROR codes with proper fallback
+    3. Replace false "error del sistema" phrases with proper message
+    """
+    if not response_text or len(response_text.strip()) < 5:
+        return response_text
+
+    original = response_text
+    text = response_text
+
+    # 1. Process [BOOK_ERROR:CODE:CATEGORY] patterns
+    def _replace_book_error(match):
+        code = match.group(1).upper()
+        category = match.group(2).upper() if match.group(2) else ""
+        human_msg = match.group(3).strip() if match.group(3) else ""
+
+        if category == "SYSTEM_ERROR":
+            # SYSTEM_ERROR: replace with fallback
+            logger.warning(
+                f"[handle_agent_error] SYSTEM_ERROR '{code}' intercepted: "
+                f"replacing with fallback. Original: {match.group(0)[:80]!r}"
+            )
+            return _SYSTEM_ERROR_FALLBACK
+
+        if category in ("INPUT_ERROR", "BUSINESS_RULE"):
+            # Client-side error: keep the human message, drop the code prefix
+            logger.info(
+                f"[handle_agent_error] {category} '{code}' stripped: "
+                f"keeping human message. Code: {match.group(0)[:60]!r}"
+            )
+            return human_msg if human_msg else ""
+
+        # RECOVERABLE or no category: strip code prefix, keep human part
+        if human_msg:
+            return human_msg
+        return ""  # Empty — caller should handle with retry
+
+    text = _BOOK_ERROR_RE.sub(_replace_book_error, text)
+
+    # 2. Clean up empty parenthetical artifacts from stripping
+    text = re.sub(r"\(\)", "", text)
+    text = re.sub(r"\s+", " ", text).strip()
+
+    # 3. Replace false "error del sistema" phrases
+    text_lower = text.lower()
+    for phrase in _FALSE_SYSTEM_ERROR_PHRASES:
+        if phrase in text_lower:
+            logger.warning(
+                f"[handle_agent_error] False system error phrase '{phrase}' detected and replaced"
+            )
+            # Replace the phrase with the corrected message
+            _pattern = re.compile(re.escape(phrase), re.IGNORECASE)
+            text = _pattern.sub(
+                "necesito un minuto para verificar",
+                text,
+            )
+            break  # Only fix one occurrence per call
+
+    # 4. Remove trailing/leading garbage from stripping operations
+    text = text.strip().strip(".,;:!?").strip()
+    if not text:
+        text = _SYSTEM_ERROR_FALLBACK
+
+    if text != original:
+        logger.info(
+            f"[handle_agent_error] Response post-processed: "
+            f"len {len(original)} → {len(text)} chars"
+        )
+
+    return text
+
+
 async def process_buffer_task(
     tenant_id: int,
     conversation_id: str,
@@ -463,6 +759,42 @@ async def process_buffer_task(
                 logger.info(
                     f"📞 Patient resolved via phone={external_user_id} id={patient_by_phone['id']}"
                 )
+
+        # v8.3: 2-of-3 patient resolution scoring (resolve-13-booking-errors T9)
+        # Try name + DNI + phone scoring if initial resolution didn't find a match
+        if current_patient_id.get() is None:
+            try:
+                _messages_text = " ".join(messages)
+                _dni_matches = re.findall(r"\b(\d{7,11})\b", _messages_text)
+                # Score existing patients by matching phone, DNI, and name fragments
+                _candidates = await pool.fetch(
+                    """SELECT id, first_name, last_name, phone_number, dni
+                       FROM patients WHERE tenant_id = $1 LIMIT 100""",
+                    tenant_id,
+                )
+                _best_score = 0
+                _best_id = None
+                for _c in _candidates:
+                    _score = 0
+                    # Phone match
+                    if _c["phone_number"] and external_user_id in _c["phone_number"]:
+                        _score += 1
+                    # DNI match
+                    if _dni_matches and _c.get("dni") and any(d in _c["dni"] for d in _dni_matches):
+                        _score += 1
+                    # Name match (any word from messages in patient name)
+                    _full_name = f"{_c.get('first_name', '')} {_c.get('last_name', '')}".lower()
+                    _name_words = set(w for w in _messages_text.lower().split() if len(w) > 2)
+                    if _name_words and any(w in _full_name for w in _name_words):
+                        _score += 1
+                    if _score > _best_score:
+                        _best_score = _score
+                        _best_id = _c["id"]
+                if _best_id and _best_score >= 2:
+                    current_patient_id.set(_best_id)
+                    logger.info(f"📊 T9 patient resolved via 2-of-3 scoring: id={_best_id} score={_best_score}")
+            except Exception as _t9_err:
+                logger.debug(f"T9 2-of-3 resolution skipped: {_t9_err}")
 
         # TIER 3 cap.1 — resolve tenant timezone once per request and bind it.
         # All datetime constructors via get_active_tz() / get_now_arg() will honor it.
@@ -1373,6 +1705,75 @@ async def process_buffer_task(
                             f"\n\n📅 ANCHOR_DATE: {_anc}"
                             f" — Usá esta fecha en confirm_slot y book_appointment. NO recalcules fechas relativas."
                         )
+
+                    # v8.3: Correction awareness context (resolve-13-booking-errors T10)
+                    if _cs_inject_data.get("has_correction"):
+                        system_prompt += (
+                            "\n\n⚠️ EL PACIENTE CORRIGIÓ INFORMACIÓN PREVIA en su último mensaje."
+                            " Revisá los datos del paciente ANTES de continuar con el agendamiento."
+                            " Usá los NUEVOS datos que dio, no los anteriores."
+                        )
+
+                    # v8.3: Anchor date cross-validation (resolve-13-booking-errors T12)
+                    if _anc:
+                        _msg_text = " ".join(messages).lower()
+                        _dias_es = ["lunes", "martes", "miércoles", "miercoles", "jueves", "viernes", "sábado", "sabado", "domingo"]
+                        _day_in_msg = next((d for d in _dias_es if d in _msg_text), None)
+                        if _day_in_msg:
+                            _dow_map = {"lunes": 0, "martes": 1, "miércoles": 2, "miercoles": 2, "jueves": 3, "viernes": 4, "sábado": 5, "sabado": 5, "domingo": 6}
+                            try:
+                                from datetime import datetime as _dt_t12
+                                _parsed_date = _dt_t12.strptime(_anc.split("T")[0] if "T" in _anc else _anc, "%Y-%m-%d")
+                                _actual_dow = _parsed_date.weekday()
+                                _expected_dow = _dow_map.get(_day_in_msg)
+                                if _expected_dow is not None and _actual_dow != _expected_dow:
+                                    system_prompt += (
+                                        f"\n⚠️ DAY_MISMATCH: El paciente mencionó '{_day_in_msg}' pero la fecha ANCHOR_DATE ({_anc}) cae en "
+                                        f"{['lunes','martes','miércoles','jueves','viernes','sábado','domingo'][_actual_dow]}."
+                                        f" Verificá con el paciente antes de agendar."
+                                    )
+                            except Exception:
+                                pass
+
+                    # v8.3: Error history context injection (resolve-13-booking-errors T15)
+                    _err_history = _cs_inject_data.get("error_history") or []
+                    if _err_history:
+                        _err_lines = ["⚠️ ERRORES PREVIOS EN ESTA CONVERSACIÓN:"]
+                        for _err in _err_history[-3:]:  # last 3 errors max
+                            _cat = _err.get("category", "UNKNOWN")
+                            _msg = _err.get("message", "")
+                            _turn = _err.get("turn_number", "?")
+                            _err_lines.append(f"  • [{_cat}] turno {_turn}: {_msg}")
+                        _err_lines.append("REGLA: NO repitas el mismo error. Si fue RECOVERABLE, intentá un slot diferente.")
+                        system_prompt += "\n\n" + "\n".join(_err_lines)
+
+                    # v8.3: Frustration detection injection (resolve-13-booking-errors T14)
+                    _frust_count = _cs_inject_data.get("frustration_count") or 0
+                    _frust_mode = _cs_inject_data.get("frustration_mode") or False
+                    if _frust_count >= 2 and _frust_count < 4:
+                        system_prompt += (
+                            f"\n\n[FRUSTRATION_DETECTED: modo conciliación — disculparse UNA vez y ofrecer opciones concretas. "
+                            f"El paciente mostró {_frust_count} señales de frustración.]"
+                        )
+                    if _frust_count >= 4:
+                        system_prompt += (
+                            "\n\n[FRUSTRATION_ESCALATED: derivar a humano inmediatamente. "
+                            "Usá la herramienta derivhumano con motivo 'Paciente frustrado después de múltiples intentos'."
+                        )
+
+                    # v8.3: Multi-booking context injection (resolve-13-booking-errors T11)
+                    _btargets = _cs_inject_data.get("booking_targets") or []
+                    _btarget_idx = _cs_inject_data.get("current_booking_target_index") or 0
+                    if len(_btargets) > 1:
+                        _current = _btargets[_btarget_idx] if _btarget_idx < len(_btargets) else _btargets[-1]
+                        _pending = [t for t in _btargets if t.get("status") == "pending"]
+                        _booked = [t for t in _btargets if t.get("status") == "booked"]
+                        _ctx_lines = []
+                        _ctx_lines.append(f"MULTI_BOOKING: Hay {len(_btargets)} personas para agendar.")
+                        _ctx_lines.append(f"Ya agendados: {len(_booked)}. Pendientes: {len(_pending)}.")
+                        _ctx_lines.append(f"ACTUAL: Agendando para {_current.get('type', 'self')} ({_current.get('relationship', 'el paciente')})")
+                        _ctx_lines.append("REGLA: Agendá UNA persona a la vez. Después de confirmar el turno actual, continuá con la siguiente.")
+                        system_prompt += "\n\n" + "\n".join(_ctx_lines)
         except Exception as _cs_inject_err:
             logger.debug(f"convstate context injection skipped: {_cs_inject_err}")
 
@@ -1407,6 +1808,12 @@ REGLA ANTI-REPETICIÓN DE CTA (EXPANDIDA): PROHIBIDO ofrecer CUALQUIERA de estas
 - "Si querés, te busco un turno"
 - CUALQUIER variación que ofrezca agendar sin que el paciente lo pida
 Después de 2 veces, NO insistas. Respondé a sus preguntas sin volver a ofrecer hasta que el paciente lo pida explícitamente.
+
+# v8.3: PROACTIVE BOOKING (resolve-13-booking-errors T7) — No magic word gate
+# NO necesitás que el paciente diga "quiero turno" para activar booking.
+# Si el paciente menciona un tratamiento ("implantes", "limpieza", "consulta"), pregunta por precios
+# o dice "quisiera saber sobre [tratamiento]", interpretálo como INTENCIÓN DE AGENDAR y ofrecé
+# coordinar un turno para evaluación. Esta regla va por ENCIMA del límite de 2 CTAs.
 """
 
         # Inject min appointment date if configured
@@ -1904,6 +2311,89 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                 logger.warning(
                     f"⚠️ Social preamble injection failed (non-fatal): {_social_err}"
                 )
+
+        # v8.3: Multi-entity DNI preprocessing (resolve-13-booking-errors T5)
+        try:
+            _dnis = extract_multi_dni(messages)
+            if len(_dnis) > 1:
+                logger.info(f"🔢 T5 multi-dni detected: {len(_dnis)} entities: {_dnis}")
+                from services.conversation_state import _read_payload as _cs_payload, _raw_write as _cs_raw
+                _cs_phone = current_customer_phone.get()
+                if _cs_phone:
+                    _cs_data = await _cs_payload(tenant_id, _cs_phone) or {}
+                    _targets = _cs_data.get("booking_targets", [])
+                    for _e in _dnis:
+                        # Avoid duplicates
+                        if not any(t.get("dni") == _e["dni"] for t in _targets):
+                            _targets.append({
+                                "dni": _e["dni"],
+                                "relationship": _e["relationship"],
+                                "status": "pending",
+                                "type": "self" if _e["relationship"] == "self" else "third_party",
+                            })
+                    await _cs_raw(tenant_id, _cs_phone, _cs_data)
+            elif _dnis:
+                # Single DNI — store as current booking dni via convstate
+                from services.conversation_state import set_booking_targets as _cs_set_targets
+                _cs_phone_s = current_customer_phone.get()
+                if _cs_phone_s:
+                    await _cs_set_targets(tenant_id, _cs_phone_s, [
+                        {"dni": _dnis[0]["dni"], "relationship": _dnis[0]["relationship"],
+                         "status": "pending", "type": "self"}
+                    ])
+        except Exception as _t5_err:
+            logger.debug(f"T5 multi-dni preprocessing skipped: {_t5_err}")
+
+        # v8.3: Compound intent detection (resolve-13-booking-errors T6)
+        try:
+            if detect_compound_intent(messages):
+                logger.info(f"🔢 T6 compound intent detected")
+                from services.conversation_state import _read_payload as _cs_payload_cpd, _raw_write as _cs_raw_cpd
+                _cs_phone_c = current_customer_phone.get()
+                if _cs_phone_c:
+                    _cs_data_cpd = await _cs_payload_cpd(tenant_id, _cs_phone_c) or {}
+                    _cs_data_cpd["compound_intent"] = True
+                    await _cs_raw_cpd(tenant_id, _cs_phone_c, _cs_data_cpd)
+        except Exception as _t6_err:
+            logger.debug(f"T6 compound intent detection skipped: {_t6_err}")
+
+        # v8.3: Correction awareness (resolve-13-booking-errors T10)
+        # Detect when patient corrects a previous statement (e.g. "no, es mi mamá")
+        try:
+            _user_msg = "\n".join(messages).lower()
+            _is_correction = any(
+                word in _user_msg
+                for word in ["no es", "no, es", "corrijo", "me equivoqué", "me equivoque",
+                            "rectifico", "digo mal", "dije mal", "perdón", "disculpa",
+                            "no, para", "no es para", "en realidad", "mejor dicho",
+                            "es al revés", "al revés"]
+            )
+            if _is_correction:
+                logger.info(f"🔧 T10 correction detected in patient message: {_user_msg[:80]!r}")
+                from services.conversation_state import _read_payload as _cs_payload_t10, _raw_write as _cs_raw_t10
+                _cs_phone_t10 = current_customer_phone.get()
+                if _cs_phone_t10:
+                    _cs_data_t10 = await _cs_payload_t10(tenant_id, _cs_phone_t10) or {}
+                    _cs_data_t10["has_correction"] = True
+                    await _cs_raw_t10(tenant_id, _cs_phone_t10, _cs_data_t10)
+        except Exception as _t10_err:
+            logger.debug(f"T10 correction awareness skipped: {_t10_err}")
+
+        # v8.3: Frustration detection BEFORE LLM invocation (resolve-13-booking-errors T14 fix)
+        try:
+            _frust_signals = _detect_frustration(messages)
+            if _frust_signals > 0:
+                logger.info(f"🧩 T14 frustration detected: {_frust_signals} signal(s)")
+                _cs_phone_f = current_customer_phone.get()
+                if _cs_phone_f:
+                    from services.conversation_state import increment_frustration as _cs_inc_frust
+                    _new_count = await _cs_inc_frust(tenant_id, _cs_phone_f)
+                    logger.info(f"🧩 T14 frustration_count incremented to {_new_count}")
+                    if _frust_signals >= 3:
+                        from services.conversation_state import set_frustration_mode as _cs_set_fmode
+                        await _cs_set_fmode(tenant_id, _cs_phone_f, True)
+        except Exception as _t14_err:
+            logger.debug(f"T14 frustration detection skipped: {_t14_err}")
 
         executor = await get_agent_executable_for_tenant(tenant_id)
         logger.info(f"🧠 Invoking Agent for {external_user_id}...")
@@ -2520,6 +3010,15 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                                 )
                 except Exception as _dedup_err:
                     logger.debug(f"Statement dedup failed (non-blocking): {_dedup_err}")
+
+                # v8.3: Error post-processing — strip BOOK_ERROR codes from patient output
+                # (resolve-13-booking-errors T13 fix)
+                if response_text:
+                    try:
+                        response_text = _handle_agent_error(response_text)
+                    except Exception as _err_post_err:
+                        logger.debug(f"Error post-processing skipped: {_err_post_err}")
+
                 # Bug #9: Extract intermediate_steps to know if a tool was actually called
                 intermediate_steps = response.get("intermediate_steps", [])
                 tool_was_called = len(intermediate_steps) > 0

@@ -26,7 +26,17 @@ class SupervisorAgent:
         r"urgen",
         r"emergen",
     ]
-    BOOKING_PATTERNS = [r"turno", r"agend", r"disponibilidad", r"reserv", r"cancel", r"reprogram"]
+    BOOKING_PATTERNS = [
+        r"turno", r"agend", r"disponibilidad", r"reserv", r"cancel", r"reprogram",
+        # v8.3: Expanded booking patterns (resolve-13-booking-errors T7) — no magic word gate
+        r"implante", r"prótesis", r"protesis", r"consulta", r"evaluación", r"evaluacion",
+        r"limpieza", r"blanqueamiento", r"ortodoncia", r"extracción", r"extraccion",
+        r"endodoncia", r"conducto", r"corona", r"carilla", r"placa", r"prótesis",
+        r"tratamiento", r"operación", r"operacion", r"cirugía", r"cirugia",
+        r"saber.*precio", r"cuanto.*cuesta", r"cuánto.*cuesta",
+        r"qu[eé] me recomiendan", r"qu[eé] me recomenda",
+        r"quiero (info|información|informacion)",
+    ]
     BILLING_PATTERNS = [r"pag[oó]", r"seña", r"transfer", r"comprobante", r"cbu", r"alias"]
     ANAMNESIS_PATTERNS = [r"historia m[eé]dica", r"alergi", r"medicaci[oó]n", r"ficha", r"formulari"]
     HANDOFF_PATTERNS = [r"hablar con (alguien|humano|persona|secretar|recepcion)", r"humano", r"queja"]

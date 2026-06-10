@@ -148,6 +148,16 @@ async def set_state(
             "availability_attempts": (_existing or {}).get("availability_attempts", 0),
             "anchor_date": (_existing or {}).get("anchor_date"),
             "insurance_asked": (_existing or {}).get("insurance_asked", False),
+            # v8.3: resolve-13-booking-errors fields (T2) — all backward-compatible
+            "booking_targets": (_existing or {}).get(
+                "booking_targets",
+                [{"type": "self", "name": "", "dni": "", "status": "pending", "relationship": ""}]
+            ),
+            "current_booking_target_index": (_existing or {}).get("current_booking_target_index", 0),
+            "frustration_count": (_existing or {}).get("frustration_count", 0),
+            "frustration_mode": (_existing or {}).get("frustration_mode", False),
+            "error_history": (_existing or {}).get("error_history", []),
+            "turn_count": (_existing or {}).get("turn_count", 0),
             "updated_at": _dt.now().isoformat(),
         }
 
@@ -401,6 +411,127 @@ async def set_anchor_date(tenant_id: int, phone_number: str, anchor_date: str) -
         )
     except Exception as e:
         logger.warning(f"[conversation_state] set_anchor_date failed: {e}")
+
+
+# ── resolve-13-booking-errors Helpers (T2) ──────────────────────────
+
+
+async def set_booking_targets(tenant_id: int, phone_number: str, targets: list[dict]) -> None:
+    """Replace all booking targets in convstate."""
+    try:
+        payload = await _read_payload(tenant_id, phone_number)
+        payload["booking_targets"] = targets
+        payload["updated_at"] = _dt.now().isoformat()
+        await _raw_write(tenant_id, phone_number, payload)
+    except Exception as e:
+        logger.warning(f"[conversation_state] set_booking_targets failed: {e}")
+
+
+async def append_booking_target(tenant_id: int, phone_number: str, target: dict) -> None:
+    """Append one booking target to the existing list."""
+    try:
+        payload = await _read_payload(tenant_id, phone_number)
+        targets = list(payload.get("booking_targets") or [{"type": "self"}])
+        targets.append(target)
+        payload["booking_targets"] = targets
+        payload["updated_at"] = _dt.now().isoformat()
+        await _raw_write(tenant_id, phone_number, payload)
+    except Exception as e:
+        logger.warning(f"[conversation_state] append_booking_target failed: {e}")
+
+
+async def mark_target_booked(tenant_id: int, phone_number: str, index: int) -> None:
+    """Set status='booked' for the target at given index."""
+    try:
+        payload = await _read_payload(tenant_id, phone_number)
+        targets = list(payload.get("booking_targets") or [{"type": "self"}])
+        if 0 <= index < len(targets):
+            targets[index]["status"] = "booked"
+            payload["booking_targets"] = targets
+            payload["updated_at"] = _dt.now().isoformat()
+            await _raw_write(tenant_id, phone_number, payload)
+    except Exception as e:
+        logger.warning(f"[conversation_state] mark_target_booked failed: {e}")
+
+
+async def increment_frustration(tenant_id: int, phone_number: str) -> int:
+    """Increment frustration_count and return the new count."""
+    try:
+        payload = await _read_payload(tenant_id, phone_number)
+        current = int(payload.get("frustration_count") or 0) + 1
+        payload["frustration_count"] = current
+        payload["updated_at"] = _dt.now().isoformat()
+        await _raw_write(tenant_id, phone_number, payload)
+        logger.info(
+            f"[conversation_state] frustration_count: {current} for {phone_number}"
+        )
+        return current
+    except Exception as e:
+        logger.warning(f"[conversation_state] increment_frustration failed: {e}")
+        return 0
+
+
+async def set_frustration_mode(tenant_id: int, phone_number: str, mode: bool) -> None:
+    """Set the frustration_mode flag."""
+    try:
+        payload = await _read_payload(tenant_id, phone_number)
+        payload["frustration_mode"] = mode
+        payload["updated_at"] = _dt.now().isoformat()
+        await _raw_write(tenant_id, phone_number, payload)
+    except Exception as e:
+        logger.warning(f"[conversation_state] set_frustration_mode failed: {e}")
+
+
+async def append_error_history(tenant_id: int, phone_number: str, entry: dict) -> None:
+    """Append an error entry to error_history. Caps at 5 — evicts oldest."""
+    try:
+        payload = await _read_payload(tenant_id, phone_number)
+        history = list(payload.get("error_history") or [])
+        history.append(entry)
+        # Keep max 5 — evict oldest (FIFO)
+        if len(history) > 5:
+            history = history[-5:]
+        payload["error_history"] = history
+        payload["updated_at"] = _dt.now().isoformat()
+        await _raw_write(tenant_id, phone_number, payload)
+    except Exception as e:
+        logger.warning(f"[conversation_state] append_error_history failed: {e}")
+
+
+async def clear_error_history(tenant_id: int, phone_number: str) -> None:
+    """Clear all entries from error_history."""
+    try:
+        payload = await _read_payload(tenant_id, phone_number)
+        payload["error_history"] = []
+        payload["updated_at"] = _dt.now().isoformat()
+        await _raw_write(tenant_id, phone_number, payload)
+    except Exception as e:
+        logger.warning(f"[conversation_state] clear_error_history failed: {e}")
+
+
+async def mark_booking_target_index(tenant_id: int, phone_number: str, index: int) -> None:
+    """Set the current_booking_target_index."""
+    try:
+        payload = await _read_payload(tenant_id, phone_number)
+        payload["current_booking_target_index"] = index
+        payload["updated_at"] = _dt.now().isoformat()
+        await _raw_write(tenant_id, phone_number, payload)
+    except Exception as e:
+        logger.warning(f"[conversation_state] mark_booking_target_index failed: {e}")
+
+
+async def increment_turn_count(tenant_id: int, phone_number: str) -> int:
+    """Increment turn_count and return the new count."""
+    try:
+        payload = await _read_payload(tenant_id, phone_number)
+        current = int(payload.get("turn_count") or 0) + 1
+        payload["turn_count"] = current
+        payload["updated_at"] = _dt.now().isoformat()
+        await _raw_write(tenant_id, phone_number, payload)
+        return current
+    except Exception as e:
+        logger.warning(f"[conversation_state] increment_turn_count failed: {e}")
+        return 0
 
 
 # ── Insurance Asked Helpers ─────────────────────────────────────────

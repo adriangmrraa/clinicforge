@@ -259,6 +259,91 @@ def _fix_weekday_date_mismatch(
     return text
 
 
+# ── Day-of-Week Validation (T1: resolve-13-booking-errors) ──────────
+
+# Spanish day-name mapping (portable, no locale dependency)
+SPANISH_DAYS = {
+    "lunes": 0, "martes": 1, "miércoles": 2, "miercoles": 2,
+    "jueves": 3, "viernes": 4, "sábado": 5, "sabado": 5, "domingo": 6,
+}
+ENGLISH_DAYS = {
+    "monday": 0, "tuesday": 1, "wednesday": 2,
+    "thursday": 3, "friday": 4, "saturday": 5, "sunday": 6,
+}
+# Reverse lookup: weekday number → Spanish name
+SPANISH_DAY_NAMES = [
+    "lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo",
+]
+
+
+def _extract_day_name(text: str) -> tuple[Optional[str], Optional[str]]:
+    """Extract day-of-week name from text.
+
+    Returns (extracted_day_name, matched_language) or (None, None).
+    Supports Spanish and English day names.
+    """
+    if not text:
+        return None, None
+    text_lower = text.lower().strip()
+    # Check Spanish first (more common for this project)
+    for day_name in SPANISH_DAYS:
+        if day_name in text_lower:
+            return day_name, "es"
+    for day_name in ENGLISH_DAYS:
+        if day_name in text_lower:
+            return day_name, "en"
+    return None, None
+
+
+def validate_day_of_week(text_date: str, interpreted_date: str) -> tuple[bool, str]:
+    """Cross-validate that the day-of-week in text_date matches interpreted_date.
+
+    Pure function — no DB, no state, no I/O.
+
+    Args:
+        text_date: The raw date text the patient wrote (e.g. "Wednesday April 2",
+                   "jueves 2 de abril", "martes 15/03")
+        interpreted_date: The resolved date as YYYY-MM-DD string (e.g. "2026-04-02")
+
+    Returns:
+        Tuple of (is_match, error_message).
+        (True, "") on match.
+        (False, "La fecha {interpreted_date} es {actual_day_name}, no {expected_day_name}")
+        on mismatch.
+    """
+    try:
+        # Parse the interpreted_date
+        parsed_date = datetime.strptime(interpreted_date.strip(), "%Y-%m-%d").date()
+    except (ValueError, AttributeError):
+        return True, ""  # Can't validate — pass through
+
+    actual_weekday = parsed_date.weekday()  # 0=Monday
+    actual_day_name = SPANISH_DAY_NAMES[actual_weekday]
+
+    # Extract the day name the patient specified
+    day_name, lang = _extract_day_name(text_date)
+    if day_name is None:
+        return True, ""  # No day name found in text — pass through
+
+    # Map to weekday number
+    expected_weekday = SPANISH_DAYS.get(day_name)
+    if expected_weekday is None:
+        expected_weekday = ENGLISH_DAYS.get(day_name)
+
+    if expected_weekday is None:
+        return True, ""  # Day name not recognized — pass through
+
+    if actual_weekday == expected_weekday:
+        return True, ""
+
+    # Find the Spanish name for what the patient asked
+    expected_display = SPANISH_DAY_NAMES[expected_weekday]
+    return False, (
+        f"La fecha {interpreted_date} es {actual_day_name}, "
+        f"no {expected_display}"
+    )
+
+
 def validate_dates_in_response(llm_text: str, intermediate_steps: List[Any]) -> str:
     """
     Main entry point: validate and correct dates in LLM response.

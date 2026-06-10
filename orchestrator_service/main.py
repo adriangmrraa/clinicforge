@@ -96,26 +96,76 @@ SLOT_LOCK_TTL_SECONDS = 600
 MAX_BOOKING_ATTEMPTS = 3  # After 3 failed bookings in one conversation → escalate to human
 MAX_AVAILABILITY_ATTEMPTS = 4  # After 4 check_availability calls in one booking attempt → escalate
 
+# v8.3 — Error taxonomy categories (resolve-13-booking-errors T3)
+ERROR_CATEGORY_RECOVERABLE = "RECOVERABLE"
+ERROR_CATEGORY_INPUT_ERROR = "INPUT_ERROR"
+ERROR_CATEGORY_BUSINESS_RULE = "BUSINESS_RULE"
+ERROR_CATEGORY_SYSTEM_ERROR = "SYSTEM_ERROR"
+
 # v8.2 — Booking error protocol: every book_appointment failure returns [BOOK_ERROR:CODE]
+# v8.3 — Extended with category tuples (code -> (message, category))
 BOOKING_ERROR_CODES = {
-    "UNAVAILABLE": "Ese horario ya no está disponible",
-    "EXPIRED": "La reserva temporal venció",
-    "CHAIRS_FULL": "No hay más turnos para ese tratamiento hoy",
-    "DUPLICATE": "Ya tenés un turno para ese día y horario",
-    "PAST": "No se puede reservar en el pasado",
-    "HOLIDAY": "Ese día es feriado",
-    "NOT_OFFERED": "Ese horario no fue parte de las opciones",
-    "CONFIRM_REQUIRED": "Debés llamar confirm_slot antes de book_appointment",
+    "UNAVAILABLE": ("Ese horario ya no está disponible", ERROR_CATEGORY_RECOVERABLE),
+    "EXPIRED": ("La reserva temporal venció", ERROR_CATEGORY_RECOVERABLE),
+    "CHAIRS_FULL": ("No hay más turnos para ese tratamiento hoy", ERROR_CATEGORY_RECOVERABLE),
+    "DUPLICATE": ("Ya tenés un turno para ese día y horario", ERROR_CATEGORY_BUSINESS_RULE),
+    "PAST": ("No se puede reservar en el pasado", ERROR_CATEGORY_INPUT_ERROR),
+    "HOLIDAY": ("Ese día es feriado", ERROR_CATEGORY_RECOVERABLE),
+    "NOT_OFFERED": ("Ese horario no fue parte de las opciones", ERROR_CATEGORY_INPUT_ERROR),
+    "CONFIRM_REQUIRED": ("Debés llamar confirm_slot antes de book_appointment", ERROR_CATEGORY_INPUT_ERROR),
+    "DATE_MISMATCH": ("La fecha resuelta no coincide con lo solicitado", ERROR_CATEGORY_RECOVERABLE),
+    "PATIENT_NOT_FOUND": ("Paciente no encontrado", ERROR_CATEGORY_INPUT_ERROR),
+    "DB_ERR": ("Error de base de datos", ERROR_CATEGORY_SYSTEM_ERROR),
+    "NETWORK": ("Error de red", ERROR_CATEGORY_SYSTEM_ERROR),
 }
 
+def get_error_category(code: str) -> str:
+    """Extract category from BOOKING_ERROR_CODES. Returns empty string if not found."""
+    entry = BOOKING_ERROR_CODES.get(code)
+    if isinstance(entry, tuple) and len(entry) >= 2:
+        return entry[1]
+    return ""
+
 # v8.2 — Standardized booking error formatter
-def _format_book_error(code: str, msg: str = "", action: str = "") -> str:
-    """Return a standardized [BOOK_ERROR:CODE] envelope for book_appointment failures."""
-    human = BOOKING_ERROR_CODES.get(code, msg)
-    parts = [f"[BOOK_ERROR:{code}] {human}"]
+# v8.3 — Extended with category prefix: [BOOK_ERROR:CODE:CATEGORY]
+def _format_book_error(code: str, msg: str = "", action: str = "", category: str = "") -> str:
+    """Return a standardized [BOOK_ERROR:CODE:CATEGORY] envelope for book_appointment failures.
+
+    Category is auto-resolved from BOOKING_ERROR_CODES if not explicitly passed.
+    Supports backward-compatible string-only values in BOOKING_ERROR_CODES.
+    """
+    entry = BOOKING_ERROR_CODES.get(code)
+    if isinstance(entry, tuple) and len(entry) >= 2:
+        human = entry[0]
+        cat = entry[1]
+    else:
+        human = entry if isinstance(entry, str) else msg
+        cat = ""
+    effective_cat = category or cat
+    if effective_cat:
+        parts = [f"[BOOK_ERROR:{code}:{effective_cat}] {human}"]
+    else:
+        parts = [f"[BOOK_ERROR:{code}] {human}"]
     if action:
         parts.append(f"[ACTION:{action}]")
     return " ".join(parts)
+
+
+# v8.3: Error taxonomy integration (resolve-13-booking-errors T13)
+async def _track_book_error(tenant_id: int, phone: str, code: str, msg: str = "") -> None:
+    """Record a booking error in conversation state's error_history (non-blocking)."""
+    try:
+        from services.conversation_state import append_error_history as _track_err
+        _cat = get_error_category(code) or "UNKNOWN"
+        await _track_err(tenant_id, phone, {
+            "code": code,
+            "message": msg or code,
+            "category": _cat,
+            "turn_number": 0,
+            "at": datetime.now().isoformat(),
+        })
+    except Exception:
+        pass
 
 
 
@@ -3202,6 +3252,18 @@ async def check_availability(
                 )
 
             resp = "\n".join(lines)
+
+            # v8.3: Day-of-week cross-validation (resolve-13-booking-errors T4)
+            try:
+                from services.date_validator import validate_day_of_week as _dow_validate
+                _dow_match, _dow_err = _dow_validate(date_query, interpreted_date)
+                if not _dow_match:
+                    _dow_warning = f"\n⚠️ DAY_MISMATCH: {_dow_err}"
+                    resp += _dow_warning
+                    logger.warning(f"📅 check_availability DAY_MISMATCH: {_dow_err} for date_query={date_query!r} interpreted_date={interpreted_date!r}")
+            except Exception as _dow_err:
+                logger.debug(f"check_availability day-of-week validation skipped: {_dow_err}")
+
             logger.info(
                 f"📅 check_availability OK options={len(options)} total_today={total_today} price={avail_price} for {date_query} auto_advanced={auto_advanced}"
             )
@@ -3509,6 +3571,76 @@ async def find_patient(query: str):
 
 
 @tool
+async def create_patient(
+    first_name: str,
+    last_name: str = "",
+    phone: str = "",
+    dni: str = "",
+    email: str = "",
+    birth_date: str = "",
+):
+    """
+    Crea un nuevo paciente en el sistema. Usá esta tool cuando el paciente
+    te pida registrar a un tercero (familiar, amigo) que NO existe en el sistema
+    y quieras guardarlo antes de agendarle un turno.
+    También usala cuando el paciente es nuevo y no tiene ficha todavía.
+    La búsqueda con find_patient se hace ANTES de crear.
+
+    Args:
+        first_name: Nombre del paciente (obligatorio)
+        last_name: Apellido (opcional si no lo tienen)
+        phone: Teléfono del paciente (opcional — si no se pasa se usa el del interlocutor)
+        dni: DNI del paciente (opcional)
+        email: Email del paciente (opcional)
+        birth_date: Fecha de nacimiento formato YYYY-MM-DD (opcional)
+
+    RETORNA: mensaje de confirmación con el ID del nuevo paciente, o error si falla.
+    """
+    tid = current_tenant_id.get()
+    if not tid:
+        return "❌ Error: No se pudo identificar la clínica actual."
+    if not first_name or not first_name.strip():
+        return "❌ El nombre es obligatorio. Decime el nombre del paciente."
+    target_phone = phone.strip() if phone else (current_customer_phone.get() or "")
+    if not target_phone:
+        return "❌ No tengo un teléfono para registrar. Pasame el número del paciente."
+    try:
+        from services.database import get_db
+        db = await get_db()
+        row = await db.pool.fetchrow(
+            """INSERT INTO patients (tenant_id, first_name, last_name, phone_number, dni, email, birth_date, is_active)
+               VALUES ($1, $2, $3, $4, $5, $6,
+                       CASE WHEN $7::text ~ '^\d{4}-\d{2}-\d{2}$' THEN $7::date ELSE NULL END,
+                       true)
+               RETURNING id""",
+            tid,
+            first_name.strip(),
+            last_name.strip(),
+            target_phone,
+            dni.strip() if dni else None,
+            email.strip().lower() if email else None,
+            birth_date.strip() if birth_date else None,
+        )
+        if row:
+            # Link this patient to the chat conversation if possible
+            try:
+                pool = get_pool()
+                await pool.execute(
+                    "UPDATE chat_conversations SET linked_patient_id = $1 WHERE tenant_id = $2 AND external_user_id = $3",
+                    row["id"],
+                    tid,
+                    current_customer_phone.get(),
+                )
+            except Exception:
+                pass
+            return f"✅ Paciente creado correctamente (ID: {row['id']}). Ya lo vinculé al chat."
+        return "❌ No se pudo crear el paciente. Probá de nuevo."
+    except Exception as e:
+        logger.exception(f"create_patient failed for tenant {tid}")
+        return f"❌ Error al crear el paciente: {e}"
+
+
+@tool
 async def book_appointment(
     date_time: str,
     treatment_reason: str,
@@ -3642,6 +3774,7 @@ async def book_appointment(
                 f"📊 BOOKING_FLOW | 🚫 BOOK BLOCKED: max_attempts={MAX_BOOKING_ATTEMPTS} reached, "
                 f"phone={chat_phone}"
             )
+            await _track_book_error(tenant_id, chat_phone, "CONFIRM_REQUIRED")
             return _format_book_error(
                 "CONFIRM_REQUIRED",
                 action="Call derivhumano with motivo='No se pudo agendar después de 3 intentos'. NO sigas intentando agendar."
@@ -3885,6 +4018,7 @@ async def book_appointment(
                     logger.warning(
                         f"📅 BOOK R1: slot_offer key missing for {chat_phone} — availability expired"
                     )
+                    await _track_book_error(tenant_id, chat_phone, "EXPIRED")
                     return (
                         _format_book_error("EXPIRED",
                             action="Fresh check_availability; if 2nd EXPIRED, escalate to derivhumano"
@@ -3907,6 +4041,7 @@ async def book_appointment(
                         _opts_text = ", ".join(
                             f"{s.get('date')} {s.get('time')}" for s in _offered_slots
                         )
+                        await _track_book_error(tenant_id, chat_phone, "NOT_OFFERED", msg=f"slot {_req_date} {_req_time} not offered")
                         return (
                             _format_book_error("NOT_OFFERED",
                                 msg=f"El horario {_req_date} {_req_time} no fue ofrecido al paciente. Las opciones válidas son: {_opts_text}. Pedile al paciente que elija una de esas opciones.",
@@ -3940,6 +4075,8 @@ async def book_appointment(
                 )
             # Horario válido dentro del rango especial — continuar con el flujo normal
         elif _is_hol:
+            await _track_book_error(tenant_id, chat_phone, "HOLIDAY",
+                msg=f"Date {apt_datetime.strftime('%d/%m/%Y')} is holiday: {_hol_name}")
             return _format_book_error("HOLIDAY",
                 msg=f"No se puede agendar el {apt_datetime.strftime('%d/%m/%Y')}: es feriado ({_hol_name}). Por favor elegí otro día.",
                 action="Pick another day; do NOT retry this date"
@@ -4381,6 +4518,7 @@ async def book_appointment(
             logger.info(
                 f"book_appointment: sin disponibilidad phone={phone} tenant={tenant_id} datetime={apt_datetime} tratamiento={treatment_code} (paciente no creado por spec)"
             )
+            await _track_book_error(tenant_id, chat_phone, "UNAVAILABLE", msg="no target professional available")
             return _format_book_error("UNAVAILABLE",
                 msg=f"Lo siento, no hay disponibilidad a las {apt_datetime.strftime('%H:%M')} para el tratamiento de {final_duration} min. ¿Probamos otro horario?",
                 action="Pick next slot; do NOT re-offer this slot"
@@ -4398,6 +4536,7 @@ async def book_appointment(
                     tenant_id, existing_patient["id"], apt_datetime, end_apt
                 )
                 if existing_same_day and existing_same_day > 0:
+                    await _track_book_error(tenant_id, chat_phone, "DUPLICATE", msg="patient already has appointment at this time")
                     return _format_book_error("DUPLICATE",
                         msg="Ya tenés un turno agendado en ese horario. Si querés cambiar el horario, pedime que lo reprograme en lugar de agendar uno nuevo.",
                         action="Use list_my_appointments; do NOT retry"
@@ -4430,6 +4569,7 @@ async def book_appointment(
                     logger.info(
                         f"🪑 book_appointment: CHAIRS FULL at {apt_datetime} (concurrent={concurrent}, max={max_chairs})"
                     )
+                    await _track_book_error(tenant_id, chat_phone, "CHAIRS_FULL", msg=f"concurrent={concurrent} max={max_chairs}")
                     return _format_book_error("CHAIRS_FULL",
                         msg=f"Lo siento, todos los sillones están ocupados a las {apt_datetime.strftime('%H:%M')}. La clínica tiene {max_chairs} sillones y ya hay {concurrent} turnos simultáneos. ¿Probamos otro horario?",
                         action="Offer next available day"
@@ -4542,6 +4682,7 @@ async def book_appointment(
                         # DLD-74: usar chat_phone (no phone) — phone se muta para menores/ART
                         if _holder_str != chat_phone:
                             logger.warning("Soft-lock conflict: slot reserved by %s, requester %s", _holder_str, chat_phone)
+                            await _track_book_error(tenant_id, chat_phone, "UNAVAILABLE", msg="soft-lock conflict")
                             return _format_book_error("UNAVAILABLE",
                                 msg="Ese turno acaba de ser reservado por otro paciente. Volvamos a buscar disponibilidad.",
                                 action="Pick next slot; do NOT re-offer this slot"
@@ -4563,6 +4704,7 @@ async def book_appointment(
             logger.warning(
                 f"📅 BOOK REJECTED: apt_datetime={apt_datetime} is in the past (now={now_check})"
             )
+            await _track_book_error(tenant_id, chat_phone, "PAST", msg=f"date {apt_datetime} is in the past")
             return _format_book_error("PAST",
                 msg=f"La fecha {apt_datetime.strftime('%d/%m/%Y %H:%M')} ya pasó. Por favor elegí una fecha futura.",
                 action="Guide patient to future date; do NOT retry"
@@ -4602,6 +4744,7 @@ async def book_appointment(
                         logger.warning(
                             f"🔒 R2 advisory lock contention: prof={target_prof['id']} datetime={apt_datetime}"
                         )
+                        await _track_book_error(tenant_id, chat_phone, "UNAVAILABLE", msg="advisory lock contention")
                         return _format_book_error("UNAVAILABLE",
                             msg="Ese horario fue tomado por otro paciente justo ahora. Te ofrezco otra opción cercana, ¿te parece?",
                             action="Pick next slot; do NOT re-offer this slot"
@@ -4625,6 +4768,7 @@ async def book_appointment(
             logger.warning(
                 f"🔒 UNIQUE constraint blocked double-booking: prof={target_prof['id']} datetime={apt_datetime} err={_uniq_err}"
             )
+            await _track_book_error(tenant_id, chat_phone, "UNAVAILABLE", msg="unique violation double-booking")
             return _format_book_error("UNAVAILABLE",
                 msg="Ese horario fue tomado por otro paciente justo ahora. Te ofrezco otra opción cercana, ¿te parece?",
                 action="Pick next slot; do NOT re-offer this slot"
@@ -7097,6 +7241,73 @@ async def confirm_slot(
         if apt_datetime <= now:
             return "❌ Ese horario ya pasó. Pedí otro horario o día."
 
+        # v8.3: Anchor date cross-validation (resolve-13-booking-errors T12 fix)
+        # Reject if the confirmed date's day-of-week doesn't match what the patient asked
+        if anchor_date:
+            try:
+                from services.date_validator import validate_day_of_week
+                # anchor_date is YYYY-MM-DD from the original check_availability
+                # apt_datetime is the datetime being confirmed
+                _confirmed_date_str = apt_datetime.strftime("%Y-%m-%d")
+                _is_match, _err_msg = validate_day_of_week(
+                    text_date=anchor_date,
+                    interpreted_date=_confirmed_date_str,
+                )
+                if not _is_match:
+                    logger.warning(
+                        f"🔒 ANCHOR_DATE MISMATCH: anchor={anchor_date} "
+                        f"confirmed={_confirmed_date_str} msg={_err_msg}"
+                    )
+                    # Track error for error_history
+                    try:
+                        await _track_book_error(tenant_id, phone, "DATE_MISMATCH",
+                                                msg=f"anchor={anchor_date} confirmed={_confirmed_date_str}")
+                    except Exception:
+                        pass
+                    return _format_book_error(
+                        "DATE_MISMATCH",
+                        msg=f"La fecha que elegiste ({_confirmed_date_str}) no coincide con lo que pediste originalmente ({anchor_date}). {_err_msg}",
+                        category="RECOVERABLE",
+                    )
+            except Exception as _anc_val_err:
+                logger.warning(
+                    f"confirm_slot: anchor_date validation failed (non-blocking): {_anc_val_err}"
+                )
+        else:
+            # No anchor_date provided — try to read from convstate
+            try:
+                from services.conversation_state import get_state as _cs_get_state
+                _cs_anc_phone = current_customer_phone.get() if current_customer_phone else None
+                if _cs_anc_phone:
+                    _cs_anc_state = await _cs_get_state(tenant_id, _cs_anc_phone) or {}
+                    _stored_anchor = _cs_anc_state.get("anchor_date") if isinstance(_cs_anc_state, dict) else None
+                    if _stored_anchor:
+                        from services.date_validator import validate_day_of_week as _vdow
+                        _confirmed_date_str = apt_datetime.strftime("%Y-%m-%d")
+                        _is_match, _err_msg = _vdow(
+                            text_date=_stored_anchor,
+                            interpreted_date=_confirmed_date_str,
+                        )
+                        if not _is_match:
+                            logger.warning(
+                                f"🔒 ANCHOR_DATE MISMATCH (from convstate): "
+                                f"anchor={_stored_anchor} confirmed={_confirmed_date_str} msg={_err_msg}"
+                            )
+                            try:
+                                await _track_book_error(tenant_id, _cs_anc_phone, "DATE_MISMATCH",
+                                                        msg=f"convstate_anchor={_stored_anchor} confirmed={_confirmed_date_str}")
+                            except Exception:
+                                pass
+                            return _format_book_error(
+                                "DATE_MISMATCH",
+                                msg=f"La fecha que elegiste ({_confirmed_date_str}) no coincide con lo que pediste originalmente ({_stored_anchor}). {_err_msg}",
+                                category="RECOVERABLE",
+                            )
+            except Exception as _cs_anc_err:
+                logger.warning(
+                    f"confirm_slot: convstate anchor_date read failed (non-blocking): {_cs_anc_err}"
+                )
+
         # Resolver profesional (si se especificó)
         prof_id = 0
         if professional_name:
@@ -9288,6 +9499,7 @@ DENTAL_TOOLS = [
     link_payment_to_patient,
     confirm_appointment,
     end_conversation,
+    create_patient,
 ]
 
 
