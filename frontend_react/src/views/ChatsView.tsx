@@ -939,7 +939,10 @@ export default function ChatsView() {
   };
 
   const handleForceAIProcessing = async () => {
-    if (!selectedSession) return;
+    if (!selectedSession && !selectedChatwoot) return;
+    const phone = selectedSession?.phone_number || selectedChatwoot?.external_user_id;
+    const tenant_id = selectedSession?.tenant_id || selectedChatwoot?.tenant_id;
+    if (!phone || tenant_id == null) return;
     try {
       setShowToast({
         id: Date.now().toString(),
@@ -948,16 +951,17 @@ export default function ChatsView() {
         message: 'Reenviando el último mensaje al agente...',
       });
       await api.post('/admin/chat/force-ai-processing', {
-        phone: selectedSession.phone_number,
-        tenant_id: selectedSession.tenant_id,
+        phone,
+        tenant_id,
       });
       // Actualización local para quitar el silencio si lo hubiera
-      const updateFn = (s: ChatSession) => s.phone_number === selectedSession.phone_number
-        ? { ...s, status: 'active' as const, human_override_until: undefined, last_derivhumano_at: undefined }
-        : s;
-
-      setSessions(prev => prev.map(updateFn));
-      setSelectedSession(prev => prev ? updateFn(prev) : null);
+      if (selectedSession) {
+        const updateFn = (s: ChatSession) => s.phone_number === selectedSession.phone_number
+          ? { ...s, status: 'active' as const, human_override_until: undefined, last_derivhumano_at: undefined }
+          : s;
+        setSessions(prev => prev.map(updateFn));
+        setSelectedSession(prev => prev ? updateFn(prev) : null);
+      }
       
       setShowToast({
         id: Date.now().toString(),
@@ -979,7 +983,10 @@ export default function ChatsView() {
   const [forceBookingLoading, setForceBookingLoading] = useState(false);
 
   const handleForceBooking = async () => {
-    if (!selectedSession || forceBookingLoading) return;
+    if ((!selectedSession && !selectedChatwoot) || forceBookingLoading) return;
+    const phone = selectedSession?.phone_number || selectedChatwoot?.external_user_id;
+    const tenant_id = selectedSession?.tenant_id || selectedChatwoot?.tenant_id;
+    if (!phone || tenant_id == null) return;
     setForceBookingLoading(true);
     try {
       setShowToast({
@@ -989,16 +996,17 @@ export default function ChatsView() {
         message: 'La IA retomará el chat para completar el turno.',
       });
       await api.post('/admin/chat/force-booking', {
-        phone: selectedSession.phone_number,
-        tenant_id: selectedSession.tenant_id,
+        phone,
+        tenant_id,
       });
       // Actualización local para quitar el silencio si lo hubiera
-      const updateFn = (s: ChatSession) => s.phone_number === selectedSession.phone_number
-        ? { ...s, status: 'active' as const, human_override_until: undefined, last_derivhumano_at: undefined }
-        : s;
-
-      setSessions(prev => prev.map(updateFn));
-      setSelectedSession(prev => prev ? updateFn(prev) : null);
+      if (selectedSession) {
+        const updateFn = (s: ChatSession) => s.phone_number === selectedSession.phone_number
+          ? { ...s, status: 'active' as const, human_override_until: undefined, last_derivhumano_at: undefined }
+          : s;
+        setSessions(prev => prev.map(updateFn));
+        setSelectedSession(prev => prev ? updateFn(prev) : null);
+      }
 
       setShowToast({
         id: Date.now().toString(),
