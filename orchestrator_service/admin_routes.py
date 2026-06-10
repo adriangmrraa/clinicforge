@@ -1105,6 +1105,11 @@ class HumanInterventionToggle(BaseModel):
     duration: Optional[int] = 86400000  # 24 horas en ms
 
 
+class ForceBookingRequest(BaseModel):
+    phone: str
+    tenant_id: int
+
+
 class ConnectSovereignPayload(BaseModel):
     """Token de Auth0 para conectar Google Calendar de forma soberana por clínica."""
 
@@ -2142,6 +2147,127 @@ async def force_ai_processing(
     )
     
     return {"status": "processing", "phone": phone, "tenant_id": tenant_id}
+
+
+@router.post(
+    "/chat/force-booking", dependencies=[Depends(verify_admin_token)], tags=["Chat"]
+)
+async def force_booking(
+    payload: ForceBookingRequest,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    allowed_ids: List[int] = Depends(get_allowed_tenant_ids),
+):
+    """Fuerza a la IA a retomar el chat para completar el agendamiento de un turno."""
+    phone = payload.phone
+    tenant_id = payload.tenant_id
+    if not phone or tenant_id is None:
+        raise HTTPException(status_code=400, detail="phone y tenant_id requeridos")
+    if tenant_id not in allowed_ids:
+        raise HTTPException(status_code=403, detail="No tienes acceso a esta clínica.")
+
+    # 1. Clear human override on patients
+    await db.pool.execute(
+        """
+        UPDATE patients
+        SET human_handoff_requested = FALSE,
+            human_override_until = NULL,
+            updated_at = NOW()
+        WHERE tenant_id = $1 AND phone_number = $2
+        """,
+        tenant_id,
+        phone,
+    )
+
+    # 2. Clear human override on chat_conversations
+    await db.pool.execute(
+        """
+        UPDATE chat_conversations
+        SET human_override_until = NULL,
+            updated_at = NOW()
+        WHERE tenant_id = $1 AND external_user_id = $2
+        """,
+        tenant_id,
+        phone,
+    )
+
+    # 3. Emit Socket.IO HUMAN_OVERRIDE_CHANGED event
+    await emit_appointment_event(
+        "HUMAN_OVERRIDE_CHANGED",
+        {
+            "phone_number": phone,
+            "tenant_id": tenant_id,
+            "enabled": False,
+        },
+        request,
+    )
+
+    # 4. Reset conversation state to IDLE (clears stale SLOT_LOCKED/OFFERED_SLOTS)
+    from services.conversation_state import reset as reset_conversation_state
+
+    await reset_conversation_state(tenant_id, phone)
+
+    # 5. Fetch conversation row
+    conv = await db.pool.fetchrow(
+        "SELECT id, provider, channel FROM chat_conversations WHERE external_user_id = $1 AND tenant_id = $2 ORDER BY updated_at DESC LIMIT 1",
+        phone, tenant_id,
+    )
+
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversación no encontrada")
+
+    conv_id = conv["id"]
+    provider = conv["provider"] or "chatwoot"
+    channel = conv["channel"] or "whatsapp"
+
+    # 6. Fetch last user message
+    has_tenant = await db.check_column_exists("chat_messages", "tenant_id")
+    if has_tenant:
+        last_msg = await db.pool.fetchrow(
+            """
+            SELECT content FROM chat_messages 
+            WHERE from_number = $1 AND tenant_id = $2 AND role = 'user'
+            ORDER BY created_at DESC LIMIT 1
+            """, phone, tenant_id,
+        )
+    else:
+        last_msg = await db.pool.fetchrow(
+            """
+            SELECT content FROM chat_messages 
+            WHERE from_number = $1 AND role = 'user'
+            ORDER BY created_at DESC LIMIT 1
+            """, phone,
+        )
+
+    # 7. Build the special booking instruction
+    instruction = (
+        "[SISTEMA: INSTRUCCIÓN ESPECIAL DEL ADMINISTRADOR. El administrador de la clínica te ha solicitado retomar este chat para COMPLETAR EL AGENDAMIENTO DE UN TURNO para este paciente.\n\n"
+        "Revisá el historial de la conversación. Determiná:\n"
+        "1. ¿Ya hay un tratamiento elegido? Si no, usa list_services para ver los disponibles.\n"
+        "2. ¿Ya hay un profesional elegido? Si no, usa list_professionals.\n"
+        "3. ¿Ya hay un horario disponible? Si no, usa check_availability.\n"
+        "4. ¿Ya se confirmó un horario? Si no, esperá que el paciente elija y usá confirm_slot.\n"
+        "5. ¿Se tienen los datos del paciente (nombre completo, DNI)?\n"
+        "6. ¿Falta algo?\n\n"
+        "Si faltan datos, pedilos amablemente. Si ya están todos, completá el agendamiento con book_appointment.\n"
+        "NO derivar a humano. Completá el turno.]\n\n"
+        "Mensaje del paciente: " + (last_msg["content"] if last_msg else "")
+    )
+
+    # 8. Dispatch process_buffer_task with the instruction as messages
+    from services.buffer_task import process_buffer_task
+
+    background_tasks.add_task(
+        process_buffer_task,
+        tenant_id=tenant_id,
+        conversation_id=str(conv_id),
+        external_user_id=phone,
+        messages=[instruction],
+        provider=provider,
+        channel=channel,
+    )
+
+    return {"success": True, "message": "IA re-encaminada para completar agendamiento", "phone": phone, "tenant_id": tenant_id}
 
 
 @router.get("/internal/credentials/{name}", tags=["Internal"])
