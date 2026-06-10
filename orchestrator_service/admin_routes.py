@@ -6585,9 +6585,9 @@ async def link_chat_to_patient(
 
     conv_id = _uuid.UUID(payload.conversation_id)
 
-    # Verify the conversation exists
+    # Verify the conversation exists and check current linked_patient_id
     conv = await db.pool.fetchrow(
-        "SELECT id, external_user_id, display_name FROM chat_conversations WHERE id = $1 AND tenant_id = $2",
+        "SELECT id, external_user_id, display_name, linked_patient_id FROM chat_conversations WHERE id = $1 AND tenant_id = $2",
         conv_id,
         tenant_id,
     )
@@ -6604,12 +6604,34 @@ async def link_chat_to_patient(
         raise HTTPException(status_code=404, detail="Paciente no encontrado")
 
     # Link the conversation to the patient
-    await db.pool.execute(
-        "UPDATE chat_conversations SET linked_patient_id = $1, linked_at = NOW() WHERE id = $2 AND tenant_id = $3",
-        payload.patient_id,
-        conv_id,
-        tenant_id,
-    )
+    current_linked = conv.get("linked_patient_id")
+    if current_linked is not None and current_linked != payload.patient_id:
+        # Append to family_patient_ids (F2: don't overwrite linked_patient_id)
+        # EC3: skip if patient_id == linked_patient_id (already handled by != check)
+        # EC1: dedup via NOT (val = ANY(...)) WHERE guard
+        await db.pool.execute(
+            """
+            UPDATE chat_conversations
+            SET family_patient_ids = array_append(COALESCE(family_patient_ids, '{}'::integer[]), $1)
+            WHERE id = $2 AND tenant_id = $3
+            AND NOT ($1 = ANY(COALESCE(family_patient_ids, '{}'::integer[])))
+            """,
+            payload.patient_id,
+            conv_id,
+            tenant_id,
+        )
+        logger.info(
+            f"👨‍👩‍👧‍👦 Appended patient {payload.patient_id} to family_patient_ids of conv {conv_id} "
+            f"(existing linked_patient_id={current_linked})"
+        )
+    else:
+        # No linked_patient_id or same patient → existing behavior
+        await db.pool.execute(
+            "UPDATE chat_conversations SET linked_patient_id = $1, linked_at = NOW() WHERE id = $2 AND tenant_id = $3",
+            payload.patient_id,
+            conv_id,
+            tenant_id,
+        )
 
     migrated_docs = 0
 

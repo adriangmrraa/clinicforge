@@ -245,6 +245,9 @@ current_customer_phone: ContextVar[Optional[str]] = ContextVar(
 current_patient_id: ContextVar[Optional[int]] = ContextVar(
     "current_patient_id", default=None
 )
+current_family_patient_ids: ContextVar[Optional[List[int]]] = ContextVar(
+    "current_family_patient_ids", default=None
+)
 current_tenant_id: ContextVar[int] = ContextVar("current_tenant_id", default=1)
 current_source_channel: ContextVar[Optional[str]] = ContextVar(
     "current_source_channel", default=None
@@ -3625,14 +3628,44 @@ async def create_patient(
             # Link this patient to the chat conversation if possible
             try:
                 pool = get_pool()
-                await pool.execute(
-                    "UPDATE chat_conversations SET linked_patient_id = $1 WHERE tenant_id = $2 AND external_user_id = $3",
-                    row["id"],
+                chat_phone = current_customer_phone.get()
+                # Check if conversation already has a linked_patient_id
+                existing_link = await pool.fetchval(
+                    "SELECT linked_patient_id FROM chat_conversations "
+                    "WHERE tenant_id = $1 AND external_user_id = $2 AND linked_patient_id IS NOT NULL",
                     tid,
-                    current_customer_phone.get(),
+                    chat_phone,
                 )
-            except Exception:
-                pass
+                if existing_link is not None and target_phone != chat_phone:
+                    # F3: linked_patient_id already set AND new patient phone differs from chat owner
+                    # → append to family_patient_ids instead of overwriting
+                    # EC1: dedup via NOT (val = ANY(...)) WHERE guard
+                    await pool.execute(
+                        """
+                        UPDATE chat_conversations
+                        SET family_patient_ids = array_append(COALESCE(family_patient_ids, '{}'::integer[]), $1)
+                        WHERE tenant_id = $2 AND external_user_id = $3
+                        AND NOT ($1 = ANY(COALESCE(family_patient_ids, '{}'::integer[])))
+                        """,
+                        row["id"],
+                        tid,
+                        chat_phone,
+                    )
+                    logger.info(
+                        f"👨‍👩‍👧‍👦 create_patient: appended {row['id']} (phone={target_phone}) "
+                        f"to family_patient_ids of conv for {chat_phone}"
+                    )
+                else:
+                    # EC7: no linked_patient_id yet → set it (normal first-link behavior)
+                    # Or 3C: same phone → set linked_patient_id (chat owner)
+                    await pool.execute(
+                        "UPDATE chat_conversations SET linked_patient_id = $1 WHERE tenant_id = $2 AND external_user_id = $3",
+                        row["id"],
+                        tid,
+                        chat_phone,
+                    )
+            except Exception as e:
+                logger.warning(f"create_patient link skipped: {e}")
             return f"✅ Paciente creado correctamente (ID: {row['id']}). Ya lo vinculé al chat."
         return "❌ No se pudo crear el paciente. Probá de nuevo."
     except Exception as e:
@@ -5577,8 +5610,15 @@ async def list_my_appointments():
         tenant_id = current_tenant_id.get()
     try:
         now = get_now_arg()
+
+        # Build patient ID list: primary + family members (F5)
+        patient_ids = [p_id]
+        family_ids = current_family_patient_ids.get()
+        if family_ids:
+            patient_ids.extend(family_ids)
+
         logger.info(
-            f"[list_my_appointments] tenant={tenant_id} patient_id={p_id}"
+            f"[list_my_appointments] tenant={tenant_id} patient_ids={patient_ids}"
         )
         rows = await db.pool.fetch(
             """
@@ -5588,10 +5628,10 @@ async def list_my_appointments():
                    p_prof.consultation_price as prof_consultation_price
             FROM appointments a
             LEFT JOIN professionals p_prof ON a.professional_id = p_prof.id
-            WHERE a.patient_id = $1
+            WHERE a.patient_id = ANY($1::int[])
             ORDER BY a.appointment_datetime DESC
         """,
-            p_id,
+            patient_ids,
         )
         logger.info(f"[list_my_appointments] results_count={len(rows)}")
         if not rows:

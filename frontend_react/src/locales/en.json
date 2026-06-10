@@ -589,7 +589,8 @@
     "linking_patient": "Patient to link",
     "select_guardian": "Select family member (existing patient)",
     "search_patient": "Search by name, phone or DNI...",
-    "no_patients_found": "No patients found"
+    "no_patients_found": "No patients found",
+    "family_members": "Family"
   },
   "create_patient_modal": {
     "title_create": "New patient",

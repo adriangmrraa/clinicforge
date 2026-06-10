@@ -1553,6 +1553,28 @@ export default function ChatsView() {
                       </>
                     );
                   })() : null}
+                  {/* Family members chips (F10) */}
+                  {(() => {
+                    const familyPats = selectedSession
+                      ? (selectedSession as any).family_patients
+                      : selectedChatwoot
+                        ? (selectedChatwoot as any).family_patients
+                        : null;
+                    if (!familyPats || familyPats.length === 0) return null;
+                    return (
+                      <div className="flex flex-wrap items-center gap-1.5 mt-2 ml-0.5">
+                        <span className="text-[10px] text-white/30 font-medium mr-0.5">{t('chats.family_members')}:</span>
+                        {familyPats.map((fp: { id: number; name: string }, i: number) => (
+                          <span
+                            key={fp.id}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/25"
+                          >
+                            {fp.name}
+                          </span>
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* Header Buttons */}

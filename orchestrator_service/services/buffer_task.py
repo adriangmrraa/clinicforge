@@ -650,9 +650,9 @@ async def process_buffer_task(
     pool = get_pool()
     row = await pool.fetchrow(
         """
-        SELECT provider, external_chatwoot_id, external_account_id, channel,
-               linked_patient_id, linked_at
-        FROM chat_conversations
+         SELECT provider, external_chatwoot_id, external_account_id, channel,
+               linked_patient_id, linked_at, family_patient_ids
+         FROM chat_conversations
         WHERE id = $1 AND tenant_id = $2
         """,
         conversation_id,
@@ -719,6 +719,7 @@ async def process_buffer_task(
             current_customer_phone,
             current_tenant_id,
             current_patient_id,
+            current_family_patient_ids,
             current_source_channel,
             current_tenant_tz,
         )
@@ -795,6 +796,16 @@ async def process_buffer_task(
                     logger.info(f"📊 T9 patient resolved via 2-of-3 scoring: id={_best_id} score={_best_score}")
             except Exception as _t9_err:
                 logger.debug(f"T9 2-of-3 resolution skipped: {_t9_err}")
+
+        # ── Family resolution: load family_patient_ids ──
+        family_ids_raw = row.get("family_patient_ids")
+        if family_ids_raw:
+            # Convert asyncpg ARRAY to Python list
+            family_ids_list = list(family_ids_raw)
+            current_family_patient_ids.set(family_ids_list)
+            logger.info(
+                f"👨‍👩‍👧‍👦 Family members loaded for conv {conversation_id}: {family_ids_list}"
+            )
 
         # TIER 3 cap.1 — resolve tenant timezone once per request and bind it.
         # All datetime constructors via get_active_tz() / get_now_arg() will honor it.
@@ -1491,6 +1502,37 @@ async def process_buffer_task(
                     logger.info(f"🧠 Patient memories injected for {external_user_id}")
             except Exception as mem_err:
                 logger.warning(f"⚠️ Memory retrieval (non-fatal): {mem_err}")
+
+            # --- FAMILY MEMBERS: inject context for additional linked patients (F4, F7) ---
+            try:
+                _family_ids = current_family_patient_ids.get()
+                if _family_ids:
+                    family_lines = []
+                    for _fid in _family_ids:
+                        _frow = await pool.fetchrow(
+                            "SELECT id, first_name, last_name, phone_number FROM patients WHERE id = $1 AND tenant_id = $2",
+                            _fid,
+                            tenant_id,
+                        )
+                        if _frow:
+                            _fname = f"{_frow['first_name'] or ''} {_frow['last_name'] or ''}".strip()
+                            _fphone = _frow.get("phone_number") or ""
+                            _fctx = f"- {_fname}, tel: {_fphone}" if _fphone else f"- {_fname}"
+                            family_lines.append(_fctx)
+                    if family_lines:
+                        identity_lines.append("")
+                        identity_lines.append("📋 Familiares a cargo desde este chat:")
+                        identity_lines.extend(family_lines)
+                        identity_lines.append("")
+                        identity_lines.append(
+                            "Cuando consultes turnos, documentos o información, "
+                            "INCLUÍ los datos de TODOS los pacientes listados arriba (titular + familiares)."
+                        )
+                        logger.info(
+                            f"👨‍👩‍👧‍👦 Family context injected: {len(family_lines)} members for {external_user_id}"
+                        )
+            except Exception as _fam_err:
+                logger.debug(f"Family context injection (non-fatal): {_fam_err}")
 
             if identity_lines:
                 patient_context = "\n".join(identity_lines)

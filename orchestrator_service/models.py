@@ -189,6 +189,8 @@ class ChatConversation(Base):
     # Link chat to patient (family member paying on behalf, etc.)
     linked_patient_id = Column(Integer, ForeignKey("patients.id", ondelete="SET NULL"), nullable=True)
     linked_at = Column(DateTime(timezone=True), nullable=True)
+    # Additional family patients managed from this chat (EC2: NULL ≡ empty)
+    family_patient_ids = Column(ARRAY(Integer), nullable=True)
     # Meta Direct enrichment
     source_entity_id = Column(Text, nullable=True)
     platform_origin = Column(Text, nullable=True)

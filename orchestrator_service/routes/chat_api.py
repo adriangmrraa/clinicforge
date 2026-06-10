@@ -52,6 +52,8 @@ class ChatSummaryResponse(BaseModel):
     unread_count: int
     linked_patient_id: Optional[int] = None
     linked_patient_name: Optional[str] = None
+    family_patient_ids: Optional[List[int]] = None
+    family_patients: Optional[List[Dict[str, Any]]] = None
 
 
 from admin_routes import get_resolved_tenant_id
@@ -88,6 +90,7 @@ async def chats_summary(
                c.last_message_preview AS last_message, c.last_message_at AS last_message_at,
                c.last_user_message_at, c.status, c.human_override_until, c.last_derivhumano_at, c.meta, c.last_read_at,
                c.linked_patient_id,
+               c.family_patient_ids,
                lp.first_name || ' ' || COALESCE(lp.last_name, '') AS linked_patient_name
         FROM chat_conversations c
         LEFT JOIN patients lp ON lp.id = c.linked_patient_id AND lp.tenant_id = c.tenant_id
@@ -148,6 +151,24 @@ async def chats_summary(
             }
             avatar_url = f"/admin/chat/media/proxy?{urlencode(proxy_params)}"
 
+        # Resolve family member names (F9)
+        family_patient_ids_raw = r.get("family_patient_ids")
+        family_patient_ids = (
+            list(family_patient_ids_raw) if family_patient_ids_raw else None
+        )
+        family_patients = None
+        if family_patient_ids:
+            family_patients = []
+            for _fid in family_patient_ids:
+                _frow = await pool.fetchrow(
+                    "SELECT id, first_name, last_name FROM patients WHERE id = $1 AND tenant_id = $2",
+                    _fid,
+                    tenant_id,
+                )
+                if _frow:
+                    _fname = f"{_frow['first_name'] or ''} {_frow['last_name'] or ''}".strip()
+                    family_patients.append({"id": _frow["id"], "name": _fname})
+
         out.append(
             {
                 "id": str(r["id"]),
@@ -174,6 +195,8 @@ async def chats_summary(
                 "unread_count": unread or 0,
                 "linked_patient_id": r["linked_patient_id"],
                 "linked_patient_name": r.get("linked_patient_name"),
+                "family_patient_ids": family_patient_ids,
+                "family_patients": family_patients,
             }
         )
     logger.info(

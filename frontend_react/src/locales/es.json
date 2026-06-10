@@ -604,7 +604,8 @@
     "linking_patient": "Paciente a enlazar",
     "select_guardian": "Buscar familiar (paciente existente)",
     "search_patient": "Buscar por nombre, teléfono o DNI...",
-    "no_patients_found": "No se encontraron pacientes"
+    "no_patients_found": "No se encontraron pacientes",
+    "family_members": "Familiares"
   },
   "create_patient_modal": {
     "title_create": "Nuevo paciente",

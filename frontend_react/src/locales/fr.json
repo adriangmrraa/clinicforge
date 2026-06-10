@@ -583,7 +583,8 @@
     "linking_patient": "Patient à lier",
     "select_guardian": "Sélectionner un membre de la famille (patient existant)",
     "search_patient": "Rechercher par nom, téléphone ou DNI...",
-    "no_patients_found": "Aucun patient trouvé"
+    "no_patients_found": "Aucun patient trouvé",
+    "family_members": "Famille"
   },
   "create_patient_modal": {
     "title_create": "Nouveau patient",
