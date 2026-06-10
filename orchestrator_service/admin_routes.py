@@ -521,7 +521,7 @@ async def get_patient_clinical_context(
     # 1a. Check linked_patient_id FIRST — si el chat tiene paciente vinculado, priorizar
     conv = await db.pool.fetchrow(
         """
-        SELECT linked_patient_id FROM chat_conversations
+        SELECT linked_patient_id, family_patient_ids FROM chat_conversations
         WHERE tenant_id = $1 AND external_user_id = $2 AND linked_patient_id IS NOT NULL
         LIMIT 1
     """,
@@ -539,6 +539,57 @@ async def get_patient_clinical_context(
             conv["linked_patient_id"],
             tenant_id,
         )
+
+    # Variable para familiares vinculados al chat
+    family_members_data = None
+    if conv and patient:
+        family_ids = conv.get("family_patient_ids") or []
+        # Filtrar el ID del primary por si acaso está en la lista
+        family_ids = [fid for fid in family_ids if fid != patient["id"]]
+        if family_ids:
+            family_patients_rows = await db.pool.fetch(
+                """
+                SELECT id, first_name, last_name, phone_number, status
+                FROM patients
+                WHERE id = ANY($1::int[]) AND tenant_id = $2 AND status != 'deleted'
+            """,
+                family_ids,
+                tenant_id,
+            )
+            family_members_data = []
+            for fp in family_patients_rows:
+                # Última cita del familiar
+                f_last_apt = await db.pool.fetchrow(
+                    """
+                    SELECT a.id, a.appointment_datetime AS date, a.appointment_type AS type, a.status,
+                           a.duration_minutes, p.first_name as professional_name
+                    FROM appointments a
+                    LEFT JOIN professionals p ON a.professional_id = p.id
+                    WHERE a.tenant_id = $1 AND a.patient_id = $2 AND a.appointment_datetime < NOW()
+                    ORDER BY a.appointment_datetime DESC LIMIT 1
+                """,
+                    tenant_id,
+                    fp["id"],
+                )
+                # Próxima cita del familiar
+                f_upcoming_apt = await db.pool.fetchrow(
+                    """
+                    SELECT a.id, a.appointment_datetime AS date, a.appointment_type AS type, a.status,
+                           a.duration_minutes, p.first_name as professional_name
+                    FROM appointments a
+                    LEFT JOIN professionals p ON a.professional_id = p.id
+                    WHERE a.tenant_id = $1 AND a.patient_id = $2 AND a.appointment_datetime >= NOW()
+                    AND a.status IN ('scheduled', 'confirmed')
+                    ORDER BY a.appointment_datetime ASC LIMIT 1
+                """,
+                    tenant_id,
+                    fp["id"],
+                )
+                family_members_data.append({
+                    "patient": dict(fp),
+                    "last_appointment": dict(f_last_apt) if f_last_apt else None,
+                    "upcoming_appointment": dict(f_upcoming_apt) if f_upcoming_apt else None,
+                })
 
     # 1b. Fallback: buscar por teléfono
     if not patient:
@@ -641,6 +692,7 @@ async def get_patient_clinical_context(
             else None,
             "diagnosis": clinical_record["diagnosis"] if clinical_record else None,
             "is_guest": patient["status"] == "guest",
+            "family_members": family_members_data,
         }
 
     # Si no existe, es un lead puro sin registro previo
@@ -650,6 +702,7 @@ async def get_patient_clinical_context(
         "upcoming_appointment": None,
         "treatment_plan": None,
         "is_guest": True,
+        "family_members": None,
     }
 
 

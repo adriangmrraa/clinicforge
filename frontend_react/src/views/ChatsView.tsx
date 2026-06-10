@@ -4,7 +4,7 @@ import {
   MessageCircle, Send, Calendar, User, Activity,
   Pause, Play, AlertCircle, Clock, ChevronLeft,
   Search, XCircle, Bell, Volume2, VolumeX,
-  Instagram, Facebook, Lock, ChevronRight, Paperclip, LinkIcon, CalendarCheck
+  Instagram, Facebook, Lock, ChevronRight, Paperclip, LinkIcon, CalendarCheck, Users
 } from 'lucide-react';
 import api, { setTenantId } from '../api/axios';
 import * as chatsApi from '../api/chats';
@@ -58,6 +58,28 @@ interface ChatMessage {
   delivery_status?: 'pending' | 'delivered' | 'failed' | null;
 }
 
+interface FamilyMemberContext {
+  patient: {
+    id: number;
+    first_name: string;
+    last_name: string;
+    phone_number: string;
+    status: string;
+  };
+  last_appointment?: {
+    date: string;
+    type: string;
+    duration_minutes?: number;
+    professional_name: string;
+  } | null;
+  upcoming_appointment?: {
+    date: string;
+    type: string;
+    duration_minutes?: number;
+    professional_name: string;
+  } | null;
+}
+
 interface PatientContext {
   patient_id?: number;
   patient_name?: string;
@@ -89,6 +111,8 @@ interface PatientContext {
     meta_ad_body?: string;
     meta_ad_id?: string;
   };
+  // Family members linked to this chat (chat-family-linking)
+  family_members?: FamilyMemberContext[] | null;
 }
 
 interface Toast {
@@ -2093,25 +2117,70 @@ export default function ChatsView() {
                               <p className="text-sm text-white/30 italic">{t('chats.no_treatment_plan')}</p>
                             )}
                           </div>
-
-                          {/* Anamnesis (Spec 2026-03-11) */}
-                          <div className="p-3 bg-white/[0.03] border border-white/[0.06] rounded-lg">
-                            <h4 className="text-xs font-medium text-white/40 mb-2 flex items-center gap-1">
-                              <span>🦷</span> {t('chats.anamnesis')}
-                            </h4>
-                            <AnamnesisPanel
-                              phone={selectedSession?.phone_number || selectedChatwoot?.external_user_id}
-                              userRole={(user as any)?.role}
-                              compact={true}
-                              refreshKey={anamnesisRefreshKey}
-                            />
-                          </div>
                         </>
                       ) : (
                         <div className="p-3 bg-white/[0.03] border border-white/[0.06] rounded-lg space-y-3">
                           <p className="text-sm text-white/40 italic">{t('chats.no_clinical_history')}</p>
                         </div>
                       )}
+
+                      {/* Anamnesis — siempre visible cuando hay paciente, independientemente de turnos */}
+                      {patientId ? (
+                        <div className="p-3 bg-white/[0.03] border border-white/[0.06] rounded-lg">
+                          <h4 className="text-xs font-medium text-white/40 mb-2 flex items-center gap-1">
+                            <span>🦷</span> {t('chats.anamnesis')}
+                          </h4>
+                          <AnamnesisPanel
+                            patientId={patientId}
+                            userRole={(user as any)?.role}
+                            compact={true}
+                            refreshKey={anamnesisRefreshKey}
+                          />
+                        </div>
+                      ) : null}
+
+                      {/* Family Members — pacientes vinculados como familiares */}
+                      {patientContext?.family_members && patientContext.family_members.length > 0 ? (
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-2 px-1 pt-2">
+                            <Users size={14} className="text-purple-400" />
+                            <h4 className="text-xs font-medium text-purple-400/80 uppercase tracking-wider">
+                              {t('chats.family_members')}
+                            </h4>
+                          </div>
+                          {patientContext.family_members.map((fm) => {
+                            const fmName = [fm.patient.first_name, fm.patient.last_name].filter(Boolean).join(' ').trim() || 'Familiar';
+                            const fmHasAppts = !!(fm.upcoming_appointment || fm.last_appointment);
+                            return (
+                              <div key={fm.patient.id} className="p-3 bg-purple-500/[0.04] border border-purple-500/15 rounded-lg">
+                                <p className="font-medium text-sm text-white">{fmName}</p>
+                                {fm.patient.phone_number && (
+                                  <p className="text-xs text-white/40 mb-2">{fm.patient.phone_number}</p>
+                                )}
+                                {fmHasAppts ? (
+                                  <div className="space-y-1.5 mt-2">
+                                    {fm.last_appointment && (
+                                      <div className="text-xs text-white/50">
+                                        <span className="text-white/30">{t('chats.last_appointment')}: </span>
+                                        {fm.last_appointment.type} — {safeFormatDate(fm.last_appointment.date)}
+                                      </div>
+                                    )}
+                                    {fm.upcoming_appointment && (
+                                      <div className="text-xs">
+                                        <span className="text-purple-300/60">{t('chats.upcoming_appointment')}: </span>
+                                        <span className="text-purple-300 font-medium">{fm.upcoming_appointment.type}</span>
+                                        <span className="text-purple-300/80"> — {safeFormatDate(fm.upcoming_appointment.date)} {safeFormatTime(fm.upcoming_appointment.date)}</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <p className="text-xs text-white/30 italic mt-1">{t('chats.no_appointments_yet')}</p>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : null}
                     </div>
                   );
                 })()}
