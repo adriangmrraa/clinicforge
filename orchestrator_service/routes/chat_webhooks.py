@@ -1072,12 +1072,9 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                         _apt_dt_utc = _apt_row["appointment_datetime"]
                         _arg_tz = timezone(timedelta(hours=-3))
                         _apt_dt_arg = _apt_dt_utc.astimezone(_arg_tz)
-                        _confirm_msg = (
-                            f"✅ Perfecto! Tu turno del {_apt_dt_arg.strftime('%d/%m')} a las "
-                            f"{_apt_dt_arg.strftime('%H:%M')} hs quedó confirmado. Te esperamos! 🦷"
-                        )
+                        _confirm_msg = "✅ ¡Gracias por confirmar! Te esperamos en tu próximo turno 🦷"
                     else:
-                        _confirm_msg = "✅ ¡Gracias por confirmar! Te esperamos en tu próximo turno. 🦷"
+                        _confirm_msg = "✅ ¡Gracias por confirmar! Te esperamos en tu próximo turno 🦷"
 
                     # Send confirmation reply
                     from services.response_sender import ResponseSender
