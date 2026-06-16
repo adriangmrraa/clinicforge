@@ -255,7 +255,8 @@ async def _fetch_insurance_section(pool, tenant_id: int, treatment_display_map: 
         rows = await pool.fetch(
             """SELECT id, provider_name, status, coverage_by_treatment, is_prepaid,
                       employee_discount_percent, default_copay_percent, external_target,
-                      requires_copay, copay_notes, ai_response_template
+                      requires_copay, copay_notes, ai_response_template,
+                      scheduling_mode, scheduling_delay_days
                FROM tenant_insurance_providers
                WHERE tenant_id = $1 AND is_active = true
                ORDER BY sort_order, provider_name""",

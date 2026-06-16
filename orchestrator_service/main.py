@@ -2468,7 +2468,7 @@ async def check_availability(
                 logger.info(f"📅 Excluding dates: {_excluded_dates} from results")
 
         # ── SEMÁFORO DE OBRAS SOCIALES ──
-        # Check explicit insurance_provider first, then fallback to patient_row
+        # Priority: insurance_provider param > patient_row DB > lead_context
         _mode = "immediate"
         _delay = 0
         _prov = None
@@ -2486,6 +2486,26 @@ async def check_availability(
             _mode = patient_row.get("scheduling_mode") or "immediate"
             _delay = patient_row.get("scheduling_delay_days") or 0
             _prov = patient_row.get("insurance_provider")
+        else:
+            # Fallback: check lead_context for insurance mentioned in conversation
+            try:
+                _lc_phone = current_customer_phone.get()
+                if _lc_phone:
+                    from services.lead_context import get as _lc_get
+                    _lc_data = await _lc_get(tenant_id, _lc_phone)
+                    _lc_ins = (_lc_data or {}).get("insurance_provider")
+                    if _lc_ins:
+                        _lc_tip = await db.pool.fetchrow(
+                            "SELECT scheduling_mode, scheduling_delay_days FROM tenant_insurance_providers WHERE tenant_id = $1 AND provider_name ILIKE $2 AND is_active = true",
+                            tenant_id, f"%{_lc_ins.strip()}%"
+                        )
+                        if _lc_tip:
+                            _mode = _lc_tip.get("scheduling_mode") or "immediate"
+                            _delay = _lc_tip.get("scheduling_delay_days") or 0
+                            _prov = _lc_ins
+                            logger.info(f"📅 SEMAPHORE: Resolved insurance '{_lc_ins}' from lead_context")
+            except Exception as _lc_err:
+                logger.debug(f"lead_context insurance lookup (non-fatal): {_lc_err}")
             
         if _prov:
             if _mode == "blocked":
@@ -9795,8 +9815,17 @@ def _format_insurance_providers(
         )
         copay_notes = p.get("copay_notes") or ""
         copay_notes_str = f" ({copay_notes})" if copay_notes else ""
+        # Scheduling constraint (migración scheduling_mode/scheduling_delay_days)
+        _sched_mode = p.get("scheduling_mode") or "immediate"
+        _sched_delay = p.get("scheduling_delay_days") or 0
+        if _sched_mode == "delayed" and _sched_delay > 0:
+            _sched_str = f" ⏳ Plazo mínimo: {_sched_delay} días — NO ofrecer turnos antes de {_sched_delay} días desde hoy"
+        elif _sched_mode == "blocked":
+            _sched_str = " 🚫 Atención suspendida temporalmente — ofrecer turno particular"
+        else:
+            _sched_str = ""
         lines.append(
-            f"{p['provider_name']}{prepaga_flag}{default_copay_str}{copay_notes_str}:"
+            f"{p['provider_name']}{prepaga_flag}{default_copay_str}{copay_notes_str}{_sched_str}:"
         )
 
         # Parse defensivo de coverage_by_treatment (asyncpg puede devolver JSONB
