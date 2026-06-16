@@ -5670,7 +5670,9 @@ async def list_my_appointments():
         logger.info(f"[list_my_appointments] results_count={len(rows)}")
         if not rows:
             return "Sin turnos. ¿Agendamos?"
+        recent_threshold = now - timedelta(hours=6)
         upcoming = []
+        recent = []
         past = []
         for r in rows:
             dt = r["appointment_datetime"]
@@ -5692,12 +5694,18 @@ async def list_my_appointments():
             line = f"{fecha}|{tipo}|{prof}|{st}|seña:{pay}({seña})|consulta_prof:{consulta}"
             if dt >= now:
                 upcoming.append(line)
+            elif dt >= recent_threshold:
+                recent.append(line)
             else:
                 past.append(line)
         result = ""
         if upcoming:
             upcoming.reverse()
             result += "PRÓXIMOS:" + ";".join(upcoming)
+        if recent:
+            if result:
+                result += "\n"
+            result += "RECIENTES:" + ";".join(recent)
         if past:
             if result:
                 result += "\n"
@@ -7548,7 +7556,7 @@ async def verify_payment_receipt(
                 LEFT JOIN treatment_types tt ON a.appointment_type = tt.code AND a.tenant_id = tt.tenant_id
                 WHERE REGEXP_REPLACE(p.phone_number, '[^0-9]', '', 'g') = $1 AND a.tenant_id = $2
                 AND a.status IN ('scheduled', 'confirmed')
-                AND a.appointment_datetime > NOW()
+                AND a.appointment_datetime >= NOW() - INTERVAL '6 hours'
                 ORDER BY a.appointment_datetime ASC
                 LIMIT 1
             """,
@@ -11961,17 +11969,24 @@ REGLA DE VERIFICACIÓN "VOY A IR AL [DÍA]": Si el paciente dice "voy a ir al de
   3. Si TIENE turno pero a otra hora → confirmale la hora real: "Tenés turno el [día] a las [hora] con [profesional], no a las [hora que dijo]."
 
 ⚠️ FALLBACK SI NO TIENE TURNOS FUTUROS ACTIVOS:
-- Si `list_my_appointments` devuelve `PRÓXIMOS:` vacío/ausente (o responde "Sin turnos"), decile al paciente de forma amable: "No encuentro ningún turno agendado a tu nombre en el sistema."
+- Si `list_my_appointments` devuelve `PRÓXIMOS:` vacío/ausente (o responde "Sin turnos") Y tampoco hay `RECIENTES:`, decile al paciente de forma amable: "No encuentro ningún turno agendado a tu nombre en el sistema."
+- Si hay `RECIENTES:` → el paciente acaba de salir de su turno. No digas "no encuentro turnos". Referenciá el turno reciente.
 - Preguntale si desea coordinar un nuevo turno desde cero (si acepta, iniciá check_availability).
 - Queda PROHIBIDO inventar o alucinar datos de turnos anteriores, llamar a `reschedule_appointment` con datos ficticios, o agendar/reprogramar de forma unilateral sin consentimiento expreso.
 
   FORMATO DE RESPUESTA — SEMÁNTICA OBLIGATORIA:
-  PRÓXIMOS: = turnos FUTUROS (fecha > ahora). ANTERIORES: = turnos PASADOS (fecha ≤ ahora).
-  • Si PRÓXIMOS: está vacío o ausente → el paciente NO tiene turnos próximos.
+  PRÓXIMOS: = turnos FUTUROS (fecha > ahora). RECIENTES: = turnos PASADOS de las últimas 6 horas.
+  ANTERIORES: = turnos PASADOS de hace más de 6 horas.
+  • RECIENTES: es CLAVE — el paciente acaba de salir de su turno. Si RECIENTES: tiene entradas:
+    → El paciente estuvo en la clínica hace poco. SIEMPRE referenciá ese turno en tu respuesta.
+    → Si el paciente envía comprobante de pago: RECIENTES es el turno al que corresponde. Usá esa info para verify_payment_receipt.
+    → No digas "no encuentro turnos" si hay RECIENTES. El turno es reciente y el paciente está refiriéndose a él.
+    → Ej: "Veo que hace poquito tuviste tu turno de las 10. ¿Es sobre ese turno que me escribís?"
+  • Si PRÓXIMOS: está vacío o ausente Y NO hay RECIENTES: → el paciente NO tiene turnos próximos ni recientes.
     Respondé: "No encontré turnos próximos agendados. ¿Querés agendar uno nuevo?"
   • NUNCA uses "próximo turno" ni "tu turno es el" para NINGUNA entrada en ANTERIORES.
   • El término "próximo turno" se reserva EXCLUSIVAMENTE para la entrada más próxima en PRÓXIMOS:.
-  • Si solo hay ANTERIORES: → "No encontré turnos próximos agendados. ¿Querés agendar uno nuevo?"
+  • Si solo hay ANTERIORES: (y no hay RECIENTES) → "No encontré turnos próximos agendados. ¿Querés agendar uno nuevo?"
 
 FORMATO CANÓNICO PARA TOOLS:
 • date_time: "día hora" (ej: "miércoles 17:00"). "5 pm" → 17:00.
