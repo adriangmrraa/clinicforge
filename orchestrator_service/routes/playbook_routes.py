@@ -212,15 +212,8 @@ async def send_reminders_now(
         }
         logger.info(f"📋 Reminder config from playbook V2: action={playbook_row['action_type']} template={playbook_row['template_name']}")
     else:
-        # Fallback to V1 automation_rules
-        rule_row = await db.pool.fetchrow("""
-            SELECT id, is_active, message_type, free_text_message,
-                   ycloud_template_name, ycloud_template_lang, ycloud_template_vars
-            FROM automation_rules
-            WHERE tenant_id = $1 AND trigger_type = 'appointment_reminder'
-            ORDER BY is_system DESC, created_at ASC LIMIT 1
-        """, tenant_id)
-        rule = dict(rule_row) if rule_row else None
+        rule = None
+        logger.warning("⚠️ No active V2 playbook for appointment_reminder — returning error")
 
     _DAYS_ES = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
 
@@ -246,7 +239,7 @@ async def send_reminders_now(
 
             # Try HSM template first
             if rule and rule.get("message_type") == "hsm" and rule.get("ycloud_template_name"):
-                from jobs.reminders import _send_template
+                from jobs.playbook_executor import _send_template
                 template_name = rule["ycloud_template_name"]
                 template_lang = rule.get("ycloud_template_lang") or "es"
 
@@ -291,7 +284,7 @@ async def send_reminders_now(
                     apt["appointment_id"], tenant_id,
                 )
                 # Log in automation_logs (same as daily job)
-                from jobs.reminders import _log_reminder
+                from jobs.playbook_executor import _log_reminder
                 await _log_reminder(
                     tenant_id, "sent", full_name, apt["phone_number"],
                     message_preview=msg_preview or f"Recordatorio {formatted_date} {formatted_time}",
@@ -303,7 +296,7 @@ async def send_reminders_now(
                 sent_count += 1
                 logger.info(f"✅ Manual reminder sent to {full_name} ({apt['phone_number']})")
             else:
-                from jobs.reminders import _log_reminder
+                from jobs.playbook_executor import _log_reminder
                 await _log_reminder(
                     tenant_id, "failed", full_name, apt["phone_number"],
                     message_preview=msg_preview,

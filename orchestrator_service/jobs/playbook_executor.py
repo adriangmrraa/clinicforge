@@ -15,7 +15,7 @@ import json
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from .scheduler import scheduler
+from .scheduler import scheduler, schedule_daily_at
 
 _ai_semaphore = asyncio.Semaphore(3)  # max 3 concurrent AI calls across all executions
 
@@ -1164,18 +1164,31 @@ async def daily_reset_counters():
         logger.error(f"❌ daily_reset_counters error: {e}")
 
 
+@schedule_daily_at(hour=10, minute=0)
 async def check_appointment_reminders():
-    """Periodic check: find appointments happening tomorrow and create executions for reminder playbooks."""
+    """Daily at 10:00 UTC (07:00 ART): find tomorrow's appointments and create playbook executions for reminders."""
     try:
         from db import db
         if not db.pool:
             return
 
+        # Use Argentina timezone for "tomorrow" calculation (server runs in UTC)
+        try:
+            from zoneinfo import ZoneInfo
+            _ar_tz = ZoneInfo("America/Argentina/Buenos_Aires")
+            today_local = datetime.now(_ar_tz).date()
+        except Exception:
+            today_local = datetime.now().date()
+        tomorrow = today_local + timedelta(days=1)
+        tomorrow_start = datetime.combine(tomorrow, datetime.min.time())
+        tomorrow_end = datetime.combine(tomorrow, datetime.max.time())
+
         # Find all active playbooks with appointment_reminder trigger
         playbooks = await db.pool.fetch("""
-            SELECT id, tenant_id, trigger_config, conditions
+            SELECT id, tenant_id
             FROM automation_playbooks
             WHERE trigger_type = 'appointment_reminder' AND is_active = true
+            ORDER BY is_system DESC, id ASC
         """)
 
         if not playbooks:
@@ -1185,16 +1198,9 @@ async def check_appointment_reminders():
 
         for pb in playbooks:
             tenant_id = pb["tenant_id"]
-            config = pb["trigger_config"] or {}
-            if isinstance(config, str):
-                import json as _json
-                try:
-                    config = _json.loads(config)
-                except (json.JSONDecodeError, TypeError):
-                    config = {}
-            hours_before = config.get("hours_before", 24)
 
-            # Find appointments in the reminder window that don't already have an execution
+            # Find tomorrow's appointments that need reminders
+            # Cross-playbook dedup: checks ALL executions for this appointment (not just this playbook)
             appointments = await db.pool.fetch("""
                 SELECT a.id, a.patient_id, a.professional_id, a.appointment_datetime,
                        a.appointment_type, a.status,
@@ -1203,16 +1209,17 @@ async def check_appointment_reminders():
                 JOIN patients p ON a.patient_id = p.id AND p.tenant_id = a.tenant_id
                 WHERE a.tenant_id = $1
                   AND a.status IN ('scheduled', 'confirmed')
-                  AND a.appointment_datetime > NOW()
-                  AND a.appointment_datetime <= NOW() + INTERVAL '1 hour' * $2
+                  AND a.appointment_datetime >= $2
+                  AND a.appointment_datetime <= $3
+                  AND (a.reminder_sent IS NULL OR a.reminder_sent = false)
                   AND p.phone_number IS NOT NULL AND p.phone_number != ''
                   AND NOT EXISTS (
                       SELECT 1 FROM automation_executions ae
-                      WHERE ae.playbook_id = $3 AND ae.appointment_id = a.id::text
+                      WHERE ae.appointment_id = a.id::text
                         AND ae.status IN ('running', 'waiting_response', 'paused', 'completed')
                   )
                 LIMIT 50
-            """, tenant_id, hours_before, pb["id"])
+            """, tenant_id, tomorrow_start, tomorrow_end)
 
             for apt in appointments:
                 context = {
@@ -1221,13 +1228,20 @@ async def check_appointment_reminders():
                     "patient_id": apt["patient_id"],
                     "appointment_datetime": str(apt["appointment_datetime"]),
                 }
-                await create_execution_for_event(
+                exec_ids = await create_execution_for_event(
                     db.pool, tenant_id, "appointment_reminder",
                     apt["phone_number"],
                     patient_id=apt["patient_id"],
                     appointment_id=str(apt["id"]),
                     context=context,
                 )
+
+                # Mark reminder_sent immediately so no other system re-picks this appointment
+                if exec_ids:
+                    await db.pool.execute(
+                        "UPDATE appointments SET reminder_sent = true, reminder_sent_at = NOW() WHERE id = $1 AND tenant_id = $2",
+                        apt["id"], tenant_id,
+                    )
 
             if appointments:
                 logger.info(f"📋 Appointment reminder trigger: {len(appointments)} appointments for tenant {tenant_id}")
@@ -1367,9 +1381,252 @@ async def _notify_telegram_action(
         logger.warning(f"📢 _notify_telegram_action error: {e}")
 
 
+# ── V1 Utility Functions migrated from reminders.py ──────────────────────
+
+async def _send_template(
+    tenant_id: int, phone: str,
+    template_name: str, language_code: str, components: list,
+    patient_name: str = "",
+    patient_id: Optional[int] = None,
+    appointment_info: dict = None,
+) -> tuple:
+    """
+    Send a YCloud HSM template. Clean implementation per YCloud v2 docs.
+
+    1. Fetch template details from YCloud API to get the EXACT language code
+    2. Build components matching the template structure (header vs body)
+    3. Send once with correct params — no blind retries
+    """
+    try:
+        from core.credentials import get_tenant_credential, YCLOUD_API_KEY
+        from ycloud_client import YCloudClient
+        from db import db as _db_ref
+        import httpx
+
+        wamid = None
+        api_key = await get_tenant_credential(tenant_id, YCLOUD_API_KEY)
+        if not api_key:
+            logger.warning(f"⚠️ No YCloud API key for tenant {tenant_id}")
+            return False, "no_api_key", None
+
+        # Resolve from_number: tenants.bot_phone_number first
+        business_number = await _db_ref.pool.fetchval(
+            "SELECT bot_phone_number FROM tenants WHERE id = $1", tenant_id
+        )
+        if not business_number:
+            from core.credentials import YCLOUD_WHATSAPP_NUMBER
+            business_number = await get_tenant_credential(tenant_id, YCLOUD_WHATSAPP_NUMBER)
+
+        logger.info(f"📱 Reminder from_number={business_number} tenant={tenant_id}")
+
+        # Step 1: Fetch template from YCloud to get the REAL language code and structure
+        real_lang = None
+        tpl_components = None
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as diag:
+                resp = await diag.get(
+                    "https://api.ycloud.com/v2/whatsapp/templates",
+                    params={"filter.name": template_name, "limit": 10},
+                    headers={"X-API-Key": api_key},
+                )
+                if resp.status_code == 200:
+                    items = resp.json().get("items", [])
+                    # Find the APPROVED template
+                    for tpl in items:
+                        if tpl.get("status") == "APPROVED" and tpl.get("name") == template_name:
+                            real_lang = tpl.get("language")
+                            tpl_components = tpl.get("components", [])
+                            logger.info(f"📋 Template found: lang={real_lang} components={tpl_components}")
+                            break
+        except Exception as diag_err:
+            logger.warning(f"⚠️ Template fetch failed: {diag_err}")
+
+        if not real_lang:
+            logger.error(f"❌ Template '{template_name}' not found in YCloud API (no APPROVED version)")
+            return False, "template_not_found", None
+
+        # Step 2: Build components matching the EXACT template structure
+        import re
+
+        # Flatten all values from input components (caller's variable values)
+        all_values = []
+        for comp in (components or []):
+            for p in comp.get("parameters", []):
+                all_values.append(str(p.get("text", "")).strip())
+
+        # Variable value map for lookup by name AND by position ({{1}}, {{2}}, etc.)
+        # Meta templates may use either named or positional variables
+        var_value_map = {
+            # Named variables
+            "nombre_paciente": all_values[0] if len(all_values) > 0 else "",
+            "first_name": all_values[0] if len(all_values) > 0 else "",
+            "dia_semana": all_values[1] if len(all_values) > 1 else "",
+            "fecha_turno": all_values[2] if len(all_values) > 2 else "",
+            "hora_turno": all_values[3] if len(all_values) > 3 else "",
+            # Positional variables ({{1}}, {{2}}, {{3}}, {{4}})
+            "1": all_values[0] if len(all_values) > 0 else "",
+            "2": all_values[1] if len(all_values) > 1 else "",
+            "3": all_values[2] if len(all_values) > 2 else "",
+            "4": all_values[3] if len(all_values) > 3 else "",
+        }
+
+        # Build components dynamically from the REAL template structure
+        send_components = []
+        for comp in (tpl_components or []):
+            comp_type = comp.get("type", "").upper()
+            text = comp.get("text", "")
+            comp_vars = re.findall(r'\{\{(\w+)\}\}', text)
+            if not comp_vars:
+                continue
+            parameters = []
+            for var_name in comp_vars:
+                value = var_value_map.get(var_name, "")
+                parameters.append({"type": "text", "text": value})
+            send_components.append({"type": comp_type.lower(), "parameters": parameters})
+
+        if not send_components:
+            # Fallback: if template structure couldn't be parsed, send all values as body
+            send_components = [
+                {"type": "body", "parameters": [
+                    {"type": "text", "text": v} for v in all_values if v
+                ]}
+            ]
+
+        logger.info(f"📋 Template vars resolved: {len(send_components)} components")
+
+        logger.info(f"📤 Sending template: lang={real_lang} components={send_components}")
+
+        # Step 3: Send ONCE with the correct language and components
+        yc = YCloudClient(api_key=api_key, business_number=business_number)
+        try:
+            ycloud_resp = await yc.send_template(
+                to=phone, template_name=template_name,
+                language_code=real_lang,
+                components=send_components if send_components else None,
+            )
+            wamid = ycloud_resp.get("id") if isinstance(ycloud_resp, dict) else None
+            logger.info(f"✅ Template '{template_name}' sent to {phone} (lang={real_lang}, wamid={wamid})")
+        except httpx.HTTPStatusError as http_err:
+            # Log the FULL error response for debugging
+            try:
+                err_json = http_err.response.json()
+                logger.error(f"❌ Template send error FULL: {err_json}")
+            except Exception:
+                logger.error(f"❌ Template send error: {http_err.response.text}")
+            return False, "http_error", None
+
+        # Persist in chat_conversations + chat_messages so it appears in the UI
+        try:
+            from db import db as _db
+            import uuid as _uuid
+            import json as _json
+
+            # Upsert conversation
+            conv = await _db.pool.fetchrow(
+                "SELECT id FROM chat_conversations WHERE tenant_id = $1 AND external_user_id = $2 AND channel = 'whatsapp' ORDER BY updated_at DESC LIMIT 1",
+                tenant_id, phone,
+            )
+            if conv:
+                conv_id = conv["id"]
+                await _db.pool.execute(
+                    "UPDATE chat_conversations SET last_message_preview = $1, updated_at = NOW() WHERE id = $2",
+                    f"[Recordatorio: {template_name}]", conv_id,
+                )
+            else:
+                conv_id = _uuid.uuid4()
+                await _db.pool.execute(
+                    "INSERT INTO chat_conversations (id, tenant_id, channel, provider, external_user_id, display_name, last_message_preview, status, updated_at, linked_patient_id) VALUES ($1, $2, 'whatsapp', 'ycloud', $3, $4, $5, 'active', NOW(), $6)",
+                    conv_id, tenant_id, phone, patient_name or None, f"[Recordatorio: {template_name}]", patient_id,
+                )
+
+            # Persist message with full clinical context
+            apt_info = appointment_info or {}
+            preview = f"📅 Recordatorio de turno enviado"
+            if apt_info.get("treatment"):
+                preview += f"\n🦷 {apt_info['treatment']}"
+            if apt_info.get("date") and apt_info.get("time"):
+                preview += f"\n📆 {apt_info.get('day_name', '')} {apt_info['date']} a las {apt_info['time']}"
+            if apt_info.get("professional"):
+                preview += f"\n👩‍⚕️ Con {apt_info['professional']}"
+            if patient_name:
+                preview += f"\n👤 {patient_name}"
+
+            await _db.pool.execute(
+                "INSERT INTO chat_messages (tenant_id, conversation_id, role, content, from_number, delivery_status, platform_metadata) VALUES ($1, $2, 'assistant', $3, $4, 'pending', $5::jsonb)",
+                tenant_id, conv_id, preview, phone,
+                _json.dumps({
+                    "source": "reminder_template",
+                    "template": template_name,
+                    "patient_name": patient_name,
+                    "appointment": apt_info,
+                    "wamid": wamid,
+                }),
+            )
+        except Exception as _persist_err:
+            logger.warning(f"⚠️ Reminder persist failed (non-blocking): {_persist_err}")
+
+        return True, "ok", wamid
+
+    except Exception as e:
+        logger.warning(f"⚠️ Template send failed for {phone}: {e}")
+        return False, "exception", None
+
+
+async def _log_reminder(
+    tenant_id: int, status: str, patient_name: str, phone: str,
+    message_preview: str = None, error_detail: str = None,
+    skip_reason: str = None, rule_id: int = None,
+    patient_id: int = None, appointment_id: str = None,
+    source: str = "rule",
+):
+    """Insert into automation_logs with patient and appointment linkage."""
+    try:
+        from db import db
+        import json as _json
+        meta = {}
+        if appointment_id:
+            meta["appointment_id"] = str(appointment_id)
+        if patient_name:
+            meta["patient_name"] = patient_name
+
+        _status = str(status) if status else 'unknown'
+
+        if source == "playbook":
+            # Playbook IDs are not in automation_rules — skip FK check, store as meta
+            _valid_rule_id = None
+            if rule_id:
+                meta["playbook_id"] = rule_id
+        else:
+            # rule_id may be a playbook ID (not in automation_rules) — validate FK exists
+            _valid_rule_id = None
+            if rule_id:
+                _exists = await db.pool.fetchval(
+                    "SELECT id FROM automation_rules WHERE id = $1", rule_id
+                )
+                if _exists:
+                    _valid_rule_id = rule_id
+
+        await db.pool.execute("""
+            INSERT INTO automation_logs (
+                tenant_id, automation_rule_id, rule_name, trigger_type,
+                patient_name, phone_number, channel, message_type,
+                message_preview, status, skip_reason, error_details,
+                patient_id, target_id, meta,
+                triggered_at, sent_at
+            ) VALUES ($1, $2, 'Recordatorio 24h', 'appointment_reminder',
+                $3, $4, 'whatsapp', 'hsm', $5, $6::varchar, $7, $8,
+                $9, $10, $11::jsonb,
+                NOW(), CASE WHEN $6::varchar = 'sent' THEN NOW() ELSE NULL END)
+        """, tenant_id, _valid_rule_id, patient_name, phone,
+            (message_preview or "")[:200], _status, skip_reason, error_detail,
+            patient_id, str(appointment_id) if appointment_id else None,
+            _json.dumps(meta) if meta else '{}')
+    except Exception as e:
+        logger.warning(f"⚠️ automation_log insert failed (reminders): {e}")
+
+
 # Register with scheduler
 scheduler.add_job(process_pending_executions, 300, run_at_startup=False)
 scheduler.add_job(check_inactive_patients, 86400, run_at_startup=False)  # Daily
 scheduler.add_job(daily_reset_counters, 86400, run_at_startup=False)  # Daily
-scheduler.add_job(check_appointment_reminders, 86400, run_at_startup=False)  # Daily
 scheduler.add_job(check_leads_without_booking, 1800, run_at_startup=False)  # Every 30 min

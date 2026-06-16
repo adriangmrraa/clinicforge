@@ -19,6 +19,10 @@ from datetime import datetime, date, timedelta, timezone
 
 from .scheduler import scheduler
 
+# Fixed UTC-3 offset — Argentina has no DST since 2009.
+# Used to convert UTC datetimes from the DB to local time for alert messages.
+ARG_TZ = timezone(timedelta(hours=-3))
+
 logger = logging.getLogger(__name__)
 
 
@@ -145,7 +149,7 @@ async def _check_no_shows_today(tenant_id: int):
         for ns in no_shows[:5]:
             name = f"{ns['first_name']} {ns.get('last_name', '') or ''}".strip()
             apt_time = (
-                ns["appointment_datetime"].strftime("%H:%M")
+                ns["appointment_datetime"].astimezone(ARG_TZ).strftime("%H:%M")
                 if ns["appointment_datetime"] else "?"
             )
             lines.append(f"▸ {name} — turno de las {apt_time}")
@@ -232,7 +236,7 @@ async def _check_imminent_unconfirmed(tenant_id: int):
 
         name = f"{apt['first_name']} {apt.get('last_name', '') or ''}".strip()
         apt_time = (
-            apt["appointment_datetime"].strftime("%H:%M")
+            apt["appointment_datetime"].astimezone(ARG_TZ).strftime("%H:%M")
             if apt["appointment_datetime"] else "?"
         )
 

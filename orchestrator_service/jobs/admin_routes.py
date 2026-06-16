@@ -9,7 +9,7 @@ import logging
 from fastapi import APIRouter, HTTPException, Depends
 from typing import Dict, Any
 
-from .reminders import send_appointment_reminders
+from .playbook_executor import check_appointment_reminders
 from .followups import send_post_treatment_followups
 
 logger = logging.getLogger(__name__)
@@ -28,11 +28,11 @@ async def test_reminders_today():
     logger.info("🧪 Solicitado test manual de recordatorios")
     
     try:
-        await send_appointment_reminders()
+        await check_appointment_reminders()
         return {
             "status": "success",
             "message": "Test de recordatorios ejecutado correctamente",
-            "details": "Se ejecutó el job de recordatorios. Revisar logs para detalles."
+            "details": "Se ejecutó el job de recordatorios V2. Revisar logs para detalles."
         }
             
     except Exception as e:
@@ -44,7 +44,7 @@ async def test_reminders_today():
 async def run_reminders_now():
     """
     Ejecuta el job de recordatorios inmediatamente.
-    Buscará turnos para mañana y enviará recordatorios.
+    Buscará turnos para mañana y creará ejecuciones de playbook V2.
     
     Returns:
         Dict con estadísticas de la ejecución
@@ -52,7 +52,7 @@ async def run_reminders_now():
     logger.info("🚀 Solicitada ejecución manual de recordatorios")
     
     try:
-        await send_appointment_reminders()
+        await check_appointment_reminders()
         
         return {
             "status": "success",
@@ -68,31 +68,32 @@ async def run_reminders_now():
 @router.get("/reminders/status")
 async def get_reminders_status():
     """
-    Obtiene información sobre el estado del job de recordatorios.
+    Obtiene información sobre el estado del job de recordatorios V2.
     
     Returns:
         Dict con información de configuración y próximas ejecuciones
     """
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
     
-    # Calcular próxima ejecución (10:00 AM del día siguiente)
-    now = datetime.now()
-    tomorrow = now.date() + timedelta(days=1)
-    next_execution = datetime.combine(tomorrow, datetime.strptime("10:00", "%H:%M").time())
+    # El scheduler V2 corre a las 10:00 UTC (07:00 ART / 05:00 ART en verano)
+    # Calculamos la próxima ejecución en UTC
+    now_utc = datetime.now(timezone.utc)
+    tomorrow_utc = now_utc.date() + timedelta(days=1)
+    next_execution_utc = datetime.combine(tomorrow_utc, datetime.strptime("10:00", "%H:%M").time(), tzinfo=timezone.utc)
     
-    if now.time() < datetime.strptime("10:00", "%H:%M").time():
-        # Si aún no son las 10:00, ejecutar hoy
-        next_execution = datetime.combine(now.date(), datetime.strptime("10:00", "%H:%M").time())
+    if now_utc.time() < datetime.strptime("10:00", "%H:%M").time():
+        next_execution_utc = datetime.combine(now_utc.date(), datetime.strptime("10:00", "%H:%M").time(), tzinfo=timezone.utc)
     
-    seconds_until_next = (next_execution - now).total_seconds()
+    seconds_until_next = (next_execution_utc - now_utc).total_seconds()
     
     return {
         "job": "appointment_reminders",
         "enabled": True,
-        "schedule": "Diario a las 10:00 AM",
-        "next_execution": next_execution.isoformat(),
+        "schedule": "Diario a las 10:00 UTC (07:00 ART)",
+        "engine": "V2 (playbook_executor.check_appointment_reminders)",
+        "next_execution_utc": next_execution_utc.isoformat(),
         "seconds_until_next": int(seconds_until_next),
-        "description": "Envía recordatorios de turnos para el día siguiente",
+        "description": "Crea ejecuciones de playbook para recordatorios de turnos V2",
         "endpoints": {
             "test": "/admin/jobs/reminders/test-today",
             "run_now": "/admin/jobs/reminders/run-now"

@@ -8827,12 +8827,12 @@ async def update_appointment_billing(
             amount = str(current.get("billing_amount", ""))
             appointment_datetime = current.get("appointment_datetime")
             appointment_date = (
-                appointment_datetime.strftime("%d/%m/%Y")
+                appointment_datetime.astimezone(ARG_TZ).strftime("%d/%m/%Y")
                 if appointment_datetime
                 else ""
             )
             appointment_time = (
-                appointment_datetime.strftime("%H:%M") if appointment_datetime else ""
+                appointment_datetime.astimezone(ARG_TZ).strftime("%H:%M") if appointment_datetime else ""
             )
             treatment = current.get("appointment_type") or "Tratamiento"
             professional_name = current.get("professional_name") or ""
@@ -13139,7 +13139,7 @@ async def complete_treatment(
         f"{apt['prof_first_name'] or ''} {apt['prof_last_name'] or ''}".strip()
     )
     apt_date = (
-        apt["appointment_datetime"].strftime("%d/%m/%Y")
+        apt["appointment_datetime"].astimezone(ARG_TZ).strftime("%d/%m/%Y")
         if apt["appointment_datetime"]
         else ""
     )

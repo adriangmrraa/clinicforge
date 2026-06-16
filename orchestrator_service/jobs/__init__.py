@@ -15,12 +15,6 @@ logger = logging.getLogger(__name__)
 
 # Importar jobs para que se registren automáticamente
 try:
-    from . import reminders
-    logger.info("✅ Job de recordatorios importado correctamente")
-except ImportError as e:
-    logger.warning(f"⚠️ No se pudo importar job de recordatorios: {e}")
-
-try:
     from . import followups
     logger.info("✅ Job de seguimiento post-atención importado correctamente")
 except ImportError as e:
@@ -68,4 +62,4 @@ try:
 except ImportError as e:
     logger.warning(f"⚠️ No se pudo importar job weekly_backup: {e}")
 
-__all__ = ['reminders', 'followups', 'lead_recovery', 'nova_morning', 'smart_alerts', 'expire_unpaid', 'playbook_executor']
+__all__ = ['followups', 'lead_recovery', 'nova_morning', 'smart_alerts', 'expire_unpaid', 'playbook_executor']
