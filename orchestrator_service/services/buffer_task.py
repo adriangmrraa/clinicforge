@@ -1324,6 +1324,11 @@ async def process_buffer_task(
                             identity_lines.append(
                                 f"• MAPS SEDE: {apt_day_cfg['maps_url']}"
                             )
+                    elif clinic_address:
+                        # Fallback: day has no specific location, use general address
+                        identity_lines.append(
+                            f"• SEDE DEL TURNO: {clinic_address}"
+                        )
             else:
                 patient_status = "patient_no_appointment"
 

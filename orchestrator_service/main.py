@@ -10637,22 +10637,27 @@ REGLA ANTI-MARKDOWN (WHATSAPP):
         }
         for day_en, day_es in dias_es.items():
             day_cfg = clinic_working_hours.get(day_en, {})
-            if day_cfg.get("enabled") and day_cfg.get("location"):
-                loc = day_cfg["location"]
-                addr = day_cfg.get("address", "")
-                maps = day_cfg.get("maps_url", "")
-                line = f"• {day_es}: {loc}"
-                if addr:
-                    line += f" — {addr}"
-                if maps:
-                    line += f" ({maps})"
+            if day_cfg.get("enabled"):
+                loc = day_cfg.get("location") or ""
+                addr = day_cfg.get("address") or ""
+                maps = day_cfg.get("maps_url") or ""
+                if loc:
+                    line = f"• {day_es}: {loc}"
+                    if addr:
+                        line += f" — {addr}"
+                    if maps:
+                        line += f" ({maps})"
+                else:
+                    # No specific location for this day → uses general address
+                    _gen_fallback = f" — {clinic_address}" if clinic_address else ""
+                    line = f"• {day_es}: {clinic_name or 'Sede principal'}{_gen_fallback}"
                 sede_lines.append(line)
         if sede_lines:
             sede_section = (
                 "\n\n## SEDES POR DÍA (MULTI-SEDE)\nLa clínica opera en diferentes ubicaciones según el día. SIEMPRE usá la sede correcta según el día del turno:\n"
                 + "\n".join(sede_lines)
             )
-            sede_section += "\nREGLA CRÍTICA: La sede se determina por el DÍA del turno, NO por elección del paciente. Incluí la sede correcta en la confirmación del turno."
+            sede_section += "\nREGLA CRÍTICA: La sede se determina por el DÍA del turno, NO por elección del paciente. Incluí la sede correcta en la confirmación del turno. Si un día no tiene sede específica, se usa la dirección principal."
 
     # Precio de consulta — compute price_text FIRST (used in price_section and greeting)
     price_text = (

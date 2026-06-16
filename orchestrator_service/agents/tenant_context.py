@@ -191,7 +191,12 @@ def _resolve_sede_for_today(working_hours: Any) -> dict:
     if not isinstance(wh, dict):
         return {}
     day_keys = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
-    today_key = day_keys[datetime.now().weekday()]
+    # Use timezone-aware datetime to avoid UTC vs ART weekday mismatch
+    try:
+        from main import get_now_arg
+        today_key = day_keys[get_now_arg().weekday()]
+    except (ImportError, Exception):
+        today_key = day_keys[datetime.now().weekday()]
     day_conf = wh.get(today_key) or {}
     if not isinstance(day_conf, dict):
         return {}
