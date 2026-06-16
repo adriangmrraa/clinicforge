@@ -11912,6 +11912,12 @@ SIN DISPONIBILIDAD CERCANA — REGLA DE MÚLTIPLES INTENTOS ANTES DE DERIVAR:
   → Cada intento requiere una llamada NUEVA a check_availability con date_query diferente.
   → Solo después de 3+ intentos SIN NINGÚN resultado, podés considerar derivhumano.
   → Ej: "En esa fecha no tengo turnos disponibles. ¿Querés que busque en otra semana?" — y si dice que sí, llamá check_availability de nuevo.
+• IMPORTANTE — RESTRICCIONES DE FECHA: Antes de elegir los rangos a probar, TENÉ EN CUENTA:
+  → Si el paciente tiene obra social con días de espera (scheduling_delay_days, ej: OSDE = 40 días): la fecha más temprana es (hoy + N días). No pierdas tiempo probando fechas antes de ese límite.
+  → Si la clínica tiene fecha mínima (min_appointment_date): no busques antes de esa fecha.
+  → La fecha REAL más temprana es el máximo entre (hoy + días de espera de OS) y (min_appointment_date).
+  → Si OSDE requiere 40 días: NO intentes "semana que viene" ni "este mes". Arrancá directamente con rangos a partir de los 40 días.
+  → Si el sistema ya inyectó la info en el contexto (plazo mínimo, scheduling_delay_days), USALA para decidir los rangos.
 • PROHIBIDO llamar derivhumano por "falta de disponibilidad" si solo probaste UNA fecha.
 • Si check_availability devuelve turnos disponibles AUNQUE SEA EN FECHA LEJANA → mostralos al paciente. No decidas por él que "es muy lejos".
 • Para tratamientos de IMPLANTES/PRÓTESIS: PROHIBIDO derivar a otro profesional (los implantes son siempre con la doctora). SIEMPRE ofrecer el primer turno disponible con la doctora aunque sea más lejano.
