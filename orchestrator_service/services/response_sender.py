@@ -171,18 +171,26 @@ class ResponseSender:
                 
                 await asyncio.sleep(delay)
                 
+                # Try sending via YCloud, but ALWAYS save to DB regardless of outcome
+                yc_msg_id = None
                 try:
                     yc_resp = await client.send_text_message(to=external_user_id, text=bubble, from_number=sender_number)
                     yc_msg_id = yc_resp.get("id") if isinstance(yc_resp, dict) else None
-                    
-                    import json
-                    meta_json = json.dumps({"provider": "ycloud", "provider_message_id": str(yc_msg_id) if yc_msg_id else None})
-                    await pool.execute(
-                        "INSERT INTO chat_messages (tenant_id, conversation_id, role, content, from_number, platform_metadata) VALUES ($1, $2, 'assistant', $3, $4, $5::jsonb)",
-                        tenant_id, conversation_id, bubble, external_user_id, meta_json
-                    )
                 except Exception as e:
                     logger.error(f"❌ Error sending ycloud bubble: {e}")
+
+                # Always persist the message in DB so it shows in the web chat UI
+                # even when YCloud delivery fails (403, phone not registered, etc.)
+                import json
+                meta_json = json.dumps({
+                    "provider": "ycloud",
+                    "provider_message_id": str(yc_msg_id) if yc_msg_id else None,
+                    "delivery_status": "sent" if yc_msg_id else "failed",
+                })
+                await pool.execute(
+                    "INSERT INTO chat_messages (tenant_id, conversation_id, role, content, from_number, platform_metadata) VALUES ($1, $2, 'assistant', $3, $4, $5::jsonb)",
+                    tenant_id, conversation_id, bubble, external_user_id, meta_json
+                )
 
         elif provider == "meta_direct":
             import httpx
@@ -216,6 +224,7 @@ class ResponseSender:
 
                     for bubble in bot_bubbles:
                         await asyncio.sleep(delay)
+                        resp_status = None
                         try:
                             resp = await http_client.post(
                                 f"https://graph.facebook.com/v22.0/{phone_number_id}/messages",
@@ -228,17 +237,22 @@ class ResponseSender:
                                     "text": {"body": bubble}
                                 }
                             )
-                            meta_json = json.dumps({"provider": "meta_direct", "status": resp.status_code})
-                            await pool.execute(
-                                "INSERT INTO chat_messages (tenant_id, conversation_id, role, content, from_number, platform_metadata) VALUES ($1, $2, 'assistant', $3, $4, $5::jsonb)",
-                                tenant_id, conversation_id, bubble, external_user_id, meta_json
-                            )
+                            resp_status = resp.status_code
                         except Exception as e:
                             logger.error(f"Error sending meta_direct WA bubble: {e}")
+
+                        # Always persist regardless of delivery outcome
+                        import json
+                        meta_json = json.dumps({"provider": "meta_direct", "status": resp_status or "failed"})
+                        await pool.execute(
+                            "INSERT INTO chat_messages (tenant_id, conversation_id, role, content, from_number, platform_metadata) VALUES ($1, $2, 'assistant', $3, $4, $5::jsonb)",
+                            tenant_id, conversation_id, bubble, external_user_id, meta_json
+                        )
                 else:
                     # Facebook Messenger / Instagram DM
                     for bubble in bot_bubbles:
                         await asyncio.sleep(delay)
+                        resp_status = None
                         try:
                             resp = await http_client.post(
                                 "https://graph.facebook.com/v22.0/me/messages",
@@ -249,13 +263,17 @@ class ResponseSender:
                                     "messaging_type": "RESPONSE"
                                 }
                             )
-                            meta_json = json.dumps({"provider": "meta_direct", "status": resp.status_code})
-                            await pool.execute(
-                                "INSERT INTO chat_messages (tenant_id, conversation_id, role, content, from_number, platform_metadata) VALUES ($1, $2, 'assistant', $3, $4, $5::jsonb)",
-                                tenant_id, conversation_id, bubble, external_user_id, meta_json
-                            )
+                            resp_status = resp.status_code
                         except Exception as e:
                             logger.error(f"Error sending meta_direct IG/FB bubble: {e}")
+
+                        # Always persist regardless of delivery outcome
+                        import json
+                        meta_json = json.dumps({"provider": "meta_direct", "status": resp_status or "failed"})
+                        await pool.execute(
+                            "INSERT INTO chat_messages (tenant_id, conversation_id, role, content, from_number, platform_metadata) VALUES ($1, $2, 'assistant', $3, $4, $5::jsonb)",
+                            tenant_id, conversation_id, bubble, external_user_id, meta_json
+                        )
 
             logger.info(f"Meta Direct response sent: channel={channel} to={external_user_id} bubbles={len(bot_bubbles)}")
 

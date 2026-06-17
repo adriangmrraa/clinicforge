@@ -380,9 +380,10 @@ class EngineRouter:
 
     async def _load_mode_from_db(self, tenant_id: int) -> str:
         """Load engine mode from database."""
-        import db
+        from db import get_pool
 
-        mode = await db.pool.fetchval(
+        pool = get_pool()
+        mode = await pool.fetchval(
             "SELECT ai_engine_mode FROM tenants WHERE id = $1", tenant_id
         )
 
