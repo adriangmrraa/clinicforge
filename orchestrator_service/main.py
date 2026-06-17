@@ -2013,8 +2013,8 @@ async def check_availability(
                         f"📊 BOOKING_FLOW | check_availability ALLOWED despite state={_ca_state_str} "
                         f"— new-booking intent detected. phone={_ca_phone}"
                     )
-            elif _ca_state_str in ("OFFERED_SLOTS", "SLOT_LOCKED"):
-                logger.warning(f"📊 BOOKING_FLOW | ⚠️ check_availability called in state={_ca_state_str} — possible loop! phone={_ca_phone}")
+            elif _ca_state_str == "OFFERED_SLOTS":
+                logger.warning(f"📊 BOOKING_FLOW | ⚠️ check_availability called in state=OFFERED_SLOTS — possible loop! phone={_ca_phone}")
                 # Increment availability_attempts counter
                 try:
                     from services.conversation_state import increment_availability_attempts as _ca_incr
@@ -2032,6 +2032,15 @@ async def check_availability(
                         )
                 except Exception as _ca_avail_err:
                     logger.warning(f"📊 BOOKING_FLOW | availability_attempts check failed (non-blocking): {_ca_avail_err}")
+            elif _ca_state_str == "SLOT_LOCKED":
+                logger.warning(f"📊 BOOKING_FLOW | 🚫 check_availability BLOCKED: state=SLOT_LOCKED — slot already reserved. phone={_ca_phone}")
+                return (
+                    "BOOKING_ALREADY_IN_PROGRESS: Ya hay un turno pre-reservado en esta conversación. "
+                    "No debes llamar a check_availability. "
+                    "Debes llamar a book_appointment con los datos del turno bloqueado para confirmarlo. "
+                    "Si el paciente ya dio nombre y DNI del menor, usalos para book_appointment(is_minor=True). "
+                    "NUNCA llames check_availability cuando el estado es SLOT_LOCKED."
+                )
         except Exception:
             _ca_state_str = "?"
         logger.info(
@@ -4721,30 +4730,31 @@ async def book_appointment(
             )
             patient_id = row["id"]
 
-            # Auto-link minor to parent's family_patient_ids (fix-minor-booking-flow T3.1)
-            if is_minor and guardian_phone_value:
-                try:
-                    _parent_phone_for_link = chat_phone
-                    _link_result = await db.pool.execute(
-                        """
-                        UPDATE patients
-                        SET family_patient_ids = array_append(
-                            COALESCE(family_patient_ids, '{}'::integer[]),
-                            $1
-                        ),
-                        updated_at = NOW()
-                        WHERE tenant_id = $2
-                          AND (phone_number = $3 OR REGEXP_REPLACE(COALESCE(guardian_phone, ''), '[^0-9]', '', 'g') = REGEXP_REPLACE(COALESCE($4, ''), '[^0-9]', '', 'g'))
-                          AND NOT (COALESCE(family_patient_ids, '{}'::integer[]) @> ARRAY[$1])
-                        """,
-                        patient_id,
-                        tenant_id,
-                        _parent_phone_for_link,
-                        guardian_phone_value,
-                    )
-                    logger.info(f"🔗 AUTO-LINK: parent_phone={_parent_phone_for_link}, minor_id={patient_id}, result={_link_result}")
-                except Exception as _link_err:
-                    logger.warning(f"🔗 AUTO-LINK failed (non-blocking): {_link_err}")
+        # Auto-link minor to parent's family_patient_ids (fix-minor-booking-flow T3.1)
+        # Runs AFTER the if/else block so it covers BOTH existing and new patients.
+        if is_minor and guardian_phone_value and patient_id:
+            try:
+                _parent_phone_for_link = chat_phone
+                _link_result = await db.pool.execute(
+                    """
+                    UPDATE patients
+                    SET family_patient_ids = array_append(
+                        COALESCE(family_patient_ids, '{}'::integer[]),
+                        $1
+                    ),
+                    updated_at = NOW()
+                    WHERE tenant_id = $2
+                      AND (phone_number = $3 OR REGEXP_REPLACE(COALESCE(guardian_phone, ''), '[^0-9]', '', 'g') = REGEXP_REPLACE(COALESCE($4, ''), '[^0-9]', '', 'g'))
+                      AND NOT (COALESCE(family_patient_ids, '{}'::integer[]) @> ARRAY[$1])
+                    """,
+                    patient_id,
+                    tenant_id,
+                    _parent_phone_for_link,
+                    guardian_phone_value,
+                )
+                logger.info(f"🔗 AUTO-LINK: parent_phone={_parent_phone_for_link}, minor_id={patient_id}, result={_link_result}")
+            except Exception as _link_err:
+                logger.warning(f"🔗 AUTO-LINK failed (non-blocking): {_link_err}")
 
         # Lead context: clear now that patient exists in DB (self-bookings only)
         if not is_third_party:
@@ -5243,6 +5253,12 @@ async def book_appointment(
                 if interlocutor
                 else "el interlocutor"
             )
+            _anamnesis_instruction = (
+                f"\n\n---\n⚠️ INSTRUCCIÓN OBLIGATORIA: Incluí este link de ficha médica en tu respuesta al paciente.\n"
+                f"Texto a usar:\n"
+                f"\"Para ahorrar tiempo en tu consulta podés completar tu ficha médica aquí: {patient_anamnesis_url}\n"
+                f"Cuando termines avisame para corroborar los datos.\"\n---"
+            )
             result = (
                 f"✅ Turno confirmado para {patient_label} (solicitado por {interlocutor_name}):\n"
                 f"🦷 {treatment_display_name}\n"
@@ -5251,7 +5267,7 @@ async def book_appointment(
                 f"{sede_line}{price_line}"
                 f"{sena_block}\n"
                 f"[INTERNAL_PATIENT_PHONE:{phone}]\n"
-                f"[INTERNAL_ANAMNESIS_URL:{patient_anamnesis_url}]"
+                f"{_anamnesis_instruction}"
             )
             logger.info(f"📋 BOOK_APPOINTMENT RETURN (third-party): {result[:200]}...")
 
@@ -5289,6 +5305,12 @@ async def book_appointment(
 
             return result
         else:
+            _anamnesis_instruction = (
+                f"\n\n---\n⚠️ INSTRUCCIÓN OBLIGATORIA: Incluí este link de ficha médica en tu respuesta al paciente.\n"
+                f"Texto a usar:\n"
+                f"\"Para ahorrar tiempo en tu consulta podés completar tu ficha médica aquí: {patient_anamnesis_url}\n"
+                f"Cuando termines avisame para corroborar los datos.\"\n---"
+            )
             result = (
                 f"✅ Turno confirmado para {patient_label}:\n"
                 f"🦷 {treatment_display_name}\n"
@@ -5296,7 +5318,7 @@ async def book_appointment(
                 f"👩‍⚕️ Con {target_prof['first_name']}"
                 f"{sede_line}{price_line}"
                 f"{sena_block}\n"
-                f"[INTERNAL_ANAMNESIS_URL:{patient_anamnesis_url}]"
+                f"{_anamnesis_instruction}"
             )
             logger.info(f"📋 BOOK_APPOINTMENT RETURN (self): {result[:300]}...")
 
