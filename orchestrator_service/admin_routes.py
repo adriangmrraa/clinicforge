@@ -531,21 +531,29 @@ async def get_patient_clinical_context(
     if conv:
         patient = await db.pool.fetchrow(
             """
-            SELECT id, first_name, last_name, phone_number, status, urgency_level, urgency_reason, preferred_schedule,
-                   acquisition_source, meta_ad_id, meta_ad_headline, meta_ad_body, external_ids, medical_history
-            FROM patients
-            WHERE id = $1 AND tenant_id = $2 AND status != 'deleted'
-        """,
-            conv["linked_patient_id"],
-            tenant_id,
-        )
+                    SELECT id, first_name, last_name, phone_number, status, urgency_level, urgency_reason, preferred_schedule,
+                           acquisition_source, meta_ad_id, meta_ad_headline, meta_ad_body, external_ids, medical_history,
+                           family_patient_ids
+                    FROM patients
+                    WHERE id = $1 AND tenant_id = $2 AND status != 'deleted'
+                """,
+                    conv["linked_patient_id"],
+                    tenant_id,
+                )
 
     # Cargar familiares vinculados desde family_patient_ids
     family_members_data = None
-    if conv and patient:
-        family_ids_raw = conv.get("family_patient_ids") or []
-        family_ids = [fid for fid in family_ids_raw if fid != patient["id"]]
-        if family_ids:
+    # Merge family IDs from BOTH sources: conversation record + patient record
+    _family_ids_set = set()
+    if conv:
+        _family_ids_set.update(conv.get("family_patient_ids") or [])
+    if patient:
+        _family_ids_set.update(patient.get("family_patient_ids") or [])
+    # Exclude self
+    if patient:
+        _family_ids_set.discard(patient["id"])
+    family_ids = list(_family_ids_set)
+    if family_ids:
             family_patients_rows = await db.pool.fetch(
                 """
                 SELECT id, first_name, last_name, phone_number, status
@@ -653,7 +661,8 @@ async def get_patient_clinical_context(
             patient = await db.pool.fetchrow(
                 f"""
                 SELECT id, first_name, last_name, phone_number, status, urgency_level, urgency_reason, preferred_schedule,
-                       acquisition_source, meta_ad_id, meta_ad_headline, meta_ad_body, external_ids, medical_history
+                       acquisition_source, meta_ad_id, meta_ad_headline, meta_ad_body, external_ids, medical_history,
+                       family_patient_ids
                 FROM patients 
                 WHERE tenant_id = $1 AND phone_number IN ({placeholders})
                 AND status != 'deleted'
@@ -667,7 +676,8 @@ async def get_patient_clinical_context(
         patient = await db.pool.fetchrow(
             """
             SELECT id, first_name, last_name, phone_number, status, urgency_level, urgency_reason, preferred_schedule,
-                   acquisition_source, meta_ad_id, meta_ad_headline, meta_ad_body, external_ids, medical_history
+                   acquisition_source, meta_ad_id, meta_ad_headline, meta_ad_body, external_ids, medical_history,
+                   family_patient_ids
             FROM patients
             WHERE tenant_id = $1
             AND (
