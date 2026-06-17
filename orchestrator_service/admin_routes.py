@@ -596,6 +596,61 @@ async def get_patient_clinical_context(
                     "upcoming_appointment": dict(f_upcoming_apt) if f_upcoming_apt else None,
                 })
 
+    # 1a-1b. Fallback: buscar hijos del contacto por guardian_phone
+    # Cubre el caso donde el padre NO tiene registro como paciente (Lead/contacto solamente)
+    # pero tiene hijos creados con guardian_phone = su número de teléfono.
+    if not family_members_data or len(family_members_data) == 0:
+        try:
+            _gp_variants = generate_phone_variants(phone)
+            _gp_placeholders = ", ".join(f"${i+2}" for i in range(len(_gp_variants)))
+            _minor_rows = await db.pool.fetch(
+                f"""
+                SELECT id, first_name, last_name, phone_number, status
+                FROM patients
+                WHERE tenant_id = $1
+                  AND guardian_phone IN ({_gp_placeholders})
+                  AND status != 'deleted'
+                ORDER BY created_at DESC
+            """,
+                tenant_id,
+                *_gp_variants,
+            )
+            if _minor_rows:
+                if family_members_data is None:
+                    family_members_data = []
+                _existing_ids = {fm["patient"]["id"] for fm in family_members_data} if family_members_data else set()
+                for _mr in _minor_rows:
+                    if _mr["id"] in _existing_ids:
+                        continue
+                    if patient and _mr["id"] == patient["id"]:
+                        continue
+                    _mr_last = await db.pool.fetchrow(
+                        """SELECT a.id, a.appointment_datetime AS date, a.appointment_type AS type, a.status,
+                                  a.duration_minutes, p.first_name as professional_name
+                           FROM appointments a
+                           LEFT JOIN professionals p ON a.professional_id = p.id
+                           WHERE a.tenant_id = $1 AND a.patient_id = $2 AND a.appointment_datetime < NOW()
+                           ORDER BY a.appointment_datetime DESC LIMIT 1""",
+                        tenant_id, _mr["id"],
+                    )
+                    _mr_upcoming = await db.pool.fetchrow(
+                        """SELECT a.id, a.appointment_datetime AS date, a.appointment_type AS type, a.status,
+                                  a.duration_minutes, p.first_name as professional_name
+                           FROM appointments a
+                           LEFT JOIN professionals p ON a.professional_id = p.id
+                           WHERE a.tenant_id = $1 AND a.patient_id = $2 AND a.appointment_datetime >= NOW()
+                           AND a.status IN ('scheduled', 'confirmed')
+                           ORDER BY a.appointment_datetime ASC LIMIT 1""",
+                        tenant_id, _mr["id"],
+                    )
+                    family_members_data.append({
+                        "patient": dict(_mr),
+                        "last_appointment": dict(_mr_last) if _mr_last else None,
+                        "upcoming_appointment": dict(_mr_upcoming) if _mr_upcoming else None,
+                    })
+        except Exception as _gp_err:
+            logger.warning(f"[family_members] guardian_phone lookup failed: {_gp_err}")
+
     # 1a-2. Fallback: si el paciente tiene guardian_phone, buscar al familiar como family_member
     if patient and not conv:
         # Legacy link: guardian_phone set via link-guardian, no conversation record yet
