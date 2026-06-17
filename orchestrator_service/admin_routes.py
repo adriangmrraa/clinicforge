@@ -541,16 +541,35 @@ async def get_patient_clinical_context(
                     tenant_id,
                 )
 
+    # 1a-bis. Family fallback: buscar conv sin linked_patient_id para obtener family_patient_ids
+    # La query principal (1a) requiere linked_patient_id IS NOT NULL, pero la conv puede tener
+    # family_patient_ids incluso si linked_patient_id es NULL (ej: padre contacta por su hijo
+    # sin tener su propio registro como paciente, o linked_patient_id apunta al menor).
+    conv_family = None
+    if phone:
+        conv_family = await db.pool.fetchrow(
+            """
+            SELECT family_patient_ids FROM chat_conversations
+            WHERE tenant_id = $1 AND external_user_id = $2
+            LIMIT 1
+        """,
+            tenant_id,
+            phone,
+        )
+
     # Cargar familiares vinculados desde family_patient_ids
     family_members_data = None
-    # Merge family IDs from BOTH sources: conversation record + patient record
+    # Merge family IDs from ALL sources: conv (with linked), conv family fallback, patient record
     _family_ids_set = set()
     if conv:
         _family_ids_set.update(conv.get("family_patient_ids") or [])
+    if conv_family:
+        _family_ids_set.update(conv_family.get("family_patient_ids") or [])
     if patient:
         _family_ids_set.update(patient.get("family_patient_ids") or [])
-    # Exclude self
-    if patient:
+    # Exclude self — pero SOLO si el paciente NO es el único miembro del set
+    # (caso borde: linked_patient_id apunta al menor, que también está en family_patient_ids)
+    if patient and len(_family_ids_set) > 1:
         _family_ids_set.discard(patient["id"])
     family_ids = list(_family_ids_set)
     if family_ids:
