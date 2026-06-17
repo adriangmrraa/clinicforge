@@ -837,7 +837,7 @@ async def get_patient_clinical_context(
         "upcoming_appointment": None,
         "treatment_plan": None,
         "is_guest": True,
-        "family_members": None,
+        "family_members": family_members_data,
     }
 
 
