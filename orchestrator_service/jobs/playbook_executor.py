@@ -1204,7 +1204,7 @@ async def check_appointment_reminders():
             appointments = await db.pool.fetch("""
                 SELECT a.id, a.patient_id, a.professional_id, a.appointment_datetime,
                        a.appointment_type, a.status,
-                       p.phone_number
+                       p.phone_number, p.guardian_phone
                 FROM appointments a
                 JOIN patients p ON a.patient_id = p.id AND p.tenant_id = a.tenant_id
                 WHERE a.tenant_id = $1
@@ -1222,6 +1222,9 @@ async def check_appointment_reminders():
             """, tenant_id, tomorrow_start, tomorrow_end)
 
             for apt in appointments:
+                # Si el paciente tiene guardian_phone, usar ese como destino del recordatorio
+                # (cubre el caso de menores creados con -M1 cuyo teléfono no es un WhatsApp real)
+                _reminder_phone = apt.get("guardian_phone") or apt["phone_number"]
                 context = {
                     "appointment_type": apt["appointment_type"],
                     "professional_id": apt["professional_id"],
@@ -1230,7 +1233,7 @@ async def check_appointment_reminders():
                 }
                 exec_ids = await create_execution_for_event(
                     db.pool, tenant_id, "appointment_reminder",
-                    apt["phone_number"],
+                    _reminder_phone,
                     patient_id=apt["patient_id"],
                     appointment_id=str(apt["id"]),
                     context=context,

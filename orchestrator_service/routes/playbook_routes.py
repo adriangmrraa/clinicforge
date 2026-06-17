@@ -175,7 +175,8 @@ async def send_reminders_now(
             p.id as patient_id,
             p.first_name,
             p.last_name,
-            p.phone_number
+            p.phone_number,
+            p.guardian_phone
         FROM appointments a
         INNER JOIN patients p ON a.patient_id = p.id AND p.tenant_id = a.tenant_id
         WHERE a.tenant_id = $1
@@ -223,6 +224,7 @@ async def send_reminders_now(
 
     for apt in appointments:
         try:
+            _reminder_phone = apt.get("guardian_phone") or apt["phone_number"]
             patient_name = apt["first_name"] or "paciente"
             apt_time = apt["appointment_datetime"]
             # Convert to tenant timezone for correct display (_tz already resolved above)
@@ -255,7 +257,7 @@ async def send_reminders_now(
                 ]
 
                 sent, reason, _wamid = await _send_template(
-                    tenant_id, apt["phone_number"], template_name, template_lang, components,
+                    tenant_id, _reminder_phone, template_name, template_lang, components,
                     patient_name=full_name,
                     appointment_info={
                         "treatment": apt.get("appointment_type") or "Consulta",
@@ -272,7 +274,7 @@ async def send_reminders_now(
 
             # NO fallback to free text — only send if template succeeds
             if not sent:
-                logger.warning(f"⚠️ Template failed for {full_name} ({apt['phone_number']}), skipping (no free text fallback)")
+                logger.warning(f"⚠️ Template failed for {full_name} ({_reminder_phone}), skipping (no free text fallback)")
                 skip_count += 1
                 continue
 
@@ -286,7 +288,7 @@ async def send_reminders_now(
                 # Log in automation_logs (same as daily job)
                 from jobs.playbook_executor import _log_reminder
                 await _log_reminder(
-                    tenant_id, "sent", full_name, apt["phone_number"],
+                    tenant_id, "sent", full_name, _reminder_phone,
                     message_preview=msg_preview or f"Recordatorio {formatted_date} {formatted_time}",
                     rule_id=rule["id"] if rule else None,
                     patient_id=apt.get("patient_id"),
@@ -294,11 +296,11 @@ async def send_reminders_now(
                     source="playbook",
                 )
                 sent_count += 1
-                logger.info(f"✅ Manual reminder sent to {full_name} ({apt['phone_number']})")
+                logger.info(f"✅ Manual reminder sent to {full_name} ({_reminder_phone})")
             else:
                 from jobs.playbook_executor import _log_reminder
                 await _log_reminder(
-                    tenant_id, "failed", full_name, apt["phone_number"],
+                    tenant_id, "failed", full_name, _reminder_phone,
                     message_preview=msg_preview,
                     error_detail="send_failed",
                     rule_id=rule["id"] if rule else None,
