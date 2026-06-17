@@ -547,14 +547,16 @@ async def get_patient_clinical_context(
     # sin tener su propio registro como paciente, o linked_patient_id apunta al menor).
     conv_family = None
     if phone:
+        _cf_variants = generate_phone_variants(phone)
+        _cf_placeholders = ", ".join(f"${i+2}" for i in range(len(_cf_variants)))
         conv_family = await db.pool.fetchrow(
-            """
+            f"""
             SELECT family_patient_ids FROM chat_conversations
-            WHERE tenant_id = $1 AND external_user_id = $2
+            WHERE tenant_id = $1 AND external_user_id IN ({_cf_placeholders})
             LIMIT 1
         """,
             tenant_id,
-            phone,
+            *_cf_variants,
         )
 
     # Cargar familiares vinculados desde family_patient_ids

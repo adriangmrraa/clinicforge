@@ -4744,7 +4744,7 @@ async def book_appointment(
                     ),
                     updated_at = NOW()
                     WHERE tenant_id = $2
-                      AND (phone_number = $3 OR REGEXP_REPLACE(COALESCE(guardian_phone, ''), '[^0-9]', '', 'g') = REGEXP_REPLACE(COALESCE($4, ''), '[^0-9]', '', 'g'))
+                      AND (REGEXP_REPLACE(COALESCE(phone_number, ''), '[^0-9]', '', 'g') = REGEXP_REPLACE(COALESCE($3, ''), '[^0-9]', '', 'g') OR REGEXP_REPLACE(COALESCE(guardian_phone, ''), '[^0-9]', '', 'g') = REGEXP_REPLACE(COALESCE($4, ''), '[^0-9]', '', 'g'))
                       AND NOT (COALESCE(family_patient_ids, '{}'::integer[]) @> ARRAY[$1])
                     """,
                     patient_id,
@@ -4752,7 +4752,25 @@ async def book_appointment(
                     _parent_phone_for_link,
                     guardian_phone_value,
                 )
-                logger.info(f"🔗 AUTO-LINK: parent_phone={_parent_phone_for_link}, minor_id={patient_id}, result={_link_result}")
+                logger.info(f"🔗 AUTO-LINK parent patients: parent_phone={_parent_phone_for_link}, minor_id={patient_id}, result={_link_result}")
+                # ALSO update chat_conversations.family_patient_ids so the clinical context
+                # finds the minor via conv_family query (which reads from the conversation).
+                _link_conv_result = await db.pool.execute(
+                    """
+                    UPDATE chat_conversations
+                    SET family_patient_ids = array_append(
+                        COALESCE(family_patient_ids, '{}'::integer[]),
+                        $1
+                    )
+                    WHERE tenant_id = $2 AND external_user_id = $3
+                      AND NOT ($1 = ANY(COALESCE(family_patient_ids, '{}'::integer[])))
+                    """,
+                    patient_id,
+                    tenant_id,
+                    chat_phone,
+                )
+                if _link_conv_result:
+                    logger.info(f"🔗 AUTO-LINK conv family_patient_ids: conv_phone={chat_phone}, minor_id={patient_id}, result={_link_conv_result}")
             except Exception as _link_err:
                 logger.warning(f"🔗 AUTO-LINK failed (non-blocking): {_link_err}")
 
