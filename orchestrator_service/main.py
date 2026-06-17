@@ -3912,7 +3912,7 @@ async def book_appointment(
                 guardian_phone_value = _ctx_minor_row["phone_number"]
         minor_count = (
             await db.pool.fetchval(
-                "SELECT COUNT(*) FROM patients WHERE tenant_id = $1 AND guardian_phone = $2",
+                "SELECT COUNT(*) FROM patients WHERE tenant_id = $1 AND REGEXP_REPLACE(COALESCE(guardian_phone, ''), '[^0-9]', '', 'g') = REGEXP_REPLACE(COALESCE($2, ''), '[^0-9]', '', 'g')",
                 tenant_id,
                 guardian_phone_value,
             )
@@ -4315,14 +4315,14 @@ async def book_appointment(
             # Minor: search by guardian_phone + DNI or guardian_phone + name
             if dni:
                 existing_patient = await db.pool.fetchrow(
-                    "SELECT id, status, phone_number, insurance_provider FROM patients WHERE tenant_id = $1 AND guardian_phone = $2 AND dni = $3",
+                    "SELECT id, status, phone_number, insurance_provider FROM patients WHERE tenant_id = $1 AND REGEXP_REPLACE(COALESCE(guardian_phone, ''), '[^0-9]', '', 'g') = REGEXP_REPLACE(COALESCE($2, ''), '[^0-9]', '', 'g') AND dni = $3",
                     tenant_id,
                     guardian_phone_value,
                     dni,
                 )
             if not existing_patient and first_name:
                 existing_patient = await db.pool.fetchrow(
-                    "SELECT id, status, phone_number, insurance_provider FROM patients WHERE tenant_id = $1 AND guardian_phone = $2 AND first_name = $3",
+                    "SELECT id, status, phone_number, insurance_provider FROM patients WHERE tenant_id = $1 AND REGEXP_REPLACE(COALESCE(guardian_phone, ''), '[^0-9]', '', 'g') = REGEXP_REPLACE(COALESCE($2, ''), '[^0-9]', '', 'g') AND first_name = $3",
                     tenant_id,
                     guardian_phone_value,
                     first_name,
@@ -4720,6 +4720,31 @@ async def book_appointment(
                 _patient_source,
             )
             patient_id = row["id"]
+
+            # Auto-link minor to parent's family_patient_ids (fix-minor-booking-flow T3.1)
+            if is_minor and guardian_phone_value:
+                try:
+                    _parent_phone_for_link = chat_phone
+                    _link_result = await db.pool.execute(
+                        """
+                        UPDATE patients
+                        SET family_patient_ids = array_append(
+                            COALESCE(family_patient_ids, '{}'::integer[]),
+                            $1
+                        ),
+                        updated_at = NOW()
+                        WHERE tenant_id = $2
+                          AND (phone_number = $3 OR REGEXP_REPLACE(COALESCE(guardian_phone, ''), '[^0-9]', '', 'g') = REGEXP_REPLACE(COALESCE($4, ''), '[^0-9]', '', 'g'))
+                          AND NOT (COALESCE(family_patient_ids, '{}'::integer[]) @> ARRAY[$1])
+                        """,
+                        patient_id,
+                        tenant_id,
+                        _parent_phone_for_link,
+                        guardian_phone_value,
+                    )
+                    logger.info(f"🔗 AUTO-LINK: parent_phone={_parent_phone_for_link}, minor_id={patient_id}, result={_link_result}")
+                except Exception as _link_err:
+                    logger.warning(f"🔗 AUTO-LINK failed (non-blocking): {_link_err}")
 
         # Lead context: clear now that patient exists in DB (self-bookings only)
         if not is_third_party:

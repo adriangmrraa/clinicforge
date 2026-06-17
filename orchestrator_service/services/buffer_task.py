@@ -1369,11 +1369,12 @@ async def process_buffer_task(
 
             # Load linked minor patients (children) via guardian_phone
             # Use ANY() to match both chat phone and resolved patient phone when linked
-            _guardian_phones = [external_user_id]
-            if resolved_patient_phone and resolved_patient_phone not in _guardian_phones:
-                _guardian_phones.append(resolved_patient_phone)
+            # Normalize phone values to strip non-digits for reliable matching
+            _guardian_phones = [re.sub(r'\D', '', p) for p in [external_user_id]]
+            if resolved_patient_phone and re.sub(r'\D', '', resolved_patient_phone) not in _guardian_phones:
+                _guardian_phones.append(re.sub(r'\D', '', resolved_patient_phone))
             minor_rows = await pool.fetch(
-                "SELECT id, first_name, last_name, dni, phone_number, anamnesis_token FROM patients WHERE tenant_id = $1 AND guardian_phone = ANY($2::text[])",
+                "SELECT id, first_name, last_name, dni, phone_number, anamnesis_token FROM patients WHERE tenant_id = $1 AND REGEXP_REPLACE(COALESCE(guardian_phone, ''), '[^0-9]', '', 'g') = ANY(SELECT REGEXP_REPLACE(v, '[^0-9]', '', 'g') FROM unnest($2::text[]) AS v)",
                 tenant_id,
                 _guardian_phones,
             )
@@ -1686,20 +1687,132 @@ async def process_buffer_task(
             except Exception:
                 pass
 
+        # Pre-booking minor context: detect from current messages AND cached lead_context
+        # Check user messages for minor booking indicators BEFORE the LLM call
+        _MINOR_STOP_WORDS = {"de", "un", "una", "el", "la", "los", "las", "y", "e", "a", "para", "con", "por", "en", "del", "que"}
+
+        try:
+            _msg_text = " ".join(messages).lower()
+            _minor_patterns = [
+                "mi hija", "mi hijo", "mi nena", "mi nene", "mi beba", "mi bebe",
+                "para la nena", "para el nene", "para mi hija", "para mi hijo",
+                "es menor",
+            ]
+            _has_minor_indicator = any(p in _msg_text for p in _minor_patterns)
+
+            if _has_minor_indicator:
+                # Save minor context to lead_context BEFORE any tool call
+                from services.lead_context import merge as _lc_merge
+                # Extract potential name: look for words after "para" or "mi hija/o/nena/nene"
+                _minor_first = ""
+                _minor_last = ""
+                _minor_dni = ""
+
+                # Try to extract names after "para" or "mi hija/o/nena/nene"
+                _name_match = re.search(r'(?:para|mi hija|mi hijo|mi nena|mi nene)\s+(?:mi\s+)?(\w+)(?:\s+(\w+))?', _msg_text)
+                if _name_match:
+                    _raw_first = _name_match.group(1).lower()
+                    _raw_last = _name_match.group(2).lower() if _name_match.group(2) else ""
+                    # Skip stop words — "para mi nena de 11 años" → "de" is not a name
+                    if _raw_first not in _MINOR_STOP_WORDS:
+                        _minor_first = _name_match.group(1).capitalize()
+                    if _raw_last and _raw_last not in _MINOR_STOP_WORDS and len(_raw_last) > 2 and not _raw_last.isdigit():
+                        _minor_last = _name_match.group(2).capitalize()
+
+                # Direct name pattern: message starts with "[Word] [Word] [7-8 digit DNI]" (no keywords needed)
+                # e.g. "Luisana Zúñiga 54492865 - por favor de tarde"
+                if not _minor_first:
+                    _direct_name = re.search(r'^(\w+)\s+(\w+)\s+\b(\d{7,8})\b', _msg_text)
+                    if _direct_name:
+                        _dn_first = _direct_name.group(1).lower()
+                        _dn_last = _direct_name.group(2).lower()
+                        if _dn_first not in _MINOR_STOP_WORDS and _dn_last not in _MINOR_STOP_WORDS:
+                            _minor_first = _direct_name.group(1).capitalize()
+                            _minor_last = _direct_name.group(2).capitalize()
+                            _minor_dni = _direct_name.group(3)
+
+                # Try to extract DNI (8 digits) from messages if not already set
+                if not _minor_dni:
+                    _dni_match = re.search(r'\b(\d{7,8})\b', _msg_text)
+                    if _dni_match:
+                        _minor_dni = _dni_match.group(1)
+
+                _lc_fields = {"is_minor": "true"}
+                if _minor_first:
+                    _lc_fields["minor_first_name"] = _minor_first
+                if _minor_last:
+                    _lc_fields["minor_last_name"] = _minor_last
+                if _minor_dni:
+                    _lc_fields["minor_dni"] = _minor_dni
+
+                await _lc_merge(tenant_id, external_user_id, _lc_fields)
+                logger.info(f"📌 MINOR CONTEXT DETECTED: name={_minor_first or '?'} {_minor_last or ''}, dni={_minor_dni or '?'}")
+
+                # Also save to convstate booking_targets if possible
+                try:
+                    from services.conversation_state import set_booking_targets as _cs_set_minor
+                    _cs_phone = current_customer_phone.get() if current_customer_phone else None
+                    if _cs_phone:
+                        _minor_target = {
+                            "type": "third_party",
+                            "is_minor": True,
+                            "first_name": _minor_first,
+                            "last_name": _minor_last,
+                            "dni": _minor_dni,
+                            "status": "pending",
+                            "relationship": "hijo/a"
+                        }
+                        await _cs_set_minor(tenant_id, _cs_phone, [_minor_target])
+                        logger.info(f"📌 MINOR BOOKING TARGET saved to convstate")
+                except Exception as _cs_minor_err:
+                    logger.debug(f"📌 convstate booking_targets save skipped: {_cs_minor_err}")
+        except Exception:
+            pass
+
         # Minor booking context: even for KNOWN patients, inject the cached
         # is_minor flag so the AI remembers "this parent is booking for a child"
         # across long conversations where the original message fell out of history.
         try:
             from services.lead_context import get as _lc_get
+            from services.lead_context import merge as _lc_merge_ctx
 
             _lc_data = await _lc_get(tenant_id, external_user_id)
             if _lc_data and _lc_data.get("is_minor") == "true":
+                # Even if no MINOR keywords in CURRENT message, try to extract
+                # name/DNI from it and update lead_context incrementally.
+                # This handles: msg1="para mi nena" → msg2="Luisana Zúñiga 54492865"
+                if not _lc_data.get("minor_first_name") or not _lc_data.get("minor_dni"):
+                    _msg_lower = " ".join(messages).lower()
+                    _incr_dni = re.search(r'\b(\d{7,8})\b', _msg_lower)
+                    _incr_name = re.search(r'^(\w+)\s+(\w+)\s+\b(\d{7,8})\b', _msg_lower)
+                    _incr_fields = {}
+                    if _incr_name:
+                        _f = _incr_name.group(1).capitalize()
+                        _l = _incr_name.group(2).capitalize()
+                        if _f.lower() not in _MINOR_STOP_WORDS and _l.lower() not in _MINOR_STOP_WORDS:
+                            _incr_fields["minor_first_name"] = _f
+                            _incr_fields["minor_last_name"] = _l
+                            _incr_fields["minor_dni"] = _incr_name.group(3)
+                    elif _incr_dni and not _lc_data.get("minor_dni"):
+                        _incr_fields["minor_dni"] = _incr_dni.group(1)
+                    if _incr_fields:
+                        await _lc_merge_ctx(tenant_id, external_user_id, _incr_fields)
+                        logger.info(f"📌 MINOR CONTEXT INCREMENTAL: updated with {_incr_fields}")
+
                 _minor_name = f"{_lc_data.get('minor_first_name', '')} {_lc_data.get('minor_last_name', '')}".strip()
-                _minor_ctx = f"\n[INTERNAL_BOOKING_CONTEXT] Este interlocutor está agendando para su HIJO/A MENOR: {_minor_name or 'nombre pendiente'}. Usá is_minor=true en book_appointment. NO pidas teléfono del menor."
-                if patient_context:
-                    patient_context += _minor_ctx
-                else:
-                    patient_context = _minor_ctx
+                # Re-read after potential update
+                _lc_data2 = await _lc_get(tenant_id, external_user_id)
+                if _lc_data2:
+                    _minor_name2 = f"{_lc_data2.get('minor_first_name', '')} {_lc_data2.get('minor_last_name', '')}".strip()
+                    _minor_dni2 = _lc_data2.get("minor_dni", "")
+                    _minor_ctx = f"\n[INTERNAL_BOOKING_CONTEXT] Este interlocutor está agendando para su HIJO/A MENOR: {_minor_name2 or 'nombre pendiente'}"
+                    if _minor_dni2:
+                        _minor_ctx += f" | DNI: {_minor_dni2}"
+                    _minor_ctx += ". Usá is_minor=true en book_appointment. NO pidas teléfono del menor."
+                    if patient_context:
+                        patient_context += _minor_ctx
+                    else:
+                        patient_context = _minor_ctx
         except Exception:
             pass
 
@@ -1898,6 +2011,27 @@ async def process_buffer_task(
                         _ctx_lines.append(f"ACTUAL: Agendando para {_current.get('type', 'self')} ({_current.get('relationship', 'el paciente')})")
                         _ctx_lines.append("REGLA: Agendá UNA persona a la vez. Después de confirmar el turno actual, continuá con la siguiente.")
                         system_prompt += "\n\n" + "\n".join(_ctx_lines)
+
+                    # Single-target minor booking context injection (fix-minor-booking-flow)
+                    if len(_btargets) == 1:
+                        _bt = _btargets[0]
+                        if _bt.get("is_minor") or _bt.get("relationship") in ("hijo/a", "hijo", "hija", "menor"):
+                            _minor_name_bt = f"{_bt.get('first_name', '')} {_bt.get('last_name', '')}".strip()
+                            _minor_dni_bt = _bt.get("dni", "")
+                            _ctx_minor_lines = [
+                                "MINOR BOOKING IN PROGRESS: El turno que se está gestionando es para un MENOR.",
+                                f"Nombre del menor: {_minor_name_bt or 'pendiente'}",
+                            ]
+                            if _minor_dni_bt:
+                                _ctx_minor_lines.append(f"DNI del menor: {_minor_dni_bt}")
+                            _ctx_minor_lines.append("REGLAS:")
+                            _ctx_minor_lines.append("- Usá is_minor=true en book_appointment.")
+                            _ctx_minor_lines.append("- NO le pidas teléfono del menor al paciente.")
+                            _ctx_minor_lines.append("- La vinculación con el padre/madre es automática.")
+                            system_prompt += "\n\n" + "\n".join(_ctx_minor_lines)
+                            logger.info(
+                                f"📌 MINOR BOOKING CONTEXT injected: {_minor_name_bt or 'pending'}"
+                            )
         except Exception as _cs_inject_err:
             logger.debug(f"convstate context injection skipped: {_cs_inject_err}")
 
@@ -2312,6 +2446,20 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                         logger.info(
                             f"🔒 STATE_GUARD: Injecting hint for SLOT_LOCKED state. Details: {_slot_details}"
                         )
+
+                    # Inject failed_slots into STATE_HINT for all non-IDLE states (fix-minor-booking-flow T2.2)
+                    if prev_state_str not in ("IDLE",):
+                        _state_failed_slots = prev_state.get("failed_slots") or []
+                        if _state_failed_slots:
+                            _failed_block = "\n\nSLOTS FALLIDOS (PROHIBIDO re-ofrecer):\n" + "\n".join(
+                                f"  • {f.get('date', '??')} {f.get('time', '??')} — {f.get('code', 'UNAVAILABLE')}"
+                                for f in _state_failed_slots
+                            )
+                            _failed_block += "\nREGLA: NO ofrezcas ninguno de estos slots al paciente."
+                            state_hint += _failed_block
+                            logger.info(
+                                f"📊 BOOKING_FLOW | FAILED_SLOTS injected into STATE_HINT: {len(_state_failed_slots)} slots"
+                            )
             except Exception as state_err:
                 logger.warning(f"[STATE_GUARD] Failed to get state: {state_err}")
 
@@ -2743,12 +2891,12 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
 
             # Check if interlocutor has linked minors — if so, ask who the file belongs to
             try:
-                _guardian_phones = [external_user_id]
-                if resolved_patient_phone and resolved_patient_phone not in _guardian_phones:
-                    _guardian_phones.append(resolved_patient_phone)
+                _guardian_phones = [re.sub(r'\D', '', external_user_id or '')]
+                if resolved_patient_phone and re.sub(r'\D', '', resolved_patient_phone) not in _guardian_phones:
+                    _guardian_phones.append(re.sub(r'\D', '', resolved_patient_phone))
                 minor_count = (
                     await pool.fetchval(
-                        "SELECT COUNT(*) FROM patients WHERE tenant_id = $1 AND guardian_phone = ANY($2::text[])",
+                        "SELECT COUNT(*) FROM patients WHERE tenant_id = $1 AND REGEXP_REPLACE(COALESCE(guardian_phone, ''), '[^0-9]', '', 'g') = ANY(SELECT REGEXP_REPLACE(v, '[^0-9]', '', 'g') FROM unnest($2::text[]) AS v)",
                         tenant_id,
                         _guardian_phones,
                     )
@@ -3238,6 +3386,82 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                                         logger.warning(
                                             f"🔒 STATE_GUARD: Retry failed, degrading gracefully"
                                         )
+
+                            # SLOT_LOCKED output guard (fix-minor-booking-flow T2.1)
+                            # If LLM is in SLOT_LOCKED state and calls check_availability, retry with stronger instructions
+                            elif prev_state_str == "SLOT_LOCKED":
+                                _sl_tools_called = []
+                                _sl_steps = response.get("intermediate_steps", [])
+                                for _sl_step in _sl_steps:
+                                    if isinstance(_sl_step, tuple) and len(_sl_step) > 0:
+                                        _sl_tn = (
+                                            _sl_step[0].get("name", "")
+                                            if hasattr(_sl_step[0], "get")
+                                            else str(_sl_step[0])
+                                        )
+                                        _sl_tools_called.append(_sl_tn)
+
+                                if "check_availability" in _sl_tools_called:
+                                    _sl_retry_count = 0
+                                    logger.warning(
+                                        f"🔒 SLOT_LOCKED GUARD: LLM called check_availability in SLOT_LOCKED state. "
+                                        f"tenant_id={tenant_id} phone={phone} tools_called={_sl_tools_called}"
+                                    )
+
+                                    # Retry with strong nudge to use book_appointment
+                                    _sl_retry_count += 1
+                                    logger.warning(
+                                        f"🔒 SLOT_LOCKED GUARD: Retry attempt {_sl_retry_count}"
+                                    )
+                                    _sl_nudge = (
+                                        f"{user_input}\n\n[SISTEMA: IMPORTANTE - Estás en estado SLOT_LOCKED. "
+                                        f"Ya hay un turno pre-reservado. NO llames check_availability. "
+                                        f"Debes llamar book_appointment con los datos del turno bloqueado. "
+                                        f"NO check_availability. Usá book_appointment.]"
+                                    )
+
+                                    if _get_cb:
+                                        with _get_cb() as _sl_cb:
+                                            _sl_response = await executor.ainvoke(
+                                                {
+                                                    "input": _sl_nudge,
+                                                    "chat_history": chat_history,
+                                                    "system_prompt": system_prompt,
+                                                }
+                                            )
+                                    else:
+                                        _sl_response = await executor.ainvoke(
+                                            {
+                                                "input": _sl_nudge,
+                                                "chat_history": chat_history,
+                                                "system_prompt": system_prompt,
+                                            }
+                                        )
+
+                                    _sl_retry_text = _sl_response.get("output", "")
+                                    # Check if retry still calls check_availability
+                                    _sl_retry_steps = _sl_response.get("intermediate_steps", [])
+                                    _sl_retry_tools = []
+                                    for _sl_rs in _sl_retry_steps:
+                                        if isinstance(_sl_rs, tuple) and len(_sl_rs) > 0:
+                                            _sl_rtn = (
+                                                _sl_rs[0].get("name", "")
+                                                if hasattr(_sl_rs[0], "get")
+                                                else str(_sl_rs[0])
+                                            )
+                                            _sl_retry_tools.append(_sl_rtn)
+
+                                    if "check_availability" in _sl_retry_tools:
+                                        logger.warning(
+                                            f"🔒 SLOT_LOCKED GUARD: Retry also called check_availability. Returning error. "
+                                            f"retry_tools={_sl_retry_tools}"
+                                        )
+                                        response_text = "No se pudo completar el agendamiento. Derivando a un operador."
+                                    elif _sl_retry_text and len(_sl_retry_text) > len(response_text):
+                                        response_text = _sl_retry_text
+                                        logger.info(f"🔒 SLOT_LOCKED GUARD: Retry successful — LLM proceeded with booking.")
+                                    else:
+                                        logger.warning(f"🔒 SLOT_LOCKED GUARD: Retry failed, degrading gracefully")
                     except Exception as state_guard_err:
                         logger.warning(
                             f"[STATE_GUARD] Output guard failed: {state_guard_err}"

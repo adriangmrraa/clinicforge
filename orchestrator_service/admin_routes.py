@@ -2260,7 +2260,7 @@ async def force_booking(
     background_tasks: BackgroundTasks,
     allowed_ids: List[int] = Depends(get_allowed_tenant_ids),
 ):
-    """Fuerza a la IA a retomar el chat para completar el agendamiento de un turno."""
+    """Fuerza el agendamiento extrayendo datos del historial del chat."""
     phone = payload.phone
     tenant_id = payload.tenant_id
     if not phone or tenant_id is None:
@@ -2322,26 +2322,270 @@ async def force_booking(
     provider = conv["provider"] or "chatwoot"
     channel = conv["channel"] or "whatsapp"
 
-    # 6. Fetch last user message
+    # 6. Fetch last 20 chat messages for data extraction
     has_tenant = await db.check_column_exists("chat_messages", "tenant_id")
     if has_tenant:
-        last_msg = await db.pool.fetchrow(
+        chat_msgs = await db.pool.fetch(
             """
-            SELECT content FROM chat_messages 
-            WHERE from_number = $1 AND tenant_id = $2 AND role = 'user'
-            ORDER BY created_at DESC LIMIT 1
-            """, phone, tenant_id,
+            SELECT content, role, from_number, created_at
+            FROM chat_messages
+            WHERE conversation_id = $1 AND tenant_id = $2
+            ORDER BY created_at DESC LIMIT 20
+            """, conv_id, tenant_id,
         )
     else:
-        last_msg = await db.pool.fetchrow(
+        chat_msgs = await db.pool.fetch(
             """
-            SELECT content FROM chat_messages 
-            WHERE from_number = $1 AND role = 'user'
-            ORDER BY created_at DESC LIMIT 1
-            """, phone,
+            SELECT content, role, from_number, created_at
+            FROM chat_messages
+            WHERE conversation_id = $1
+            ORDER BY created_at DESC LIMIT 20
+            """, conv_id,
         )
 
-    # 7. Build the special booking instruction
+    # 7. Parse extracted data from chat messages
+    # Priority: human (secretary/admin) messages override patient messages
+    _all_text = " ".join(m.get("content", "") for m in chat_msgs)
+    _human_text = " ".join(
+        m.get("content", "") for m in chat_msgs
+        if m.get("role") in ("assistant", "system", "bot", "agent")
+    )
+    _patient_text = " ".join(
+        m.get("content", "") for m in chat_msgs
+        if m.get("role") == "user"
+    )
+
+    # Spanish month name → number mapping for "26 de Junio" style dates
+    _MESES = {
+        "enero": 1, "febrero": 2, "marzo": 3, "abril": 4, "mayo": 5, "junio": 6,
+        "julio": 7, "agosto": 8, "septiembre": 9, "setiembre": 9, "octubre": 10,
+        "noviembre": 11, "diciembre": 12,
+        "ene": 1, "feb": 2, "mar": 3, "abr": 4, "may": 5, "jun": 6,
+        "jul": 7, "ago": 8, "sep": 9, "set": 9, "oct": 10, "nov": 11, "dic": 12,
+    }
+    _current_year = 2026  # current year context
+
+    extracted = {
+        "first_name": None,
+        "last_name": None,
+        "dni": None,
+        "date": None,
+        "time": None,
+        "is_minor": False,
+    }
+
+    # Extract DNI (7-8 digits)
+    _dni_match = re.search(r'\b(\d{7,8})\b', _all_text)
+    if _dni_match:
+        extracted["dni"] = _dni_match.group(1)
+
+    # Extract full name pattern (Name Surname or Name Surname after booking keywords)
+    # Try "Nombre:" or "nombre:" patterns first
+    _name_match = re.search(r'(?:nombre|Nombre|Nombre completo|nombre completo)[:\s]+(\w+)\s+(\w+)', _all_text)
+    if _name_match:
+        extracted["first_name"] = _name_match.group(1).capitalize()
+        extracted["last_name"] = _name_match.group(2).capitalize()
+    else:
+        # Fallback: extract from patient data patterns like "Valentina Pérez"
+        _name_fallback = re.search(r'(?:es\s+para|para\s+la\s+nena|para\s+el\s+nene|para\s+mi\s+hija|para\s+mi\s+hijo)\s+(\w+)\s+(\w+)', _all_text, re.IGNORECASE)
+        if _name_fallback:
+            extracted["first_name"] = _name_fallback.group(1).capitalize()
+            extracted["last_name"] = _name_fallback.group(2).capitalize()
+        else:
+            # Fallback: look for "[Word] [Word] [7-8 digit DNI]" in patient messages (direct name mention)
+            # e.g. "Luisana Zúñiga 54492865 - por favor de tarde"
+            _direct_name = re.search(r'(\w+)\s+(\w+)\s+\b(\d{7,8})\b', _patient_text)
+            if _direct_name:
+                extracted["first_name"] = _direct_name.group(1).capitalize()
+                extracted["last_name"] = _direct_name.group(2).capitalize()
+                if not extracted["dni"]:
+                    extracted["dni"] = _direct_name.group(3)
+
+    # Extract date: try multiple patterns
+
+    def _is_valid_booking_date(day, month, year):
+        """Validate that the extracted date is an APPOINTMENT date (not a birthdate/old year)."""
+        if year and int(year) < _current_year - 1:
+            # Year too far in the past → likely a birthdate, skip
+            return False
+        if not year:
+            # No year → accept
+            return True
+        return True
+
+    def _store_date(day, month, year):
+        day_s = str(day).zfill(2)
+        month_s = str(month).zfill(2)
+        year_s = str(year) if year else ""
+        if _is_valid_booking_date(day, month, year):
+            extracted["date"] = f"{day_s}/{month_s}{'/' + year_s if year_s else ''}"
+            return True
+        return False
+
+    # Pattern 1: "X de Mes" (e.g. "26 de Junio", "viernes 26 de Junio")
+    _date_natural = re.search(r'(?:el\s+)?(\d{1,2})\s+de\s+(\w+)', _all_text, re.IGNORECASE)
+    if _date_natural:
+        _d = int(_date_natural.group(1))
+        _m_name = _date_natural.group(2).lower().strip()
+        if _m_name in _MESES and 1 <= _d <= 31:
+            _m_num = _MESES[_m_name]
+            # Check if this date is also mentioned with a year somewhere
+            _year_nat_match = re.search(r'(?:de\s+)?(\d{4})\b', _all_text)
+            _y_val = int(_year_nat_match.group(1)) if _year_nat_match else None
+            _store_date(_d, _m_num, _y_val)
+
+    # Pattern 2: DD/MM or DD/MM/YYYY (only if no date found yet)
+    if not extracted["date"]:
+        _date_match = re.search(r'\b(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{4}))?\b', _all_text)
+        if _date_match:
+            _day = int(_date_match.group(1))
+            _month = int(_date_match.group(2))
+            _year = int(_date_match.group(3)) if _date_match.group(3) else None
+            if 1 <= _day <= 31 and 1 <= _month <= 12:
+                _store_date(_day, _month, _year)
+
+    # Extract time (HH:MM)
+    _time_match = re.search(r'\b(\d{1,2}):(\d{2})\b', _all_text)
+    if _time_match:
+        _h = int(_time_match.group(1))
+        _m = int(_time_match.group(2))
+        if 0 <= _h <= 23 and 0 <= _m <= 59:
+            extracted["time"] = f"{_h:02d}:{_m:02d}"
+
+    # Extract is_minor from any message mentioning child keywords
+    _minor_keywords = ["hija", "hijo", "nena", "nene", "menor", "beba", "bebe", "peque"]
+    extracted["is_minor"] = any(k in _all_text.lower() for k in _minor_keywords)
+
+    # Priority: if date/time were mentioned by a HUMAN (secretary/admin), use those
+    # Human pattern 1: "X de Mes"
+    _human_date_nat = re.search(r'(?:el\s+)?(\d{1,2})\s+de\s+(\w+)', _human_text, re.IGNORECASE)
+    if _human_date_nat:
+        _hd = int(_human_date_nat.group(1))
+        _hm_name = _human_date_nat.group(2).lower().strip()
+        if _hm_name in _MESES and 1 <= _hd <= 31:
+            _hm_num = _MESES[_hm_name]
+            _store_date(_hd, _hm_num, _current_year)  # assume current year for human dates
+
+    # Human pattern 2: DD/MM/YYYY
+    _human_date_num = re.search(r'\b(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{4}))?\b', _human_text)
+    if _human_date_num:
+        _hd = int(_human_date_num.group(1))
+        _hm = int(_human_date_num.group(2))
+        _hy = int(_human_date_num.group(3)) if _human_date_num.group(3) else None
+        if 1 <= _hd <= 31 and 1 <= _hm <= 12:
+            if _is_valid_booking_date(_hd, _hm, _hy) if _hy else True:
+                extracted["date"] = f"{str(_hd).zfill(2)}/{str(_hm).zfill(2)}{'/' + str(_hy) if _hy else ''}"
+
+    _human_time = re.search(r'\b(\d{1,2}):(\d{2})\b', _human_text)
+    if _human_time:
+        _hht = int(_human_time.group(1))
+        _hmt = int(_human_time.group(2))
+        if 0 <= _hht <= 23 and 0 <= _hmt <= 59:
+            extracted["time"] = f"{_hht:02d}:{_hmt:02d}"
+
+    logger.info(f"📋 FORCE BOOKING: extracted data={extracted}")
+
+    # 8. Check if all required fields are present for direct booking
+    _missing = []
+    if not extracted["first_name"]:
+        _missing.append("first_name")
+    if not extracted["last_name"]:
+        _missing.append("last_name")
+    if not extracted["dni"]:
+        _missing.append("dni")
+    if not extracted["date"]:
+        _missing.append("date")
+    if not extracted["time"]:
+        _missing.append("time")
+
+    if not _missing:
+        # All required fields present — call book_appointment directly
+        try:
+            from main import book_appointment as _force_book_apt
+            from main import current_customer_phone, current_tenant_id
+
+            _token_phone = current_customer_phone.set(phone)
+            _token_tenant = current_tenant_id.set(tenant_id)
+            try:
+                _date_time_str = f"{extracted['date']} {extracted['time']}"
+                _force_result = await _force_book_apt(
+                    date_time=_date_time_str,
+                    treatment_reason="consulta",
+                    first_name=extracted["first_name"],
+                    last_name=extracted["last_name"],
+                    dni=extracted["dni"],
+                    is_minor=extracted["is_minor"],
+                )
+                logger.info(f"📋 FORCE BOOKING: direct booking result={_force_result!r}")
+                # Send via background task to process the response
+                from services.buffer_task import process_buffer_task
+
+                background_tasks.add_task(
+                    process_buffer_task,
+                    tenant_id=tenant_id,
+                    conversation_id=str(conv_id),
+                    external_user_id=phone,
+                    messages=[f"El administrador forzó el agendamiento. Resultado: {_force_result}. Informá al paciente del resultado."],
+                    provider=provider,
+                    channel=channel,
+                )
+                return {
+                    "success": True,
+                    "message": f"Agendamiento forzado ejecutado. Resultado: {_force_result[:100] if isinstance(_force_result, str) else str(_force_result)}",
+                    "phone": phone,
+                    "tenant_id": tenant_id,
+                    "extracted_data": {k: v for k, v in extracted.items() if k != "dni"},
+                }
+            finally:
+                current_customer_phone.reset(_token_phone)
+                current_tenant_id.reset(_token_tenant)
+        except Exception as _force_err:
+            logger.error(f"📋 FORCE BOOKING: direct booking failed: {_force_err}")
+            # Fall back to LLM-based approach
+            return force_booking_fallback(
+                phone, tenant_id, conv_id, provider, channel,
+                background_tasks, chat_msgs, extracted=extracted,
+            )
+
+    # 9. Missing fields — try LLM fallback or return error
+    if len(_missing) <= 2:
+        # Only 1-2 fields missing — try LLM-based approach with enhanced instruction
+        return force_booking_fallback(
+            phone, tenant_id, conv_id, provider, channel,
+            background_tasks, chat_msgs, extracted=extracted,
+        )
+
+    # 10. Multiple fields missing — return error
+    raise HTTPException(
+        status_code=400,
+        detail={
+            "error": "MISSING_FIELDS",
+            "missing": _missing,
+            "extracted": {k: v for k, v in extracted.items() if v is not None},
+            "message": "No se pudieron extraer suficientes datos del historial del chat para completar el agendamiento automático."
+        }
+    )
+
+
+def force_booking_fallback(
+    phone: str, tenant_id: int, conv_id, provider: str, channel: str,
+    background_tasks: BackgroundTasks, chat_msgs: list,
+    extracted: Optional[dict] = None,
+):
+    """Fallback: send enhanced instruction to LLM for booking completion."""
+    _last_content = chat_msgs[0]["content"] if chat_msgs else ""
+
+    # Include already-extracted data so LLM can complete from partial info
+    _extracted_hint = ""
+    if extracted:
+        _present = {k: v for k, v in extracted.items() if v}
+        if _present:
+            _extracted_hint = (
+                "\nDATOS YA EXTRAÍDOS DEL HISTORIAL (usá estos datos si coinciden):\n"
+                + "\n".join(f"  • {k}: {v}" for k, v in _present.items())
+                + "\n"
+            )
+
     instruction = (
         "[SISTEMA: INSTRUCCIÓN ESPECIAL DEL ADMINISTRADOR. El administrador de la clínica te ha solicitado retomar este chat para COMPLETAR EL AGENDAMIENTO DE UN TURNO para este paciente.\n\n"
         "Revisá el historial de la conversación. Determiná:\n"
@@ -2350,15 +2594,15 @@ async def force_booking(
         "3. ¿Ya hay un horario disponible? Si no, usa check_availability.\n"
         "4. ¿Ya se confirmó un horario? Si no, esperá que el paciente elija y usá confirm_slot.\n"
         "5. ¿Se tienen los datos del paciente (nombre completo, DNI)?\n"
-        "6. ¿Falta algo?\n\n"
+        "6. ¿Falta algo? Si solo falta 1-2 datos, pedilos y completá.\n\n"
         "Si faltan datos, pedilos amablemente. Si ya están todos, completá el agendamiento con book_appointment.\n"
-        "NO derivar a humano. Completá el turno.]\n\n"
-        "Mensaje del paciente: " + (last_msg["content"] if last_msg else "")
+        "NO derivar a humano. Completá el turno."
+        f"{_extracted_hint}"
+        "]\n\n"
+        "Mensaje del paciente: " + _last_content
     )
 
-    # 8. Dispatch process_buffer_task with the instruction as messages
     from services.buffer_task import process_buffer_task
-
     background_tasks.add_task(
         process_buffer_task,
         tenant_id=tenant_id,
@@ -2369,7 +2613,7 @@ async def force_booking(
         channel=channel,
     )
 
-    return {"success": True, "message": "IA re-encaminada para completar agendamiento", "phone": phone, "tenant_id": tenant_id}
+    return {"success": True, "message": "IA re-encaminada para completar agendamiento (fallback)", "phone": phone, "tenant_id": tenant_id}
 
 
 @router.get("/internal/credentials/{name}", tags=["Internal"])
