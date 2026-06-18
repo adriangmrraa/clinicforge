@@ -608,7 +608,7 @@ def _handle_agent_error(response_text: str) -> str:
 
     # 2. Clean up empty parenthetical artifacts from stripping
     text = re.sub(r"\(\)", "", text)
-    text = re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r"[ \t]+", " ", text).strip()
 
     # 3. Replace false "error del sistema" phrases
     text_lower = text.lower()
