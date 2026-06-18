@@ -33,6 +33,7 @@ ALL_BLOCK_KEYS: tuple[str, ...] = (
     "derivation_rules_section",
     "holidays_section",
     "faqs_section",
+    "instructions_section",
     "bank_info",
     "sede_info",          # dict
     "sede_info_text",     # string rendering of sede_info for prompt interpolation
@@ -41,8 +42,8 @@ ALL_BLOCK_KEYS: tuple[str, ...] = (
 
 # Per-specialist block whitelist (REQ-4.1 / design D3).
 SPECIALIST_BLOCKS: dict[str, list[str]] = {
-    "reception": ["clinic_basics", "faqs_section", "holidays_section"],
-    "booking":   ["clinic_basics", "insurance_section", "holidays_section", "derivation_rules_section", "sede_info_text"],
+    "reception": ["clinic_basics", "faqs_section", "holidays_section", "instructions_section"],
+    "booking":   ["clinic_basics", "insurance_section", "payment_section", "holidays_section", "derivation_rules_section", "sede_info_text", "bank_info"],
     "triage":    ["clinic_basics", "special_conditions_block"],
     "billing":   ["clinic_basics", "insurance_section", "payment_section", "bank_info"],
     "anamnesis": ["clinic_basics", "special_conditions_block"],
@@ -251,7 +252,18 @@ async def _fetch_treatment_display_map(pool, tenant_id: int) -> dict[str, str]:
         return {}
 
 
-async def _fetch_insurance_section(pool, tenant_id: int, treatment_display_map: dict) -> str:
+async def _fetch_insurance_section(pool, tenant_id: int, treatment_display_map: dict, user_message_text: str = "") -> str:
+    # Attempt RAG first
+    if user_message_text:
+        try:
+            from services.embedding_service import format_all_context_with_rag
+            rag = await format_all_context_with_rag(pool, tenant_id, user_message_text, [])
+            if isinstance(rag, dict):
+                section = rag.get("insurance_section")
+                if section:
+                    return section
+        except Exception:
+            pass
     try:
         rows = await pool.fetch(
             """SELECT id, provider_name, status, coverage_by_treatment, is_prepaid,
@@ -327,7 +339,18 @@ async def _fetch_support_policy_block(tenant_row: dict | None) -> str:
         return ""
 
 
-async def _fetch_derivation_rules_section(pool, tenant_id: int) -> str:
+async def _fetch_derivation_rules_section(pool, tenant_id: int, user_message_text: str = "") -> str:
+    # Attempt RAG first
+    if user_message_text:
+        try:
+            from services.embedding_service import format_all_context_with_rag
+            rag = await format_all_context_with_rag(pool, tenant_id, user_message_text, [])
+            if isinstance(rag, dict):
+                section = rag.get("derivation_section")
+                if section:
+                    return section
+        except Exception:
+            pass
     try:
         rows = await pool.fetch(
             """SELECT dr.id, dr.rule_name, dr.patient_condition, dr.treatment_categories,
@@ -361,6 +384,23 @@ async def _fetch_holidays_section(pool, tenant_id: int) -> str:
         return _format_holidays_inline(holidays or [])
     except Exception as exc:
         logger.debug(f"tenant_context: holidays_section failed: {exc}")
+        return ""
+
+
+async def _fetch_instructions_section(pool, tenant_id: int) -> str:
+    """Fetch clinic instructions/config notes. Pure static for now; RAG path ready."""
+    try:
+        row = await pool.fetchrow(
+            "SELECT instructions_notes FROM tenants WHERE id = $1",
+            tenant_id,
+        )
+        if row and row.get("instructions_notes"):
+            notes = str(row["instructions_notes"]).strip()
+            if notes:
+                return "## INSTRUCCIONES DE LA CLÍNICA\n" + notes
+        return ""
+    except Exception as exc:
+        logger.debug(f"tenant_context: instructions_section failed: {exc}")
         return ""
 
 
@@ -446,14 +486,16 @@ async def build_tenant_context_blocks(
             derivation_rules_section,
             holidays_section,
             faqs_section,
+            instructions_section,
         ) = await asyncio.gather(
-            _fetch_insurance_section(pool, tenant_id, treatment_display_map),
+            _fetch_insurance_section(pool, tenant_id, treatment_display_map, user_message_text),
             _fetch_payment_section(tenant_row),
             _fetch_special_conditions_block(tenant_row, treatment_display_map),
             _fetch_support_policy_block(tenant_row),
-            _fetch_derivation_rules_section(pool, tenant_id),
+            _fetch_derivation_rules_section(pool, tenant_id, user_message_text),
             _fetch_holidays_section(pool, tenant_id),
             _fetch_faqs_section(pool, tenant_id, user_message_text),
+            _fetch_instructions_section(pool, tenant_id),
         )
 
         # Sync helpers (derived from tenant_row)
@@ -474,6 +516,7 @@ async def build_tenant_context_blocks(
                 "derivation_rules_section": derivation_rules_section,
                 "holidays_section": holidays_section,
                 "faqs_section": faqs_section,
+                "instructions_section": instructions_section,
                 "bank_info": bank_info,
                 "sede_info": sede_info,
                 "sede_info_text": sede_info_text,

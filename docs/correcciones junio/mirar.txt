@@ -1,55 +1,195 @@
-# Cosas para mirar
+te dejo dos ejemplos donde se rompio totalmente la estructura de los mensajes de fechas y confirmacion de turno. Sucedio en estos ejemplos pero pasa en todos, y no debe ser asi, debe tener la estructura que te dejo al final, con saltos de linea y orden visual:
 
-## 1. ✅ Recordatorio preview: profesional hardcodeado (FIXED)
 
-En `orchestrator_service/routes/playbook_routes.py`, línea 270:
-- `"professional": "Laura Delgado"` estaba hardcodeado, siempre mostraba "Con Laura Delgado" en la preview del reminder sin importar qué profesional tenía el turno.
-- Fix: se agregó `LEFT JOIN professionals pr ON a.professional_id = pr.id` a la query, se traen `pr.first_name/professional_last_name`, y se usa el nombre real del profesional.
+Buenas tardes. Quisiera hacer una consulta con Dra. Delgado. Me estoy terminando tratamiento de conducto y también nesesito perno o tornillos en el paladar. Quisiera una consulta o evaluación para saber lo más adecuado para hacer. Tengo entendido que es particular los tratamientos y no tendría problema. Solo saber si trabajan solo con contado o algun tipo de financiamiento. Disculpe. Espero. Saludo atte. Ricardo
+05:58 p. m.
 
-## 2. Mensajes sin respuesta intermitentes (FIXED)
+Hola 😊 Soy Paula, del equipo de Clínica Dra. Laura Delgado. Entiendo, Ricardo. Para ese tipo de evaluación lo ideal es que te vea la Dra. Delgado o el equipo según lo que necesites revisar. Por ahora no encontré disponibilidad en el primer intento, ¿querés que busque para la semana que viene o preferís decirme qué día te viene bien
+05:58 p. m.
 
-**Causa raíz:** `import re` condicional dentro de `process_buffer_task` (línea 3666) shadoweaba el import global de `re`, rompiendo los list comprehensions cuando el `if` era false.
+La semana que viene puede ser en cualquier horario después de las 10.30 y antes de las 15.45 hs
+06:00 p. m.
 
-**Síntomas:** 2-3 chats no respondidos, Forzar Procesamiento sin efecto.
+Cualquier dia
+06:00 p. m.
 
-## 3. Mensajes sin respuesta TOTAL — post-deploy (FIXED)
+🗓️ Opciones disponibles para tu evaluación de Consulta de Cirugía C: ℹ️ Si contás con estudios previos (radiografías, tomografía u otros), podés traerlos. En caso de ser necesario, se indicarán durante la evaluación para una correcta planificación. 1️⃣ Lunes 22/06 — 16:30 hs 2️⃣ Martes 23/06 — 13:15 hs Cuál te queda mejor
+06:00 p. m.
 
-**Causa raíz:** El bloque multi-agent dispatch (pre-existente en el working tree) hacía que el solo retry loop hiciera `break` inmediato porque `response_text` ya tenía valor. Pero `response` solo se definía DENTRO del loop. Post-loop, `response.get("intermediate_steps", [])` explotaba con `UnboundLocalError`.
+Perfecto! Entonces te va bien cualquiera de las dos opciones 😊 Te recuerdo las opciones: 1️⃣ Lunes 22/06 — 16:30 hs 2️⃣ Martes 23/06 — 13:15 hs Cuál te queda mejor
+06:01 p. m.
 
-**Por qué pasó AHORA:** Antes del fix #2, `process_buffer_task` explotaba en el `re` NameError ANTES de llegar al multi-agent dispatch. Con el fix #2, el código llega al multi-agent, ejecuta OK, pero se topa con este segundo bug que es taba latente.
+Martes 23/6 13.15 hs que valor es la consulta?
+06:02 p. m.
 
-**Fix:** Inicializar `response = {}` antes del loop. Cuando multi-agent responde, `response` queda como `{}` y los `.get()` post-loop devuelven `[]` sin error.
+La consulta de evaluación tiene un valor de $60.000. Ahí la doctora evalúa tu caso y te orienta sobre las opciones de tratamiento más adecuadas para vos. Una vez realizada la evaluación, se informa el plan y el presupuesto correspondiente. Y respecto al turno, te queda bien el martes 23/06 a las 13:15 hs
+06:02 p. m.
 
-```
-process_buffer_task_fatal_error | UnboundLocalError("cannot access local variable 'response' where it is not associated with a value")
-```
+Si. Bueno y otra cosa tienen financiamiento con tarjetas de crédito o similar
+06:04 p. m.
 
-## 4. ✅ Error email de confirmación de pago (FIXED, en este commit)
+Perfecto, ya tengo reservado ese horario provisionalmente 📅 Para dejarte el turno agendado necesito tu apellido y tu DNI, solo números 😊 Y sobre el pago, ¿querés que te cuente cómo manejan las tarjetas
+06:04 p. m.
 
-**Error:** "column t.phone does not exist"
+Dale decime
+06:19 p. m.
 
-**Causa:** `email_service.py` referenciaba `phone` como columna directa de `tenants`, pero no existe. El teléfono de la clínica se guarda en `config->>'phone'` (JSONB).
+Como es el tema con tarjeta de crédito
+06:20 p. m.
 
-**Fix:** Cambiado `t.phone` a `t.config->>'phone' as phone` en las dos queries (welcome email + payment confirmation).
+Dale 😊 Sobre el pago, aceptamos efectivo, transferencia y tarjeta. Para dejarte el turno confirmado me falta tu DNI, solo números, así lo cierro
+06:20 p. m.
 
-## Logs del error #2 (referencia)
+Perdoná, se venció la reserva temporal de ese horario. ¿Me pasás tu apellido y tu DNI, así te busco una nueva disponibilidad para la Dra. Laura Delgado
+06:20 p. m.
 
-```json
-{"event": "🛡️ Processing Buffer Task | tenant=1 conv=4c6391f0... user=+5492994539215 provider=ycloud msgs=1"}
-{"event": "🔗 Patient resolved via linked_patient_id=264 phone=+5492994539215"}
-{"event": "patient_memories table ensured (v2)"}
-{"event": "process_buffer_task_fatal_error", "exc_info": ["<class 'NameError'>", "NameError(\"cannot access free variable 're' where it is not associated with a value in enclosing scope\")", "<traceback object at 0x77de101e2500>"]}
-{"event": "🔇 Suppressing error fallback message (not sending to patient): Disculpas, estoy experimentando intermitencias..."}
-{"event": "🔇 No response to send (empty text, no media) — skipping send for +5492994539215"}
-```
+Ricardo Totolo 21380062
+06:21 p. m.
 
-## Logs del error #3 post-deploy (referencia)
+Perdoná, esa reserva venció justo antes de confirmarla. Te lo vuelvo a gestionar con la Dra. Laura Delgado, pero necesito buscar otra disponibilidad. ¿Querés que lo haga
+06:21 p. m.
 
-```json
-{"event": "🛡️ Processing Buffer Task | tenant=1 conv=ee8c0fdb... user=+5493704868421 provider=ycloud msgs=1"}
-{"event": "🖥️ Engine mode for tenant 1: multi"}
-{"event": "🤖 Multi-agent dispatch OK for tenant 1 — agent=booking duration=1441ms"}
-{"event": "process_buffer_task_fatal_error", "exc_info": ["<class 'UnboundLocalError'>", "UnboundLocalError(\"cannot access local variable 'response' where it is not associated with a value\")", ...]}
-{"event": "🔇 Suppressing error fallback message..."}
-{"event": "🔇 No response to send (empty text, no media) — skipping send for +5493704868421"}
-```
+Si
+06:21 p. m.
+
+Entiendo la situación, Ricardo. Ya le pasé tu caso al equipo para que lo revisen y te contacten por WhatsApp en breve 😊
+06:22 p. m.
+
+Dale
+06:23 p. m.
+
+
+-------------------
+
+SEGUNDO CHAT DONDE TAMBIEN HAY DESORDEN VISUAL, Y TODO ESTA ASI:
+
+Hola?
+03:58 p. m.
+
+Quiero un turno para sacarme dos muelas
+03:58 p. m.
+
+Me duele muchísimo
+03:58 p. m.
+
+Uy, qué mal que estás así. Para darte un turno por extracción, decime primero: ¿tenés obra social o sos particular?
+03:59 p. m.
+
+Tengo osde
+03:59 p. m.
+
+Trabajan con OSDE?
+03:59 p. m.
+
+Sí, trabajamos con OSDE 😊 La consulta de evaluación puede realizarse por tu cobertura. Si querés saber si un tratamiento específico está cubierto, decime cuál y te lo confirmo.
+04:00 p. m.
+
+Para sacarme las muelas 🦷
+04:00 p. m.
+
+Nose que tratamiento sería
+04:00 p. m.
+
+Cirugía?
+04:00 p. m.
+
+Sí, puede ser cirugía, pero antes decime: ¿tenés obra social o sos particular? Si me decís cuál obra social tenés, te confirmo si la trabajan y te paso turnos.
+04:01 p. m.
+
+Tengo osde te dije
+04:01 p. m.
+
+Sí, con OSDE trabajamos. El coseguro de la consulta es de $20.000 y se abona en efectivo el día de la consulta; además, OSDE tiene un plazo mínimo de 40 días, así que no puedo ofrecerte turnos antes de esa fecha. ¿Querés que te pase opciones disponibles a partir de ahí?
+04:02 p. m.
+
+Si dale
+04:02 p. m.
+
+¡Dale! Te confirmo en un toque.
+04:03 p. m.
+
+?
+04:04 p. m.
+
+¿Querés atenderte por un tratamiento específico o querés sacar un turno de evaluación?
+04:04 p. m.
+
+Para extracción de muelas sería
+04:25 p. m.
+
+Me das un turno Porfavor
+04:25 p. m.
+
+🦷 Te dejo estas opciones para tu evaluación de Consulta de Cirugía S: 1️⃣ Martes 28/07 — 10:00 hs 2️⃣ Miércoles 29/07 — 13:00 hs ¿Cuál te queda mejor
+04:26 p. m.
+
+Pero tengo osde
+04:27 p. m.
+
+obra social osde
+04:27 p. m.
+
+Sí, trabajamos con OSDE 😊 La consulta de evaluación puede realizarse por tu cobertura. Y respecto al turno, ¿te queda mejor el 1️⃣ o el 2️⃣
+04:27 p. m.
+
+La opción 1
+04:29 p. m.
+
+Perfecto, ya te reservé provisoriamente el turno del martes 28/07 a las 10:00 con la Dra. Laura Delgado ✅ Para dejarlo agendado me faltan tu nombre y apellido, y tu DNI solo números
+04:30 p. m.
+
+Adrian Gamarra es mi nombre
+04:31 p. m.
+
+Mi Dni es 40989310
+04:31 p. m.
+
+Listo, quedó tu evaluación con la Dra. Laura Delgado el martes 28/07 a las 10:00 😊 📍 Salta 147, Neuquén Capital 🗺️ https://maps.app.goo.gl/w8qH8FmQvhQ6b9iy9  Si querés, podés adelantar una seña de $30.000 para asegurar el turno: Alias: dradelgadoml CBU: 0970099455003515270012 Titular: Delgado Maria Laura No es obligatorio, tu turno ya quedó agendado.
+04:31 p. m.
+
+Para ahorrar tiempo en tu consulta podés completar tu ficha médica aquí: https://app.dralauradelgado.com/anamnesis/1/b0000ba2-080b-41f0-932a-29eae5665479  Cuando termines avisame para corroborar los datos
+04:31 p. m.
+
+Te dejo las instrucciones pre-tratamiento para Consulta de Cirugía S:
+04:33 p. m.
+
+• Estudios previos si los tiene y autorización de obra social en caso de corresponder.
+04:34 p. m.
+
+• Solo los indicados por el profesional tratante.
+• Aspirina, ibuprofeno en altas dosis y anticoagulantes sin indicación médica.
+04:34 p. m.
+
+
+---------
+
+
+
+La forma correcta deberia ser asi:
+
+- Dar slots disponibles:
+
+🦷 Te dejo estas opciones para tu evaluación de Consulta de Cirugía S: 
+1️⃣ Martes 28/07 — 10:00 hs
+2️⃣ Miércoles 29/07 — 13:00 hs
+¿Cuál te queda mejor?
+
+
+- Confirmacion de turno agendado:
+
+
+Listo, quedó tu evaluación con la Dra. Laura Delgado el martes 28/07 a las 10:00 😊
+
+📍 Salta 147, Neuquén Capital
+🗺️ https://maps.app.goo.gl/w8qH8FmQvhQ6b9iy9
+
+Si querés, podés adelantar una seña de $30.000 para asegurar el turno:
+Alias: dradelgadoml
+CBU: 0970099455003515270012
+Titular: Delgado Maria Laura
+No es obligatorio, tu turno ya quedó agendado.
+
+
+Para ahorrar tiempo en tu consulta podés completar tu ficha médica aquí:
+
+https://app.dralauradelgado.com/anamnesis/1/b0000ba2-080b-41f0-932a-29eae5665479 Cuando termines avisame para corroborar los datos

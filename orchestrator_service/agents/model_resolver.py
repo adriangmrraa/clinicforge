@@ -69,7 +69,8 @@ async def resolve_tenant_model(tenant_id: int) -> dict[str, Any]:
     # ---- 2. Resolve model from system_config ----
     model = DEFAULT_OPENAI_MODEL
     try:
-        from db import pool as db_pool  # type: ignore
+        from db import get_pool
+        db_pool = get_pool()
 
         row = await db_pool.fetchrow(
             "SELECT value FROM system_config WHERE key = $1 AND tenant_id = $2",

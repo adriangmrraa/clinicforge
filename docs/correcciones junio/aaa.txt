@@ -1,114 +1,277 @@
-desd telegram yo puedo actualizar un presupuesto?  le regunte eso, tr mando el chat: 
+Aqui tengo un problema que encontre y necesito que lo corrijas, en trealidad y esta algo implementado y hay que agregarle ma sinformacion digamos. Te explico:
 
-Actualiza el presupuesto , 60mil rs una consulta, y la segunda consulta tiene valor de 1500000 pesos argentinos. Actualiza el presupuesto de adrian
-Quedarían en 1560000
-No pude actualizarlo porque el presupuesto de Adrian quedó cargado con un solo ítem y el sistema no me dejó modificar ese plan desde acá.
-
-
-otro agente de codigo me respondio:
-
-
-I will search in `services/nova_tools.py` to see what budget/treatment plan tools are currently available to the AI agent, and see why the agent failed or what options exist for updating items.
-
-Searched for "presupuesto"
-
-I will search `nova_tools.py` for tools or functions that allow modifying/updating a budget, treatment plan, or its items.
-
-Searched for "modificar_presupuesto"
-
-I will view `services/nova_tools.py` around line 1441 to see the tool definition and details for `agregar_item_presupuesto` and other nearby tools.
-
-Viewed nova_tools.py:1435-1465
-
-I will search `nova_tools.py` for queries targeting the `treatment_plan_items` or `treatment_plans` tables to see if there is any update or modification tool currently implemented in python.
-
-Searched for "UPDATE treatment_plan"
-
-I will view the `_aprobar_presupuesto` and `_agregar_item_presupuesto` logic to understand the constraints on modifying budget items once a budget is created or approved.
-
-Viewed nova_tools.py:2798-2850
-
-I will search for `def _agregar_item_presupuesto` to inspect its implementation and see what validations are executed when adding an item to a budget.
-
-Searched for "def _agregar_item_presupuesto"
-
-I will view `_agregar_item_presupuesto` starting from line 3220 to see the checks applied.
-
-Viewed nova_tools.py:3220-3270
-
-I will view the rest of the function `_agregar_item_presupuesto`.
-
-Viewed nova_tools.py:3271-3290
-
-No, **desde Telegram no podés modificar precios de ítems existentes ni eliminarlos**. 
-
-### ¿Por qué falló el agente?
-El agente de Telegram tiene herramientas para:
-1. `crear_presupuesto` (en borrador).
-2. `agregar_item_presupuesto` (añadir ítems nuevos).
-3. `sincronizar_turnos_presupuesto`.
-4. `aprobar_presupuesto`.
-
-Sin embargo, **no cuenta con herramientas para editar el precio de un ítem que ya fue agregado ni para borrar ítems**. Además, una vez que un presupuesto está en estado **aprobado** (`approved`), queda bloqueado para modificaciones automáticas de precios desde la IA. 
-
-### ¿Cómo resolverlo?
-Cualquier edición de precios o eliminación de ítems la tenés que hacer directamente desde la **Web App** (el panel de React).
-
-¿Querés que desarrollemos una herramienta nueva para que el bot de Telegram pueda modificar o eliminar ítems de un presupuesto en borrador?3
+Hay un boton de VINCULAR PACIENTE  en el contexto a la derecha de los chats, en la pagina de chats, cuando yo doy click ahi me abre un modal donde puedo tipear y escoger el paciente que quiero vincular a este  chat, y esto funciona super bien, si el chat en este caso el lead VOLVIMOS lo enlazamos a Joselin Troncoso y si el chat de volvimoss mando imagene so documentos o comprobantes de pago se guardan directamente en la ficha de paciente que tiene enlazado, entiendes? Esto funciona bien, pero no es persistente, osea, que si manda una foto ahora, nos e guarda automaticamente, debo darle click al boton, enlazarlo, y ahi se agrega el documento nuevo a la ficha del paciente vinculado, entendes? Enntonces esto es lo primero que debes corregir que cuando se enlace una vez, quede persistente y conectado el chat a ese paciente, y a la derecha del paciente se debe ver el chat vinculado, y a la derecha del chat del que es lead se debe ver el nonbre del paciente vinculado, entiendes? Y otra cosa es que tuve problemas porejemplo si habla un lead que tiene un paciente vinculado, le dice que quiere cancelar un turno, el agente de ia siempre revisa los turnos del chat nomas, no del paciente vinculado, entiendes? entonces no solo el turno deberia obtener ahi como contexto en el chat con el que noe spaciente sino que tiene vinculado al apciente, deberia obtener todos los turnos, presupuestos y demas cosas del paciente que tiene vinculado, entiendes? Y deberia poder reagendar un turno asi de esta forma, osea el padre habla y tiene vinculada a su mujer que es paciente de nuestra clinica, y manda un comprobante de pago, entonces se debe procesar y registrar el pago correspondiente en la fucha de la mujer, y si quiere agendar un turno para su mujer, l aia deberia poder hacerlo, y lo mismo si se quiere reagendar, o cancelar. ok? Y para las plantillas, recordatorios, instrucciones y demas automatizaciones o lo que tenga que ver con mensajes salientes hacia el apciente, se le debe mandar tanto al paciente como al chat que esta vinculado, ok? 
 
 
 
+chat completo: 
 
----Y YO LE DIJE:
+Buenos días quería avisar q no vamos a poder asistir al turno con joselin
+12:46 p. m.
 
-Sisi quiero que hagas eso. Deberia poder editar con cuidado digamos y con confirmaciones  de datos y de donde se quiere eeditar, se deberia poder editar el precio, tratamientos del presupuesto, y notas o detalles de los tratamientos, se deberia poder agregar un pago de x monto en el presupuesto aprobado, y asi, ok? deberia pdoer hacer todo desde telegram, como te digo, cel agente debe pedir confirmaciones en algunas situaciones, previamente busca informacion y ahi repsonde con infromacion real y da opcioens , digo, el agente siempre debe confirmar y tener claro donde va a cambiar un vlaor, entiendes?
+----------Aqui la ia le dice que no tiene turnos pero es obvioi, porque este chat no tiene turnos , esta hablando de la paciente que este chat tiene vinculado, pero ahora ni siquiera en el contexto del cliente se ve, como te dije arriba solo funciona para agregar los attachments en la ficha del paciente vinculado, y ahora deberia funcionar completamente como te dije arriba, osea,  el agente d eia debe poder ver todos los turnos del paciente vinculado, la vinculacion debe ser persistente, y asi. -----
 
-----a lo que me dio el siguiente plan:
+No encontré turnos próximos agendados.
+12:46 p. m.
 
+Si querés, te ayudo a revisar si quedó alguno a nombre de Joselin o podemos coordinar uno nuevo 😊
+12:46 p. m.
 
-Plan de Implementación: Modificación de Presupuestos desde Telegram/IA (Nova)
-Este plan detalla los cambios técnicos necesarios para permitir que el agente de IA (Nova) pueda modificar precios/descripciones de ítems y eliminar ítems de presupuestos (planes de tratamiento) que estén en estado borrador (draft).
+Tenía turno hoy a las 15
+12:47 p. m.
 
-Proposed Changes
-Backend (Orchestrator Service)
-[MODIFY] 
-nova_tools.py
-Definir Schemas en NOVA_TOOLS_SCHEMA:
+Joselin Troncoso
+12:47 p. m.
 
-Agregar modificar_item_presupuesto para cambiar precio estimado (estimated_price) o descripción (custom_description) de un ítem.
-Agregar eliminar_item_presupuesto para borrar un ítem por item_id.
-Incorporar instrucciones en las descripciones indicando que el agente debe pedir confirmación explícita antes de ejecutar la acción.
-Extender _META_TOOL_SCHEMA:
+No encuentro un turno agendado a nombre de Joselin en el sistema.
+12:48 p. m.
 
-Agregar ambos nombres de herramientas a la lista de herramientas avanzadas recomendadas del prompt.
-Implementar los Handlers:
-
-_modificar_item_presupuesto:
-Validar rol (CEO/Secretaria).
-Verificar que el plan existe, pertenece al tenant y está en estado draft.
-Validar que el ítem pertenece a ese plan y actualizar sus campos.
-Recalcular el estimated_total del plan sumando los ítems restantes.
-Emitir evento TREATMENT_PLAN_UPDATED vía Socket.IO.
-_eliminar_item_presupuesto:
-Validar rol (CEO/Secretaria).
-Verificar que el plan existe, pertenece al tenant y está en estado draft.
-Desvincular de appointments (actualizando plan_item_id a NULL) antes de borrar el ítem.
-Eliminar el registro de treatment_plan_items.
-Recalcular el estimated_total del plan.
-Emitir evento TREATMENT_PLAN_UPDATED.
-Registrar en Dispatcher execute_nova_tool:
-
-Mapear las herramientas a sus correspondientes funciones asíncronas.
-Verification Plan
-Automated Tests
-Ejecutar verificación de compilación syntax check: python -m py_compile services/nova_tools.py
-Manual Verification
-Testear a través del agente de Telegram que se puedan ejecutar estas acciones sobre un presupuesto en borrador y verificar que se emita la actualización correcta.
-Validar que no se puedan modificar planes en estado aprobado (approved).
+Si querés, contame el nombre completo con el que estaba reservado y lo reviso de nuevo 😊
+12:48 p. m.
 
 
-----
 
-Detalle escrito por mi: Y yo le dije:
+------------------
 
-Deberia poder hacer todo lo que puedo hacer desde la ui, dese telegram , entiendeS? Crear presupeusto y asignarle algun turno, o crear un presupuesto sin turnos pero con un monto x y algun que otro detalle si se envia. Se deberia poder editar un presupuesto en borrador o uno aprobado igual si esta aprobado se deberia poder editar, se debe poder eliminar tambien desde telegram. Pero para todo, el agente debe confirmar primero, por ejemplo si le pido, Elimina el presupuesto de x paciente, debe buscar el paciente, buscar los presupuestos de ese paciente, y en base a eso responder: x paciente tiene estos preduuoestos con estos items , estos montos, estos pagfos, etc, todos los detalles de cada presupesto, cual queres que elimine? - Entendes? esto e simportante para que no haga cualquier cosa ok? 
+la vinculación del paciente al chat sea totalmente persistente, de forma que:
+
+El backend guarde los archivos adjuntos y procese los mensajes del chat en la ficha del paciente vinculado.
+La UI muestre el paciente vinculado al lado del chat, y el chat vinculado al lado del paciente.
+La IA use el contexto clínico del paciente vinculado (turnos, presupuestos, etc.) y actúe sobre él al agendar, reprogramar, cancelar o registrar pagos.
+Las notificaciones salientes se envíen tanto al paciente como al chat vinculado.
+
+en el punto 3 si falta algo mas, aparte de agendar, reprogramar, cancelar o registrar pagos, deberia hacerse tmabien si falta algo , entiendeS? osea seria como que la ia debe entender que todo lo que quiera el chat con paciente vinculado es referido a ese paciente.
+
+Inicia el proceso sdd, hace explore, proposal y specs. Despues tedoy feedback y avanza con desing, taks y apply y verify
+
+
+---
+
+
+I am going to check the instructions for the `sdd-explore` skill first, so I can launch the subagent/task correctly.
+
+Viewed SKILL.md:1-130
+
+I will define a specialized `sdd_explorer` subagent to handle the exploration phase of this change without having write access to the codebase. This keeps the execution safe.
+
+Used tool: define_subagent
+
+I will now launch the `sdd_explorer` subagent to carry out the codebase investigation and find all the relevant files (webhooks, buffers, AI tools, and frontend views).
+
+Invoked subagent
+
+I will schedule a one-shot timer for 120 seconds to wake up if the subagent takes longer, then go idle while the codebase exploration finishes.
+
+Used tool: schedule
+
+I will now pause and wait for the `sdd_explorer` subagent to return the codebase analysis.
+
+I will check the status of the active subagents to see if `sdd_explorer` is still running or has returned any status updates.
+
+Used tool: manage_subagents
+
+I will read the transcript of the running `sdd_explorer` subagent to see what it has done so far and if it is still working.
+
+Viewed transcript.jsonl:1-102
+
+I will read the new lines of the subagent's transcript to see its latest steps.
+
+Viewed transcript.jsonl:100-106
+
+I will schedule another one-shot timer for 120 seconds to wake up and check on the subagent's progress again.
+
+Used tool: schedule
+
+I will pause here and wait for the subagent to complete or the timer to fire.
+
+I will list the active subagents to see if `sdd_explorer` has finished or is still running.
+
+Used tool: manage_subagents
+
+I will read the latest lines from the subagent's transcript to see where it stands.
+
+Viewed transcript.jsonl:105-184
+
+I will view the rest of the lines from the subagent's transcript to see its latest progress and if it has finished.
+
+Viewed transcript.jsonl:140-188
+
+I will view the new transcript lines to see if there has been any update or if the subagent has completed.
+
+Viewed transcript.jsonl:180-190
+
+I will schedule another 120-second timer to give the subagent enough time to finalize the exploration phase and save its findings to engram.
+
+Used tool: schedule
+
+I will pause and wait.
+
+I will list the active subagents to see if `sdd_explorer` is still running or has completed.
+
+Used tool: manage_subagents
+
+I will read the latest transcript lines to see its progress.
+
+Viewed transcript.jsonl:188-286
+
+I will read the latest transcript lines to see if there is any final progress or if the subagent has completed.
+
+Viewed transcript.jsonl:210-290
+
+I will read the latest transcript lines to see if there is any final progress or if the subagent has completed.
+
+Viewed transcript.jsonl:230-292
+
+I will search the engram for `sdd/chat-patient-persistence/explore` to see if the subagent has already written the exploration report.
+
+Used MCP tool: engram/mem_search
+
+I will check the latest lines of the subagent's transcript again to see if it is in the process of generating the report.
+
+Viewed transcript.jsonl:290-302
+
+I will schedule another 120-second timer to wait for the subagent to complete the exploration phase.
+
+Used tool: schedule
+
+I will pause here and wait for the subagent to complete.
+
+I will list the active subagents to see if `sdd_explorer` is still running or has completed.
+
+Used tool: manage_subagents
+
+I will check the latest transcript lines of the subagent to monitor its progress.
+
+Viewed transcript.jsonl:300-390
+
+I will read the latest lines from the subagent's transcript to check its progress.
+
+Viewed transcript.jsonl:335-394
+
+I will search the engram again to check if the subagent has stored the final exploration report.
+
+Used MCP tool: engram/mem_search
+
+I will list the active subagents to see if `sdd_explorer` is still active.
+
+Used tool: manage_subagents
+
+I will check the latest transcript lines of the subagent to monitor its progress.
+
+Viewed transcript.jsonl:380-406
+
+I will check the latest transcript lines to see if it is generating the final markdown report.
+
+Viewed transcript.jsonl:400-410
+
+I will schedule another 120-second timer to wait for the subagent to complete the exploration phase.
+
+Used tool: schedule
+
+I will pause here and wait for the subagent to complete.
+
+I will verify if the subagent successfully saved the exploration report to the engram.
+
+Used MCP tool: engram/mem_search
+
+I will view the instructions for the `sdd-propose` skill to see what the proposal phase requires.
+
+Viewed SKILL.md:1-149
+
+I will define a specialized `sdd_proposer` subagent to generate the structured change proposal artifact and save it to the engram.
+
+Used tool: define_subagent
+
+I will invoke the `sdd_proposer` subagent to generate the change proposal and save it to the engram.
+
+Invoked subagent
+
+I will schedule a 120-second timer as a safety net while the proposal subagent runs.
+
+Used tool: schedule
+
+I will pause here and wait for the proposal subagent to finish.
+
+I will list the active subagents to see if `sdd_proposer` has finished.
+
+Used tool: manage_subagents
+
+I will read the proposer subagent's transcript to check its progress.
+
+Viewed transcript.jsonl:1-114
+Used MCP tool: engram/mem_search
+Used MCP tool: engram/mem_search
+Used MCP tool: engram/mem_search
+Used MCP tool: engram/mem_get_observation
+Viewed output.txt
+Used MCP tool: engram/mem_search
+Used MCP tool: engram/mem_get_observation
+Viewed output.txt
+Viewed SKILL.md:1-187
+Used MCP tool: engram/mem_save
+
+¡Listo! Ya completé las fases de **Explore**, **Proposal** y **Specs** para la persistencia del enlace chat-paciente (`chat-patient-persistence`) y las guardé en la memoria persistente (**engram**).
+
+Aquí tenés el resumen de las especificaciones redactadas:
+
+## Specs Created
+
+**Change**: chat-patient-persistence
+
+### Specs Written
+| Domain | Type | Requirements | Scenarios |
+|--------|------|-------------|-----------|
+| `core/agent` | Delta | 1 added | 2 |
+| `backend/chat` | Delta | 2 added | 2 |
+| `frontend/chats` | Delta | 1 added | 1 |
+| `backend/reminders` | Delta | 1 added | 1 |
+
+### Coverage
+- Happy paths: covered
+- Edge cases: covered
+- Error states: covered
+
+---
+
+### Detalles Clave
+1. **Priorización de Contexto en la IA (`core/agent`)**: Cualquier tool que llame el agente resolverá el paciente usando el `linked_patient_id` de la conversación primero, antes de caer en el fallback del teléfono del chat. Esto cubre odontograma, presupuestos (budgets), historia clínica, etc.
+2. **APIs y Webhooks (`backend/chat`)**: Ajustamos las queries del contexto y las sesiones activas para incluir e integrar correctamente los chats enlazados (incluso si los teléfonos difieren).
+3. **UI en Tiempo Real (`frontend/chats`)**: Al vincular/desvincular se refrescará el sidebar y se mostrará el nombre del paciente vinculado `(Linked: Patient Name)` al lado del chat.
+
+Quedo a la espera de tu feedback. Decime si estás de acuerdo y avanzamos con las fases de **Design**, **Tasks**, **Apply** y **Verify**.
+
+
+00-----------
+
+
+OK esta bien, pero antes, revisa que habia algun flujo, osea habia un flujo referido a cuando un lead dice que quiere agendar directament eun turno nuevo para su hijo, hermana, o cualuqier tercero, existe un flujo donde se enlazan digamos , analzia esto que te digo, y revisalo, seria conveniente unificar esto ya en un solo flujo y dejar lo mejor que tiene los dos munods, osea la logica que t digo ahora que busques y la que vos planificaste
+
+
+-----
+
+¡De acuerdo, excelente observación! Tenés toda la razón: la lógica de enlazado manual por el staff (linked_patient_id) y el flujo dinámico de terceros/menores de la IA (guardian_phone, is_minor) deben unificarse bajo el mismo paraguas.
+
+Ya analicé a fondo cómo se maneja esto en el backend y acabo de actualizar tanto la Propuesta como las Especificaciones en engram para integrar los dos mundos en un solo flujo armonioso:
+
+🔄 Flujo Unificado Propuesto
+Resolución de Identidad Prioritaria:
+El sistema buscará si hay un linked_patient_id manual en el chat. Si existe, ese paciente pasa a ser el Paciente Principal de la conversación (su ID se asienta en el ContextVar para todas las herramientas).
+Si no hay enlace manual, se cae en el fallback tradicional del número de teléfono del chat.
+Contexto Familiar Dinámico:
+En lugar de buscar menores vinculados solo por el teléfono físico del chat, el sistema buscará menores asociados tanto al teléfono físico como al teléfono registrado del Paciente Principal.
+Así, el bot siempre tendrá a los hijos en el prompt (• HIJOS/MENORES VINCULADOS), sin importar si el padre chatea desde otro número que vinculaste a su ficha.
+Agendamiento Inteligente:
+Si la IA agenda para un menor (is_minor=True), el guardian_phone del nuevo paciente menor se seteará automáticamente con el teléfono del Paciente Principal resuelto (el tutor enlazado), no con el del número físico circunstancial.
+Resumen de Specs Modificadas (chat-patient-persistence)
+Domain	Type	Requirements	Scenarios
+core/agent	Delta	3 added (Unified Resolution, Family Mapping, Minor Guardian Unification)	4
+backend/chat	Delta	2 added	2
+frontend/chats	Delta	1 added	1
+backend/reminders	Delta	1 added	1
+Decime si te cierra esta lógica y, con tu confirmación, procedo a generar las fases de Design y Tasks para implementarlo todo en un único bloque de cambios limpio (single-pr).
+
+5:30 p. m.
+
+
+
+si me cierra, avanza con design, tasks, apply y yverify

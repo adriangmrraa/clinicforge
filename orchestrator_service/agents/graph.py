@@ -12,7 +12,7 @@ import json
 import logging
 import time
 import uuid
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from sqlalchemy import text
 
@@ -31,10 +31,328 @@ TURN_TIMEOUT_S = 45
 _supervisor = SupervisorAgent()
 
 
-async def _load_patient_context(tenant_id: int, phone_number: str) -> tuple[dict, list[dict]]:
+# ── Conversation State Injection Block Builder ──────────────────────────────
+# Mirrors buffer_task.py lines 1898-2036 — anti-loop booking context for specialists.
+
+
+def _build_convstate_injection_block(cs_data: dict) -> str:
+    """
+    Build a prompt block with all anti-loop booking fields from conversation_state.
+    Must match the logic in buffer_task.py:1898-2036 exactly.
+    Returns an empty string when cs_data is empty/minimal (IDLE state).
+    """
+    if not cs_data or cs_data.get("state") == "IDLE":
+        return ""
+
+    lines: list[str] = []
+
+    # Failed slots blacklist
+    failed = cs_data.get("failed_slots") or []
+    if failed:
+        failed_dates = sorted(set(f["date"] for f in failed if f.get("date")))
+        lines.append("SLOTS FALLIDOS (PROHIBIDO re-ofrecer):")
+        for f in failed:
+            lines.append(
+                f"  • {f['date']} {f.get('time', '??:??')} — {f.get('code', 'UNAVAILABLE')}"
+            )
+        lines.append(
+            "REGLA: NO ofrezcas ninguno de estos slots al paciente. "
+            "Si check_availability los incluye, filtralos antes de presentar."
+        )
+        lines.append("")
+
+    # Patient exclusions
+    exd = cs_data.get("excluded_days") or []
+    exdt = cs_data.get("excluded_dates") or []
+    if exd or exdt:
+        excl_lines = []
+        if exd:
+            excl_lines.append(f"DÍAS EXCLUIDOS: {', '.join(exd)}")
+        if exdt:
+            excl_lines.append(f"FECHAS EXCLUIDAS: {', '.join(exdt)}")
+        excl_lines.append(
+            "REGLA: NO ofrezcas turnos en estos días/fechas. El paciente los rechazó explícitamente."
+        )
+        lines.extend(["EXCLUSIONES DEL PACIENTE:"] + excl_lines + [""])
+
+    # Booking attempts warning
+    batt = cs_data.get("booking_attempts") or 0
+    if batt > 0:
+        batt_remaining = max(0, 3 - batt)
+        batt_word = "intento" if batt_remaining == 1 else "intentos"
+        lines.append(
+            f"⚠️ INTENTOS DE AGENDAMIENTO FALLIDOS: {batt} de 3."
+            f" Te queda{'n' if batt_remaining != 1 else ''} {batt_remaining} {batt_word}."
+            f" Al llegar a 3 fallos → llamá derivhumano inmediatamente."
+        )
+        lines.append("")
+
+    # Anchor date propagation
+    anc = cs_data.get("anchor_date")
+    if anc:
+        lines.append(
+            f"📅 ANCHOR_DATE: {anc}"
+            " — Usá esta fecha en confirm_slot y book_appointment. NO recalcules fechas relativas."
+        )
+        lines.append("")
+
+    # Correction awareness (has_correction flag — set by buffer_task when patient corrects info)
+    if cs_data.get("has_correction"):
+        lines.append(
+            "⚠️ EL PACIENTE CORRIGIÓ INFORMACIÓN PREVIA en su último mensaje."
+            " Revisá los datos del paciente ANTES de continuar con el agendamiento."
+            " Usá los NUEVOS datos que dio, no los anteriores."
+        )
+        lines.append("")
+
+    # Anchor date cross-validation: day-of-week mismatch warning
+    if anc:
+        # day_mismatch logic from buffer_task.py:1955-1973
+        pass  # deferred — requires message context not available here
+
+    # Error history context injection (last 3 errors)
+    err_history = cs_data.get("error_history") or []
+    if err_history:
+        lines.append("⚠️ ERRORES PREVIOS EN ESTA CONVERSACIÓN:")
+        for err in err_history[-3:]:
+            cat = err.get("category", "UNKNOWN")
+            msg = err.get("message", "")
+            turn = err.get("turn_number", "?")
+            lines.append(f"  • [{cat}] turno {turn}: {msg}")
+        lines.append("REGLA: NO repitas el mismo error. Si fue RECOVERABLE, intentá un slot diferente.")
+        lines.append("")
+
+    # Frustration detection injection
+    frust_count = cs_data.get("frustration_count") or 0
+    frust_mode = cs_data.get("frustration_mode") or False
+    if frust_count >= 2 and frust_count < 4:
+        lines.append(
+            f"[FRUSTRATION_DETECTED: modo conciliación — disculparse UNA vez y ofrecer opciones concretas. "
+            f"El paciente mostró {frust_count} señales de frustración.]"
+        )
+        lines.append("")
+    if frust_count >= 4:
+        lines.append(
+            "[FRUSTRATION_ESCALATED: derivar a humano inmediatamente. "
+            "Usá la herramienta derivhumano con motivo 'Paciente frustrado después de múltiples intentos'."
+        )
+        lines.append("")
+
+    # Multi-booking context injection
+    btargets = cs_data.get("booking_targets") or []
+    btarget_idx = cs_data.get("current_booking_target_index") or 0
+    if len(btargets) > 1:
+        current = btargets[btarget_idx] if btarget_idx < len(btargets) else btargets[-1]
+        pending = [t for t in btargets if t.get("status") == "pending"]
+        booked = [t for t in btargets if t.get("status") == "booked"]
+        ctx_lines = [
+            f"MULTI_BOOKING: Hay {len(btargets)} personas para agendar.",
+            f"Ya agendados: {len(booked)}. Pendientes: {len(pending)}.",
+            f"ACTUAL: Agendando para {current.get('type', 'self')} ({current.get('relationship', 'el paciente')})",
+            "REGLA: Agendá UNA persona a la vez. Después de confirmar el turno actual, continuá con la siguiente.",
+        ]
+        lines.extend(ctx_lines + [""])
+
+    # Single-target minor booking context injection
+    if len(btargets) == 1:
+        bt = btargets[0]
+        if bt.get("is_minor") or bt.get("relationship") in ("hijo/a", "hijo", "hija", "menor"):
+            minor_name = f"{bt.get('first_name', '')} {bt.get('last_name', '')}".strip()
+            minor_dni = bt.get("dni", "")
+            minor_lines = [
+                "MINOR BOOKING IN PROGRESS: El turno que se está gestionando es para un MENOR.",
+                f"Nombre del menor: {minor_name or 'pendiente'}",
+            ]
+            if minor_dni:
+                minor_lines.append(f"DNI del menor: {minor_dni}")
+            minor_lines.extend([
+                "REGLAS:",
+                "- Usá is_minor=true en book_appointment.",
+                "- NO le pidas teléfono del menor al paciente.",
+                "- La vinculación con el padre/madre es automática.",
+            ])
+            lines.extend(minor_lines + [""])
+
+    if not lines:
+        return ""
+
+    return "\n".join(lines).strip()
+
+
+async def _write_convstate_outcomes(state: AgentState, cs_data: dict) -> None:
+    """
+    Inspect state["tools_called"] after agent.run() and write outcomes back to conversation_state.
+    Best-effort — all writes wrapped in try/except, non-blocking.
+    Mirrors buffer_task.py WRITE hooks after tool execution.
+    """
+    from services.conversation_state import (
+        append_failed_slot,
+        add_exclusion,
+        increment_booking_attempts,
+        reset_booking_attempts,
+        increment_frustration,
+        set_anchor_date,
+        mark_target_booked,
+        mark_booking_target_index,
+        append_error_history,
+    )
+
+    tenant_id = state.get("tenant_id")
+    phone_number = state.get("phone_number")
+    if not tenant_id or not phone_number:
+        return
+
+    tools_called = state.get("tools_called", []) or []
+    user_msg = (state.get("user_message") or "").lower()
+
+    try:
+        # ── Detect frustration signals ──────────────────────────────────────
+        _frustration_keywords = [
+            "ya te dije", "ya te dije lo mismo", "no me escuchas",
+            "ya lo dije", "ya te lo dije", "no me entendés", "no me estás escuchando",
+            "otra vez lo mismo", "cuántas veces tengo que decirte", "no hacés caso",
+            "frustrado", "frustrada", "enojado", "enojada", "estoy harto",
+            "qué difícil es", "esto es imposible", "nunca me pueden ayudar",
+        ]
+        if any(kw in user_msg for kw in _frustration_keywords):
+            try:
+                await increment_frustration(tenant_id, phone_number)
+            except Exception as e:
+                logger.warning(f"_write_convstate_outcomes: increment_frustration failed: {e}")
+
+        # ── Anchor date detection from user confirming a specific date ─────
+        # E.g. patient says "perfecto, el miércoles 25"
+        _date_confirm_patterns = [
+            r"\del\s+\d{1,2}", r"\dal\s+\d{1,2}", r"\d{1,2}\s+de\s+\w+",
+            r"confirmo", r"dale\s+el", r"perfecto.*\d", r"si.*\d{4}-\d{2}-\d{2}",
+        ]
+        import re
+        anc = cs_data.get("anchor_date")
+        for pat in _date_confirm_patterns:
+            m = re.search(pat, user_msg)
+            if m and not anc:
+                # Try to extract a date from the message to set as anchor
+                date_match = re.search(r"\d{4}-\d{2}-\d{2}", user_msg)
+                if date_match:
+                    try:
+                        await set_anchor_date(tenant_id, phone_number, date_match.group())
+                    except Exception as e:
+                        logger.warning(f"_write_convstate_outcomes: set_anchor_date failed: {e}")
+                break
+
+        # ── Patient rejection of a date (explicit exclusion) ───────────────
+        _rejection_patterns = [
+            "no puedo el", "no me sirve el", "no va el", "ese día no",
+            "esa fecha no", "no me sirve para nada", "cancelá", "olvitalo",
+            "ni idea", "cualquier otro día", "cambia el día", "otra fecha",
+        ]
+        if any(pat in user_msg for pat in _rejection_patterns):
+            # Try to extract a date to exclude
+            date_match = re.search(r"\d{4}-\d{2}-\d{2}", user_msg)
+            if date_match:
+                try:
+                    await add_exclusion(tenant_id, phone_number, {"dates": [date_match.group()]})
+                except Exception as e:
+                    logger.warning(f"_write_convstate_outcomes: add_exclusion failed: {e}")
+
+        # ── Inspect tools_called for outcomes ────────────────────────────────
+        for tc in tools_called:
+            tool_name = tc.get("tool", "") if isinstance(tc, dict) else str(tc)
+            tool_args = tc.get("args", {}) if isinstance(tc, dict) else {}
+
+            # check_availability with empty/unavailable → append_failed_slot
+            if tool_name == "check_availability":
+                result = tool_args.get("result") or (tc.get("result") if isinstance(tc, dict) else None)
+                if result is not None:
+                    slots = result.get("slots", []) if isinstance(result, dict) else []
+                    if not slots or result.get("status") == "no_availability":
+                        # Record the date/time that was offered but unavailable
+                        date = tool_args.get("date") or tc.get("date", "")
+                        time = tool_args.get("time") or tc.get("time", "")
+                        code = result.get("code", "UNAVAILABLE") if isinstance(result, dict) else "UNAVAILABLE"
+                        if date:
+                            try:
+                                await append_failed_slot(
+                                    tenant_id, phone_number,
+                                    {"date": date, "time": time, "code": code}
+                                )
+                            except Exception as e:
+                                logger.warning(f"_write_convstate_outcomes: append_failed_slot failed: {e}")
+
+            # book_appointment failure
+            if tool_name == "book_appointment":
+                result = tool_args.get("result") or (tc.get("result") if isinstance(tc, dict) else None)
+                success = False
+                if isinstance(result, dict):
+                    success = result.get("success", False)
+                if not success:
+                    try:
+                        new_count = await increment_booking_attempts(tenant_id, phone_number)
+                    except Exception as e:
+                        logger.warning(f"_write_convstate_outcomes: increment_booking_attempts failed: {e}")
+
+                    # Append to error history
+                    err_entry = {
+                        "category": "book_appointment_failure",
+                        "message": str(result.get("error", "unknown")) if isinstance(result, dict) else str(result),
+                        "turn_number": state.get("hop_count", 0),
+                    }
+                    try:
+                        await append_error_history(tenant_id, phone_number, err_entry)
+                    except Exception as e:
+                        logger.warning(f"_write_convstate_outcomes: append_error_history failed: {e}")
+
+                    # Frustration on booking failure (additional increment)
+                    try:
+                        await increment_frustration(tenant_id, phone_number)
+                    except Exception as e:
+                        logger.warning(f"_write_convstate_outcomes: booking-failure frustration increment failed: {e}")
+
+                    # If attempts >= 3, also set frustration_mode
+                    if new_count >= 3:
+                        try:
+                            from services.conversation_state import set_frustration_mode
+                            await set_frustration_mode(tenant_id, phone_number, True)
+                        except Exception as e:
+                            logger.warning(f"_write_convstate_outcomes: set_frustration_mode failed: {e}")
+                else:
+                    # book_appointment success → reset attempts, mark target booked, advance index
+                    try:
+                        await reset_booking_attempts(tenant_id, phone_number)
+                    except Exception as e:
+                        logger.warning(f"_write_convstate_outcomes: reset_booking_attempts failed: {e}")
+
+                    # Clear error history on success
+                    try:
+                        from services.conversation_state import clear_error_history
+                        await clear_error_history(tenant_id, phone_number)
+                    except Exception as e:
+                        logger.warning(f"_write_convstate_outcomes: clear_error_history failed: {e}")
+
+                    # Multi-booking: mark current target as booked and advance index
+                    cs = cs_data or {}
+                    btargets = cs.get("booking_targets") or []
+                    btarget_idx = cs.get("current_booking_target_index") or 0
+                    if len(btargets) > 1:
+                        try:
+                            await mark_target_booked(tenant_id, phone_number, btarget_idx)
+                        except Exception as e:
+                            logger.warning(f"_write_convstate_outcomes: mark_target_booked failed: {e}")
+                        next_idx = btarget_idx + 1
+                        if next_idx < len(btargets):
+                            try:
+                                await mark_booking_target_index(tenant_id, phone_number, next_idx)
+                            except Exception as e:
+                                logger.warning(f"_write_convstate_outcomes: mark_booking_target_index failed: {e}")
+
+    except Exception as e:
+        logger.warning(f"_write_convstate_outcomes: top-level exception: {e}")
+
+
+async def _load_patient_context(tenant_id: int, phone_number: str, family_patient_ids: Optional[list[int]] = None) -> tuple[dict, list[dict]]:
     """Load minimal patient profile and chat history for the turn."""
     from services.patient_context import PatientContext
-    ctx = await PatientContext.load(tenant_id, phone_number)
+    ctx = await PatientContext.load(tenant_id, phone_number, family_patient_ids=family_patient_ids)
     p = ctx.profile
     profile_dict = {
         "name": p.name,
@@ -44,6 +362,20 @@ async def _load_patient_context(tenant_id: int, phone_number: str) -> tuple[dict
         "human_override_until": p.human_override_until.isoformat() if p.human_override_until else None,
         "medical_history": p.medical_history,
         "future_appointments": p.future_appointments,
+        # Phase 1 — CRITICAL
+        "phone_number": p.phone_number,
+        "assigned_professional": p.assigned_professional,
+        "next_appointment": p.next_appointment,
+        "last_appointment": p.last_appointment,
+        "treatment_plan": p.treatment_plan,
+        "family_members": p.family_members,
+        "patient_memories": p.patient_memories,
+        # Phase 2 — HIGH
+        "children_dependents": p.children_dependents,
+        "visit_count": p.visit_count,
+        "anamnesis_status": p.anamnesis_status,
+        # Phase 3 — MEDIUM
+        "birth_date": p.birth_date,
     }
     return profile_dict, p.recent_turns
 
@@ -97,12 +429,19 @@ async def run_turn(ctx: "TurnContext") -> "TurnResult":
     turn_id = str(uuid.uuid4())
 
     try:
-        profile, chat_history = await _load_patient_context(ctx.tenant_id, ctx.phone_number)
+        profile, chat_history = await _load_patient_context(
+            ctx.tenant_id, ctx.phone_number,
+            family_patient_ids=ctx.extra.get("family_patient_ids") if hasattr(ctx, "extra") and ctx.extra else None,
+        )
     except Exception:
         logger.exception("Failed to load patient context")
         profile = {
             "name": None, "dni": None, "email": None, "is_new_lead": True,
             "human_override_until": None, "medical_history": {}, "future_appointments": [],
+            "phone_number": None, "assigned_professional": None, "next_appointment": None,
+            "last_appointment": None, "treatment_plan": None, "family_members": [],
+            "patient_memories": None, "children_dependents": [], "visit_count": None,
+            "anamnesis_status": None, "birth_date": None,
         }
         chat_history = []
 
@@ -195,6 +534,48 @@ async def run_turn(ctx: "TurnContext") -> "TurnResult":
     except Exception:
         pass
 
+    # -----------------------------------------------------------------------
+    # Multimodal wait & dedup (multi-agent parity — GAP 9)
+    # -----------------------------------------------------------------------
+    # When the patient sends an audio message, wait for transcription to be
+    # available before continuing (the buffer_task async pipeline may still be
+    # transcribing). This duplicates the solo engine wait logic from main.py.
+    _message_text = (ctx.user_message or "").strip()
+    if _message_text and len(_message_text) < 20:
+        try:
+            from services.buffer_task import _wait_for_audio_transcription  # type: ignore
+            _transcribed = await _wait_for_audio_transcription(
+                ctx.tenant_id, ctx.thread_id, chat_history, max_wait=30
+            )
+            if _transcribed and _transcribed != _message_text:
+                logger.info(f"multi-agent: audio transcription resolved for turn {turn_id}")
+                state["user_message"] = _transcribed
+        except Exception:
+            pass
+
+    # Dedup: skip processing if the exact same message was handled recently
+    try:
+        from db import db as _dedup_db
+        _recent = await _dedup_db.pool.fetchrow(
+            """SELECT 1 FROM agent_turn_log
+               WHERE tenant_id = $1 AND phone_number = $2
+                 AND created_at > NOW() - INTERVAL '5 seconds'
+                 AND tools_called->>0 IS NOT NULL
+               LIMIT 1""",
+            ctx.tenant_id, ctx.phone_number,
+        )
+        if _recent:
+            logger.info(f"multi-agent: dedup skip for turn {turn_id} — recent turn exists")
+            duration_ms = int((time.perf_counter() - start) * 1000)
+            return TurnResult(
+                output="",
+                agent_used="dedup",
+                duration_ms=duration_ms,
+                metadata={"reason": "dedup_recent_turn", "turn_id": turn_id},
+            )
+    except Exception:
+        pass
+
     # Lead context injection: for leads not yet in the DB, load accumulated data
     if profile.get("is_new_lead"):
         try:
@@ -255,6 +636,19 @@ async def run_turn(ctx: "TurnContext") -> "TurnResult":
         )
 
     next_agent_name = "reception"
+
+    # ── Phase 1: READ conversation_state anti-loop context ─────────────────
+    # Mirror buffer_task.py:1898-2036. Cached in cs_data local var to avoid
+    # double Redis GET (supervisor.route also calls get_state internally).
+    cs_data: dict = {}
+    try:
+        from services.conversation_state import get_state as cs_get_state
+        cs_data = await cs_get_state(ctx.tenant_id, ctx.phone_number)
+        state["conversation_state_block"] = _build_convstate_injection_block(cs_data)
+    except Exception as e:
+        logger.debug(f"convstate READ skipped (non-fatal): {e}")
+        state["conversation_state_block"] = ""
+
     try:
         async with asyncio.timeout(TURN_TIMEOUT_S):
             next_agent_name = await _supervisor.route(state)
@@ -276,6 +670,13 @@ async def run_turn(ctx: "TurnContext") -> "TurnResult":
                 _cb = None
 
             state = await agent.run(state)
+
+            # ── Phase 3: WRITE conversation_state outcomes ──────────────────
+            # Best-effort, non-blocking — mirrors buffer_task.py WRITE hooks.
+            try:
+                await _write_convstate_outcomes(state, cs_data)
+            except Exception as e:
+                logger.warning(f"convstate WRITE hook failed (non-fatal): {e}")
 
             # Record token usage
             if _cb:

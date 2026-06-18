@@ -131,10 +131,6 @@ class TestWhatsAppNonRegression:
         result = build_system_prompt(
             **_BASE_KWARGS,
             channel="whatsapp",
-            is_social_channel=False,
-            social_landings=None,
-            instagram_handle=None,
-            facebook_page_id=None,
         )
 
         assert "MODO REDES SOCIALES" not in result, (
@@ -148,7 +144,6 @@ class TestWhatsAppNonRegression:
         result = build_system_prompt(
             **_BASE_KWARGS,
             channel="whatsapp",
-            is_social_channel=False,
         )
 
         assert "REGLA ANTI-MARKDOWN (WHATSAPP)" in result, (
@@ -162,16 +157,15 @@ class TestWhatsAppNonRegression:
         result = build_system_prompt(
             **_BASE_KWARGS,
             channel="whatsapp",
-            is_social_channel=False,
         )
 
-        # The friend detection section is ONLY injected for social channels
-        # We check that the specific social-mode AMIGO/LEAD block is absent
-        # (Note: the word LEAD may appear in other context, but MODO REDES SOCIALES is exclusive)
+        # The friend detection section is ONLY injected for social channels via
+        # buffer_task.py and specialists.py, NOT via build_system_prompt.
+        # We check that the specific social-mode AMIGO/LEAD block is absent.
         assert "MODO REDES SOCIALES" not in result
 
     def test_whatsapp_golden_file_byte_identical(self):
-        """WhatsApp prompt with social defaults must be byte-identical to golden file."""
+        """WhatsApp prompt must be byte-identical to golden file."""
         if not GOLDEN_PATH.exists():
             pytest.skip(f"Golden file not found: {GOLDEN_PATH}")
 
@@ -181,10 +175,6 @@ class TestWhatsAppNonRegression:
         result = build_system_prompt(
             **_BASE_KWARGS,
             channel="whatsapp",
-            is_social_channel=False,
-            social_landings=None,
-            instagram_handle=None,
-            facebook_page_id=None,
         )
 
         assert result == golden, (

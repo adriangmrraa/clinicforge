@@ -5,11 +5,11 @@ Run once via pytest to create (or overwrite) the baseline files:
 
 This is NOT a test file — it just uses pytest's import machinery.
 
-After running this script, the golden files in tests/fixtures/ will contain the real
-output of build_system_prompt for each social channel. These files are then used by
-regression tests to detect unintended changes to the prompt.
+After running this script, the golden files in tests/fixtures/ will contain the combined
+output of build_social_preamble() + build_system_prompt() (matching the runtime path in
+buffer_task.py for the solo engine and specialists.py for the multi-agent engine).
 
-Note: Telegram uses telegram_bot.py (not build_system_prompt), so its golden file
+Note: Telegram uses telegram_bot.py (not the social preamble path), so its golden file
 captures the Telegram-specific system prompt instead.
 """
 
@@ -65,28 +65,37 @@ _BASE_KWARGS = dict(
     support_policy_block="",
 )
 
-_SOCIAL_KWARGS = dict(
-    is_social_channel=True,
-    social_landings={
-        "blanqueamiento": "https://blanqueamiento.dralauradelgado.com/",
-        "implantes": "https://implantes.dralauradelgado.com/",
-    },
-    instagram_handle="@dralauradelgado",
-    facebook_page_id="dralauradelgado",
-    whatsapp_link="https://wa.me/5491112345678",
-)
+_SOCIAL_LANDINGS = {
+    "blanqueamiento": "https://blanqueamiento.dralauradelgado.com/",
+    "implantes": "https://implantes.dralauradelgado.com/",
+}
+
+SEPARATOR = "\n\n---\n\n"
+
+
+def _build_social_prompt(channel: str, handle: str) -> str:
+    """Build the combined prompt the same way buffer_task does at runtime."""
+    from main import build_system_prompt
+    from services.social_prompt import build_social_preamble
+    from services.social_routes import CTA_ROUTES
+
+    preamble = build_social_preamble(
+        tenant_id=0,
+        channel=channel,
+        social_landings=_SOCIAL_LANDINGS,
+        instagram_handle=handle if channel == "instagram" else None,
+        facebook_page_id=handle if channel == "facebook" else None,
+        cta_routes=CTA_ROUTES,
+        whatsapp_link="https://wa.me/5491112345678",
+    )
+    base = build_system_prompt(**_BASE_KWARGS, channel=channel)
+    return preamble + SEPARATOR + base
 
 
 def test_generate_instagram_golden_file(capsys):
     """Write the Instagram golden file (creates or overwrites)."""
-    from main import build_system_prompt
-
     path = FIXTURES_DIR / "golden_prompt_instagram.txt"
-    result = build_system_prompt(
-        **_BASE_KWARGS,
-        channel="instagram",
-        **_SOCIAL_KWARGS,
-    )
+    result = _build_social_prompt("instagram", "@dralauradelgado")
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(result, encoding="utf-8")
     with capsys.disabled():
@@ -96,14 +105,8 @@ def test_generate_instagram_golden_file(capsys):
 
 def test_generate_facebook_golden_file(capsys):
     """Write the Facebook golden file (creates or overwrites)."""
-    from main import build_system_prompt
-
     path = FIXTURES_DIR / "golden_prompt_facebook.txt"
-    result = build_system_prompt(
-        **_BASE_KWARGS,
-        channel="facebook",
-        **_SOCIAL_KWARGS,
-    )
+    result = _build_social_prompt("facebook", "dralauradelgado")
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(result, encoding="utf-8")
     with capsys.disabled():
@@ -123,8 +126,6 @@ def test_generate_telegram_golden_file(capsys):
     try:
         from services.telegram_bot import TelegramBot  # type: ignore
 
-        # TelegramBot builds its own system prompt — extract it if possible.
-        # Fallback: record a note if the class doesn't expose a static prompt.
         if hasattr(TelegramBot, "build_system_prompt"):
             result = TelegramBot.build_system_prompt()
         elif hasattr(TelegramBot, "SYSTEM_PROMPT"):
