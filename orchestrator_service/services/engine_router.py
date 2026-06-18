@@ -141,7 +141,8 @@ class SoloEngine:
 
             # Minimal probe with no tools
             result = await executor.ainvoke(
-                {"input": "Responde exactamente: pong", "chat_history": []},
+                {"input": "Responde exactamente: pong", "chat_history": [],
+                 "system_prompt": "Eres un asistente argentino. Responde exactamente como se te pide."},
                 config={"configurable": {"session_id": "healthcheck-probe"}},
             )
 
