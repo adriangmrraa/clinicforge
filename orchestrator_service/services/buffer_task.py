@@ -3274,6 +3274,7 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                 response_text = ""  # Reset so the solo retry loop handles it
 
         # Solo retry loop — skip if multi-agent already produced a response
+        response = {}  # Guard: multi-agent may skip this loop, prevent UnboundLocalError on response.get() below
         for attempt in range(max_retries):
             if response_text:
                 break  # Multi-agent handled it

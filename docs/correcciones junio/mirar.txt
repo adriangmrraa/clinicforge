@@ -6,34 +6,33 @@ En `orchestrator_service/routes/playbook_routes.py`, línea 270:
 - `"professional": "Laura Delgado"` estaba hardcodeado, siempre mostraba "Con Laura Delgado" en la preview del reminder sin importar qué profesional tenía el turno.
 - Fix: se agregó `LEFT JOIN professionals pr ON a.professional_id = pr.id` a la query, se traen `pr.first_name/professional_last_name`, y se usa el nombre real del profesional.
 
-## 2. Mensajes sin respuesta + Forzar Procesamiento IA no funciona (FIXED)
+## 2. Mensajes sin respuesta intermitentes (FIXED)
 
-**Causa raíz:** NameError por `import re` condicional dentro de `process_buffer_task`.
+**Causa raíz:** `import re` condicional dentro de `process_buffer_task` (línea 3666) shadoweaba el import global de `re`, rompiendo los list comprehensions cuando el `if` era false.
 
-En `orchestrator_service/services/buffer_task.py`, línea 3666:
-```python
-if "[LOCAL_IMAGE:" in response_text:
-    import re  # ← REDUNDANTE Y DAÑINO
+**Síntomas:** 2-3 chats no respondidos, Forzar Procesamiento sin efecto.
+
+## 3. Mensajes sin respuesta TOTAL — post-deploy (FIXED)
+
+**Causa raíz:** El bloque multi-agent dispatch (pre-existente en el working tree) hacía que el solo retry loop hiciera `break` inmediato porque `response_text` ya tenía valor. Pero `response` solo se definía DENTRO del loop. Post-loop, `response.get("intermediate_steps", [])` explotaba con `UnboundLocalError`.
+
+**Por qué pasó AHORA:** Antes del fix #2, `process_buffer_task` explotaba en el `re` NameError ANTES de llegar al multi-agent dispatch. Con el fix #2, el código llega al multi-agent, ejecuta OK, pero se topa con este segundo bug que es taba latente.
+
+**Fix:** Inicializar `response = {}` antes del loop. Cuando multi-agent responde, `response` queda como `{}` y los `.get()` post-loop devuelven `[]` sin error.
+
+```
+process_buffer_task_fatal_error | UnboundLocalError("cannot access local variable 'response' where it is not associated with a value")
 ```
 
-`re` ya está importado a nivel módulo (línea 9). Pero este `import re` condicional hace que Python trate `re` como **variable LOCAL** de toda la función `process_buffer_task`. Como está dentro de un `if`, cuando la condición es false o no se ejecutó todavía, `re` como local nunca se asigna.
+## 4. ✅ Error email de confirmación de pago (FIXED, en este commit)
 
-Después, el list comprehension en línea 1373:
-```python
-_guardian_phones = [re.sub(r'\D', '', p) for p in [external_user_id]]
-```
-corre en un scope anidado, busca `re` en el scope contenedor (`process_buffer_task`), y como `re` es local sin asignar, explota con:
-```
-NameError("cannot access free variable 're' where it is not associated with a value in enclosing scope")
-```
+**Error:** "column t.phone does not exist"
 
-**Síntomas que causaba:**
-- Mensajes de pacientes que quedan sin respuesta aunque el agente esté activo
-- Botón "Forzar Procesamiento de IA" que no produce respuesta (misma code path: admin_routes.py línea 2326 → process_buffer_task)
+**Causa:** `email_service.py` referenciaba `phone` como columna directa de `tenants`, pero no existe. El teléfono de la clínica se guarda en `config->>'phone'` (JSONB).
 
-**Fix:** Eliminado el `import re` redundante de línea 3666.
+**Fix:** Cambiado `t.phone` a `t.config->>'phone' as phone` en las dos queries (welcome email + payment confirmation).
 
-## Logs del error (referencia)
+## Logs del error #2 (referencia)
 
 ```json
 {"event": "🛡️ Processing Buffer Task | tenant=1 conv=4c6391f0... user=+5492994539215 provider=ycloud msgs=1"}
@@ -42,4 +41,15 @@ NameError("cannot access free variable 're' where it is not associated with a va
 {"event": "process_buffer_task_fatal_error", "exc_info": ["<class 'NameError'>", "NameError(\"cannot access free variable 're' where it is not associated with a value in enclosing scope\")", "<traceback object at 0x77de101e2500>"]}
 {"event": "🔇 Suppressing error fallback message (not sending to patient): Disculpas, estoy experimentando intermitencias..."}
 {"event": "🔇 No response to send (empty text, no media) — skipping send for +5492994539215"}
+```
+
+## Logs del error #3 post-deploy (referencia)
+
+```json
+{"event": "🛡️ Processing Buffer Task | tenant=1 conv=ee8c0fdb... user=+5493704868421 provider=ycloud msgs=1"}
+{"event": "🖥️ Engine mode for tenant 1: multi"}
+{"event": "🤖 Multi-agent dispatch OK for tenant 1 — agent=booking duration=1441ms"}
+{"event": "process_buffer_task_fatal_error", "exc_info": ["<class 'UnboundLocalError'>", "UnboundLocalError(\"cannot access local variable 'response' where it is not associated with a value\")", ...]}
+{"event": "🔇 Suppressing error fallback message..."}
+{"event": "🔇 No response to send (empty text, no media) — skipping send for +5493704868421"}
 ```

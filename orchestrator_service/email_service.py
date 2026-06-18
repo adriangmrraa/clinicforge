@@ -1000,7 +1000,7 @@ async def send_welcome_email(
 
         # 2. Obtener datos de la clínica
         tenant_row = await db_pool.fetchrow(
-            "SELECT clinic_name, address, phone, derivation_email FROM tenants WHERE id = $1",
+            "SELECT clinic_name, address, config->>'phone' as phone, derivation_email FROM tenants WHERE id = $1",
             tenant_id,
         )
         if not tenant_row:
@@ -1281,7 +1281,7 @@ async def send_plan_payment_confirmation_email(
                 pp.id, pp.amount, pp.payment_method, pp.payment_date, pp.plan_id,
                 tp.name as plan_name, tp.approved_total, tp.patient_id,
                 p.first_name, p.last_name, p.email, p.phone_number,
-                t.clinic_name, t.address, t.phone, t.country_code
+                t.clinic_name, t.address, t.config->>'phone' as phone, t.country_code
             FROM treatment_plan_payments pp
             JOIN treatment_plans tp ON pp.plan_id = tp.id
             JOIN patients p ON tp.patient_id = p.id
