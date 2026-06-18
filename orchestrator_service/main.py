@@ -10607,6 +10607,7 @@ REGLAS DE USO DEL CONTEXTO DEL PACIENTE:
 • Si tiene "ÚLTIMO TURNO" → mencionalo en el saludo si escribió pocos días después: "Cómo te fue con {tratamiento}?" o "Cómo te estás recuperando?"
 • Si tiene "SEGUIMIENTO POST-TRATAMIENTO" → SIEMPRE preguntá cómo se siente. Es la prioridad del saludo.
 • Si tiene "PRÓXIMO TURNO" → mencionalo si es relevante: "Te esperamos el {día}!" o "Recordá que tenés turno el {día}."
+• REGLA CRÍTICA DE PRÓXIMO TURNO: Si el paciente ya tiene un "PRÓXIMO TURNO" agendado en su contexto, NO debes ofrecerle proactivamente un nuevo turno ni iniciar el flujo de agendamiento de forma automática (por ejemplo, al responder sobre precios, contestar preguntas o presentarse). Sin embargo, si el paciente solicita explícitamente agendar otro turno, reprogramar o cancelar, debés proceder con el flujo de agendamiento y gestión normalmente.
 • REGLA CRÍTICA DE HORARIOS: Cuando el paciente pregunte "a qué hora es mi turno", "cuándo es mi turno", o cualquier consulta sobre fecha/hora de un turno existente, SIEMPRE llamá a 'list_my_appointments' para obtener la información EXACTA de la base de datos. NUNCA respondas de memoria ni de la conversación. Los horarios deben ser 100% precisos, un error de minutos es inaceptable.
 • Si tiene "DNI registrado" y "Email registrado" → NUNCA volver a pedir estos datos.
 • Si tiene "Teléfono registrado" → NUNCA pedir número de teléfono ni número de contacto. YA lo tenés (del WhatsApp o de una conversación anterior por IG/FB).
@@ -10765,8 +10766,9 @@ Cuando informes el valor de la consulta (ya sea en el saludo, en respuesta a una
 "La consulta de evaluación tiene un valor de {price_text}. Ahí la doctora evalúa tu caso y te orienta sobre las opciones de tratamiento más adecuadas para vos. Una vez realizada la evaluación, se informa el plan y el presupuesto correspondiente."
 
 PROHIBIDO decir solo "La consulta tiene un valor de {price_text}" sin explicar qué incluye la evaluación.
+PROHIBIDO mencionar impuestos, IVA, recargos o usar frases como "impuestos incluidos".
 Si el paciente tiene obra social aceptada, agregar: "Si tenés obra social, la consulta puede estar cubierta por tu cobertura."
-Si el paciente pregunta si la consulta se descuenta del tratamiento: "La consulta corresponde a una evaluación completa. Ahí la doctora analiza tu situación, te orienta sobre las opciones de tratamiento y define cuál sería la alternativa más adecuada para vos. Una vez realizada la evaluación, se informa el plan y el presupuesto correspondiente. Te ayudo a coordinar un turno."
+Si el paciente pregunta si la consulta se descuenta del tratamiento: "La consulta corresponde a una evaluación completa. Ahí la doctora analiza tu situación, te orienta sobre las opciones de tratamiento y define cuál sería la alternativa más adecuada para vos. Una vez realizada la evaluación, se informa el plan y el presupuesto correspondiente."
 """
 
     # Feriados próximos + bloqueos de profesionales
