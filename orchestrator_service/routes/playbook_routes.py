@@ -176,9 +176,12 @@ async def send_reminders_now(
             p.first_name,
             p.last_name,
             p.phone_number,
-            p.guardian_phone
+            p.guardian_phone,
+            pr.first_name as professional_first_name,
+            pr.last_name as professional_last_name
         FROM appointments a
         INNER JOIN patients p ON a.patient_id = p.id AND p.tenant_id = a.tenant_id
+        LEFT JOIN professionals pr ON a.professional_id = pr.id
         WHERE a.tenant_id = $1
             AND a.status IN ('scheduled', 'confirmed')
             AND a.appointment_datetime >= $2
@@ -264,7 +267,7 @@ async def send_reminders_now(
                         "date": formatted_date,
                         "time": formatted_time,
                         "day_name": day_of_week,
-                        "professional": "Laura Delgado",
+                        "professional": f"{apt.get('professional_first_name') or ''} {apt.get('professional_last_name') or ''}".strip(),
                         "appointment_id": str(apt["appointment_id"]),
                     },
                 )

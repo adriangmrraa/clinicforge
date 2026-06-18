@@ -3239,7 +3239,44 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                 "⚠️ get_openai_callback not available, tokens will be estimated"
             )
 
+        # --- Multi-agent dispatch (C3 F3) ---
+        # When the tenant's ai_engine_mode is "multi", route through the LangGraph
+        # supervisor + specialist system. Falls back to SoloEngine if the multi-agent
+        # fails (response_text stays "" and the retry loop below runs the solo path).
+        _engine = locals().get('engine')
+        if _engine is not None and hasattr(_engine, 'name') and _engine.name == 'multi':
+            try:
+                from services.engine_router import TurnContext
+
+                _extra = dict(_social_ctx) if '_social_ctx' in dir() and _social_ctx else {}
+
+                _multi_ctx = TurnContext(
+                    tenant_id=tenant_id,
+                    phone_number=external_user_id,
+                    user_message=user_input,
+                    thread_id=str(conversation_id),
+                    extra=_extra,
+                )
+
+                _multi_result = await _engine.process_turn(_multi_ctx)
+                response_text = _multi_result.output or "[Sin respuesta]"
+                token_cb = None
+                logger.info(
+                    f"🤖 Multi-agent dispatch OK for tenant {tenant_id} — "
+                    f"agent={_multi_result.agent_used} "
+                    f"duration={_multi_result.duration_ms}ms"
+                )
+            except Exception as _multi_err:
+                logger.exception(
+                    f"⚠️ Multi-agent dispatch failed for tenant {tenant_id}: {_multi_err} "
+                    f"— falling back to SoloEngine"
+                )
+                response_text = ""  # Reset so the solo retry loop handles it
+
+        # Solo retry loop — skip if multi-agent already produced a response
         for attempt in range(max_retries):
+            if response_text:
+                break  # Multi-agent handled it
             try:
                 if _get_cb:
                     with _get_cb() as cb:
@@ -3626,8 +3663,6 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
 
         # --- Extracción Multimedia Oculta ---
         if "[LOCAL_IMAGE:" in response_text:
-            import re
-
             img_pattern = r"\[LOCAL_IMAGE:(.*?)\]"
             media_urls = re.findall(img_pattern, response_text)
             response_text = re.sub(img_pattern, "", response_text).strip()

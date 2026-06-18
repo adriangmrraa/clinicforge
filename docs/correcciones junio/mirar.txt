@@ -1,0 +1,45 @@
+# Cosas para mirar
+
+## 1. ✅ Recordatorio preview: profesional hardcodeado (FIXED)
+
+En `orchestrator_service/routes/playbook_routes.py`, línea 270:
+- `"professional": "Laura Delgado"` estaba hardcodeado, siempre mostraba "Con Laura Delgado" en la preview del reminder sin importar qué profesional tenía el turno.
+- Fix: se agregó `LEFT JOIN professionals pr ON a.professional_id = pr.id` a la query, se traen `pr.first_name/professional_last_name`, y se usa el nombre real del profesional.
+
+## 2. Mensajes sin respuesta + Forzar Procesamiento IA no funciona (FIXED)
+
+**Causa raíz:** NameError por `import re` condicional dentro de `process_buffer_task`.
+
+En `orchestrator_service/services/buffer_task.py`, línea 3666:
+```python
+if "[LOCAL_IMAGE:" in response_text:
+    import re  # ← REDUNDANTE Y DAÑINO
+```
+
+`re` ya está importado a nivel módulo (línea 9). Pero este `import re` condicional hace que Python trate `re` como **variable LOCAL** de toda la función `process_buffer_task`. Como está dentro de un `if`, cuando la condición es false o no se ejecutó todavía, `re` como local nunca se asigna.
+
+Después, el list comprehension en línea 1373:
+```python
+_guardian_phones = [re.sub(r'\D', '', p) for p in [external_user_id]]
+```
+corre en un scope anidado, busca `re` en el scope contenedor (`process_buffer_task`), y como `re` es local sin asignar, explota con:
+```
+NameError("cannot access free variable 're' where it is not associated with a value in enclosing scope")
+```
+
+**Síntomas que causaba:**
+- Mensajes de pacientes que quedan sin respuesta aunque el agente esté activo
+- Botón "Forzar Procesamiento de IA" que no produce respuesta (misma code path: admin_routes.py línea 2326 → process_buffer_task)
+
+**Fix:** Eliminado el `import re` redundante de línea 3666.
+
+## Logs del error (referencia)
+
+```json
+{"event": "🛡️ Processing Buffer Task | tenant=1 conv=4c6391f0... user=+5492994539215 provider=ycloud msgs=1"}
+{"event": "🔗 Patient resolved via linked_patient_id=264 phone=+5492994539215"}
+{"event": "patient_memories table ensured (v2)"}
+{"event": "process_buffer_task_fatal_error", "exc_info": ["<class 'NameError'>", "NameError(\"cannot access free variable 're' where it is not associated with a value in enclosing scope\")", "<traceback object at 0x77de101e2500>"]}
+{"event": "🔇 Suppressing error fallback message (not sending to patient): Disculpas, estoy experimentando intermitencias..."}
+{"event": "🔇 No response to send (empty text, no media) — skipping send for +5492994539215"}
+```
