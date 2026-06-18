@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 # `sede_info` is the only dict value; everything else is a formatted string.
 ALL_BLOCK_KEYS: tuple[str, ...] = (
     "clinic_basics",
+    "bot_name_raw",       # raw bot_name string for prompt interpolation (.format())
     "insurance_section",
     "payment_section",
     "special_conditions_block",
@@ -460,10 +461,12 @@ async def build_tenant_context_blocks(
         bank_info = _format_bank_info(tenant_row)
         sede_info = _resolve_sede_for_today(tenant_row.get("working_hours")) if tenant_row else {}
         sede_info_text = _format_sede_info_text(sede_info)
+        bot_name_raw = (tenant_row.get("bot_name") or "Asistente").strip() if tenant_row else "Asistente"
 
         blocks.update(
             {
                 "clinic_basics": clinic_basics,
+                "bot_name_raw": bot_name_raw,
                 "insurance_section": insurance_section,
                 "payment_section": payment_section,
                 "special_conditions_block": special_conditions_block,
