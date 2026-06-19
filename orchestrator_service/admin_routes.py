@@ -7309,6 +7309,22 @@ async def add_clinical_note(
         if has_data:
             odontogram_json = json.dumps(note.odontogram_data)
 
+    # Si no se envía odontograma en la nota, heredar el último odontograma conocido del paciente
+    if not odontogram_json:
+        latest_odontogram = await db.pool.fetchval(
+            """
+            SELECT odontogram_data
+            FROM clinical_records
+            WHERE patient_id = $1 AND tenant_id = $2
+              AND odontogram_data IS NOT NULL
+              AND odontogram_data::text != '{}'
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            id, tenant_id
+        )
+        odontogram_json = latest_odontogram
+
     # Determinar el campo diagnosis: prioridad al campo `diagnosis` del form;
     # fallback al legacy `content` para compatibilidad.
     diagnosis_value = note.diagnosis or note.content or None

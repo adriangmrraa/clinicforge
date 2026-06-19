@@ -4964,16 +4964,30 @@ async def _crear_nota_clinica(args: Dict, tenant_id: int, user_role: str, user_i
     from datetime import datetime
     record_id = uuid.uuid4()
     
+    # Inherit the latest odontogram_data to prevent wiping out the odontogram in the UI
+    latest_odontogram = await db.pool.fetchval(
+        """
+        SELECT odontogram_data
+        FROM clinical_records
+        WHERE patient_id = $1 AND tenant_id = $2
+          AND odontogram_data IS NOT NULL
+          AND odontogram_data::text != '{}'
+        ORDER BY record_date DESC, created_at DESC
+        LIMIT 1
+        """,
+        int(pid), tenant_id
+    )
+    
     await db.pool.execute(
         """
         INSERT INTO clinical_records
             (id, tenant_id, patient_id, professional_id, record_date,
-             diagnosis, clinical_notes, treatment_plan, recommendations)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9)
+             diagnosis, clinical_notes, treatment_plan, recommendations, odontogram_data)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10::jsonb)
         """,
         record_id, tenant_id, int(pid), prof_id, datetime.now().date(),
         diagnosis, json.dumps(cnotes), json.dumps(tplan) if tplan else None,
-        recommendations or None
+        recommendations or None, latest_odontogram
     )
 
     await _nova_emit("RECORD_CREATED", {"patient_id": int(pid), "tenant_id": tenant_id, "record_type": rtype})
@@ -10234,6 +10248,8 @@ async def _get_latest_odontogram(patient_id: int, tenant_id: int):
         SELECT id, odontogram_data
         FROM clinical_records
         WHERE patient_id = $1 AND tenant_id = $2
+          AND odontogram_data IS NOT NULL
+          AND odontogram_data::text != '{}'
         ORDER BY record_date DESC, created_at DESC
         LIMIT 1
         """,
