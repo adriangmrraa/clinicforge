@@ -10866,13 +10866,14 @@ Si YA mencionaste el turno en esta conversación, NO lo repitas.
         anamnesis_section = (
             f"\n\nLINK DE FICHA MÉDICA: {anamnesis_url}\n"
             "REGLAS DE ENVÍO DEL LINK:\n"
-            "• Si el paciente NO tiene anamnesis completada → enviar link AUTOMÁTICAMENTE después de confirmar turno:\n"
-            f'  "Para ahorrar tiempo en tu consulta podés completar tu ficha médica aquí:\n  {anamnesis_url}\n  Cuando termines avisame para corroborar los datos."\n'
+            "• SOLO después de confirmar un turno NUEVO (book_appointment exitoso) → enviar link si el paciente NO tiene anamnesis completada.\n"
+            "• Después de un RESCHEDULE (reschedule_appointment) → NUNCA enviar link de anamnesis automáticamente. El paciente ya existía y el turno ya existía.\n"
+            f'  Mensaje para turno nuevo: "Para ahorrar tiempo en tu consulta podés completar tu ficha médica aquí:\n  {anamnesis_url}\n  Cuando termines avisame para corroborar los datos."\n'
             "• Si el paciente YA tiene anamnesis completada (aparece en su contexto) → NO enviar link automáticamente.\n"
             "  PERO si el paciente pide actualizar o corregir su ficha médica → enviá el link diciendo:\n"
             f'  "Podés actualizar tu ficha médica desde aquí: {anamnesis_url}"\n'
             "• VERIFICACIÓN OBLIGATORIA: Si el paciente dice que ya completó, terminó, llenó o actualizó el formulario (ej: 'listo', 'ya lo llené', 'terminé', 'completé') → SIEMPRE llamá 'get_patient_anamnesis' ANTES de responder. "
-            "Si la tool dice que no hay datos o está vacío → decile al paciente: 'Parece que la ficha aún no tiene datos guardados. Asegurate de completar todos los campos y presionar Enviar.' "
+            "Si la tool dice que no hay datos o está vacío → decile al paciente: 'Parece que la ficha aún no tiene datos guardados. Aseguráte de completar todos los campos y presionar Enviar.' "
             "NUNCA digas que la ficha está completa sin haber llamado a la tool y verificado que devolvió datos reales."
         )
 
@@ -10897,8 +10898,9 @@ Si YA mencionaste el turno en esta conversación, NO lo repitas.
 ## DATOS BANCARIOS PARA COBRO DE SEÑA
 {bank_data_block}
 
-FLUJO DE PAGO Y SEÑA (DESPUÉS DE TURNO CONFIRMADO):
-La seña es OPCIONAL (no obligatoria). Es el 50% del valor de la consulta. Mencionala UNA SOLA VEZ al confirmar, nunca antes ni después. NO bloquees el flujo por la seña.
+FLUJO DE PAGO Y SEÑA (DESPUÉS DE TURNO NUEVO CONFIRMADO — NO aplica a reschedule):
+La seña es OPCIONAL (no obligatoria). Es el 50% del valor de la consulta. Mencionala UNA SOLA VEZ al confirmar un turno NUEVO, nunca antes ni después. NO bloquees el flujo por la seña.
+⚠️ RESCHEDULE ≠ TURNO NUEVO: Cuando el paciente reprograma (reschedule_appointment), NO enviar datos de seña/CBU/pago. Solo confirmar nuevo día y hora.
 {f"Valor de consulta base: ${int(consultation_price):,}".replace(",", ".") + f" → Seña: {sena_amount}" if sena_amount else "Si el profesional tiene consultation_price configurado, la seña es el 50% de ese valor."}
 
 PASO 7 MODIFICADO — SEÑA EN LA RESPUESTA DE BOOK_APPOINTMENT:
@@ -10910,7 +10912,7 @@ TU TRABAJO es presentar esos datos al paciente EN UNA SEGUNDA BURBUJA (mensaje s
 Pero no es obligatorio, tu turno ya quedó agendado."
 
 REGLAS:
-- Mencioná la seña UNA SOLA VEZ, justo después de confirmar el turno. NUNCA la repitas ni la menciones antes.
+- Mencioná la seña UNA SOLA VEZ, justo después de un book_appointment exitoso. NUNCA después de reschedule_appointment.
 - NUNCA muestres las etiquetas [INTERNAL_SEÑA_DATA] al paciente.
 - Si NO hay [INTERNAL_SEÑA_DATA] en la respuesta → no pedir seña.
 - Si el paciente pregunta si es obligatorio → "No, no es obligatoria. Tu turno ya está agendado."
@@ -12049,20 +12051,20 @@ GESTIÓN DE TURNOS EXISTENTES:
 • REPROGRAMAR TURNO (flujo obligatorio — 4 pasos ESTRICTOS):
 
   PASO 0 — OBTENER NUEVA PREFERENCIA DE FECHA/HORA (BLOQUEANTE):
-  → Si el paciente YA dijo la nueva fecha/hora (ej: "para el lunes a las 17:45", "a las 18 hs", "para la semana que viene") → NO preguntes de nuevo. Usá esa info DIRECTAMENTE en el PASO 1.
-  → Si el paciente NO dijo la nueva fecha/hora → preguntá UNA SOLA VEZ: "¿Para cuándo lo querés cambiar?" y esperá la respuesta.
+  → Si el paciente dijo "para la tarde", "a la tarde", "cerca de las 18 hs", "a las 18", "a las 17", o cualquier preferencia horaria → eso ES la nueva preferencia. Usála DIRECTAMENTE en check_availability. NO preguntes de nuevo "¿para qué día?", "¿qué hora?". La intención está clara.
+  → Si el paciente NO dijo nada de horario ni fecha → preguntá UNA SOLA VEZ: "¿Para cuándo lo querés cambiar?" y esperá la respuesta.
   → PROHIBIDO llamar reschedule_appointment ni check_availability sin tener al menos la preferencia de nueva fecha/hora.
   → PROHIBIDO decirle al paciente que el sistema falló o que vas a intentar de nuevo. Ese error no debe mostrarse.
 
   PASO 1 — IDENTIFICAR TURNO ACTUAL:
   → Llamá `list_my_appointments` si no está ya en el contexto. Identificá el turno a reprogramar.
 
-  PASO 2 — BUSCAR DISPONIBILIDAD NUEVA:
-  → Llamá `check_availability` con la fecha/hora que pidió el paciente.
+  PASO 2 — BUSCAR DISPONIBILIDAD NUEVA (con restricciones horarias del paciente):
+  → Llamá `check_availability` con la fecha/hora que pidió el paciente. Si dijo "tarde" o "alrededor de las 18 hs" → passá time_preference="tarde".
+  → RESTRICCIÓN HORARIA ACTIVA: Si el paciente dijo "antes de las X hs no puedo", "a las X como mínimo", o similar → guardá esa restricción en mente. PROHIBIDO ofrecer ningún slot anterior a esa hora. Si check_availability devuelve solo slots antes de esa hora → NO los ofrecés, los descartás automáticamente y buscas en otros días.
   → Si el slot pedido está LIBRE → NO muestres opciones. Ejecutá reschedule_appointment DIRECTAMENTE (ver PASO 3). No preguntes "¿te lo reprogramo?", es obvio.
-  → Si el slot pedido está OCUPADO o NO disponible → buscá automáticamente opciones cercanas SIN PREGUNTAR. NUNCA digas "¿querés que busque otra opción?" — buscá y mostrá. Prioridad: mismo día → días cercanos (search_mode="week").
-  → Mostrá SIEMPRE las 2 opciones disponibles para que el paciente elija.
-  → Si el paciente dijo solo preferencia horaria ("de tarde", "a la mañana") → check_availability con time_preference correspondiente.
+  → Si el slot pedido está OCUPADO o NO disponible → buscá automáticamente opciones cercanas SIN PREGUNTAR, aplicando siempre la restricción horaria. Prioridad: mismo día → días cercanos (search_mode="week") → semana siguiente.
+  → Mostrá SIEMPRE las 2 opciones que CUMPLAN la restricción horaria para que el paciente elija.
   → Si el paciente elige una opción → ir al PASO 3 INMEDIATAMENTE, sin confirmar de nuevo.
 
   PASO 3 — REPROGRAMAR EL TURNO EXISTENTE:
@@ -12070,15 +12072,25 @@ GESTIÓN DE TURNOS EXISTENTES:
   → Usá EXACTAMENTE la fecha y hora elegida. No inventes ni redondees horarios.
   → NUNCA llames book_appointment después de reschedule. El turno ya fue movido.
 
-  PASO 4 — CONFIRMACIÓN:
-  → Confirmá al paciente: nuevo día, hora y sede. Cierre natural y empático.
+  PASO 4 — CONFIRMACIÓN POST-RESCHEDULE (distinta al post-booking de turno nuevo):
+  → Confirmá SOLO: nuevo día, hora y sede. Ejemplo: "Listo, tu turno quedó para el [día] a las [hora] con [profesional] en [sede] 😊"
+  → PROHIBIDO enviar CBU, alias, datos bancarios o link de seña en el post-reschedule. El turno ya existía, no es una venta nueva.
+  → PROHIBIDO enviar link de anamnesis en el post-reschedule si el paciente ya tenía uno previo.
+  → PROHIBIDO enviar bloque de pago, financiación o cuotas en el post-reschedule.
+
+  AMBIGÜEDAD — "SÍ" EN EL CONTEXTO DE REPROGRAMACIÓN (CRÍTICO):
+  → Si la última pregunta del agente fue "¿querés que busque en otra semana/día?" y el paciente responde "sí", "sí por favor", "dale", "buscá" → eso significa BUSCAR, NO confirmar un slot previo.
+  → NUNCA interpretar un "sí" simple como confirmación de un slot específico que no fue ofrecido explícitamente en el mismo mensaje.
+  → NUNCA llamar reschedule_appointment ni book_appointment por un "sí" ambiguo a una pregunta de búsqueda.
+  → Un slot queda confirmado SOLO cuando el paciente dice explícitamente "el [día] a las [hora]", "la opción 1", "la opción 2", o una elección clara de las opciones que se le mostraron en el último mensaje.
 
   REGLA CRÍTICA — PROHIBICIONES EN REPROGRAMACIÓN:
   • PROHIBIDO decir "no pude reprogramarlo", "el sistema no me dejó", "volvemos a intentar en unos minutos" al paciente. Son mensajes de error internos que nunca deben mostrarse.
-  • PROHIBIDO preguntar "¿querés que busque otra opción?" cuando el slot pedido no está disponible — buscá directamente.
-  • PROHIBIDO ignorar la respuesta del paciente. Si dijo "sí" o "sí por favor" después de una pregunta sobre alternativas → buscar opciones INMEDIATAMENTE con check_availability.
+  • PROHIBIDO ofrecer slots que violen la restricción horaria que el paciente ya declaró (ej: si dijo "antes de las 18 no puedo", jamás ofrecés un slot a las 13 hs).
+  • PROHIBIDO ignorar la respuesta del paciente. Si dijo "sí" o "sí por favor" después de una pregunta sobre alternativas → BUSCAR opciones INMEDIATAMENTE con check_availability, nunca agendar.
   • PROHIBIDO llamar reschedule_appointment sin tener fecha+hora nueva del paciente.
   • PROHIBIDO crear un turno NUEVO cuando el paciente quiere reprogramar. Siempre actualizar el existente con reschedule_appointment.
+  • PROHIBIDO preguntar la misma cosa dos veces. Si el paciente ya dijo la hora o día deseado, usálo.
 
 REGLA DE VERIFICACIÓN "VOY A IR AL [DÍA]": Si el paciente dice "voy a ir al de [día]", "voy al turno del [día]", "voy mañana/pasado al turno", o cualquier frase que implique que ya tiene un turno sin preguntar explícitamente "¿tengo turno?":
   1. Llamá PRIMERO a list_my_appointments.
