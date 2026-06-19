@@ -168,8 +168,8 @@
             {% for rec in data.clinical_records %}
             <tr>
                 <td style="padding: 7px 10px; border: 1px solid #e2e8f0; {% if loop.index is odd %}background: #f7fafc;{% else %}background: #ffffff;{% endif %} vertical-align: top; white-space: nowrap;">{{ rec.date or '—' }}</td>
-                <td style="padding: 7px 10px; border: 1px solid #e2e8f0; {% if loop.index is odd %}background: #f7fafc;{% else %}background: #ffffff;{% endif %} vertical-align: top;">{{ rec.diagnosis or '—' }}</td>
-                <td style="padding: 7px 10px; border: 1px solid #e2e8f0; {% if loop.index is odd %}background: #f7fafc;{% else %}background: #ffffff;{% endif %} vertical-align: top;">{{ rec.clinical_notes or '—' }}</td>
+                <td style="padding: 7px 10px; border: 1px solid #e2e8f0; {% if loop.index is odd %}background: #f7fafc;{% else %}background: #ffffff;{% endif %} vertical-align: top; white-space: pre-wrap;">{{ rec.diagnosis or '—' }}</td>
+                <td style="padding: 7px 10px; border: 1px solid #e2e8f0; {% if loop.index is odd %}background: #f7fafc;{% else %}background: #ffffff;{% endif %} vertical-align: top; white-space: pre-wrap;">{{ rec.clinical_notes or '—' }}</td>
                 <td style="padding: 7px 10px; border: 1px solid #e2e8f0; {% if loop.index is odd %}background: #f7fafc;{% else %}background: #ffffff;{% endif %} vertical-align: top;">{{ rec.professional_name or '—' }}</td>
             </tr>
             {% endfor %}

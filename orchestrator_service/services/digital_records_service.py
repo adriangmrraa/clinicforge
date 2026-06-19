@@ -454,12 +454,32 @@ async def gather_patient_data(
             prof_name_map.get(rec_prof_id) if rec_prof_id is not None else None
         )
 
+        notes_raw = rec.get("clinical_notes")
+        notes_str = notes_raw
+        if isinstance(notes_raw, str) and notes_raw.startswith("{"):
+            try:
+                import json
+                parsed_notes = json.loads(notes_raw)
+                if isinstance(parsed_notes, dict):
+                    extracted = parsed_notes.get("notes", "").strip()
+                    rtype = parsed_notes.get("record_type", "")
+                    if extracted:
+                        notes_str = extracted
+                    elif rtype == "evolution":
+                        notes_str = "Evolución registrada."
+                    elif rtype == "Odontograma":
+                        notes_str = "Actualización de odontograma."
+                    else:
+                        notes_str = ", ".join(f"{k}: {v}" for k, v in parsed_notes.items() if v)
+            except Exception:
+                pass
+
         clinical_section.append(
             {
                 "id": rec_id,
                 "date": format_date(rec.get("record_date")),
                 "diagnosis": rec.get("diagnosis") or None,
-                "clinical_notes": rec.get("clinical_notes") or None,
+                "clinical_notes": notes_str or None,
                 "treatments": treatments_list,
                 "recommendations": rec.get("recommendations") or None,
                 "professional_name": rec_prof_name or None,
