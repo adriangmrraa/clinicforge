@@ -94,7 +94,7 @@ SLOT_LOCK_TTL_SECONDS = 600
 
 # v8.2 — Anti-loop booking guards
 MAX_BOOKING_ATTEMPTS = 3  # After 3 failed bookings in one conversation → escalate to human
-MAX_AVAILABILITY_ATTEMPTS = 4  # After 4 check_availability calls in one booking attempt → escalate
+MAX_AVAILABILITY_ATTEMPTS = 5  # After 5 check_availability calls in one booking attempt → escalate
 
 # v8.3 — Error taxonomy categories (resolve-13-booking-errors T3)
 ERROR_CATEGORY_RECOVERABLE = "RECOVERABLE"
@@ -1994,24 +1994,56 @@ async def check_availability(
             _ca_state_str = _ca_state.get("state", "IDLE") if isinstance(_ca_state, dict) else "IDLE"
             if _ca_state_str in ("BOOKED", "PAYMENT_PENDING"):
                 # DLD-89/92: Bloquear check_availability si el paciente ya tiene turno confirmado
-                # y no hay señal explícita de que QUIERE otro turno
-                _intent_signals = r'\b(otro turno|nuevo turno|otra fecha|otro día|quiero cambiar|reagend|reprogram|mover el turno|cancel|dame otro|agendame otro|necesito otro|sacá otro|quiero uno más|turno para)\b'
+                # y no hay señal explícita de que QUIERE reprogramar, cancelar o pedir OTRO turno.
+                # IMPORTANTE: Leer el último mensaje REAL del paciente desde la DB para no
+                # bloquear flujos legítimos de reprogramación donde la IA pasa solo la fecha
+                # pero el paciente dijo "reprogramar" o "cualquier día a la tarde" antes.
+                _intent_signals = (
+                    r'\b(otro turno|nuevo turno|otra fecha|otro d[ii]a|quiero cambiar|'
+                    r'reagend|reprogram|mover el turno|cancel|dame otro|agendame otro|'
+                    r'necesito otro|sac[aa] otro|quiero uno m[aa]s|turno para|'
+                    r'cambiar el turno|mover turno|buscar|busqu[ee]|buscame|fijate|'
+                    r'cualquier d[ii]a|cualquier horario|disponib|disponibilidad|'
+                    r'horario libre|otro horario|verif[ii]c|intento|intentalo)\b'
+                )
                 _ca_input_text = f"{date_query} {treatment_name or ''} {professional_name or ''}"
+                # Ampliar la busqueda con el ultimo mensaje real del paciente (lectura rapida)
+                try:
+                    _last_patient_msg = await db.pool.fetchval(
+                        """
+                        SELECT cm.content FROM chat_messages cm
+                        JOIN chat_conversations cc ON cc.id = cm.conversation_id
+                        WHERE cc.external_user_id ILIKE $1
+                          AND cc.tenant_id = $2
+                          AND cm.role = 'user'
+                        ORDER BY cm.created_at DESC
+                        LIMIT 1
+                        """,
+                        f"%{re.sub(r'[^0-9]', '', _ca_phone or '')}%",
+                        tid,
+                    )
+                    if _last_patient_msg:
+                        _ca_input_text += f" {_last_patient_msg}"
+                        logger.info(
+                            f"📊 BOOKING_FLOW | intent check enriched with last patient msg: {str(_last_patient_msg)[:80]!r}"
+                        )
+                except Exception as _msg_err:
+                    logger.debug(f"📊 BOOKING_FLOW | last patient msg fetch failed (non-blocking): {_msg_err}")
                 if not re.search(_intent_signals, _ca_input_text, re.IGNORECASE):
                     logger.warning(
-                        f"📊 BOOKING_FLOW | 🚫 check_availability BLOCKED: state={_ca_state_str} "
-                        f"— no new-booking intent detected. phone={_ca_phone}"
+                        f"📊 BOOKING_FLOW | check_availability BLOCKED: state={_ca_state_str} "
+                        f"no reschedule/new-booking intent detected. phone={_ca_phone}"
                     )
                     return (
-                        "BOOKING_ALREADY_EXISTS: El paciente ya tiene un turno confirmado en esta conversación. "
-                        "No se debe ofrecer un nuevo turno a menos que el paciente lo solicite explícitamente "
+                        "BOOKING_ALREADY_EXISTS: El paciente ya tiene un turno confirmado en esta conversacion. "
+                        "No se debe ofrecer un nuevo turno a menos que el paciente lo solicite explicitamente "
                         "(diciendo 'quiero otro turno', 'necesito reagendar', etc.). "
-                        "Respondé la consulta del paciente sin ofrecer turnos nuevos."
+                        "Responde la consulta del paciente sin ofrecer turnos nuevos."
                     )
                 else:
                     logger.info(
                         f"📊 BOOKING_FLOW | check_availability ALLOWED despite state={_ca_state_str} "
-                        f"— new-booking intent detected. phone={_ca_phone}"
+                        f"reschedule/new-booking intent detected. phone={_ca_phone}"
                     )
             elif _ca_state_str == "OFFERED_SLOTS":
                 logger.warning(f"📊 BOOKING_FLOW | ⚠️ check_availability called in state=OFFERED_SLOTS — possible loop! phone={_ca_phone}")
@@ -11981,12 +12013,13 @@ SIN DISPONIBILIDAD CERCANA — REGLA DE MÚLTIPLES INTENTOS ANTES DE DERIVAR:
   → Cada intento requiere una llamada NUEVA a check_availability con date_query diferente.
   → Solo después de 3+ intentos SIN NINGÚN resultado, podés considerar derivhumano.
   → Ej: "En esa fecha no tengo turnos disponibles. ¿Querés que busque en otra semana?" — y si dice que sí, llamá check_availability de nuevo.
-• IMPORTANTE — RESTRICCIONES DE FECHA: Antes de elegir los rangos a probar, TENÉ EN CUENTA:
+  → IMPORTANTE — RESTRICCIONES DE FECHA: Antes de elegir los rangos a probar, TENÉ EN CUENTA:
   → Si el paciente tiene obra social con días de espera (scheduling_delay_days, ej: OSDE = 40 días): la fecha más temprana es (hoy + N días). No pierdas tiempo probando fechas antes de ese límite.
   → Si la clínica tiene fecha mínima (min_appointment_date): no busques antes de esa fecha.
   → La fecha REAL más temprana es el máximo entre (hoy + días de espera de OS) y (min_appointment_date).
   → Si OSDE requiere 40 días: NO intentes "semana que viene" ni "este mes". Arrancá directamente con rangos a partir de los 40 días.
   → Si el sistema ya inyectó la info en el contexto (plazo mínimo, scheduling_delay_days), USALA para decidir los rangos.
+  → MANEJO DE "CUALQUIER DÍA" / "LO QUE HAYA": Si el paciente dice "cualquier día", "lo que haya", "buscame vos", "lo que tengas", "indiferente", "el que sea" → NO usar search_mode="open". Usá search_mode="week" con la próxima semana hábil como interpreted_date, aplicando time_preference. Presentá los 2 primeros slots disponibles. NUNCA pidas elegir un día específico si el paciente dijo que le es indiferente.
 • PROHIBIDO llamar derivhumano por "falta de disponibilidad" si solo probaste UNA fecha.
 • Si check_availability devuelve turnos disponibles AUNQUE SEA EN FECHA LEJANA → mostralos al paciente. No decidas por él que "es muy lejos".
 • Para tratamientos de IMPLANTES/PRÓTESIS: PROHIBIDO derivar a otro profesional (los implantes son siempre con la doctora). SIEMPRE ofrecer el primer turno disponible con la doctora aunque sea más lejano.
