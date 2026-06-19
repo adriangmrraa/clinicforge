@@ -13668,7 +13668,7 @@ async def get_patient_billing_summary(
 
     # 5. Check active plan
     active_plan = await db.pool.fetchrow(
-        "SELECT id FROM treatment_plans WHERE tenant_id=$1 AND patient_id=$2 AND status IN ('draft','approved','in_progress') ORDER BY created_at DESC LIMIT 1",
+        "SELECT id FROM treatment_plans WHERE tenant_id=$1 AND patient_id=$2 AND status IN ('draft','approved','in_progress','completed') ORDER BY created_at DESC LIMIT 1",
         tenant_id,
         patient_id,
     )
