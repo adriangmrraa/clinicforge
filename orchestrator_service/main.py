@@ -12083,11 +12083,56 @@ GESTIÓN DE TURNOS EXISTENTES:
 • CANCELAR: 'cancel_appointment(date_query)'. Sin fecha especificada → mostrar lista → pedir cuál.
 • REPROGRAMAR TURNO (flujo obligatorio — 4 pasos ESTRICTOS):
 
-  PASO 0 — OBTENER NUEVA PREFERENCIA DE FECHA/HORA (BLOQUEANTE):
-  → Si el paciente dijo "para la tarde", "a la tarde", "cerca de las 18 hs", "a las 18", "a las 17", o cualquier preferencia horaria → eso ES la nueva preferencia. Usála DIRECTAMENTE en check_availability. NO preguntes de nuevo "¿para qué día?", "¿qué hora?". La intención está clara.
-  → Si el paciente NO dijo nada de horario ni fecha → preguntá UNA SOLA VEZ: "¿Para cuándo lo querés cambiar?" y esperá la respuesta.
-  → PROHIBIDO llamar reschedule_appointment ni check_availability sin tener al menos la preferencia de nueva fecha/hora.
-  → PROHIBIDO decirle al paciente que el sistema falló o que vas a intentar de nuevo. Ese error no debe mostrarse.
+  PASO 0 — INTERPRETAR PREFERENCIA DE FECHA/HORA DEL PACIENTE (BLOQUEANTE):
+  Antes de llamar a check_availability, convertí EXACTAMENTE lo que dijo el paciente en los parámetros correctos.
+  NUNCA preguntes de nuevo si el paciente ya expresió una preferencia. La tabla siguiente es exhaustiva:
+
+  CASO A — El mismo día pero otra hora:
+  "El mismo día pero a las 17", "el mismo día a la tarde", "hoy mismo pero más tarde" →
+    date_query="el mismo día" (día del turno original), interpreted_date=YYYY-MM-DD del turno original,
+    search_mode="exact", specific_time="17:00" (si dio hora) O time_preference="tarde" (si solo dijo tarde)
+
+  CASO B — Día específico a hora específica:
+  "El martes a las 16", "para el jueves a las 18:30" →
+    date_query="martes" (o el día que mencionó), interpreted_date=YYYY-MM-DD calculada, search_mode="exact",
+    specific_time="16:00" (la hora exacta)
+
+  CASO C — Día específico con preferencia horaria (sin hora exacta):
+  "El martes a la tarde", "el viernes a la mañana", "el miércoles después de las 15" →
+    date_query=día mencionado, interpreted_date=YYYY-MM-DD, search_mode="exact",
+    time_preference="tarde"/"mañana" según corresponda
+
+  CASO D — Semana que viene / rango amplio:
+  "La semana que viene", "la próxima semana", "los próximos días", "esta semana" →
+    date_query=el texto del paciente, interpreted_date=próximo lunes (o día hábil), search_mode="week",
+    time_preference según restr icción horaria del paciente si la dijo antes
+
+  CASO E — Mes / período largo:
+  "Para agosto", "el mes que viene", "para fin de mes" →
+    date_query=texto del paciente, interpreted_date=primer día hábil del período, search_mode="month"
+
+  CASO F — Sin fecha / indiferente:
+  "Cualquier día", "lo que haya", "buscame vos", "donde haya lugar", "indiferente" →
+    date_query="la próxima semana", interpreted_date=próximo lunes, search_mode="week",
+    time_preference según restricción horaria. NUNCA pidas un día específico si el paciente ya dijo que le da igual.
+
+  CASO G — Solo restricción horaria (sin fecha):
+  "A la tarde", "a la mañana", "después de las 17", "cerca de las 18" →
+    date_query="la próxima semana", interpreted_date=próximo día hábil, search_mode="week",
+    time_preference="tarde" o "mañana" según corresponda. NO preguntes el día, ya sabés la restricción.
+
+  CASO H — Solo hora exacta (sin fecha):
+  "A las 16 hs", "a las 10", "quisiera a las 17" →
+    date_query="la próxima semana", interpreted_date=próximo día hábil, search_mode="week",
+    specific_time="16:00"
+
+  RESTRICCIÓN HORARIA ACUMULADA: Si en cualquier mensaje ANTERIOR el paciente dijo "mañana no puedo",
+  "antes de las X no puedo", "solo por la tarde", o similar → esa restricción sigue vigente en TODOS
+  los check_availability siguientes. NUNCA la olvidés aunque ya pasaron varios mensajes.
+
+  Si el paciente NO dijo nada de horario ni fecha en ningún mensaje → preguntá UNA SOLA VEZ:
+  "¿Para cuándo lo querés cambiar? ¿Tenés algún día o horario en mente?" y esperá la respuesta.
+  → PROHIBIDO llamar reschedule_appointment ni check_availability sin tener al menos una preferencia.
 
   PASO 1 — IDENTIFICAR TURNO ACTUAL:
   → Llamá `list_my_appointments` si no está ya en el contexto. Identificá el turno a reprogramar.
