@@ -192,7 +192,7 @@ async def _verify_user(tenant_id: int, chat_id: int) -> Optional[Dict[str, str]]
                 decrypted_id = decrypt_value(row["telegram_chat_id"])
                 if str(chat_id) == decrypted_id:
                     result = {
-                        "user_role": row["user_role"],
+                        "user_role": row["user_role"].lower() if row["user_role"] else "",
                         "display_name": row["display_name"],
                     }
                     # Evict oldest entries if over limit
