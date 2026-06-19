@@ -1526,7 +1526,7 @@ IMPORTANTE — REGLAS QUIRÚRGICAS:
     {
         "type": "function",
         "name": "preparar_y_enviar_presupuesto",
-        "description": "Busca un paciente, genera un presupuesto (plan de tratamiento) a partir de sus turnos sin presupuesto asignado, lo aprueba y lo envía. Admite sinónimos de ES/EN como 'prepará el presupuesto', 'create and send budget', 'mandale la cotizacion', etc.",
+        "description": "Crea o genera un presupuesto (plan de tratamiento) para un paciente (a partir de sus turnos sin presupuesto asignado, o con un monto total manual si se especifica), lo aprueba, opcionalmente registra un pago (parcial o total) y lo envía por WhatsApp o Telegram. Usala SIEMPRE que te pidan crear o generar un presupuesto en un solo paso, en lugar de llamar a crear_presupuesto y registrar_pago_plan secuencialmente.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -3405,7 +3405,12 @@ async def _preparar_y_enviar_presupuesto(args: Dict, tenant_id: int, user_role: 
                 seen.add(t_name)
                 unique_treatments.append(t_name)
 
-    current_date_str = datetime.now().strftime("%Y-%m-%d")
+    from services.tz_resolver import get_tenant_tz
+    tz = await get_tenant_tz(tenant_id)
+    local_now = datetime.now(tz)
+    current_date_str = local_now.strftime("%Y-%m-%d")
+    local_today = local_now.date()
+
     if unique_treatments:
         treatments_str = " + ".join(unique_treatments)
         plan_name = f"{treatments_str} — {current_date_str}"
@@ -3522,7 +3527,7 @@ async def _preparar_y_enviar_presupuesto(args: Dict, tenant_id: int, user_role: 
                     plan_id,
                     Decimal(str(final_payment_amount)),
                     payment_method,
-                    date.today(),
+                    local_today,
                     payment_notes or "Pago inicial registrado via Telegram",
                     "AI Bot",
                     tenant_id,
@@ -5673,16 +5678,20 @@ async def _registrar_pago_plan(args: Dict, tenant_id: int, user_role: str) -> st
     notes = args.get("notes", "")
     payment_date = args.get("payment_date")
     from datetime import datetime, date
+    from services.tz_resolver import get_tenant_tz
+    tz = await get_tenant_tz(tenant_id)
+    local_today = datetime.now(tz).date()
+
     if payment_date:
         if isinstance(payment_date, str):
             try:
                 payment_date_obj = datetime.strptime(payment_date, "%Y-%m-%d").date()
             except ValueError:
-                payment_date_obj = date.today()
+                payment_date_obj = local_today
         else:
             payment_date_obj = payment_date
     else:
-        payment_date_obj = date.today()
+        payment_date_obj = local_today
 
     if not plan_id or amount is None or not method:
         return "Necesito plan_id, amount y method."
