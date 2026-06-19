@@ -258,13 +258,18 @@ export default function Odontogram({ patientId, recordId, initialData, onSave, r
   const hasDecidData = deciduousTeeth.some(t => t.state !== 'healthy');
 
   useEffect(() => {
+    let perm = permanentTeeth;
+    let dec = deciduousTeeth;
     if (initialData) {
-      if (initialData.permanent) setPermanentTeeth(normalizeToothData(initialData.permanent, ALL_PERMANENT));
-      else if (initialData.teeth) setPermanentTeeth(normalizeToothData(initialData, ALL_PERMANENT));
-      if (initialData.deciduous) setDeciduousTeeth(normalizeToothData(initialData.deciduous, ALL_DECIDUOUS));
+      if (initialData.permanent) perm = normalizeToothData(initialData.permanent, ALL_PERMANENT);
+      else if (initialData.teeth) perm = normalizeToothData(initialData, ALL_PERMANENT);
+      if (initialData.deciduous) dec = normalizeToothData(initialData.deciduous, ALL_DECIDUOUS);
       if (initialData.active_dentition) setActiveDentition(initialData.active_dentition);
+      
+      setPermanentTeeth(perm);
+      setDeciduousTeeth(dec);
     }
-    initialRef.current = JSON.stringify({ permanentTeeth, deciduousTeeth });
+    initialRef.current = JSON.stringify({ permanentTeeth: perm, deciduousTeeth: dec });
   }, [initialData]);
 
   useEffect(() => {
@@ -277,6 +282,12 @@ export default function Odontogram({ patientId, recordId, initialData, onSave, r
     const handleOdontogramUpdated = (payload: { patient_id?: number; odontogram_data?: any }) => {
       if (payload.patient_id !== patientId || !payload.odontogram_data) return;
       const data = payload.odontogram_data;
+      
+      let newPerm = permanentTeeth;
+      let newDec = deciduousTeeth;
+      if (data.permanent) newPerm = normalizeToothData(data.permanent, ALL_PERMANENT);
+      if (data.deciduous) newDec = normalizeToothData(data.deciduous, ALL_DECIDUOUS);
+
       const animateUpdate = (newTeeth: ToothState[], setter: typeof setPermanentTeeth) => {
         setter(prev => {
           const changed = new Set<number>();
@@ -285,16 +296,20 @@ export default function Odontogram({ patientId, recordId, initialData, onSave, r
           return newTeeth;
         });
       };
-      if (data.permanent) animateUpdate(normalizeToothData(data.permanent, ALL_PERMANENT), setPermanentTeeth);
-      if (data.deciduous) animateUpdate(normalizeToothData(data.deciduous, ALL_DECIDUOUS), setDeciduousTeeth);
+      
+      if (data.permanent) animateUpdate(newPerm, setPermanentTeeth);
+      if (data.deciduous) animateUpdate(newDec, setDeciduousTeeth);
+      
       setNovaUpdate(t('odontogram.nova_updated','Nova actualizó el odontograma'));
       setTimeout(() => setNovaUpdate(null), 3000);
-      setTimeout(() => { initialRef.current = JSON.stringify({ permanentTeeth, deciduousTeeth }); setHasChanges(false); }, 100);
+      
+      initialRef.current = JSON.stringify({ permanentTeeth: newPerm, deciduousTeeth: newDec }); 
+      setHasChanges(false);
     };
     socket.on('ODONTOGRAM_UPDATED', handleOdontogramUpdated);
     // Remove event handler only — do NOT disconnect the singleton
     return () => { socket.off('ODONTOGRAM_UPDATED', handleOdontogramUpdated); };
-  }, [patientId]);
+  }, [patientId, permanentTeeth, deciduousTeeth]);
 
   // Health stats
   const healthStats = useMemo(() => {
