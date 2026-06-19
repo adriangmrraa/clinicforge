@@ -504,7 +504,15 @@ async def ycloud_webhook(request: Request):
 
             return {"status": "ignored_no_link", "type": msg_type}
 
-        # B. Media Messages (image, document) -> Immediate Forward (No Buffer)
+        # B. Media Messages (image, document) -> Buffer via orchestrator (same debounce window)
+        # NOTE: Media is sent to the same /admin/ycloud/webhook endpoint as text, so the
+        # orchestrator buffer can group an image + text from the same patient in the 11s debounce.
+
+        # Ignore WhatsApp reactions (emoji taps on bot messages) — no actionable content
+        if msg_type == "reaction":
+            logger.info("reaction_ignored", from_number=from_n, correlation_id=correlation_id)
+            return {"status": "ignored_reaction", "type": msg_type}
+
         media_list = []
         text_content = None
 

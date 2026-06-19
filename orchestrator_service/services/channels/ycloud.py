@@ -89,6 +89,12 @@ class YCloudAdapter(ChannelAdapter):
             content = btn.get("text", "")
             button_id = btn.get("payload", "")  # YCloud uses 'payload' as ID in template quick-replies
             
+        elif msg_type == "reaction":
+            # WhatsApp emoji reactions are not real messages — patient tapped an emoji
+            # on a bot message. Silently ignore: return no canonical messages.
+            logger.info(f"[YCloud] Ignoring WhatsApp reaction from {external_user_id}")
+            return []
+
         elif msg_type == "interactive":
             interactive = msg.get("interactive", {})
             if interactive.get("type") == "button_reply":

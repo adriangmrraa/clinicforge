@@ -5972,6 +5972,11 @@ async def reschedule_appointment(original_date: str, new_date_time: str, interpr
             return f"No pude entender la fecha original '{original_date}'. ¿Podrías indicarme qué turno querés reprogramar?"
         new_dt = parse_datetime(new_date_time)
         logger.info(f"[RESCHEDULE] interpreted_date={interpreted_date}, new_date_time={new_date_time}")
+        if new_dt is None and not (interpreted_date and interpreted_date.strip()):
+            return (
+                f"Necesito la nueva fecha y hora para reprogramar el turno del {original_date}. "
+                f"\u00bfPara cu\u00e1ndo lo quer\u00e9s cambiar?"
+            )
         # Si interpreted_date está presente y tiene formato válido YYYY-MM-DD HH:MM, usarlo como target datetime
         if interpreted_date and interpreted_date.strip():
             try:
@@ -5983,6 +5988,12 @@ async def reschedule_appointment(original_date: str, new_date_time: str, interpr
                 logger.warning(f"[RESCHEDULE] Failed to parse interpreted_date='{interpreted_date}': {_id_err}, falling back to new_date_time")
 
         # B2: slot_offer validation — WARNING ONLY, never blocks the reschedule
+        # Safety guard: if we still don't have a valid new_dt, ask for the date
+        if new_dt is None:
+            return (
+                f"Necesito la nueva fecha y hora para reprogramar el turno del {original_date}. "
+                f"\u00bfPara cu\u00e1ndo lo quer\u00e9s cambiar?"
+            )
         try:
             from services.relay import get_redis as _get_redis_resched_validate
             _r_rv = _get_redis_resched_validate()
@@ -11560,6 +11571,16 @@ PASO 3: PROFESIONAL ASIGNADO — Prioridad (primera que coincida):
 PASO 3b: PACIENTE CON TURNO EXISTENTE — Si el paciente YA TIENE un turno agendado (aparece "PRÓXIMO TURNO" en su contexto) y pide OTRO turno:
   • Reconocé el turno existente: "Ya tenés turno el [día] a las [hora] para [tratamiento]."
   • REAGENDAMIENTO (DLD-88): Si el paciente pide REAGENDAR/CAMBIAR/MOVER el turno:
+    PASO R0 — OBTENER NUEVA FECHA/HORA DESEADA (obligatorio antes de buscar disponibilidad):
+    → Si el paciente YA dijo la nueva fecha u hora deseada (ej: "para el lunes 22 a las 17:45", "a las 18 hs", "para el jueves") → NO preguntes de nuevo. Usá esa info directamente en check_availability.
+    → Si el paciente NO dijo la nueva fecha u hora → preguntá UNA VEZ: "¿Para cuándo lo querés reprogramar?" y esperá la respuesta.
+    → NUNCA llamar reschedule_appointment ni check_availability sin saber al menos la preferencia de nueva fecha/hora.
+    PASO R1 — BUSCAR DISPONIBILIDAD: Una vez que tenés la nueva fecha/hora deseada:
+    → Si el paciente pidió una hora/día específico → llamá check_availability con esa fecha exacta primero (search_mode="exact").
+    → Si ese slot está libre → REPROGRAMÁ DIRECTAMENTE con reschedule_appointment. NO preguntes "¿querés que te lo reprograme?" — es obvio que sí.
+    → Si ese slot está ocupado → llamá check_availability con opciones cercanas (mismo día si es posible, search_mode="week" si no) y mostrá las 2 opciones disponibles SIN PREGUNTAR si querés buscar. NUNCA digas "no hay disponible ¿querés que busque algo cercano?" — buscá directamente y mostrá.
+    → Si el paciente dijo solo franja horaria (ej: "de tarde", "a la mañana") → llamá check_availability con time_preference correspondiente.
+    PASO R2 — CONFIRMAR Y REAGENDAR: Cuando el paciente elige una opción → llamá reschedule_appointment INMEDIATAMENTE. No preguntes de nuevo si quiere confirmar.
     → PRIMERO buscá disponibilidad en el MISMO DÍA del turno original (usá search_mode="exact").
     → Si hay opciones el mismo día → ofrecelas PRIMERO.
     → Si NO hay el mismo día → recién ahí ofrecé otros días cercanos (search_mode="week").
@@ -12025,13 +12046,39 @@ ANTI-ALUCINACIÓN: NUNCA inventes disponibilidad. Solo check_availability es fue
 GESTIÓN DE TURNOS EXISTENTES:
 • CONSULTAR: Llamar PRIMERO 'list_my_appointments' antes de responder.
 • CANCELAR: 'cancel_appointment(date_query)'. Sin fecha especificada → mostrar lista → pedir cuál.
-• REPROGRAMAR TURNO (flujo obligatorio):
-  R1. Llamá `list_my_appointments` para identificar el turno a reprogramar.
-  R2. Llamá `check_availability` para buscar nuevas opciones (siempre mostrá las 2 opciones al paciente).
-  R3. Cuando el paciente elija, llamá reschedule_appointment(original_date="fecha_turno_original", new_date_time="fecha_y_hora_elegida", interpreted_date="YYYY-MM-DD HH:MM").
-  R4. Confirmá al paciente: nuevo día, hora y sede. NO llames book_appointment después de un reschedule exitoso.
+• REPROGRAMAR TURNO (flujo obligatorio — 4 pasos ESTRICTOS):
 
-  IMPORTANTE: Usá EXACTAMENTE la fecha y hora que el paciente eligió de las opciones de R2. No inventes ni redondees horarios.
+  PASO 0 — OBTENER NUEVA PREFERENCIA DE FECHA/HORA (BLOQUEANTE):
+  → Si el paciente YA dijo la nueva fecha/hora (ej: "para el lunes a las 17:45", "a las 18 hs", "para la semana que viene") → NO preguntes de nuevo. Usá esa info DIRECTAMENTE en el PASO 1.
+  → Si el paciente NO dijo la nueva fecha/hora → preguntá UNA SOLA VEZ: "¿Para cuándo lo querés cambiar?" y esperá la respuesta.
+  → PROHIBIDO llamar reschedule_appointment ni check_availability sin tener al menos la preferencia de nueva fecha/hora.
+  → PROHIBIDO decirle al paciente que el sistema falló o que vas a intentar de nuevo. Ese error no debe mostrarse.
+
+  PASO 1 — IDENTIFICAR TURNO ACTUAL:
+  → Llamá `list_my_appointments` si no está ya en el contexto. Identificá el turno a reprogramar.
+
+  PASO 2 — BUSCAR DISPONIBILIDAD NUEVA:
+  → Llamá `check_availability` con la fecha/hora que pidió el paciente.
+  → Si el slot pedido está LIBRE → NO muestres opciones. Ejecutá reschedule_appointment DIRECTAMENTE (ver PASO 3). No preguntes "¿te lo reprogramo?", es obvio.
+  → Si el slot pedido está OCUPADO o NO disponible → buscá automáticamente opciones cercanas SIN PREGUNTAR. NUNCA digas "¿querés que busque otra opción?" — buscá y mostrá. Prioridad: mismo día → días cercanos (search_mode="week").
+  → Mostrá SIEMPRE las 2 opciones disponibles para que el paciente elija.
+  → Si el paciente dijo solo preferencia horaria ("de tarde", "a la mañana") → check_availability con time_preference correspondiente.
+  → Si el paciente elige una opción → ir al PASO 3 INMEDIATAMENTE, sin confirmar de nuevo.
+
+  PASO 3 — REPROGRAMAR EL TURNO EXISTENTE:
+  → Llamá reschedule_appointment(original_date="fecha_turno_original", new_date_time="fecha_y_hora_elegida", interpreted_date="YYYY-MM-DD HH:MM").
+  → Usá EXACTAMENTE la fecha y hora elegida. No inventes ni redondees horarios.
+  → NUNCA llames book_appointment después de reschedule. El turno ya fue movido.
+
+  PASO 4 — CONFIRMACIÓN:
+  → Confirmá al paciente: nuevo día, hora y sede. Cierre natural y empático.
+
+  REGLA CRÍTICA — PROHIBICIONES EN REPROGRAMACIÓN:
+  • PROHIBIDO decir "no pude reprogramarlo", "el sistema no me dejó", "volvemos a intentar en unos minutos" al paciente. Son mensajes de error internos que nunca deben mostrarse.
+  • PROHIBIDO preguntar "¿querés que busque otra opción?" cuando el slot pedido no está disponible — buscá directamente.
+  • PROHIBIDO ignorar la respuesta del paciente. Si dijo "sí" o "sí por favor" después de una pregunta sobre alternativas → buscar opciones INMEDIATAMENTE con check_availability.
+  • PROHIBIDO llamar reschedule_appointment sin tener fecha+hora nueva del paciente.
+  • PROHIBIDO crear un turno NUEVO cuando el paciente quiere reprogramar. Siempre actualizar el existente con reschedule_appointment.
 
 REGLA DE VERIFICACIÓN "VOY A IR AL [DÍA]": Si el paciente dice "voy a ir al de [día]", "voy al turno del [día]", "voy mañana/pasado al turno", o cualquier frase que implique que ya tiene un turno sin preguntar explícitamente "¿tengo turno?":
   1. Llamá PRIMERO a list_my_appointments.
