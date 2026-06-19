@@ -174,45 +174,57 @@ NOVA_TOOLS_SCHEMA: List[Dict[str, Any]] = [
     },
     {
         "type": "function",
-        "name": "ver_historia_clinica",
-        "description": "Muestra el historial clínico del paciente (consultas, evoluciones, cirugías, diagnósticos) y el estado actualizado del odontograma. Úsalo SIEMPRE ANTES de crear una nota, cuando el paciente pregunte por su historia, o cuando necesites ver la evolución del paciente.",
+        "name": "historial_clinico",
+        "description": "Ver registros clinicos de un paciente: diagnosticos, tratamientos, odontograma. Solo para CEO y profesionales.",
         "parameters": {
             "type": "object",
             "properties": {
-                "patient_id": {"type": "integer", "description": "ID del paciente."}
+                "patient_id": {
+                    "type": "integer",
+                    "description": "ID del paciente",
+                }
             },
-            "required": ["patient_id"]
-        }
+            "required": ["patient_id"],
+        },
     },
     {
         "type": "function",
-        "name": "crear_nota_clinica",
-        "description": "Crea un registro de evolución clínica (consulta, control, urgencia o cirugía). IMPORTANTE: Si la evolución incluye cambios de estado en piezas dentales (ej. 'caries en la 1.8', 'extracción de la 24'), NO uses solo esta tool. Usa SIEMPRE 'modificar_odontograma' obligatoriamente para actualizar el gráfico.",
+        "name": "registrar_nota_clinica",
+        "description": "Agrega nota clinica al registro del paciente con diagnostico y datos del odontograma. Solo para profesionales.",
         "parameters": {
             "type": "object",
             "properties": {
-                "patient_id": {"type": "integer", "description": "ID del paciente."},
-                "record_type": {"type": "string", "enum": ["Consulta General", "Control", "Urgencia", "Cirugia"], "description": "El tipo de atención o registro."},
-                "chief_complaint": {"type": "string", "description": "Motivo de la consulta del paciente."},
-                "notes": {"type": "string", "description": "Descripción detallada del procedimiento realizado, notas clínicas."},
-                "treatment_plan": {"type": "string", "description": "Plan a seguir para las próximas sesiones o derivación."},
-                "diagnosis": {"type": "string", "description": "El diagnóstico."},
-                "recommendations": {"type": "string", "description": "Recomendaciones al paciente (higiene, cuidados post-operatorios, próximos pasos)."}
+                "patient_id": {"type": "integer", "description": "ID del paciente"},
+                "diagnosis": {"type": "string", "description": "Diagnostico clinico"},
+                "treatment_notes": {
+                    "type": "string",
+                    "description": "Notas del tratamiento realizado",
+                },
+                "tooth_number": {
+                    "type": "integer",
+                    "description": "Numero de pieza dental (nomenclatura FDI)",
+                },
+                "tooth_status": {
+                    "type": "string",
+                    "enum": [
+                        "caries",
+                        "restoration",
+                        "extraction",
+                        "crown",
+                        "implant",
+                        "root_canal",
+                        "treatment_planned",
+                    ],
+                    "description": "Estado de la pieza dental",
+                },
+                "surface": {
+                    "type": "string",
+                    "enum": ["occlusal", "mesial", "distal", "buccal", "lingual"],
+                    "description": "Superficie dental afectada",
+                },
             },
-            "required": ["patient_id", "record_type", "chief_complaint"]
-        }
-    },
-    {
-        "type": "function",
-        "name": "resumen_evolucion",
-        "description": "Genera un resumen natural de la evolución clínica del paciente. Úsalo cuando el staff pida un 'resumen', 'cómo viene este paciente' o quiera entender el progreso general.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "patient_id": {"type": "integer", "description": "ID del paciente."}
-            },
-            "required": ["patient_id"]
-        }
+            "required": ["patient_id", "diagnosis"],
+        },
     },
     # -------------------------------------------------------------------------
     # B. Turnos (6)
@@ -933,15 +945,14 @@ NOVA_TOOLS_SCHEMA: List[Dict[str, Any]] = [
     {
         "type": "function",
         "name": "modificar_odontograma",
-        "description": """Actualiza el estado de UNA O VARIAS piezas dentales en el odontograma del paciente. OBLIGATORIO usar esta tool cuando el médico pida actualizar el odontograma, o cuando dicte una evolución clínica o diagnóstico que implique afecciones en dientes específicos (ej. 'tiene caries en la 1.8', 'se le hizo una extracción en la 44', 'corona en la 11', etc.). OBLIGATORIO: debes usar esta tool siempre que haya cambios dentales para que el gráfico visual del paciente se actualice.
+        "description": """Modifica el estado de UNA O VARIAS piezas dentales en el odontograma del paciente. Los cambios se persisten en el registro clínico más reciente (o se crea uno nuevo si no existe).
 IMPORTANTE — REGLAS QUIRÚRGICAS:
 1. SIEMPRE llamá 'ver_odontograma' ANTES para conocer el estado actual.
 2. OBLIGATORIO: el parámetro 'piezas' con los números FDI exactos. Si el usuario NO dice números de piezas → NO llamar esta tool, PREGUNTAR primero cuáles son.
-3. NUNCA asumas números de piezas ni superficies. Si el usuario dice 'tiene caries' sin decir qué pieza o en qué cara → preguntá: '¿En qué pieza y en qué cara (mesial, distal, oclusal, vestibular, lingual)?'
+3. NUNCA asumas números de piezas. Si el usuario dice 'tiene caries' sin decir qué pieza → preguntá: '¿En qué pieza o piezas?'
 4. Nomenclatura FDI permanente: 1.1-1.8 (superior derecho), 2.1-2.8 (superior izquierdo), 3.1-3.8 (inferior izquierdo), 4.1-4.8 (inferior derecho). Nomenclatura temporal: 5.1-5.5 (superior derecho), 6.1-6.5 (superior izquierdo), 7.1-7.5 (inferior izquierdo), 8.1-8.5 (inferior derecho). Pasá como número entero sin punto: 16, 18, 21, 36, 51, 55, etc.
-5. ES MANDATORIO usar el parámetro 'superficies' (mesial, distal, occlusal, vestibular, lingual) si la afección es local (ej. caries, restauraciones). Si no se especifica, se aplicará a TODO el diente.
-6. Podés modificar varias piezas en una sola llamada pasando múltiples entradas en 'piezas'.
-7. Soporta dentición permanente (32 piezas) y temporal/decidua (20 piezas).""",
+5. Podés modificar varias piezas en una sola llamada pasando múltiples entradas en 'piezas'.
+6. Soporta dentición permanente (32 piezas) y temporal/decidua (20 piezas).""",
         "parameters": {
             "type": "object",
             "properties": {
@@ -1007,7 +1018,7 @@ IMPORTANTE — REGLAS QUIRÚRGICAS:
                                     "hipomineralizacion_mih",
                                     "otra_lesion",
                                 ],
-                                "description": "Estado de la pieza (elige uno EXACTO de esta lista de 42 opciones permitidas).",
+                                "description": "Estado de la pieza (42 opciones): healthy=sano, caries=caries, restauracion_resina=resina, restauracion_amalgama=amalgama, restauracion_temporal=restauración temporal, sellador_fisuras=sellador, carilla=carilla, puente=puente, corona_porcelana=corona porcelana, corona_resina=corona resina, corona_metalceramica=corona metalcerámica, corona_temporal=corona temporal, incrustacion=incrustación, onlay=onlay, poste=poste, perno=perno, fibras_ribbond=fibras ribbond, tratamiento_conducto=tratamiento de conducto, implante=implante, radiografia=radiografía, protesis_fija=prótesis fija, protesis_removible=prótesis removible, blanqueamiento=blanqueamiento, fluorosis=fluorosis, hipoplasia=hipoplasia, desgaste=desgaste, caries_incipiente=caries incipiente, caries_recurrente=caries recurrente, caries_radicular=caries radicular, fractura=fractura, fisura=fisura, absceso=absceso, fistula=fístula, sinus=sinus, periodontitis=periodontitis, gingivitis=gingivitis, recesion_gingival=recesión gingival, movilidad_dental=movilidad, necrosis=necrosis, pulpotomia=pulpotomía, apicogenesis=apicogénesis, apicificacion=apicificación, extraction=extracción, treatment_planned=planificado, crown=corona, missing=ausente, prosthesis=prótesis, root_canal=conducto",
                             },
                             "superficies": {
                                 "type": "object",
@@ -4825,23 +4836,13 @@ async def _sincronizar_turnos_presupuesto(
         return f"Error sincronizando turnos: {str(e)}"
 
 
-async def _ver_historia_clinica(args: Dict, tenant_id: int, user_role: str) -> str:
+async def _historial_clinico(args: Dict, tenant_id: int, user_role: str) -> str:
     if user_role not in ("ceo", "professional"):
-        return _role_error("ver_historia_clinica", ["ceo", "professional"])
+        return _role_error("historial_clinico", ["ceo", "professional"])
 
     pid = args.get("patient_id")
     if not pid:
         return "Necesito el ID del paciente."
-
-    from db import db
-    import json
-
-    # Get patient name for context
-    patient_name = await db.pool.fetchval(
-        "SELECT first_name || ' ' || COALESCE(last_name, '') FROM patients WHERE id = $1 AND tenant_id = $2",
-        int(pid), tenant_id,
-    )
-    patient_label = patient_name or f"paciente #{pid}"
 
     rows = await db.pool.fetch(
         """
@@ -4859,84 +4860,34 @@ async def _ver_historia_clinica(args: Dict, tenant_id: int, user_role: str) -> s
     )
 
     if not rows:
-        return f"{patient_label} no tiene registros clinicos."
+        return "Este paciente no tiene registros clinicos."
 
-    lines = [f"Historial clinico de {patient_label} ({len(rows)} registros mas recientes):"]
+    lines = [f"Historial clinico ({len(rows)} registros mas recientes):"]
     for r in rows:
-        dt = r["record_date"].strftime("%d/%m/%Y") if r["record_date"] else "Sin fecha"
+        dt = _fmt_date(r["record_date"])
+        diag = r["diagnosis"] or "sin diagnostico"
         prof = r["professional_name"] or "sin profesional"
-        diag = r["diagnosis"] or ""
-        
-        # Parse modern clinical_notes JSON
-        cnotes_text = ""
-        cnotes = r["clinical_notes"]
-        if isinstance(cnotes, str):
-            try:
-                cnotes = json.loads(cnotes)
-            except:
-                pass
-                
-        if isinstance(cnotes, dict):
-            parts = []
-            if cnotes.get("record_type"):
-                parts.append(f"Tipo: {cnotes['record_type']}")
-            if cnotes.get("chief_complaint"):
-                parts.append(f"Motivo: {cnotes['chief_complaint']}")
-            if cnotes.get("notes"):
-                parts.append(f"Notas: {cnotes['notes']}")
-            cnotes_text = " | ".join(parts)
-        elif cnotes and isinstance(cnotes, str):
-            cnotes_text = cnotes
-
-        lines.append(f" {dt}  Dr. {prof}")
-        if diag:
-            lines.append(f"  Diagnostico/Evolucion: {diag}")
-        if cnotes_text:
-            lines.append(f"  Detalles: {cnotes_text}")
-
-        # Treatment plan / next steps
-        tplan = r["treatment_plan"]
-        if isinstance(tplan, str):
-            try:
-                tplan = json.loads(tplan)
-            except:
-                pass
-        if isinstance(tplan, dict) and tplan.get("plan"):
-            lines.append(f"  Plan: {tplan.get('plan')}")
-
-        # Recommendations
-        rec = r["recommendations"]
-        if rec:
-            lines.append(f"  Recomendaciones: {rec}")
-
+        lines.append(f"• {dt} — {diag} (Dr. {prof})")
+        if r["clinical_notes"]:
+            lines.append(f"  Notas: {r['clinical_notes'][:120]}")
         # Odontogram summary
         odata = r["odontogram_data"]
-        if isinstance(odata, str):
-            try:
-                odata = json.loads(odata)
-            except:
-                pass
-                
         if odata and isinstance(odata, dict) and len(odata) > 0:
-            dientes = list(odata.keys())
-            if len(dientes) <= 5:
-                lines.append(f"  Odontograma: dientes afectados {', '.join(dientes)}")
-            else:
-                lines.append(f"  Odontograma: {len(dientes)} dientes afectados")
+            lines.append(f"  Odontograma: {len(odata)} pieza(s) registrada(s)")
     return "\n".join(lines)
 
 
-async def _crear_nota_clinica(args: Dict, tenant_id: int, user_role: str, user_id: str) -> str:
-    if user_role not in ["professional", "ceo"]:
-        return _role_error("crear_nota_clinica", ["professional", "ceo"])
+async def _registrar_nota_clinica(
+    args: Dict, tenant_id: int, user_role: str, user_id: str
+) -> str:
+    if user_role != "professional":
+        return _role_error("registrar_nota_clinica", ["professional"])
 
     pid = args.get("patient_id")
-    rtype = args.get("record_type")
-    
-    if not pid or not rtype:
-        return "Necesito patient_id y record_type."
+    diagnosis = args.get("diagnosis", "").strip()
+    if not pid or not diagnosis:
+        return "Necesito patient_id y diagnosis."
 
-    from db import db
     # Verify patient exists
     exists = await db.pool.fetchval(
         "SELECT id FROM patients WHERE id = $1 AND tenant_id = $2",
@@ -4946,59 +4897,48 @@ async def _crear_nota_clinica(args: Dict, tenant_id: int, user_role: str, user_i
     if not exists:
         return "No encontre a ese paciente."
 
-    # resolve professional id
-    prof_id = await _resolve_professional_id(user_id, tenant_id) if user_id else None
+    prof_id = await _resolve_professional_id(user_id, tenant_id)
 
-    # Build JSONs
-    cnotes = {
-        "record_type": rtype,
-        "chief_complaint": args.get("chief_complaint", ""),
-        "notes": args.get("notes", "")
-    }
-    tplan = {"plan": args.get("treatment_plan", "")} if args.get("treatment_plan") else None
-    diagnosis = args.get("diagnosis", "")
-    recommendations = args.get("recommendations", "")
+    # Build odontogram entry if tooth data provided
+    odontogram_data = {}
+    tooth_number = args.get("tooth_number")
+    tooth_status = args.get("tooth_status")
+    surface = args.get("surface")
+    if tooth_number:
+        entry = {}
+        if tooth_status:
+            entry["status"] = tooth_status
+        if surface:
+            entry["surface"] = surface
+        entry["date"] = str(_today())
+        odontogram_data[str(tooth_number)] = entry
 
-    import uuid
-    import json
-    from datetime import datetime
     record_id = uuid.uuid4()
-    
-    # Inherit the latest odontogram_data to prevent wiping out the odontogram in the UI
-    latest_odontogram = await db.pool.fetchval(
-        """
-        SELECT odontogram_data
-        FROM clinical_records
-        WHERE patient_id = $1 AND tenant_id = $2
-          AND odontogram_data IS NOT NULL
-          AND odontogram_data::text != '{}'
-        ORDER BY record_date DESC, created_at DESC
-        LIMIT 1
-        """,
-        int(pid), tenant_id
-    )
-    
     await db.pool.execute(
         """
         INSERT INTO clinical_records
             (id, tenant_id, patient_id, professional_id, record_date,
-             diagnosis, clinical_notes, treatment_plan, recommendations, odontogram_data)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10::jsonb)
+             diagnosis, clinical_notes, odontogram_data)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+        ON CONFLICT DO NOTHING
         """,
-        record_id, tenant_id, int(pid), prof_id, datetime.now().date(),
-        diagnosis, json.dumps(cnotes), json.dumps(tplan) if tplan else None,
-        recommendations or None, latest_odontogram
+        record_id,
+        tenant_id,
+        int(pid),
+        prof_id,
+        _today(),
+        diagnosis,
+        args.get("treatment_notes"),
+        json.dumps(odontogram_data) if odontogram_data else "{}",
     )
 
-    await _nova_emit("RECORD_CREATED", {"patient_id": int(pid), "tenant_id": tenant_id, "record_type": rtype})
-    await _nova_emit("PATIENT_UPDATED", {"patient_id": int(pid), "tenant_id": tenant_id})
-    return f"Nota clinica ({rtype}) registrada exitosamente."
-
-
-async def _resumen_evolucion(args: Dict, tenant_id: int, user_role: str) -> str:
-    # Just return ver_historia_clinica so Nova can summarize it
-    history = await _ver_historia_clinica(args, tenant_id, user_role)
-    return "Resume el siguiente historial clínico en un párrafo coherente en lenguaje natural para el usuario:\n" + history
+    tooth_msg = ""
+    if tooth_number:
+        tooth_msg = f" Pieza {tooth_number}: {tooth_status or 'registrada'}."
+    await _nova_emit(
+        "PATIENT_UPDATED", {"patient_id": int(pid), "tenant_id": tenant_id}
+    )
+    return f"Nota clinica registrada para paciente {pid}.{tooth_msg}"
 
 
 # --- B. Turnos ---
@@ -7814,12 +7754,10 @@ async def execute_nova_tool(
             return await _actualizar_paciente(args, tenant_id)
         elif name == "actualizar_email_paciente":
             return await _actualizar_email_paciente(args, tenant_id)
-        elif name == "ver_historia_clinica":
-            return await _ver_historia_clinica(args, tenant_id, user_role)
-        elif name == "crear_nota_clinica":
-            return await _crear_nota_clinica(args, tenant_id, user_role, user_id)
-        elif name == "resumen_evolucion":
-            return await _resumen_evolucion(args, tenant_id, user_role)
+        elif name == "historial_clinico":
+            return await _historial_clinico(args, tenant_id, user_role)
+        elif name == "registrar_nota_clinica":
+            return await _registrar_nota_clinica(args, tenant_id, user_role, user_id)
 
         # B. Turnos
         elif name == "ver_agenda":
@@ -10248,8 +10186,6 @@ async def _get_latest_odontogram(patient_id: int, tenant_id: int):
         SELECT id, odontogram_data
         FROM clinical_records
         WHERE patient_id = $1 AND tenant_id = $2
-          AND odontogram_data IS NOT NULL
-          AND odontogram_data::text != '{}'
         ORDER BY record_date DESC, created_at DESC
         LIMIT 1
         """,
@@ -10403,13 +10339,6 @@ async def _modificar_odontograma(
         if not num:
             errors.append(f"Pieza #{i + 1}: falta el número FDI.")
             continue
-        
-        # Clean up possible float or dot notation (e.g. 1.8 -> 18, "2.4" -> "24")
-        if isinstance(num, (int, float)):
-            num = str(num)
-        if isinstance(num, str):
-            num = num.replace(".", "").replace(",", "").strip()
-
         if int(num) not in _VALID_FDI:
             errors.append(
                 f"Pieza {num}: número FDI inválido. Usá nomenclatura FDI (11-48)."
@@ -10572,30 +10501,25 @@ async def _modificar_odontograma(
     v3_data[dentition_key]["teeth"] = list(teeth_map.values())
     v3_data["last_updated"] = _dt.now().isoformat()
 
-    # Persist v3 to database as a NEW clinical record
-    new_record_id = uuid.uuid4()
-    diff_text = "\n".join(changes_summary)
-    
-    cnotes = {
-        "record_type": "Odontograma",
-        "chief_complaint": diagnostico or "Actualización de odontograma",
-        "notes": diff_text
-    }
-    
+    # Persist v3 to database
     await db.pool.execute(
         """
-        INSERT INTO clinical_records 
-        (id, tenant_id, patient_id, professional_id, record_date, diagnosis, clinical_notes, odontogram_data)
-        VALUES ($1, $2, $3, $4, CURRENT_DATE, $5, $6::jsonb, $7::jsonb)
+        UPDATE clinical_records
+        SET odontogram_data = $1::jsonb, updated_at = NOW()
+        WHERE id = $2 AND tenant_id = $3
         """,
-        new_record_id,
-        tenant_id,
-        int(pid),
-        prof_id,
-        diff_text if diff_text else "Odontograma actualizado",
-        json.dumps(cnotes),
         json.dumps(v3_data),
+        record_id,
+        tenant_id,
     )
+
+    if diagnostico:
+        await db.pool.execute(
+            "UPDATE clinical_records SET diagnosis = $1 WHERE id = $2 AND tenant_id = $3",
+            diagnostico,
+            record_id,
+            tenant_id,
+        )
 
     name = f"{patient['first_name']} {patient['last_name'] or ''}".strip()
     logger.info(

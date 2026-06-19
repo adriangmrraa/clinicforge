@@ -662,7 +662,7 @@ export default function PatientDetail() {
             {/* Componente Odontograma */}
             <Odontogram
               patientId={parseInt(id!)}
-              initialData={records[0]?.odontogram_data}
+              initialData={records.find(r => r.odontogram_data && Object.keys(r.odontogram_data).length > 0)?.odontogram_data}
               readOnly={false}
               onSave={() => {
                 // Recargar datos después de guardar

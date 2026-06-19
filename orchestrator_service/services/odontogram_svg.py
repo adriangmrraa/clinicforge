@@ -52,12 +52,12 @@ def _get_surface_path(tooth_id: int, surface_name: str) -> str:
 # Falls back to healthy for unknown states.
 # ---------------------------------------------------------------------------
 PRINT_FILLS = {
-    "healthy":               {"fill": "#f3f4f6", "stroke": "#6b7280"},
+    "healthy":               {"fill": "#ffffff", "stroke": "#4b5563"},
     # Preexistente
     "implante":              {"fill": "#bfdbfe", "stroke": "#1d4ed8"},
     "radiografia":           {"fill": "#fde68a", "stroke": "#b45309"},
-    "restauracion_resina":   {"fill": "#fde68a", "stroke": "#b45309"},
-    "restauracion_amalgama": {"fill": "#9ca3af", "stroke": "#374151"},
+    "restauracion_resina":   {"fill": "#fcd34d", "stroke": "#92400e"},
+    "restauracion_amalgama": {"fill": "#9ca3af", "stroke": "#1f2937"},
     "restauracion_temporal": {"fill": "#fef08a", "stroke": "#a16207"},
     "sellador_fisuras":      {"fill": "#fef08a", "stroke": "#a16207"},
     "carilla":               {"fill": "#ddd6fe", "stroke": "#6d28d9"},
@@ -81,8 +81,8 @@ PRINT_FILLS = {
     # Lesion
     "mancha_blanca":         {"fill": "#fef3c7", "stroke": "#b45309"},
     "surco_profundo":        {"fill": "#fed7aa", "stroke": "#9a3412"},
-    "caries":                {"fill": "#fca5a5", "stroke": "#991b1b"},
-    "caries_penetrante":     {"fill": "#f87171", "stroke": "#7f1d1d"},
+    "caries":                {"fill": "#ef4444", "stroke": "#7f1d1d"},
+    "caries_penetrante":     {"fill": "#b91c1c", "stroke": "#450a0a"},
     "necrosis_pulpar":       {"fill": "#9ca3af", "stroke": "#111827"},
     "proceso_apical":        {"fill": "#fca5a5", "stroke": "#991b1b"},
     "fistula":               {"fill": "#fdba74", "stroke": "#9a3412"},
@@ -326,23 +326,13 @@ def render_odontogram_svg(odontogram_data: Optional[dict]) -> str:
     legend_svg, legend_h = _render_legend(jaw_x, y, jaw_w, used_states)
     y += legend_h
 
-    # Summary
-    y += 10; summary_title_y = y + 10; y += 18
-    affected_teeth = [(tid, teeth_map[tid].get("state", "healthy")) for tid in ALL_PERMANENT if teeth_map.get(tid, {}).get("state", "healthy") != "healthy"]
-
-    summary_lines = [(f"Piezas afectadas: {len(affected_teeth)}/32", False)]
-    for tid, st in affected_teeth:
-        summary_lines.append((f"  {_fdi_label(tid)}  —  {STATE_LABELS.get(st, st)}", True))
-
-    line_h = 14
-    y += len(summary_lines) * line_h + 4
     total_h = y + SVG_PADDING
 
     # ---------------------------------------------------------------------------
     # Build SVG
     # ---------------------------------------------------------------------------
     p = []
-    p.append(f'<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="auto" viewBox="0 0 {SVG_WIDTH} {total_h}" style="max-width:{SVG_WIDTH}px; background:#ffffff;font-family:Arial,sans-serif;">')
+    p.append(f'<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="auto" viewBox="0 0 {SVG_WIDTH} {total_h}" style="max-width:{SVG_WIDTH}px; background:#ffffff;font-family:Arial,sans-serif; display:block; margin:0 auto;">')
     p.append(f'<rect width="100%" height="100%" fill="#ffffff"/>')
 
     # Title
@@ -376,18 +366,6 @@ def render_odontogram_svg(odontogram_data: Optional[dict]) -> str:
         p.append(f'<text x="{jaw_x:.1f}" y="{legend_title_y}" font-size="10" font-weight="bold" fill="#444444" letter-spacing="1">REFERENCIAS</text>')
         p.append(f'<line x1="{jaw_x:.1f}" y1="{legend_title_y+3}" x2="{jaw_x+jaw_w:.1f}" y2="{legend_title_y+3}" stroke="#dddddd" stroke-width="1"/>')
         p.append(legend_svg)
-
-    # Summary
-    p.append(f'<text x="{jaw_x:.1f}" y="{summary_title_y}" font-size="10" font-weight="bold" fill="#444444" letter-spacing="1">RESUMEN</text>')
-    p.append(f'<line x1="{jaw_x:.1f}" y1="{summary_title_y+3}" x2="{jaw_x+jaw_w:.1f}" y2="{summary_title_y+3}" stroke="#dddddd" stroke-width="1"/>')
-
-    ly = summary_title_y + 18
-    for text, is_detail in summary_lines:
-        color = "#555555" if is_detail else "#222222"
-        weight = "normal" if is_detail else "bold"
-        size = "10" if is_detail else "11"
-        p.append(f'<text x="{jaw_x + (16 if is_detail else 0):.1f}" y="{ly}" font-size="{size}" font-weight="{weight}" fill="{color}">{text}</text>')
-        ly += line_h
 
     p.append("</svg>")
     return "\n".join(p)

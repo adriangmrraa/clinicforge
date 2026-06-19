@@ -1,0 +1,79 @@
+Generame un documento completo sobre cómo opera y funciona el agente solo y el multi-agente en ClinicForge.
+
+## Archivos a leer
+
+### Solo-agent (el agente legacy que corre en prod hoy)
+- `orchestrator_service/main.py` — función `build_system_prompt()` (línea ~10520, tiene ~1575 líneas). Es el corazón del solo-agent: construye TODO el system prompt en un solo string monolítico.
+- `orchestrator_service/services/buffer_task.py` — función `process_and_respond()` o similar (línea ~1081). Es donde se construye el `patient_context` (identidad + turnos + historial del paciente) y se llama a `build_system_prompt()`. También maneja el routing de mensajes entrantes de WhatsApp.
+- `orchestrator_service/services/patient_context.py` — el loader de datos de paciente (también usado por multi-agent)
+
+### Multi-agent (el nuevo, actualmente en ai_engine_mode="solo" en settings)
+- `orchestrator_service/agents/specialists.py` — contiene:
+  - `_build_shared_preamble()` (línea ~32, ahora ~250 líneas): las reglas comportamentales compartidas por TODOS los especialistas
+  - `_inject_patient_context()` (línea ~247): construye el bloque de contexto del paciente
+  - `_with_tenant_blocks()` (línea ~315): arma el prompt final ensamblando preamble + contexto + bloques del tenant
+  - Los base prompts de cada especialista (BookingAgent, TriageAgent, ReceptionAgent, SupervisorAgent, etc.)
+- `orchestrator_service/agents/graph.py` — función `run_turn()` (línea ~86): el entry point del multi-agent. Carga contexto, el supervisor rutea al especialista correcto, ejecuta tools, etc.
+- `orchestrator_service/services/patient_context.py` — el loader de datos (compartido)
+- `orchestrator_service/services/engine_router.py` — `MultiAgentEngine` y `SoloEngine`: las dos implementaciones concretas. El toggle `ai_engine_mode` está acá.
+- `orchestrator_service/agents/tenant_context.py` — los bloques de contexto configurables por clínica (faqs, horarios, redes sociales, etc.)
+- `orchestrator_service/services/lead_context.py` — contexto acumulado de leads (conversaciones que aún no son pacientes)
+- `orchestrator_service/services/patient_memory.py` — memorias persistentes del paciente con RAG semántico
+
+### Tests
+- `orchestrator_service/tests/test_agent_parity.py` (~160 tests) — cubre paridad entre ambos motores
+
+## Qué quiero que documentes
+
+### 1. Arquitectura general del sistema
+- ¿Qué es TORA? (el nombre del sistema)
+- ¿Qué canales atiende? (WhatsApp, Instagram, Facebook, Telegram)
+- ¿Qué es el BFF? (proxy Express en puerto 3000)
+- ¿Qué es el orchestrator service? (FastAPI, LangChain, base de datos)
+
+### 2. Solo-agent: cómo funciona
+- Flujo completo: llega un mensaje de WhatsApp → buffer_task → build_system_prompt() → llamada a OpenAI → respuesta
+- Cómo se construye el prompt: identidad del profesional + contexto del paciente (19 campos) + reglas de comportamiento (~100 secciones) + tools definitions + ejemplos inline + bloques del tenant (FAQs, horarios, obras sociales)
+- Cómo maneja el routing (spoiler: no hay — un solo agente hace TODO)
+- Sus fortalezas: battle-tested en producción, ejemplos inline ricos, contexto denso
+- Sus debilidades: monolítico, difícil de mantener, un solo agente para todo
+
+### 3. Multi-agent: cómo funciona
+- Flujo completo: llega un mensaje → graph.run_turn() → supervisor rutea al especialista → specialist run → tools → respuesta
+- Los 3 agentes:
+  - **SupervisorAgent**: decide qué especialista necesita el mensaje
+  - **BookingAgent**: maneja agendamiento de turnos
+  - **TriageAgent**: maneja urgencias y derivaciones
+  - (puede haber más: ReceptionAgent, etc.)
+- Cómo se ensambla el prompt de cada especialista: shared preamble (~250 líneas, 25 secciones) + CONTEXTO DEL PACIENTE (~19 campos) + tenant blocks + specialist base prompt
+- Dónde está el toggle ai_engine_mode (engine_router.py) y cómo se switchea
+
+### 4. Comparativa detallada: solo vs multi
+
+| Aspecto | Solo | Multi |
+|---------|------|-------|
+| Estructura del prompt | 1 monolito de ~1575 líneas | Preamble (250) + contexto (80) + specialist prompt (200-400) |
+| Routing | Inexistente | Supervisor decide quién responde |
+| Tools | Definidas inline en el prompt | Definidas por especialista |
+| Contexto de paciente | 19 campos | 19 campos (ahora en paridad) |
+| Reglas de comportamiento | ~100 secciones inline | 25 secciones en shared preamble |
+| Ejemplos inline (few-shot) | ~200 líneas | Ninguno |
+| Escalabilidad | Un agente para todo | Especialistas dedicados |
+| Estado en producción | ✅ Activo (ai_engine_mode="solo") | ⏸ Modo "solo" — nunca ejecutado en prod |
+
+### 5. Historia de los cambios
+- Phase 1: Bug fixes (re NameError) + F2 protocol port
+- Phase 2 (multi-agent-solo-parity): 5 critical gaps cerrados (PROHIBICIONES, F2 M1-M3, REGLA CERO, Post-Booking, RE-INTENTO/FALLBACK). ~300+ líneas de preamble.
+- Phase 3 (multi-agent-parity-v2): 10 gaps finales (GAP-1 a GAP-10). +92 líneas preamble. 127 tests.
+- Phase 4 (context-engineering-parity): 11 campos de contexto de paciente portados. +155 en PatientContext, +87 en formatter, +150 tests. 160 tests total.
+
+### 6. SDD workflow usado
+- Spec-Driven Development: proposal → spec → design → tasks → apply → verify → archive
+- Todos los artefactos en Engram (no openspec files)
+- Verificación con tests de aserción de strings (no mocks, no LLM)
+
+## Formato de salida
+
+Markdown con secciones numeradas, tablas comparativas, diagramas de flujo en texto (ascii art o mermaid si podés), y ejemplos de código relevantes.
+
+Que quede como documentación técnica viva para que cualquier desarrollador que llegue al proyecto entienda cómo opera cada motor y cómo mantenerlos.

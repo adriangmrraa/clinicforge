@@ -1,0 +1,109 @@
+Ahora tengo otro problema y es que cuando se manda el mensaje de confirmacion de turno y el paciente confirma el turno, el agente d eia ahi deberia ver el estado del turno y si esta confirmado debe comunicarle al paciente que su turno quedo confirmado, y si no esta confirmado que podria estar en programado, elk agente debe cambiar el turno a confirmado y lo mismo avisarle al paciente que su turno quedo confirmado y que le esperamos. Te mando ejemplos reales de chats donde sucedio esto:
+
+Compartí tu experiencia
+¡Hola Luciana! ¿Cómo estás?
+Te escribo para recordarte tu turno programado para el día miércoles 10/06 a las 12:00 hs.
+Por favor, confirmame tu asistencia respondiendo a este mensaje.
+En caso de que no puedas asistir, te pedimos avisarnos con la mayor antelación posible para poder reasignar el turno a otro paciente que lo necesite.
+¡Te esperamos! 🦷✨
+
+Gracias por ayudarnos a ordenar la agenda
+08:01
+Confirmar asistencia
+Necesito reprogramar
+
+
+Confirmar asistencia
+09:24
+
+Entiendo, Luciana. Ya le pasé tu pedido al equipo para que confirmen la asistencia y revisen el comprobante que enviaste 😊
+09:25
+Te van a escribir por WhatsApp en breve para seguirlo.
+09:25
+
+-----ESTE MENSAJE FUE ENVIADO POR EL PERSONAL MEDICO, Y AQUE RECIBIERON LA DERIVACION INNECESARIO, SOLO HABIA QUE CONFIRMAR EL TURNO, COMO TE DIJE ANTES, ENTIENDES EL ERROR DE ESTE CHAT? Y ASI COMO ESTE HAY VARIOS QUE SUCEDE LO MISMO Y OTROS SI LOS CONFIRMA BIEN, ENTONCES NOSE QUE ES LO QUE ESTA MAL QUE HACE QUE A VECES FUNCIONE BIEN EL FLUJO DE CONFIRMACION Y AVECES NO. ----
+Te esperamos mañana 10/06 a las 12:00 Luciana
+09:30
+
+
+------------
+ACA OTRO CHAT CON OTRO PACIENTE DONDE SUCEDIO LO MISMO:
+
+Compartí tu experiencia
+¡Hola Manuel! ¿Cómo estás?
+Te escribo para recordarte tu turno programado para el día miércoles 10/06 a las 14:00 hs.
+Por favor, confirmame tu asistencia respondiendo a este mensaje.
+En caso de que no puedas asistir, te pedimos avisarnos con la mayor antelación posible para poder reasignar el turno a otro paciente que lo necesite.
+¡Te esperamos! 🦷✨
+
+Gracias por ayudarnos a ordenar la agenda
+08:01
+Confirmar asistencia
+Necesito reprogramar
+API
+
+
+Confirmar asistencia
+08:35
+Entiendo, Gerardo Lillo. Quise confirmarte la asistencia del turno de hoy, pero el sistema no me dejó procesarlo bien.
+08:36
+Ya lo derivé con el equipo para que lo revisen y te contacten por WhatsApp en breve 😊
+08:36
+
+------ACA NUEVAMENTE EL EQUIPO MEDICO RECIBIO LA DERIVACION Y LE MANDO MENSAJES MANUALMENTE CONFIRMANDO EL TURNO, CUANDO ESTO DEBERIA HABERLO HECHO LA IA, SIN DERIVAR Y SIN DAR TANTAS VUELTAS----
+Te esperamos mañana 10/06 a las 14:00 Manuel
+09:22
+
+
+---------------------
+
+ACA HAY UN CHAT DONDE EL PACIENTE QUIERE REPROGRAMAR, Y EL AGENTE DE  IA LO TEMRINA DERIVANDO PORQUE NO PUEDE HACER. QUIERO QUE ENTIENDAS ESTA SITUACION, COMO HABLA EL PACIENTE, Y QUE HAY QUE MEJORAR EN EL FLUJO DE REAGENDAMIENTO PARA QUE EL AGENTE PUEDA HACERLO BIEN LA PROXIMA Y SIEMPRE QUE EL PACIENTE QUIERE REAGENDAR, E AGENTE DE IA PUEDA HACERLO SIEMPRE:
+
+Compartí tu experiencia
+¡Hola Rafael! ¿Cómo estás?
+Te escribo para recordarte tu turno programado para el día miércoles 10/06 a las 14:30 hs.
+Por favor, confirmame tu asistencia respondiendo a este mensaje.
+En caso de que no puedas asistir, te pedimos avisarnos con la mayor antelación posible para poder reasignar el turno a otro paciente que lo necesite.
+¡Te esperamos! 🦷✨
+
+Gracias por ayudarnos a ordenar la agenda
+08:01
+Confirmar asistencia
+Necesito reprogramar
+API
+
+Necesito reprogramar
+08:03
+
+Entendemos 😊 No hay problema. Contame qué día y horario te quedaría mejor y te ayudo a reprogramar tu turno.
+08:04
+
+
+--------------AQUI ESTA DEMAS EL SEGUNDO MENSAJE DE : CLARO, TE AYUDO CON ESO. Ya que antes ya le dice que lo va a reagendar y le pregunta cuando quiere reagendarlo, y esta biend igamos, pero el segundo mensaje como que queda encimano, no te parece? 
+
+Claro, te ayudo con eso 😊
+08:042
+
+----------------Aca le pregunta cual quiere reporgramar, pero como en el mensaje de cofirmacion lo que se pregunta confirmar o reprogramar es el turno enc uestion digamos, osea el de manana, entonces debe poder saber que es el turno del que se mando la confirmacion, osea en este caso seria el del miercoles, sin embargo el paciente le dice que es el del miercoles, pero no puede reagendarlo y lo deriva----
+
+Tenés un turno próximo de rehabilitación simple el miércoles 10/06 a las 14:30, y otro más adelante.
+08:04
+¿Qué turno querés reprogramar?
+08:04
+
+
+El del día miercoles
+08:05
+
+-----Aqui es cuando deberia preguntarle para que dia y horario quiere reagendar y luego darle las opciones de slots libres, pero sin embargo no lo agenda digamos y lo deriva.---
+
+Entiendo, Rafael. Quise moverte el turno del miércoles, pero no pude ver disponibilidad para reprogramarlo en ese momento.
+08:06
+
+Ya le pasé tu caso al equipo para que te contacten y lo resuelvan directamente 😊
+08:06
+
+-------------------
+
+
+Yo ya he trabajado mucho esta logica, y pense que ya estaba funcionando biuen en todos los casos, sin embargo como te digo hay situaciones donde se pierde aun, y creo que es por las palabras que usan los pacientes. Quiero que lo soluciones asi queda funcionando siempre igualm ,y en todas las situaciones. Hace explore, proposal y specs

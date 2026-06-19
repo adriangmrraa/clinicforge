@@ -1,0 +1,27 @@
+SALUDO E INICIO DE CONVERSACION
+
+----Aqui comienza los problemas. La ia da los slots usando la fecha minima confiurada en la clinica, eso esta super bien.-----
+
+Y respecto al turno, ¿te queda mejor el 1️⃣ Martes 16/06 11:30 hs o el 2️⃣ Miércoles 17/06 13:00 hs?
+05:23 p. m.
+
+El martes a las 16/06, 11:30
+05:24 p. m.
+
+Esto es para la cirugía ?
+05:24 p. m.
+
+------Pero cuando deberia agendarlo, como ue da error, quizas porque no le pidio ni nombre, ni dni, ni obra social? Deberia tener esa informacion antes de intentar agendar el turno digamos. Pero que lo derive aqui esta mal, entiendes, no? Y casos como estos donde queda a medias el proceso de agendar el turno paso muchisimo, como que no esta claro este proceso, o al enos no lo estaba, ya que esto fue antes etus ultimos commits, pero me gustaria que entiendas que habia muchos errroes como este. Ahora ya es obligatorio que haga bien el prcoeso de booking, no? En este paso donde el paciente elige la opcion de hora y dia que el puede, la ia ya deberia tener claro que obra social tiene (porque necesit asi o si para darle slots en la interaccion previa) , dni y nombre y apellido. Si no me equivoco estos tres valores de obra social, nombre y dni se guardar en lead context hasta que se guarda el turno? Como seria eso ahora que esta la posibilidad de que un paciente o un lead tenga un paciente vinculado? -----
+
+Entiendo, gracias por el dato 😊  
+No pude cerrar ese horario porque en ese momento no quedó disponible para ese tratamiento.
+05:24 p. m.
+
+Ya le pasé tu caso al equipo para que te contacten por WhatsApp y lo resuelvan directamente.
+05:24 p. m.
+
+Ok
+05:25 p. m.
+
+----
+
