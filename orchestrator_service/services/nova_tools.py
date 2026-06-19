@@ -2842,7 +2842,7 @@ async def _ver_presupuesto_paciente(args: Dict, tenant_id: int) -> str:
         return "Necesito patient_id o patient_name para buscar el presupuesto."
 
     # 2. Obtener planes del paciente
-    status_filter = "" if include_completed else "AND tp.status != 'completed'"
+    status_filter = "" if include_completed else "AND tp.status NOT IN ('completed', 'cancelled')"
     plans = await db.pool.fetch(
         f"""
         SELECT tp.id, tp.name, tp.status, tp.estimated_total, tp.approved_total, tp.created_at,
@@ -3440,7 +3440,12 @@ async def _preparar_y_enviar_presupuesto(args: Dict, tenant_id: int, user_role: 
             for idx, group in enumerate(groups_list):
                 group["scaled_price"] = scaled_prices[idx]
         else:
-            groups_map["default"]["scaled_price"] = manual_total
+            groups_map["default"] = {
+                "treatment_code": "default",
+                "treatment_name": "Tratamiento Odontológico",
+                "appointments": [],
+                "scaled_price": manual_total,
+            }
     else:
         for group in groups_map.values():
             group["scaled_price"] = group["total_billed"] if group["total_billed"] > 0 else group["base_price"]
@@ -3482,7 +3487,7 @@ async def _preparar_y_enviar_presupuesto(args: Dict, tenant_id: int, user_role: 
                 await conn.execute(
                     """
                     INSERT INTO treatment_plan_items
-                    (id, plan_id, tenant_id, treatment_type_code, treatment_type_name, estimated_price, approved_price, status, sort_order, created_at, updated_at)
+                    (id, plan_id, tenant_id, treatment_type_code, custom_description, estimated_price, approved_price, status, sort_order, created_at, updated_at)
                     VALUES ($1, $2, $3, $4, $5, $6, $6, 'pending', $7, NOW(), NOW())
                     """,
                     item_id,
