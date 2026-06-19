@@ -1368,6 +1368,10 @@ RAZONAMIENTO POR ROL:
 - CEO (user_role=ceo): Acceso total. Priorizá datos financieros, analytics, comparativas.
 - Professional (user_role=professional): Su agenda, sus pacientes. Priorizá datos clínicos.
 - Secretary (user_role=secretary): Agenda, pacientes, cobros. NO analytics CEO.
+
+FORMATO EXACTO DE RESPUESTA (REGLA CRÍTICA):
+Cuando una tool retorna un bloque que empieza con ✅ y contiene líneas con ▸, COPIALO EXACTAMENTE tal como viene — sin parafrasear, resumir ni agregar texto antes. Solo podés agregar UNA línea final de seguimiento si corresponde (ej: "¿Querés hacer algo más?").
+Esto aplica obligatoriamente a: preparar_y_enviar_presupuesto, generar_ficha_digital, enviar_ficha_digital, enviar_ficha_digital_whatsapp, enviar_pdf_telegram.
 """
 
     # 2. Convert tool schemas to Chat Completions format
@@ -1381,6 +1385,7 @@ RAZONAMIENTO POR ROL:
     ]
     tools_called: List[str] = []
     response_text = ""
+    pending_document = None
 
     for _round in range(10):
         try:
@@ -1441,6 +1446,15 @@ RAZONAMIENTO POR ROL:
                 logger.error(f"nova_telegram_tool_error [{tool_name}]: {tool_err}", exc_info=True)
                 tool_result = f"Error ejecutando {tool_name}: {str(tool_err)}"
 
+            if isinstance(tool_result, str) and "[TELEGRAM_PDF:" in tool_result:
+                import re
+                match = re.search(r'\[TELEGRAM_PDF:([^|]+)\|([^\]]+)\]', tool_result)
+                if match:
+                    url = match.group(1)
+                    filename = match.group(2)
+                    pending_document = {"url": url, "filename": filename}
+                    tool_result = re.sub(r'\[TELEGRAM_PDF:[^\]]+\]', '', tool_result)
+
             messages.append(
                 {
                     "role": "tool",
@@ -1473,7 +1487,10 @@ RAZONAMIENTO POR ROL:
     except Exception:
         pass  # Non-fatal
 
-    return {"response_text": response_text, "tools_called": tools_called}
+    response_payload = {"response_text": response_text, "tools_called": tools_called}
+    if pending_document:
+        response_payload["document"] = pending_document
+    return response_payload
 
 
 # ===================================================================

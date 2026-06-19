@@ -10747,6 +10747,199 @@ async def _generar_ficha_digital(args: Dict, tenant_id: int) -> str:
 
         # Layer 1: Gather
         source_data = await gather_patient_data(_pool, patient_id, tenant_id, tipo)
+# =============================================================================
+# L. OBRAS SOCIALES Y DERIVACIÓN TOOLS
+# =============================================================================
+
+
+async def _consultar_obra_social(args: Dict, tenant_id: int) -> str:
+    """Consulta si la clínica acepta una obra social y en qué condiciones."""
+    nombre = str(args.get("nombre", "")).strip()
+    if not nombre:
+        return "Necesito el nombre de la obra social a consultar."
+
+    try:
+        # 1. Try exact match (case-insensitive)
+        row = await db.pool.fetchrow(
+            "SELECT * FROM tenant_insurance_providers "
+            "WHERE tenant_id = $1 AND LOWER(provider_name) = LOWER($2) AND is_active = true",
+            tenant_id,
+            nombre,
+        )
+
+        # 2. If no exact match, try trigram similarity (handles "ISSN" → "Instituto de Seguridad Social...")
+        if not row:
+            trigram_rows = await db.pool.fetch(
+                "SELECT *, similarity(provider_name, $2) AS sim "
+                "FROM tenant_insurance_providers "
+                "WHERE tenant_id = $1 AND is_active = true AND provider_name % $2 "
+                "ORDER BY sim DESC LIMIT 2",
+                tenant_id,
+                nombre,
+            )
+            if len(trigram_rows) == 1:
+                row = trigram_rows[0]
+            elif len(trigram_rows) > 1:
+                names = ", ".join(r["provider_name"] for r in trigram_rows)
+                return f"Encontré varias obras sociales similares: {names}. ¿Cuál querés consultar?"
+
+        # 3. If still no match, try partial ILIKE
+        if not row:
+            rows = await db.pool.fetch(
+                "SELECT * FROM tenant_insurance_providers "
+                "WHERE tenant_id = $1 AND provider_name ILIKE $2 AND is_active = true",
+                tenant_id,
+                f"%{nombre}%",
+            )
+            if len(rows) == 1:
+                row = rows[0]
+            elif len(rows) > 1:
+                names = ", ".join(r["provider_name"] for r in rows)
+                return f"Encontré varias obras sociales similares: {names}. ¿Cuál querés consultar?"
+
+        # 3. No match
+        if not row:
+            return (
+                f"No hay información sobre '{nombre}' en el catálogo de obras sociales. "
+                "Consultá directamente con la clínica."
+            )
+
+        # 4. Build response
+        status = row["status"]
+        name = row["provider_name"]
+
+        if row.get("ai_response_template"):
+            return row["ai_response_template"]
+
+        prepaid_note = " (prepaga)" if row.get("is_prepaid") else ""
+        if status == "accepted":
+            copay = " Requiere coseguro." if row.get("requires_copay") else ""
+            return f"Sí, la clínica trabaja con {name}{prepaid_note}.{copay}"
+        elif status == "restricted":
+            # Migration 034: show a summary of covered treatments from
+            # coverage_by_treatment. Full detail lives in the Clinics UI.
+            coverage = row.get("coverage_by_treatment") or {}
+            if isinstance(coverage, str):
+                import json as _json_cov
+
+                try:
+                    coverage = _json_cov.loads(coverage)
+                except (ValueError, TypeError):
+                    coverage = {}
+            covered_codes = (
+                [
+                    k
+                    for k, v in coverage.items()
+                    if isinstance(v, dict) and v.get("covered", False)
+                ]
+                if isinstance(coverage, dict)
+                else []
+            )
+            if covered_codes:
+                summary = ", ".join(covered_codes[:5])
+                suffix = " y otros" if len(covered_codes) > 5 else ""
+                return (
+                    f"La clínica trabaja con {name}{prepaid_note} con cobertura limitada: "
+                    f"{summary}{suffix}. Consultá detalles de coseguro y carencia."
+                )
+            return (
+                f"La clínica trabaja con {name}{prepaid_note} con restricciones. "
+                "Consultá con la clínica para el detalle de cobertura."
+            )
+        elif status == "external_derivation":
+            target = row.get("external_target") or "un centro asociado"
+            return (
+                f"Para {name} trabajamos a través de {target}. "
+                "El paciente debe coordinar directamente con ellos."
+            )
+        else:  # rejected
+            return f"La clínica no trabaja con {name}."
+
+    except Exception as e:
+        logger.warning(
+            f"_consultar_obra_social error (tabla puede no existir aún): {e}"
+        )
+        return (
+            f"No se pudo verificar la cobertura de '{nombre}' en este momento. "
+            "Verificá directamente con la clínica."
+        )
+
+
+async def _ver_reglas_derivacion(tenant_id: int) -> str:
+    """Retorna las reglas de derivación de pacientes configuradas."""
+    try:
+        rows = await db.pool.fetch(
+            """
+            SELECT pdr.rule_name, pdr.patient_condition, pdr.categories,
+                   pdr.priority_order, pdr.target_professional_id,
+                   p.first_name as prof_first, p.last_name as prof_last,
+                   p.specialty as prof_specialty
+            FROM professional_derivation_rules pdr
+            LEFT JOIN professionals p ON p.id = pdr.target_professional_id
+            WHERE pdr.tenant_id = $1 AND pdr.is_active = true
+            ORDER BY pdr.priority_order ASC, pdr.id ASC
+            """,
+            tenant_id,
+        )
+
+        if not rows:
+            return "No hay reglas de derivación configuradas para esta clínica."
+
+        lines = [f"Reglas de derivación ({len(rows)} regla(s)):"]
+        for i, r in enumerate(rows, start=1):
+            rule_name = r["rule_name"] or f"Regla {i}"
+            condition = r["patient_condition"] or "cualquier paciente"
+            categories = r.get("categories") or ""
+            cat_suffix = f" / Categorías: {categories}" if categories else ""
+
+            if r["target_professional_id"] and r["prof_first"]:
+                prof_name = f"{r['prof_first']} {r.get('prof_last', '')}".strip()
+                spec = f" ({r['prof_specialty']})" if r.get("prof_specialty") else ""
+                action = (
+                    f"agendar con {prof_name}{spec} (ID: {r['target_professional_id']})"
+                )
+            else:
+                action = "sin filtro de profesional (equipo completo)"
+
+            lines.append(f"  {i}. {rule_name}: {condition}{cat_suffix} → {action}")
+
+        lines.append("\nSi ninguna regla coincide → equipo disponible sin filtro.")
+        return "\n".join(lines)
+
+    except Exception as e:
+        logger.warning(
+            f"_ver_reglas_derivacion error (tabla puede no existir aún): {e}"
+        )
+        return "No se pudieron obtener las reglas de derivación en este momento."
+
+
+# =============================================================================
+# M. FICHAS DIGITALES
+# =============================================================================
+
+
+async def _generar_ficha_digital(args: Dict, tenant_id: int) -> str:
+    """Generate a digital record for a patient."""
+    patient_id = args.get("patient_id")
+    tipo = args.get("tipo_documento", "clinical_report")
+
+    if not patient_id:
+        return "Necesito el ID del paciente para generar la ficha."
+
+    try:
+        from services.digital_records_service import (
+            gather_patient_data,
+            generate_narrative,
+            assemble_html,
+        )
+        from services.odontogram_svg import render_odontogram_svg
+        from db import db as _db_inst
+        import uuid as _uuid
+
+        _pool = _db_inst.pool
+
+        # Layer 1: Gather
+        source_data = await gather_patient_data(_pool, patient_id, tenant_id, tipo)
 
         # Layer 2: AI Narrative
         narrative_result = await generate_narrative(_pool, tenant_id, tipo, source_data)
@@ -10801,9 +10994,24 @@ async def _generar_ficha_digital(args: Dict, tenant_id: int) -> str:
 
         warning_text = ""
         if warnings:
-            warning_text = f"\nAdvertencias: {', '.join(warnings)}"
+            warning_text = f"\n⚠️ Advertencias: {', '.join(warnings)}"
 
-        return f"Ficha generada: {title}\nID: {record_id}\nEstado: borrador{warning_text}\n\nQuerés que la envíe por email?"
+        type_labels = {
+            "clinical_report": "Informe Clínico",
+            "post_surgery": "Informe Post-Quirúrgico",
+            "odontogram_art": "Evaluación Odontológica",
+            "authorization_request": "Solicitud de Autorización",
+        }
+        type_label = type_labels.get(tipo, tipo)
+        return (
+            f"✅ Ficha digital generada para {patient_name}\n\n"
+            f"▸ Tipo: {type_label}\n"
+            f"▸ Título: {title}\n"
+            f"▸ ID: {record_id}\n"
+            f"▸ Estado: borrador"
+            f"{warning_text}\n"
+            f"\n¿La enviamos por email, WhatsApp, o te la mando acá en Telegram?"
+        )
 
     except ValueError as e:
         return f"Error de validación: {str(e)}"
@@ -10897,7 +11105,13 @@ async def _enviar_ficha_digital(args: Dict, tenant_id: int) -> str:
                     "tenant_id": tenant_id,
                 },
             )
-            return f"Ficha enviada a {email}"
+            title_sent = row["title"] or "Ficha Digital"
+            return (
+                f"✅ Ficha digital enviada por email\n\n"
+                f"▸ Documento: {title_sent}\n"
+                f"▸ Destinatario: {email}\n"
+                f"▸ Estado: enviado"
+            )
         else:
             return "Error al enviar el email. Verificá la configuración SMTP."
 
@@ -11234,37 +11448,11 @@ async def _enviar_ficha_digital_whatsapp(args: Dict, tenant_id: int, user_role: 
         )
 
         logger.info(f"Nova: enviar_ficha_digital_whatsapp → {record_id} → {clean_phone}")
-        return f"✅ Ficha *{title}* enviada por WhatsApp a {patient_full_name} ({clean_phone})"
-
-    except Exception as e:
-        logger.error(f"_enviar_ficha_digital_whatsapp error: {e}", exc_info=True)
-        return f"Error al enviar por WhatsApp: {str(e)}"
-
-
-async def _enviar_pdf_telegram(args: Dict, tenant_id: int) -> str:
-    """Find an existing digital record and return a PDF_ATTACHMENT marker for Telegram delivery."""
-    patient_id = args.get("patient_id")
-    record_id = args.get("record_id")
-    tipo_documento = args.get("tipo_documento")
-
-    try:
-        if record_id:
-            row = await db.pool.fetchrow(
-                """SELECT id, html_content, pdf_path, title, template_type
-                   FROM patient_digital_records
-                   WHERE id = $1 AND tenant_id = $2""",
-                record_id,
-                tenant_id,
-            )
-        elif patient_id and tipo_documento:
-            row = await db.pool.fetchrow(
-                """SELECT id, html_content, pdf_path, title, template_type
-                   FROM patient_digital_records
-                   WHERE patient_id = $1 AND tenant_id = $2 AND template_type = $3
-                   ORDER BY created_at DESC LIMIT 1""",
-                patient_id,
-                tenant_id,
-                tipo_documento,
+        return (
+            f"✅ Ficha digital enviada por WhatsApp a {patient_full_name}\n\n"
+            f"▸ Documento: {title}\n"
+            f"▸ Teléfono: {clean_phone}\n"
+            f"▸ Estado: enviado"
             )
         elif patient_id:
             row = await db.pool.fetchrow(
