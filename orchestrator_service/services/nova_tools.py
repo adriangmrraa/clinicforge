@@ -174,57 +174,44 @@ NOVA_TOOLS_SCHEMA: List[Dict[str, Any]] = [
     },
     {
         "type": "function",
-        "name": "historial_clinico",
-        "description": "Ver registros clinicos de un paciente: diagnosticos, tratamientos, odontograma. Solo para CEO y profesionales.",
+        "name": "ver_historia_clinica",
+        "description": "Muestra el historial clínico del paciente (consultas, evoluciones, cirugías, diagnósticos) y el estado actualizado del odontograma. Úsalo SIEMPRE ANTES de crear una nota, cuando el paciente pregunte por su historia, o cuando necesites ver la evolución del paciente.",
         "parameters": {
             "type": "object",
             "properties": {
-                "patient_id": {
-                    "type": "integer",
-                    "description": "ID del paciente",
-                }
+                "patient_id": {"type": "integer", "description": "ID del paciente."}
             },
-            "required": ["patient_id"],
-        },
+            "required": ["patient_id"]
+        }
     },
     {
         "type": "function",
-        "name": "registrar_nota_clinica",
-        "description": "Agrega nota clinica al registro del paciente con diagnostico y datos del odontograma. Solo para profesionales.",
+        "name": "crear_nota_clinica",
+        "description": "Crea un registro de evolución clínica (consulta, control, urgencia o cirugía) luego de atender a un paciente. Úsalo cuando el profesional indique que terminó de atender, indique el motivo, qué le hizo y el diagnóstico.",
         "parameters": {
             "type": "object",
             "properties": {
-                "patient_id": {"type": "integer", "description": "ID del paciente"},
-                "diagnosis": {"type": "string", "description": "Diagnostico clinico"},
-                "treatment_notes": {
-                    "type": "string",
-                    "description": "Notas del tratamiento realizado",
-                },
-                "tooth_number": {
-                    "type": "integer",
-                    "description": "Numero de pieza dental (nomenclatura FDI)",
-                },
-                "tooth_status": {
-                    "type": "string",
-                    "enum": [
-                        "caries",
-                        "restoration",
-                        "extraction",
-                        "crown",
-                        "implant",
-                        "root_canal",
-                        "treatment_planned",
-                    ],
-                    "description": "Estado de la pieza dental",
-                },
-                "surface": {
-                    "type": "string",
-                    "enum": ["occlusal", "mesial", "distal", "buccal", "lingual"],
-                    "description": "Superficie dental afectada",
-                },
+                "patient_id": {"type": "integer", "description": "ID del paciente."},
+                "record_type": {"type": "string", "enum": ["Consulta General", "Control", "Urgencia", "Cirugia"], "description": "El tipo de atención o registro."},
+                "chief_complaint": {"type": "string", "description": "Motivo de la consulta del paciente."},
+                "notes": {"type": "string", "description": "Descripción detallada del procedimiento realizado, notas clínicas."},
+                "treatment_plan": {"type": "string", "description": "Plan a seguir para las próximas sesiones o derivación."},
+                "diagnosis": {"type": "string", "description": "El diagnóstico."}
             },
-            "required": ["patient_id", "diagnosis"],
-        },
+            "required": ["patient_id", "record_type", "chief_complaint"]
+        }
+    },
+    {
+        "type": "function",
+        "name": "resumen_evolucion",
+        "description": "Genera un resumen natural de la evolución clínica del paciente. Úsalo cuando el staff pida un 'resumen', 'cómo viene este paciente' o quiera entender el progreso general.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "patient_id": {"type": "integer", "description": "ID del paciente."}
+            },
+            "required": ["patient_id"]
+        }
     },
     # -------------------------------------------------------------------------
     # B. Turnos (6)
@@ -4836,14 +4823,16 @@ async def _sincronizar_turnos_presupuesto(
         return f"Error sincronizando turnos: {str(e)}"
 
 
-async def _historial_clinico(args: Dict, tenant_id: int, user_role: str) -> str:
+async def _ver_historia_clinica(args: Dict, tenant_id: int, user_role: str) -> str:
     if user_role not in ("ceo", "professional"):
-        return _role_error("historial_clinico", ["ceo", "professional"])
+        return _role_error("ver_historia_clinica", ["ceo", "professional"])
 
     pid = args.get("patient_id")
     if not pid:
         return "Necesito el ID del paciente."
 
+    from db import db
+    import json
     rows = await db.pool.fetch(
         """
         SELECT cr.id, cr.record_date, cr.diagnosis, cr.clinical_notes,
@@ -4851,7 +4840,7 @@ async def _historial_clinico(args: Dict, tenant_id: int, user_role: str) -> str:
                p.first_name || ' ' || p.last_name AS professional_name
         FROM clinical_records cr
         LEFT JOIN professionals p ON p.id = cr.professional_id
-        WHERE cr.patient_id = $1 AND cr.tenant_id = $2
+        WHERE cr.patient_id =  AND cr.tenant_id = 
         ORDER BY cr.record_date DESC
         LIMIT 10
         """,
@@ -4864,81 +4853,110 @@ async def _historial_clinico(args: Dict, tenant_id: int, user_role: str) -> str:
 
     lines = [f"Historial clinico ({len(rows)} registros mas recientes):"]
     for r in rows:
-        dt = _fmt_date(r["record_date"])
-        diag = r["diagnosis"] or "sin diagnostico"
+        dt = r["record_date"].strftime("%d/%m/%Y") if r["record_date"] else "Sin fecha"
         prof = r["professional_name"] or "sin profesional"
-        lines.append(f"• {dt} — {diag} (Dr. {prof})")
-        if r["clinical_notes"]:
-            lines.append(f"  Notas: {r['clinical_notes'][:120]}")
+        diag = r["diagnosis"] or ""
+        
+        # Parse modern clinical_notes JSON
+        cnotes_text = ""
+        cnotes = r["clinical_notes"]
+        if isinstance(cnotes, str):
+            try:
+                cnotes = json.loads(cnotes)
+            except:
+                pass
+                
+        if isinstance(cnotes, dict):
+            parts = []
+            if cnotes.get("record_type"):
+                parts.append(f"Tipo: {cnotes['record_type']}")
+            if cnotes.get("chief_complaint"):
+                parts.append(f"Motivo: {cnotes['chief_complaint']}")
+            if cnotes.get("notes"):
+                parts.append(f"Notas: {cnotes['notes']}")
+            cnotes_text = " | ".join(parts)
+        elif cnotes and isinstance(cnotes, str):
+            cnotes_text = cnotes
+
+        lines.append(f" {dt}  Dr. {prof}")
+        if diag:
+            lines.append(f"  Diagnostico/Evolucion: {diag}")
+        if cnotes_text:
+            lines.append(f"  Detalles: {cnotes_text}")
+
         # Odontogram summary
         odata = r["odontogram_data"]
+        if isinstance(odata, str):
+            try:
+                odata = json.loads(odata)
+            except:
+                pass
+                
         if odata and isinstance(odata, dict) and len(odata) > 0:
-            lines.append(f"  Odontograma: {len(odata)} pieza(s) registrada(s)")
+            lines.append(f"  [Odontograma actualizado en este registro]")
     return "\n".join(lines)
 
 
-async def _registrar_nota_clinica(
-    args: Dict, tenant_id: int, user_role: str, user_id: str
-) -> str:
+async def _crear_nota_clinica(args: Dict, tenant_id: int, user_role: str, user_id: str) -> str:
     if user_role != "professional":
-        return _role_error("registrar_nota_clinica", ["professional"])
+        return _role_error("crear_nota_clinica", ["professional"])
 
     pid = args.get("patient_id")
-    diagnosis = args.get("diagnosis", "").strip()
-    if not pid or not diagnosis:
-        return "Necesito patient_id y diagnosis."
+    rtype = args.get("record_type")
+    
+    if not pid or not rtype:
+        return "Necesito patient_id y record_type."
 
+    from db import db
     # Verify patient exists
     exists = await db.pool.fetchval(
-        "SELECT id FROM patients WHERE id = $1 AND tenant_id = $2",
+        "SELECT id FROM patients WHERE id =  AND tenant_id = ",
         int(pid),
         tenant_id,
     )
     if not exists:
         return "No encontre a ese paciente."
 
-    prof_id = await _resolve_professional_id(user_id, tenant_id)
+    # resolve professional id
+    prof_id = None
+    if user_id:
+        p_row = await db.pool.fetchrow("SELECT id FROM professionals WHERE user_id =  AND tenant_id = ", user_id, tenant_id)
+        if p_row:
+            prof_id = p_row["id"]
 
-    # Build odontogram entry if tooth data provided
-    odontogram_data = {}
-    tooth_number = args.get("tooth_number")
-    tooth_status = args.get("tooth_status")
-    surface = args.get("surface")
-    if tooth_number:
-        entry = {}
-        if tooth_status:
-            entry["status"] = tooth_status
-        if surface:
-            entry["surface"] = surface
-        entry["date"] = str(_today())
-        odontogram_data[str(tooth_number)] = entry
+    # Build JSONs
+    cnotes = {
+        "record_type": rtype,
+        "chief_complaint": args.get("chief_complaint", ""),
+        "notes": args.get("notes", "")
+    }
+    tplan = {"plan": args.get("treatment_plan", "")} if args.get("treatment_plan") else None
+    diagnosis = args.get("diagnosis", "")
 
+    import uuid
+    import json
+    from datetime import datetime
     record_id = uuid.uuid4()
+    
     await db.pool.execute(
         """
         INSERT INTO clinical_records
             (id, tenant_id, patient_id, professional_id, record_date,
-             diagnosis, clinical_notes, odontogram_data)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
-        ON CONFLICT DO NOTHING
+             diagnosis, clinical_notes, treatment_plan)
+        VALUES (, , , , , , ::jsonb, ::jsonb)
         """,
-        record_id,
-        tenant_id,
-        int(pid),
-        prof_id,
-        _today(),
-        diagnosis,
-        args.get("treatment_notes"),
-        json.dumps(odontogram_data) if odontogram_data else "{}",
+        record_id, tenant_id, int(pid), prof_id, datetime.now().date(),
+        diagnosis, json.dumps(cnotes), json.dumps(tplan) if tplan else None
     )
 
-    tooth_msg = ""
-    if tooth_number:
-        tooth_msg = f" Pieza {tooth_number}: {tooth_status or 'registrada'}."
-    await _nova_emit(
-        "PATIENT_UPDATED", {"patient_id": int(pid), "tenant_id": tenant_id}
-    )
-    return f"Nota clinica registrada para paciente {pid}.{tooth_msg}"
+    await _nova_emit("PATIENT_UPDATED", {"patient_id": int(pid), "tenant_id": tenant_id})
+    return f"Nota clinica ({rtype}) registrada exitosamente para el paciente {pid}."
+
+
+async def _resumen_evolucion(args: Dict, tenant_id: int, user_role: str) -> str:
+    # Just return ver_historia_clinica so Nova can summarize it
+    history = await _ver_historia_clinica(args, tenant_id, user_role)
+    return "Resume el siguiente historial clínico en un párrafo coherente en lenguaje natural para el usuario:\n" + history
 
 
 # --- B. Turnos ---
@@ -7754,10 +7772,12 @@ async def execute_nova_tool(
             return await _actualizar_paciente(args, tenant_id)
         elif name == "actualizar_email_paciente":
             return await _actualizar_email_paciente(args, tenant_id)
-        elif name == "historial_clinico":
-            return await _historial_clinico(args, tenant_id, user_role)
-        elif name == "registrar_nota_clinica":
-            return await _registrar_nota_clinica(args, tenant_id, user_role, user_id)
+        elif name == "ver_historia_clinica":
+            return await _ver_historia_clinica(args, tenant_id, user_role)
+        elif name == "crear_nota_clinica":
+            return await _crear_nota_clinica(args, tenant_id, user_role, user_id)
+        elif name == "resumen_evolucion":
+            return await _resumen_evolucion(args, tenant_id, user_role)
 
         # B. Turnos
         elif name == "ver_agenda":
@@ -10501,25 +10521,30 @@ async def _modificar_odontograma(
     v3_data[dentition_key]["teeth"] = list(teeth_map.values())
     v3_data["last_updated"] = _dt.now().isoformat()
 
-    # Persist v3 to database
+    # Persist v3 to database as a NEW clinical record
+    new_record_id = _uuid.uuid4()
+    diff_text = "\n".join(changes_summary)
+    
+    cnotes = {
+        "record_type": "Odontograma",
+        "chief_complaint": diagnostico or "Actualización de odontograma",
+        "notes": diff_text
+    }
+    
     await db.pool.execute(
         """
-        UPDATE clinical_records
-        SET odontogram_data = $1::jsonb, updated_at = NOW()
-        WHERE id = $2 AND tenant_id = $3
+        INSERT INTO clinical_records 
+        (id, tenant_id, patient_id, professional_id, record_date, diagnosis, clinical_notes, odontogram_data)
+        VALUES ($1, $2, $3, $4, CURRENT_DATE, $5, $6::jsonb, $7::jsonb)
         """,
-        json.dumps(v3_data),
-        record_id,
+        new_record_id,
         tenant_id,
+        int(pid),
+        prof_id,
+        "Odontograma actualizado",
+        json.dumps(cnotes),
+        json.dumps(v3_data),
     )
-
-    if diagnostico:
-        await db.pool.execute(
-            "UPDATE clinical_records SET diagnosis = $1 WHERE id = $2 AND tenant_id = $3",
-            diagnostico,
-            record_id,
-            tenant_id,
-        )
 
     name = f"{patient['first_name']} {patient['last_name'] or ''}".strip()
     logger.info(
@@ -10554,199 +10579,6 @@ async def _table_exists(table_name: str) -> bool:
         return False
 
 
-# =============================================================================
-# L. OBRAS SOCIALES Y DERIVACIÓN TOOLS
-# =============================================================================
-
-
-async def _consultar_obra_social(args: Dict, tenant_id: int) -> str:
-    """Consulta si la clínica acepta una obra social y en qué condiciones."""
-    nombre = str(args.get("nombre", "")).strip()
-    if not nombre:
-        return "Necesito el nombre de la obra social a consultar."
-
-    try:
-        # 1. Try exact match (case-insensitive)
-        row = await db.pool.fetchrow(
-            "SELECT * FROM tenant_insurance_providers "
-            "WHERE tenant_id = $1 AND LOWER(provider_name) = LOWER($2) AND is_active = true",
-            tenant_id,
-            nombre,
-        )
-
-        # 2. If no exact match, try trigram similarity (handles "ISSN" → "Instituto de Seguridad Social...")
-        if not row:
-            trigram_rows = await db.pool.fetch(
-                "SELECT *, similarity(provider_name, $2) AS sim "
-                "FROM tenant_insurance_providers "
-                "WHERE tenant_id = $1 AND is_active = true AND provider_name % $2 "
-                "ORDER BY sim DESC LIMIT 2",
-                tenant_id,
-                nombre,
-            )
-            if len(trigram_rows) == 1:
-                row = trigram_rows[0]
-            elif len(trigram_rows) > 1:
-                names = ", ".join(r["provider_name"] for r in trigram_rows)
-                return f"Encontré varias obras sociales similares: {names}. ¿Cuál querés consultar?"
-
-        # 3. If still no match, try partial ILIKE
-        if not row:
-            rows = await db.pool.fetch(
-                "SELECT * FROM tenant_insurance_providers "
-                "WHERE tenant_id = $1 AND provider_name ILIKE $2 AND is_active = true",
-                tenant_id,
-                f"%{nombre}%",
-            )
-            if len(rows) == 1:
-                row = rows[0]
-            elif len(rows) > 1:
-                names = ", ".join(r["provider_name"] for r in rows)
-                return f"Encontré varias obras sociales similares: {names}. ¿Cuál querés consultar?"
-
-        # 3. No match
-        if not row:
-            return (
-                f"No hay información sobre '{nombre}' en el catálogo de obras sociales. "
-                "Consultá directamente con la clínica."
-            )
-
-        # 4. Build response
-        status = row["status"]
-        name = row["provider_name"]
-
-        if row.get("ai_response_template"):
-            return row["ai_response_template"]
-
-        prepaid_note = " (prepaga)" if row.get("is_prepaid") else ""
-        if status == "accepted":
-            copay = " Requiere coseguro." if row.get("requires_copay") else ""
-            return f"Sí, la clínica trabaja con {name}{prepaid_note}.{copay}"
-        elif status == "restricted":
-            # Migration 034: show a summary of covered treatments from
-            # coverage_by_treatment. Full detail lives in the Clinics UI.
-            coverage = row.get("coverage_by_treatment") or {}
-            if isinstance(coverage, str):
-                import json as _json_cov
-
-                try:
-                    coverage = _json_cov.loads(coverage)
-                except (ValueError, TypeError):
-                    coverage = {}
-            covered_codes = (
-                [
-                    k
-                    for k, v in coverage.items()
-                    if isinstance(v, dict) and v.get("covered", False)
-                ]
-                if isinstance(coverage, dict)
-                else []
-            )
-            if covered_codes:
-                summary = ", ".join(covered_codes[:5])
-                suffix = " y otros" if len(covered_codes) > 5 else ""
-                return (
-                    f"La clínica trabaja con {name}{prepaid_note} con cobertura limitada: "
-                    f"{summary}{suffix}. Consultá detalles de coseguro y carencia."
-                )
-            return (
-                f"La clínica trabaja con {name}{prepaid_note} con restricciones. "
-                "Consultá con la clínica para el detalle de cobertura."
-            )
-        elif status == "external_derivation":
-            target = row.get("external_target") or "un centro asociado"
-            return (
-                f"Para {name} trabajamos a través de {target}. "
-                "El paciente debe coordinar directamente con ellos."
-            )
-        else:  # rejected
-            return f"La clínica no trabaja con {name}."
-
-    except Exception as e:
-        logger.warning(
-            f"_consultar_obra_social error (tabla puede no existir aún): {e}"
-        )
-        return (
-            f"No se pudo verificar la cobertura de '{nombre}' en este momento. "
-            "Verificá directamente con la clínica."
-        )
-
-
-async def _ver_reglas_derivacion(tenant_id: int) -> str:
-    """Retorna las reglas de derivación de pacientes configuradas."""
-    try:
-        rows = await db.pool.fetch(
-            """
-            SELECT pdr.rule_name, pdr.patient_condition, pdr.categories,
-                   pdr.priority_order, pdr.target_professional_id,
-                   p.first_name as prof_first, p.last_name as prof_last,
-                   p.specialty as prof_specialty
-            FROM professional_derivation_rules pdr
-            LEFT JOIN professionals p ON p.id = pdr.target_professional_id
-            WHERE pdr.tenant_id = $1 AND pdr.is_active = true
-            ORDER BY pdr.priority_order ASC, pdr.id ASC
-            """,
-            tenant_id,
-        )
-
-        if not rows:
-            return "No hay reglas de derivación configuradas para esta clínica."
-
-        lines = [f"Reglas de derivación ({len(rows)} regla(s)):"]
-        for i, r in enumerate(rows, start=1):
-            rule_name = r["rule_name"] or f"Regla {i}"
-            condition = r["patient_condition"] or "cualquier paciente"
-            categories = r.get("categories") or ""
-            cat_suffix = f" / Categorías: {categories}" if categories else ""
-
-            if r["target_professional_id"] and r["prof_first"]:
-                prof_name = f"{r['prof_first']} {r.get('prof_last', '')}".strip()
-                spec = f" ({r['prof_specialty']})" if r.get("prof_specialty") else ""
-                action = (
-                    f"agendar con {prof_name}{spec} (ID: {r['target_professional_id']})"
-                )
-            else:
-                action = "sin filtro de profesional (equipo completo)"
-
-            lines.append(f"  {i}. {rule_name}: {condition}{cat_suffix} → {action}")
-
-        lines.append("\nSi ninguna regla coincide → equipo disponible sin filtro.")
-        return "\n".join(lines)
-
-    except Exception as e:
-        logger.warning(
-            f"_ver_reglas_derivacion error (tabla puede no existir aún): {e}"
-        )
-        return "No se pudieron obtener las reglas de derivación en este momento."
-
-
-# =============================================================================
-# M. FICHAS DIGITALES
-# =============================================================================
-
-
-async def _generar_ficha_digital(args: Dict, tenant_id: int) -> str:
-    """Generate a digital record for a patient."""
-    patient_id = args.get("patient_id")
-    tipo = args.get("tipo_documento", "clinical_report")
-
-    if not patient_id:
-        return "Necesito el ID del paciente para generar la ficha."
-
-    try:
-        from services.digital_records_service import (
-            gather_patient_data,
-            generate_narrative,
-            assemble_html,
-        )
-        from services.odontogram_svg import render_odontogram_svg
-        from db import db as _db_inst
-        import uuid as _uuid
-
-        _pool = _db_inst.pool
-
-        # Layer 1: Gather
-        source_data = await gather_patient_data(_pool, patient_id, tenant_id, tipo)
 # =============================================================================
 # L. OBRAS SOCIALES Y DERIVACIÓN TOOLS
 # =============================================================================
@@ -10994,24 +10826,9 @@ async def _generar_ficha_digital(args: Dict, tenant_id: int) -> str:
 
         warning_text = ""
         if warnings:
-            warning_text = f"\n⚠️ Advertencias: {', '.join(warnings)}"
+            warning_text = f"\nAdvertencias: {', '.join(warnings)}"
 
-        type_labels = {
-            "clinical_report": "Informe Clínico",
-            "post_surgery": "Informe Post-Quirúrgico",
-            "odontogram_art": "Evaluación Odontológica",
-            "authorization_request": "Solicitud de Autorización",
-        }
-        type_label = type_labels.get(tipo, tipo)
-        return (
-            f"✅ Ficha digital generada para {patient_name}\n\n"
-            f"▸ Tipo: {type_label}\n"
-            f"▸ Título: {title}\n"
-            f"▸ ID: {record_id}\n"
-            f"▸ Estado: borrador"
-            f"{warning_text}\n"
-            f"\n¿La enviamos por email, WhatsApp, o te la mando acá en Telegram?"
-        )
+        return f"Ficha generada: {title}\nID: {record_id}\nEstado: borrador{warning_text}\n\nQuerés que la envíe por email?"
 
     except ValueError as e:
         return f"Error de validación: {str(e)}"
@@ -11105,13 +10922,7 @@ async def _enviar_ficha_digital(args: Dict, tenant_id: int) -> str:
                     "tenant_id": tenant_id,
                 },
             )
-            title_sent = row["title"] or "Ficha Digital"
-            return (
-                f"✅ Ficha digital enviada por email\n\n"
-                f"▸ Documento: {title_sent}\n"
-                f"▸ Destinatario: {email}\n"
-                f"▸ Estado: enviado"
-            )
+            return f"Ficha enviada a {email}"
         else:
             return "Error al enviar el email. Verificá la configuración SMTP."
 
@@ -11448,11 +11259,37 @@ async def _enviar_ficha_digital_whatsapp(args: Dict, tenant_id: int, user_role: 
         )
 
         logger.info(f"Nova: enviar_ficha_digital_whatsapp → {record_id} → {clean_phone}")
-        return (
-            f"✅ Ficha digital enviada por WhatsApp a {patient_full_name}\n\n"
-            f"▸ Documento: {title}\n"
-            f"▸ Teléfono: {clean_phone}\n"
-            f"▸ Estado: enviado"
+        return f"✅ Ficha *{title}* enviada por WhatsApp a {patient_full_name} ({clean_phone})"
+
+    except Exception as e:
+        logger.error(f"_enviar_ficha_digital_whatsapp error: {e}", exc_info=True)
+        return f"Error al enviar por WhatsApp: {str(e)}"
+
+
+async def _enviar_pdf_telegram(args: Dict, tenant_id: int) -> str:
+    """Find an existing digital record and return a PDF_ATTACHMENT marker for Telegram delivery."""
+    patient_id = args.get("patient_id")
+    record_id = args.get("record_id")
+    tipo_documento = args.get("tipo_documento")
+
+    try:
+        if record_id:
+            row = await db.pool.fetchrow(
+                """SELECT id, html_content, pdf_path, title, template_type
+                   FROM patient_digital_records
+                   WHERE id = $1 AND tenant_id = $2""",
+                record_id,
+                tenant_id,
+            )
+        elif patient_id and tipo_documento:
+            row = await db.pool.fetchrow(
+                """SELECT id, html_content, pdf_path, title, template_type
+                   FROM patient_digital_records
+                   WHERE patient_id = $1 AND tenant_id = $2 AND template_type = $3
+                   ORDER BY created_at DESC LIMIT 1""",
+                patient_id,
+                tenant_id,
+                tipo_documento,
             )
         elif patient_id:
             row = await db.pool.fetchrow(
