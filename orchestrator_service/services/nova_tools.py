@@ -196,7 +196,8 @@ NOVA_TOOLS_SCHEMA: List[Dict[str, Any]] = [
                 "chief_complaint": {"type": "string", "description": "Motivo de la consulta del paciente."},
                 "notes": {"type": "string", "description": "Descripción detallada del procedimiento realizado, notas clínicas."},
                 "treatment_plan": {"type": "string", "description": "Plan a seguir para las próximas sesiones o derivación."},
-                "diagnosis": {"type": "string", "description": "El diagnóstico."}
+                "diagnosis": {"type": "string", "description": "El diagnóstico."},
+                "recommendations": {"type": "string", "description": "Recomendaciones al paciente (higiene, cuidados post-operatorios, próximos pasos)."}
             },
             "required": ["patient_id", "record_type", "chief_complaint"]
         }
@@ -4833,6 +4834,14 @@ async def _ver_historia_clinica(args: Dict, tenant_id: int, user_role: str) -> s
 
     from db import db
     import json
+
+    # Get patient name for context
+    patient_name = await db.pool.fetchval(
+        "SELECT first_name || ' ' || COALESCE(last_name, '') FROM patients WHERE id = $1 AND tenant_id = $2",
+        int(pid), tenant_id,
+    )
+    patient_label = patient_name or f"paciente #{pid}"
+
     rows = await db.pool.fetch(
         """
         SELECT cr.id, cr.record_date, cr.diagnosis, cr.clinical_notes,
@@ -4840,7 +4849,7 @@ async def _ver_historia_clinica(args: Dict, tenant_id: int, user_role: str) -> s
                p.first_name || ' ' || p.last_name AS professional_name
         FROM clinical_records cr
         LEFT JOIN professionals p ON p.id = cr.professional_id
-        WHERE cr.patient_id =  AND cr.tenant_id = 
+        WHERE cr.patient_id = $1 AND cr.tenant_id = $2
         ORDER BY cr.record_date DESC
         LIMIT 10
         """,
@@ -4849,9 +4858,9 @@ async def _ver_historia_clinica(args: Dict, tenant_id: int, user_role: str) -> s
     )
 
     if not rows:
-        return "Este paciente no tiene registros clinicos."
+        return f"{patient_label} no tiene registros clinicos."
 
-    lines = [f"Historial clinico ({len(rows)} registros mas recientes):"]
+    lines = [f"Historial clinico de {patient_label} ({len(rows)} registros mas recientes):"]
     for r in rows:
         dt = r["record_date"].strftime("%d/%m/%Y") if r["record_date"] else "Sin fecha"
         prof = r["professional_name"] or "sin profesional"
@@ -4884,6 +4893,21 @@ async def _ver_historia_clinica(args: Dict, tenant_id: int, user_role: str) -> s
         if cnotes_text:
             lines.append(f"  Detalles: {cnotes_text}")
 
+        # Treatment plan / next steps
+        tplan = r["treatment_plan"]
+        if isinstance(tplan, str):
+            try:
+                tplan = json.loads(tplan)
+            except:
+                pass
+        if isinstance(tplan, dict) and tplan.get("plan"):
+            lines.append(f"  Plan: {tplan.get('plan')}")
+
+        # Recommendations
+        rec = r["recommendations"]
+        if rec:
+            lines.append(f"  Recomendaciones: {rec}")
+
         # Odontogram summary
         odata = r["odontogram_data"]
         if isinstance(odata, str):
@@ -4893,7 +4917,11 @@ async def _ver_historia_clinica(args: Dict, tenant_id: int, user_role: str) -> s
                 pass
                 
         if odata and isinstance(odata, dict) and len(odata) > 0:
-            lines.append(f"  [Odontograma actualizado en este registro]")
+            dientes = list(odata.keys())
+            if len(dientes) <= 5:
+                lines.append(f"  Odontograma: dientes afectados {', '.join(dientes)}")
+            else:
+                lines.append(f"  Odontograma: {len(dientes)} dientes afectados")
     return "\n".join(lines)
 
 
@@ -4910,7 +4938,7 @@ async def _crear_nota_clinica(args: Dict, tenant_id: int, user_role: str, user_i
     from db import db
     # Verify patient exists
     exists = await db.pool.fetchval(
-        "SELECT id FROM patients WHERE id =  AND tenant_id = ",
+        "SELECT id FROM patients WHERE id = $1 AND tenant_id = $2",
         int(pid),
         tenant_id,
     )
@@ -4920,7 +4948,7 @@ async def _crear_nota_clinica(args: Dict, tenant_id: int, user_role: str, user_i
     # resolve professional id
     prof_id = None
     if user_id:
-        p_row = await db.pool.fetchrow("SELECT id FROM professionals WHERE user_id =  AND tenant_id = ", user_id, tenant_id)
+        p_row = await db.pool.fetchrow("SELECT id FROM professionals WHERE user_id = $1 AND tenant_id = $2", user_id, tenant_id)
         if p_row:
             prof_id = p_row["id"]
 
@@ -4932,6 +4960,7 @@ async def _crear_nota_clinica(args: Dict, tenant_id: int, user_role: str, user_i
     }
     tplan = {"plan": args.get("treatment_plan", "")} if args.get("treatment_plan") else None
     diagnosis = args.get("diagnosis", "")
+    recommendations = args.get("recommendations", "")
 
     import uuid
     import json
@@ -4942,15 +4971,17 @@ async def _crear_nota_clinica(args: Dict, tenant_id: int, user_role: str, user_i
         """
         INSERT INTO clinical_records
             (id, tenant_id, patient_id, professional_id, record_date,
-             diagnosis, clinical_notes, treatment_plan)
-        VALUES (, , , , , , ::jsonb, ::jsonb)
+             diagnosis, clinical_notes, treatment_plan, recommendations)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9)
         """,
         record_id, tenant_id, int(pid), prof_id, datetime.now().date(),
-        diagnosis, json.dumps(cnotes), json.dumps(tplan) if tplan else None
+        diagnosis, json.dumps(cnotes), json.dumps(tplan) if tplan else None,
+        recommendations or None
     )
 
+    await _nova_emit("RECORD_CREATED", {"patient_id": int(pid), "tenant_id": tenant_id, "record_type": rtype})
     await _nova_emit("PATIENT_UPDATED", {"patient_id": int(pid), "tenant_id": tenant_id})
-    return f"Nota clinica ({rtype}) registrada exitosamente para el paciente {pid}."
+    return f"Nota clinica ({rtype}) registrada exitosamente."
 
 
 async def _resumen_evolucion(args: Dict, tenant_id: int, user_role: str) -> str:
@@ -10522,7 +10553,7 @@ async def _modificar_odontograma(
     v3_data["last_updated"] = _dt.now().isoformat()
 
     # Persist v3 to database as a NEW clinical record
-    new_record_id = _uuid.uuid4()
+    new_record_id = uuid.uuid4()
     diff_text = "\n".join(changes_summary)
     
     cnotes = {
