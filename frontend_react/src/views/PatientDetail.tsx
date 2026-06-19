@@ -9,6 +9,8 @@ import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
 import Odontogram from '../components/Odontogram';
+import { ODONTOGRAM_STATES } from '../constants/odontogramStates';
+
 import AttachmentSummaryCard from '../components/AttachmentSummaryCard';
 import DocumentGallery from '../components/DocumentGallery';
 import AnamnesisPanel from '../components/AnamnesisPanel';
@@ -340,79 +342,12 @@ export default function PatientDetail() {
     }
   };
 
-  /** Extract affected tooth numbers from the structured diff diagnosis text */
-  const getAffectedTeeth = (diagnosis: string): number[] => {
-    const matches = diagnosis.matchAll(/Diente (\d{2})/g);
-    const nums: number[] = [];
-    for (const m of matches) {
-      const n = parseInt(m[1]);
-      if (!isNaN(n) && !nums.includes(n)) nums.push(n);
-    }
-    return nums;
+  const getStateColor = (stateId: string) => {
+    const state = ODONTOGRAM_STATES.find(s => s.id === stateId);
+    return state ? state.defaultColor : '#9ca3af';
   };
 
-  /** Render a card specialized for odontogram-originated records */
-  const renderOdontogramCard = (record: ClinicalRecord) => {
-    const affectedTeeth = record.diagnosis ? getAffectedTeeth(record.diagnosis) : [];
-    const lines = (record.diagnosis || '').split('\n');
-    // First line is the header (e.g. "🦷 Odontograma actualizado — 2 dientes modificados")
-    const header = lines[0] || '🦷 Odontograma actualizado';
-    // Rest of lines are the detail
-    const detail = lines.slice(1).join('\n').trim();
 
-    return (
-      <div key={record.id} className="bg-teal-950/30 border border-teal-800/30 rounded-lg overflow-hidden">
-        {/* Header */}
-        <div className="p-4 border-b border-teal-800/20">
-          <div className="flex justify-between items-start">
-            <div className="flex items-center gap-3">
-              {getRecordIcon('evolution', true)}
-              <div>
-                <span className="inline-flex items-center px-2 py-1 bg-teal-500/10 text-teal-400 text-xs font-medium rounded-full">
-                  Odontograma
-                </span>
-                <span className="ml-2 text-sm text-white/40">
-                  {new Date(record.created_at).toLocaleString(dateLocale)}
-                </span>
-              </div>
-            </div>
-            <span className="text-xs text-white/30">
-              {t('patient_detail.by_professional')}: {record.professional_name}
-            </span>
-          </div>
-        </div>
-
-        {/* Body */}
-        <div className="p-4 space-y-3">
-          {/* Summary line */}
-          {header && (
-            <p className="text-sm font-medium text-teal-300">{header}</p>
-          )}
-
-          {/* Affected teeth badges */}
-          {affectedTeeth.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              {affectedTeeth.map(n => (
-                <span
-                  key={n}
-                  className="inline-flex items-center px-2 py-0.5 bg-teal-500/15 border border-teal-500/30 text-teal-300 text-xs font-mono rounded"
-                >
-                  {n}
-                </span>
-              ))}
-            </div>
-          )}
-
-          {/* Detailed diff — monospace, indented */}
-          {detail && detail !== '' && (
-            <pre className="text-xs text-white/60 whitespace-pre-wrap font-mono leading-relaxed bg-white/[0.02] rounded p-3 border border-white/[0.04]">
-              {detail}
-            </pre>
-          )}
-        </div>
-      </div>
-    );
-  };
 
   const getRecordTypeLabel = (type: string) => {
     if (!type) return '';

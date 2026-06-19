@@ -937,10 +937,11 @@ NOVA_TOOLS_SCHEMA: List[Dict[str, Any]] = [
 IMPORTANTE — REGLAS QUIRÚRGICAS:
 1. SIEMPRE llamá 'ver_odontograma' ANTES para conocer el estado actual.
 2. OBLIGATORIO: el parámetro 'piezas' con los números FDI exactos. Si el usuario NO dice números de piezas → NO llamar esta tool, PREGUNTAR primero cuáles son.
-3. NUNCA asumas números de piezas. Si el usuario dice 'tiene caries' sin decir qué pieza → preguntá: '¿En qué pieza o piezas?'
+3. NUNCA asumas números de piezas ni superficies. Si el usuario dice 'tiene caries' sin decir qué pieza o en qué cara → preguntá: '¿En qué pieza y en qué cara (mesial, distal, oclusal, vestibular, lingual)?'
 4. Nomenclatura FDI permanente: 1.1-1.8 (superior derecho), 2.1-2.8 (superior izquierdo), 3.1-3.8 (inferior izquierdo), 4.1-4.8 (inferior derecho). Nomenclatura temporal: 5.1-5.5 (superior derecho), 6.1-6.5 (superior izquierdo), 7.1-7.5 (inferior izquierdo), 8.1-8.5 (inferior derecho). Pasá como número entero sin punto: 16, 18, 21, 36, 51, 55, etc.
-5. Podés modificar varias piezas en una sola llamada pasando múltiples entradas en 'piezas'.
-6. Soporta dentición permanente (32 piezas) y temporal/decidua (20 piezas).""",
+5. ES MANDATORIO usar el parámetro 'superficies' (mesial, distal, occlusal, vestibular, lingual) si la afección es local (ej. caries, restauraciones). Si no se especifica, se aplicará a TODO el diente.
+6. Podés modificar varias piezas en una sola llamada pasando múltiples entradas en 'piezas'.
+7. Soporta dentición permanente (32 piezas) y temporal/decidua (20 piezas).""",
         "parameters": {
             "type": "object",
             "properties": {
@@ -4926,8 +4927,8 @@ async def _ver_historia_clinica(args: Dict, tenant_id: int, user_role: str) -> s
 
 
 async def _crear_nota_clinica(args: Dict, tenant_id: int, user_role: str, user_id: str) -> str:
-    if user_role != "professional":
-        return _role_error("crear_nota_clinica", ["professional"])
+    if user_role not in ["professional", "ceo"]:
+        return _role_error("crear_nota_clinica", ["professional", "ceo"])
 
     pid = args.get("patient_id")
     rtype = args.get("record_type")
