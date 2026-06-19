@@ -10572,7 +10572,7 @@ async def _modificar_odontograma(
         tenant_id,
         int(pid),
         prof_id,
-        "Odontograma actualizado",
+        diff_text if diff_text else "Odontograma actualizado",
         json.dumps(cnotes),
         json.dumps(v3_data),
     )
