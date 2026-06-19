@@ -3613,49 +3613,78 @@ async def _preparar_y_enviar_presupuesto(args: Dict, tenant_id: int, user_role: 
                 from_number=from_number,
             )
         
-        # Registrar mensaje en chat_messages y conv
-        conv_id = await db.pool.fetchval(
-            "SELECT id FROM chat_conversations WHERE external_user_id = $1 AND tenant_id = $2 AND channel = 'whatsapp'",
-            clean_phone,
-            tenant_id,
-        )
-        if not conv_id:
-            conv_id = uuid.uuid4()
+        # Registrar mensaje en chat_messages y conv (best-effort — no bloquea la respuesta de éxito)
+        try:
+            conv_id = await db.pool.fetchval(
+                "SELECT id FROM chat_conversations WHERE external_user_id = $1 AND tenant_id = $2 AND channel = 'whatsapp'",
+                clean_phone,
+                tenant_id,
+            )
+            if not conv_id:
+                conv_id = uuid.uuid4()
+                await db.pool.execute(
+                    """
+                    INSERT INTO chat_conversations (id, tenant_id, channel, provider, external_user_id, display_name, status, created_at, updated_at)
+                    VALUES ($1, $2, 'whatsapp', 'ycloud', $3, $4, 'active', NOW(), NOW())
+                    """,
+                    conv_id,
+                    tenant_id,
+                    clean_phone,
+                    patient_full_name,
+                )
+
             await db.pool.execute(
                 """
-                INSERT INTO chat_conversations (id, tenant_id, channel, provider, external_user_id, display_name, status, created_at, updated_at)
-                VALUES ($1, $2, 'whatsapp', 'ycloud', $3, $4, 'active', NOW(), NOW())
+                INSERT INTO chat_messages (conversation_id, tenant_id, role, content, from_number, content_attributes, created_at)
+                VALUES ($1, $2, 'assistant', $3, $4, $5::jsonb, NOW())
                 """,
                 conv_id,
                 tenant_id,
-                clean_phone,
-                patient_full_name,
+                f"Presupuesto enviado por WhatsApp: {filename}",
+                from_number or clean_phone,
+                json.dumps({"attachments": [{"type": "document", "url": relative_url, "name": filename}]}),
             )
-            
-        msg_id = str(uuid.uuid4())
-        await db.pool.execute(
-            """
-            INSERT INTO chat_messages (id, conversation_id, tenant_id, sender_type, content, status, created_at, content_attributes)
-            VALUES ($1, $2, $3, 'agent', $4, 'sent', NOW(), $5::jsonb)
-            """,
-            msg_id,
-            conv_id,
-            tenant_id,
-            f"Presupuesto enviado por WhatsApp: {filename}",
-            json.dumps({"attachments": [{"type": "document", "url": relative_url, "name": filename}]}),
-        )
+
+            await db.sync_conversation(
+                tenant_id,
+                "whatsapp",
+                clean_phone,
+                f"Presupuesto enviado por WhatsApp: {filename}",
+                is_user=False
+            )
+            await _nova_emit("NEW_MESSAGE", {
+                "phone_number": clean_phone,
+                "tenant_id": tenant_id,
+                "message": f"Presupuesto enviado por WhatsApp: {filename}",
+                "attachments": [{"type": "document", "url": relative_url, "name": filename}],
+                "role": "assistant",
+                "channel": "whatsapp",
+            })
+        except Exception as _chat_log_err:
+            logger.warning(f"preparar_y_enviar_presupuesto: fallo al registrar en chat_messages (no-crítico): {_chat_log_err}")
         
-        return f"✅ Presupuesto *{plan_name}* (total: ${estimated_total:.2f}) preparado y enviado al WhatsApp del paciente ({clean_phone})."
+        pago_str = f"\n▸ Pago registrado: ${final_payment_amount:,.0f} por {payment_method}" if register_payment else ""
+        return (
+            f"✅ Presupuesto creado y enviado\n"
+            f"▸ Plan: {plan_id}\n"
+            f"▸ Paciente: {patient_full_name}\n"
+            f"▸ Monto aprobado: ${final_total:,.0f}\n"
+            f"{pago_str}\n"
+            f"▸ Estado: {plan_status}\n"
+            f"▸ Enviado por WhatsApp: sí\n"
+            f"[TELEGRAM_PDF:{signed_pdf_url}|{filename}]"
+        )
     else:
-        # telegram delivery mode: return instructions for message_handler.py to intercept
-        filename = f"Presupuesto_{patient_full_name.replace(' ', '_')}.pdf"
-        payload = {
-            "type": "send_document",
-            "url": signed_pdf_url,
-            "filename": filename,
-            "caption": f"Acá tenés el presupuesto para {patient_full_name} ({plan_name}) por un total de ${estimated_total:.2f}."
-        }
-        return json.dumps(payload, ensure_ascii=False)
+        pago_str = f"\n▸ Pago registrado: ${final_payment_amount:,.0f} por {payment_method}" if register_payment else ""
+        return (
+            f"✅ Presupuesto creado (sin envío WhatsApp)\n"
+            f"▸ Plan: {plan_id}\n"
+            f"▸ Paciente: {patient_full_name}\n"
+            f"▸ Monto aprobado: ${final_total:,.0f}\n"
+            f"{pago_str}\n"
+            f"▸ Estado: {plan_status}\n"
+            f"[TELEGRAM_PDF:{signed_pdf_url}|{filename}]"
+        )
 
 
 async def _agregar_item_presupuesto(args: Dict, tenant_id: int, user_role: str) -> str:
@@ -3936,6 +3965,25 @@ async def _enviar_presupuesto_whatsapp(args: Dict, tenant_id: int, user_role: st
     filename = f"Presupuesto_{patient_full_name.replace(' ', '_')}.pdf"
     caption = f"Hola {patient_full_name}, te adjuntamos el presupuesto de tu tratamiento."
 
+    # Generar URL firmada
+    from core.security_utils import generate_signed_url
+    relative_url = f"/uploads/budgets/{tenant_id}/{plan_id}.pdf"
+    signature, expires = generate_signed_url(relative_url, tenant_id)
+    
+    from urllib.parse import urlencode
+    import json
+    import os
+    import uuid
+    query_params = {
+        "signature": signature,
+        "expires": expires,
+    }
+    api_base = os.getenv("ORCHESTRATOR_PUBLIC_URL", "")
+    if not api_base:
+        api_base = "http://127.0.0.1:8000"
+    api_base = api_base.rstrip("/")
+    signed_pdf_url = f"{api_base}{relative_url}?{urlencode(query_params)}"
+
     try:
         media_id = await yc.upload_media(pdf_path, phone_number=from_number)
         await yc.send_document_by_media_id(
@@ -3945,7 +3993,54 @@ async def _enviar_presupuesto_whatsapp(args: Dict, tenant_id: int, user_role: st
     except Exception:
         return "Ocurrió un error al enviar el presupuesto por WhatsApp. Intentalo de nuevo."
 
-    return f"✅ Presupuesto enviado por WhatsApp a {patient_full_name} ({clean_phone})"
+    # Registrar mensaje en chat_messages y conv
+    conv_id = await db.pool.fetchval(
+        "SELECT id FROM chat_conversations WHERE external_user_id = $1 AND tenant_id = $2 AND channel = 'whatsapp'",
+        clean_phone,
+        tenant_id,
+    )
+    if not conv_id:
+        conv_id = uuid.uuid4()
+        await db.pool.execute(
+            """
+            INSERT INTO chat_conversations (id, tenant_id, channel, provider, external_user_id, display_name, status, created_at, updated_at)
+            VALUES ($1, $2, 'whatsapp', 'ycloud', $3, $4, 'active', NOW(), NOW())
+            """,
+            conv_id,
+            tenant_id,
+            clean_phone,
+            patient_full_name,
+        )
+        
+    await db.pool.execute(
+        """
+        INSERT INTO chat_messages (conversation_id, tenant_id, role, content, from_number, content_attributes, created_at)
+        VALUES ($1, $2, 'assistant', $3, $4, $5::jsonb, NOW())
+        """,
+        conv_id,
+        tenant_id,
+        f"Presupuesto enviado por WhatsApp: {filename}",
+        from_number or clean_phone,
+        json.dumps({"attachments": [{"type": "document", "url": relative_url, "name": filename}]}),
+    )
+
+    await db.sync_conversation(
+        tenant_id,
+        "whatsapp",
+        clean_phone,
+        f"Presupuesto enviado por WhatsApp: {filename}",
+        is_user=False
+    )
+    await _nova_emit("NEW_MESSAGE", {
+        "phone_number": clean_phone,
+        "tenant_id": tenant_id,
+        "message": f"Presupuesto enviado por WhatsApp: {filename}",
+        "attachments": [{"type": "document", "url": relative_url, "name": filename}],
+        "role": "assistant",
+        "channel": "whatsapp",
+    })
+
+    return f"✅ Presupuesto enviado por WhatsApp a {patient_full_name} ({clean_phone}). [TELEGRAM_PDF:{signed_pdf_url}|{filename}]"
 
 
 async def _generar_pdf_presupuesto(args: Dict, tenant_id: int, user_role: str) -> str:
