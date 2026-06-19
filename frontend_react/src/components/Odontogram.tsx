@@ -35,6 +35,124 @@ const defSurface = (s = 'healthy'): SurfaceDetail => ({ state: s, condition: nul
 const DEFAULT_SURFACES: SurfaceStates = { occlusal:defSurface(), vestibular:defSurface(), lingual:defSurface(), mesial:defSurface(), distal:defSurface() };
 const SURFACE_KEYS: SurfaceName[] = ['occlusal','vestibular','lingual','mesial','distal'];
 
+// ── Surface labels (Spanish) ──
+const SURFACE_LABELS: Record<string, string> = {
+  occlusal:  'Oclusal',
+  vestibular:'Vestibular',
+  lingual:   'Lingual',
+  mesial:    'Mesial',
+  distal:    'Distal',
+};
+
+// ── State label resolver ──
+const stateLabel = (stateId: string, tFn: (key: string) => string): string => {
+  if (stateId === 'healthy') return 'sano';
+  const state = getStateById(stateId);
+  if (!state) return stateId.replace(/_/g, ' ');
+  const raw = tFn(state.labelKey);
+  // Fallback: if translation key not found, prettify the id
+  if (raw === state.labelKey) return stateId.replace(/_/g, ' ');
+  return raw;
+};
+
+// ── Diff builder ──
+function buildOdontogramDiff(
+  prevJSON: string,
+  permanentTeeth: ToothState[],
+  deciduousTeeth: ToothState[],
+  tFn: (key: string) => string,
+): string {
+  const INSTRUCTIONAL_FALLBACK = [
+    '📋 Registro inicial del odontograma.',
+    '',
+    'Aquí aparecerán los cambios clínicos de cada evolución:',
+    '  • Diente afectado — nombre anatómico',
+    '    Superficie: estado anterior → estado nuevo',
+    '',
+    'Ejemplo:',
+    '  Diente 16 — 1er molar sup. der.',
+    '    Oclusal: sano → Caries',
+  ].join('\n');
+
+  // ── No previous snapshot: first-ever save ──
+  if (!prevJSON) {
+    const allTeeth = [...permanentTeeth, ...deciduousTeeth];
+    const affected = allTeeth.filter(t => t.state !== 'healthy');
+    if (affected.length === 0) return INSTRUCTIONAL_FALLBACK;
+
+    const lines: string[] = [`📋 Registro inicial del odontograma — ${affected.length} pieza${affected.length > 1 ? 's' : ''} con estado registrado`, ''];
+    for (const tooth of affected) {
+      const name = FDI_NAMES[tooth.id] || `Diente ${tooth.id}`;
+      lines.push(`Diente ${tooth.id} — ${name}`);
+      for (const sk of SURFACE_KEYS) {
+        const sv = tooth.surfaces[sk];
+        const st = typeof sv === 'object' && sv !== null ? sv.state : String(sv);
+        if (st !== 'healthy') lines.push(`  ${SURFACE_LABELS[sk]}: ${stateLabel(st, tFn)}`);
+      }
+    }
+    return lines.join('\n');
+  }
+
+  // ── Has previous snapshot: compute diff ──
+  let prevData: { permanentTeeth?: ToothState[]; deciduousTeeth?: ToothState[] };
+  try { prevData = JSON.parse(prevJSON); }
+  catch { return '🦷 Odontograma actualizado'; }
+
+  const prevPerm = prevData.permanentTeeth || [];
+  const prevDeci = prevData.deciduousTeeth || [];
+
+  const changedBlocks: string[] = [];
+  let totalTeeth = 0;
+  let totalSurfaces = 0;
+
+  const processDiff = (prevArr: ToothState[], newArr: ToothState[]) => {
+    for (const newTooth of newArr) {
+      const prevTooth = prevArr.find(t => t.id === newTooth.id);
+      if (!prevTooth) continue;
+      const surfaceLines: string[] = [];
+
+      for (const sk of SURFACE_KEYS) {
+        const nv = newTooth.surfaces[sk];
+        const pv = prevTooth.surfaces[sk];
+        const newSt = typeof nv === 'object' && nv !== null ? nv.state : String(nv);
+        const prevSt = typeof pv === 'object' && pv !== null ? pv.state : String(pv);
+        if (newSt !== prevSt) {
+          surfaceLines.push(`  ${SURFACE_LABELS[sk]}: ${stateLabel(prevSt, tFn)} → ${stateLabel(newSt, tFn)}`);
+          totalSurfaces++;
+        }
+      }
+
+      if (surfaceLines.length > 0) {
+        const name = FDI_NAMES[newTooth.id] || `Diente ${newTooth.id}`;
+        // Collapse if ALL 5 surfaces changed to the same state
+        const uniqueNewStates = new Set(surfaceLines.map(l => l.split('→')[1]?.trim()));
+        if (surfaceLines.length === SURFACE_KEYS.length && uniqueNewStates.size === 1) {
+          const firstPrev = surfaceLines[0].split(':')[1]?.split('→')[0]?.trim() || 'sano';
+          const firstNew = [...uniqueNewStates][0];
+          changedBlocks.push(`Diente ${newTooth.id} — ${name}\n  Todas las superficies: ${firstPrev} → ${firstNew}`);
+        } else {
+          changedBlocks.push(`Diente ${newTooth.id} — ${name}\n${surfaceLines.join('\n')}`);
+        }
+        totalTeeth++;
+      }
+    }
+  };
+
+  processDiff(prevPerm, permanentTeeth);
+  processDiff(prevDeci, deciduousTeeth);
+
+  if (changedBlocks.length === 0) return '🦷 Odontograma guardado sin cambios en superficies';
+
+  const summary = `${totalTeeth} diente${totalTeeth > 1 ? 's' : ''} · ${totalSurfaces} superficie${totalSurfaces > 1 ? 's' : ''} modificada${totalSurfaces > 1 ? 's' : ''}`;
+  return [
+    `🦷 Odontograma actualizado — ${totalTeeth} diente${totalTeeth > 1 ? 's' : ''} modificado${totalTeeth > 1 ? 's' : ''}`,
+    '',
+    ...changedBlocks,
+    '',
+    summary,
+  ].join('\n');
+}
+
 // ── Dental context data ──
 type ToothType = 'molar' | 'premolar' | 'canine' | 'incisor';
 const TOOTH_TYPE: Record<number, ToothType> = {};
@@ -247,8 +365,16 @@ export default function Odontogram({ patientId, recordId, initialData, onSave, r
     setSaving(true); setError(null); setSuccess(null);
     try {
       const data = { version:'3.0', last_updated: new Date().toISOString(), active_dentition: activeDentition, permanent: { teeth: permanentTeeth }, deciduous: { teeth: deciduousTeeth } };
-      if (recordId) await api.put(`/admin/patients/${patientId}/records/${recordId}/odontogram`, { odontogram_data: data });
-      else await api.post(`/admin/patients/${patientId}/records`, { content: t('odontogram.automatic_note'), odontogram_data: data });
+      const diffText = buildOdontogramDiff(initialRef.current, permanentTeeth, deciduousTeeth, t);
+      if (recordId) {
+        await api.put(`/admin/patients/${patientId}/records/${recordId}/odontogram`, { odontogram_data: data });
+      } else {
+        await api.post(`/admin/patients/${patientId}/records`, {
+          diagnosis: diffText,
+          odontogram_data: data,
+          record_type: 'evolution',
+        });
+      }
       setSuccess(t('odontogram.save_success')); initialRef.current = JSON.stringify({ permanentTeeth, deciduousTeeth }); setHasChanges(false);
       if (onSave) onSave(data); setTimeout(() => setSuccess(null), 3000);
     } catch (err: any) { setError(err.response?.data?.detail || t('odontogram.save_error')); } finally { setSaving(false); }
