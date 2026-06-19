@@ -1539,6 +1539,26 @@ IMPORTANTE — REGLAS QUIRÚRGICAS:
                     "description": "Modo de entrega: 'whatsapp' (envía PDF al WhatsApp del paciente) o 'telegram' (envía PDF directamente a este chat de Telegram)",
                     "enum": ["whatsapp", "telegram"],
                 },
+                "manual_total": {
+                    "type": "number",
+                    "description": "Monto total manual para el presupuesto (override)",
+                },
+                "payment_amount": {
+                    "type": "number",
+                    "description": "Monto del pago a registrar",
+                },
+                "payment_all": {
+                    "type": "boolean",
+                    "description": "Si es verdadero, registra el pago por el total del presupuesto",
+                },
+                "payment_method": {
+                    "type": "string",
+                    "description": "Método de pago (cash, card, transfer, insurance)",
+                },
+                "payment_notes": {
+                    "type": "string",
+                    "description": "Notas adicionales para el pago",
+                },
             },
             "required": ["patient_name"],
         },
@@ -3270,6 +3290,31 @@ async def _preparar_y_enviar_presupuesto(args: Dict, tenant_id: int, user_role: 
 
     patient_name = args.get("patient_name")
     delivery_mode = args.get("delivery_mode", "whatsapp")
+    
+    # New arguments
+    manual_total = args.get("manual_total")
+    payment_amount = args.get("payment_amount")
+    payment_all = args.get("payment_all", False)
+    payment_method_raw = args.get("payment_method")
+    payment_notes = args.get("payment_notes")
+
+    if manual_total is not None:
+        manual_total = float(manual_total)
+    if payment_amount is not None:
+        payment_amount = float(payment_amount)
+
+    # Translate payment method
+    payment_method = "transfer"
+    if payment_method_raw:
+        m_lower = str(payment_method_raw).lower().strip()
+        if m_lower in ("transferencia", "transfer", "cbu", "alias"):
+            payment_method = "transfer"
+        elif m_lower in ("efectivo", "cash", "billete"):
+            payment_method = "cash"
+        elif m_lower in ("tarjeta", "card", "credito", "debito", "crédito", "débito"):
+            payment_method = "card"
+        elif m_lower in ("obra social", "prepaga", "insurance", "osde"):
+            payment_method = "insurance"
 
     # Search for patient
     row = await db.pool.fetchrow(
@@ -3311,41 +3356,55 @@ async def _preparar_y_enviar_presupuesto(args: Dict, tenant_id: int, user_role: 
         patient_id,
     )
 
-    if not apt_rows:
-        return f"El paciente {patient_full_name} no tiene turnos pendientes sin asignar a un presupuesto."
-
     appointments = []
-    for r in apt_rows:
-        appointments.append({
-            "id": str(r["appointment_id"]),
-            "treatment_code": r["treatment_code"] or r["appointment_type"] or "sin_tipo",
-            "treatment_name": r["treatment_name"],
-            "base_price": float(r["base_price"]) if r["base_price"] else 0.0,
-            "billing_amount": float(r["billing_amount"] or 0),
-        })
-
     groups_map = {}
-    for apt in appointments:
-        code = apt["treatment_code"]
-        if code not in groups_map:
-            groups_map[code] = {
-                "treatment_code": code,
-                "treatment_name": apt["treatment_name"],
-                "base_price": apt["base_price"],
-                "appointments": [],
-                "total_billed": 0.0,
-            }
-        groups_map[code]["appointments"].append(apt)
-        groups_map[code]["total_billed"] += apt["billing_amount"]
-
     unique_treatments = []
-    seen = set()
-    for apt in appointments:
-        t_name = apt["treatment_name"]
-        if t_name and t_name not in seen:
-            seen.add(t_name)
-            unique_treatments.append(t_name)
-    
+
+    if not apt_rows:
+        if manual_total is not None:
+            # Bypass appointments and define single fallback group
+            groups_map = {
+                "default": {
+                    "treatment_code": "default",
+                    "treatment_name": "Tratamiento Odontológico",
+                    "base_price": manual_total,
+                    "appointments": [],
+                    "total_billed": manual_total,
+                }
+            }
+            unique_treatments = ["Tratamiento Odontológico"]
+        else:
+            return f"El paciente {patient_full_name} no tiene turnos pendientes sin asignar a un presupuesto."
+    else:
+        for r in apt_rows:
+            appointments.append({
+                "id": str(r["appointment_id"]),
+                "treatment_code": r["treatment_code"] or r["appointment_type"] or "sin_tipo",
+                "treatment_name": r["treatment_name"],
+                "base_price": float(r["base_price"]) if r["base_price"] else 0.0,
+                "billing_amount": float(r["billing_amount"] or 0),
+            })
+
+        for apt in appointments:
+            code = apt["treatment_code"]
+            if code not in groups_map:
+                groups_map[code] = {
+                    "treatment_code": code,
+                    "treatment_name": apt["treatment_name"],
+                    "base_price": apt["base_price"],
+                    "appointments": [],
+                    "total_billed": 0.0,
+                }
+            groups_map[code]["appointments"].append(apt)
+            groups_map[code]["total_billed"] += apt["billing_amount"]
+
+        seen = set()
+        for apt in appointments:
+            t_name = apt["treatment_name"]
+            if t_name and t_name not in seen:
+                seen.add(t_name)
+                unique_treatments.append(t_name)
+
     current_date_str = datetime.now().strftime("%Y-%m-%d")
     if unique_treatments:
         treatments_str = " + ".join(unique_treatments)
@@ -3353,29 +3412,73 @@ async def _preparar_y_enviar_presupuesto(args: Dict, tenant_id: int, user_role: 
     else:
         plan_name = f"Presupuesto — {current_date_str}"
         
-    estimated_total = sum(a["billing_amount"] for a in appointments)
+    estimated_total = sum(a["billing_amount"] for a in appointments) if apt_rows else manual_total
+    final_total = manual_total if manual_total is not None else estimated_total
+
+    # Perform scaling if manual_total is provided and unassigned appointments exist
+    if manual_total is not None:
+        if apt_rows:
+            groups_list = list(groups_map.values())
+            original_prices = []
+            for group in groups_list:
+                orig_p = group["total_billed"] if group["total_billed"] > 0 else group["base_price"]
+                original_prices.append(orig_p)
+            
+            original_sum = sum(original_prices)
+            if original_sum == 0:
+                n = len(groups_list)
+                scaled_prices = [round(manual_total / n, 2)] * n
+                remainder = manual_total - sum(scaled_prices)
+                scaled_prices[-1] = round(scaled_prices[-1] + remainder, 2)
+            else:
+                scaled_prices = []
+                for orig_p in original_prices:
+                    scaled_prices.append(round(orig_p * (manual_total / original_sum), 2))
+                remainder = manual_total - sum(scaled_prices)
+                scaled_prices[-1] = round(scaled_prices[-1] + remainder, 2)
+            
+            for idx, group in enumerate(groups_list):
+                group["scaled_price"] = scaled_prices[idx]
+        else:
+            groups_map["default"]["scaled_price"] = manual_total
+    else:
+        for group in groups_map.values():
+            group["scaled_price"] = group["total_billed"] if group["total_billed"] > 0 else group["base_price"]
+
+    # Determine payment registration requirements
+    register_payment = (payment_amount is not None) or payment_all
+    if register_payment:
+        final_payment_amount = final_total if payment_all else payment_amount
+    else:
+        final_payment_amount = 0.0
+
+    plan_status = "completed" if (register_payment and final_payment_amount >= final_total) else "approved"
     plan_id = uuid.uuid4()
+
+    from datetime import date
+    from decimal import Decimal
 
     async with db.pool.acquire() as conn:
         async with conn.transaction():
-            # Crear plan aprobado
+            # Crear plan aprobado o completado
             await conn.execute(
                 """
                 INSERT INTO treatment_plans
                 (id, tenant_id, patient_id, professional_id, name, status, estimated_total, approved_total, approved_by, approved_at, created_at, updated_at)
-                VALUES ($1, $2, $3, NULL, $4, 'approved', $5, $5, 'AI Bot', NOW(), NOW(), NOW())
+                VALUES ($1, $2, $3, NULL, $4, $5, $6, $6, 'AI Bot', NOW(), NOW(), NOW())
                 """,
                 plan_id,
                 tenant_id,
                 patient_id,
                 plan_name,
-                estimated_total,
+                plan_status,
+                final_total,
             )
 
             # Crear items
             for sort_order, (code, group) in enumerate(groups_map.items()):
                 item_id = uuid.uuid4()
-                estimated_price = group["total_billed"] if group["total_billed"] > 0 else group["base_price"]
+                item_price = group["scaled_price"]
                 await conn.execute(
                     """
                     INSERT INTO treatment_plan_items
@@ -3387,17 +3490,53 @@ async def _preparar_y_enviar_presupuesto(args: Dict, tenant_id: int, user_role: 
                     tenant_id,
                     group["treatment_code"],
                     group["treatment_name"],
-                    estimated_price,
+                    item_price,
                     sort_order,
                 )
                 # Vincular appointments
                 for apt in group["appointments"]:
-                    await conn.execute(
-                        "UPDATE appointments SET plan_item_id = $1 WHERE id = $2 AND tenant_id = $3",
-                        item_id,
-                        uuid.UUID(apt["id"]),
-                        tenant_id,
-                    )
+                    if apt["id"]:
+                        await conn.execute(
+                            "UPDATE appointments SET plan_item_id = $1 WHERE id = $2 AND tenant_id = $3",
+                            item_id,
+                            uuid.UUID(apt["id"]),
+                            tenant_id,
+                        )
+
+            # Registrar pago inline si corresponde
+            if register_payment:
+                payment_id = uuid.uuid4()
+                await conn.execute(
+                    """
+                    INSERT INTO treatment_plan_payments
+                        (id, plan_id, amount, payment_method, payment_date,
+                         notes, recorded_by, tenant_id)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                    """,
+                    payment_id,
+                    plan_id,
+                    Decimal(str(final_payment_amount)),
+                    payment_method,
+                    date.today(),
+                    payment_notes or "Pago inicial registrado via Telegram",
+                    "AI Bot",
+                    tenant_id,
+                )
+
+                # Sync to accounting_transactions
+                await conn.execute(
+                    """
+                    INSERT INTO accounting_transactions
+                    (tenant_id, patient_id, transaction_type, transaction_date, amount,
+                     payment_method, description, status)
+                    VALUES ($1, $2, 'payment', NOW(), $3, $4, $5, 'completed')
+                    """,
+                    tenant_id,
+                    patient_id,
+                    Decimal(str(final_payment_amount)),
+                    payment_method,
+                    f"Pago plan '{plan_name}' - {payment_method}",
+                )
 
     # Generar el PDF
     from services.budget_service import generate_budget_pdf
@@ -5528,6 +5667,17 @@ async def _registrar_pago_plan(args: Dict, tenant_id: int, user_role: str) -> st
     method = args.get("method")
     notes = args.get("notes", "")
     payment_date = args.get("payment_date")
+    from datetime import datetime, date
+    if payment_date:
+        if isinstance(payment_date, str):
+            try:
+                payment_date_obj = datetime.strptime(payment_date, "%Y-%m-%d").date()
+            except ValueError:
+                payment_date_obj = date.today()
+        else:
+            payment_date_obj = payment_date
+    else:
+        payment_date_obj = date.today()
 
     if not plan_id or amount is None or not method:
         return "Necesito plan_id, amount y method."
@@ -5565,7 +5715,7 @@ async def _registrar_pago_plan(args: Dict, tenant_id: int, user_role: str) -> st
         plan_uuid,
         Decimal(str(amount)),
         method,
-        payment_date if payment_date else _today().isoformat(),
+        payment_date_obj,
         notes,
         args.get("recorded_by"),
         tenant_id,

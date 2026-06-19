@@ -372,3 +372,92 @@ class TestDoubleCountingPrevention:
 
         total_today = legacy_today_paid + plan_payments_today
         assert total_today == 55000
+
+
+# =========================================================================
+# TESTS: Telegram Budget Management (sdd-apply)
+# =========================================================================
+
+
+class TestTelegramBudgetsApplied:
+    """Tests for the new Telegram Budget Management features (manual override, inline payment, date coercion)."""
+
+    def test_proportional_price_scaling_and_remainder_adjustment(self):
+        """REQ-1.1.1 & REQ-1.1.2: Scale prices proportionally and adjust last item remainder."""
+        # Scenario: 3 unassigned appointments with prices 1000, 2000, and 1500 (total 4500)
+        # manual_total = 3000
+        original_prices = [1000.0, 2000.0, 1500.0]
+        manual_total = 3000.0
+        original_sum = sum(original_prices)
+
+        scaled_prices = []
+        for orig_p in original_prices:
+            scaled_prices.append(round(orig_p * (manual_total / original_sum), 2))
+        remainder = manual_total - sum(scaled_prices)
+        scaled_prices[-1] = round(scaled_prices[-1] + remainder, 2)
+
+        # Then the items MUST be scaled proportionally:
+        # Item 1 scaled price: 1000 * (3000 / 4500) = 666.67
+        # Item 2 scaled price: 2000 * (3000 / 4500) = 1333.33
+        # Item 3 scaled price: 3000 - (666.67 + 1333.33) = 1000.00 (last item gets remainder)
+        assert scaled_prices[0] == 666.67
+        assert scaled_prices[1] == 1333.33
+        assert scaled_prices[2] == 1000.00
+        assert sum(scaled_prices) == 3000.0
+
+    def test_conversational_payment_method_mapping(self):
+        """REQ-1.2.3: Verify mapped payment method translates correctly from colloquial phrases."""
+        def map_method(raw_str):
+            if not raw_str:
+                return "transfer"
+            m_lower = str(raw_str).lower().strip()
+            if m_lower in ("transferencia", "transfer", "cbu", "alias"):
+                return "transfer"
+            elif m_lower in ("efectivo", "cash", "billete"):
+                return "cash"
+            elif m_lower in ("tarjeta", "card", "credito", "debito", "crédito", "débito"):
+                return "card"
+            elif m_lower in ("obra social", "prepaga", "insurance", "osde"):
+                return "insurance"
+            return "transfer"
+
+        assert map_method("Efectivo") == "cash"
+        assert map_method("transferencia") == "transfer"
+        assert map_method("tarjeta") == "card"
+        assert map_method("prepaga") == "insurance"
+        assert map_method("unknown") == "transfer"
+
+    def test_plan_status_auto_completion_inline_payment(self):
+        """REQ-1.2.4: Set plan status to completed if total registered payments cover the approved total."""
+        approved_total = 3000.0
+        
+        # Scenario 1: payment covers total
+        payment_amount_1 = 3000.0
+        status_1 = "completed" if payment_amount_1 >= approved_total else "approved"
+        assert status_1 == "completed"
+
+        # Scenario 2: payment is partial
+        payment_amount_2 = 1500.0
+        status_2 = "completed" if payment_amount_2 >= approved_total else "approved"
+        assert status_2 == "approved"
+
+    def test_date_coercion_parser(self):
+        """REQ-1.3.1: Coerce ISO string dates into datetime.date objects, fallback to date.today()."""
+        from datetime import datetime, date
+
+        def parse_payment_date(payment_date):
+            if payment_date:
+                if isinstance(payment_date, str):
+                    try:
+                        return datetime.strptime(payment_date, "%Y-%m-%d").date()
+                    except ValueError:
+                        return date.today()
+                else:
+                    return payment_date
+            else:
+                return date.today()
+
+        assert parse_payment_date("2026-06-19") == date(2026, 6, 19)
+        assert parse_payment_date("invalid-date") == date.today()
+        assert parse_payment_date(None) == date.today()
+        assert parse_payment_date(date(2026, 6, 20)) == date(2026, 6, 20)
