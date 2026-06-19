@@ -3663,28 +3663,27 @@ async def _preparar_y_enviar_presupuesto(args: Dict, tenant_id: int, user_role: 
         except Exception as _chat_log_err:
             logger.warning(f"preparar_y_enviar_presupuesto: fallo al registrar en chat_messages (no-crítico): {_chat_log_err}")
         
-        pago_str = f"\n▸ Pago registrado: ${final_payment_amount:,.0f} por {payment_method}" if register_payment else ""
-        return (
-            f"✅ Presupuesto creado y enviado\n"
-            f"▸ Plan: {plan_id}\n"
-            f"▸ Paciente: {patient_full_name}\n"
-            f"▸ Monto aprobado: ${final_total:,.0f}\n"
+        pago_str = f"\n\u25b8 Pago registrado: ${final_payment_amount:,.0f} por {payment_method}" if register_payment else ""
+        summary = (
+            f"\u2705 Presupuesto nuevo creado y enviado a {patient_full_name}\n\n"
+            f"\u25b8 Plan: {plan_id}\n"
+            f"\u25b8 Monto aprobado: ${final_total:,.0f}"
             f"{pago_str}\n"
-            f"▸ Estado: {plan_status}\n"
-            f"▸ Enviado por WhatsApp: sí\n"
-            f"[TELEGRAM_PDF:{signed_pdf_url}|{filename}]"
+            f"\u25b8 Estado: {plan_status}\n"
+            f"\u25b8 Enviado por WhatsApp: s\u00ed"
         )
+        return f"{summary}\n[TELEGRAM_PDF:{signed_pdf_url}|{filename}]"
     else:
-        pago_str = f"\n▸ Pago registrado: ${final_payment_amount:,.0f} por {payment_method}" if register_payment else ""
-        return (
-            f"✅ Presupuesto creado (sin envío WhatsApp)\n"
-            f"▸ Plan: {plan_id}\n"
-            f"▸ Paciente: {patient_full_name}\n"
-            f"▸ Monto aprobado: ${final_total:,.0f}\n"
+        pago_str = f"\n\u25b8 Pago registrado: ${final_payment_amount:,.0f} por {payment_method}" if register_payment else ""
+        summary = (
+            f"\u2705 Presupuesto nuevo creado para {patient_full_name}\n\n"
+            f"\u25b8 Plan: {plan_id}\n"
+            f"\u25b8 Monto aprobado: ${final_total:,.0f}"
             f"{pago_str}\n"
-            f"▸ Estado: {plan_status}\n"
-            f"[TELEGRAM_PDF:{signed_pdf_url}|{filename}]"
+            f"\u25b8 Estado: {plan_status}\n"
+            f"\u25b8 Enviado por WhatsApp: no"
         )
+        return f"{summary}\n[TELEGRAM_PDF:{signed_pdf_url}|{filename}]"
 
 
 async def _agregar_item_presupuesto(args: Dict, tenant_id: int, user_role: str) -> str:

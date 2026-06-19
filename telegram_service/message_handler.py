@@ -157,6 +157,30 @@ async def process_message(
         return
 
     # 4. Format and send response
+    document_info = result.get("document")
+    if document_info:
+        doc_url = document_info.get("url")
+        filename = document_info.get("filename", "Presupuesto.pdf")
+        caption = response_text.strip() if response_text else ""
+        if len(caption) <= 1024:
+            await update.message.reply_document(
+                document=doc_url,
+                filename=filename,
+                caption=caption if caption else None,
+                parse_mode="Markdown" if caption else None,
+            )
+        else:
+            await update.message.reply_document(
+                document=doc_url,
+                filename=filename,
+            )
+            if response_text:
+                formatted = format_response(response_text)
+                for chunk in chunk_message(formatted):
+                    await update.message.reply_text(chunk, parse_mode="Markdown")
+        return
+
+
     if not response_text:
         response_text = "Procesé tu consulta pero no obtuve una respuesta. Intentá reformular."
 
@@ -410,6 +434,29 @@ async def handle_callback_query(
             if resp.status_code == 200:
                 result = resp.json()
                 response_text = result.get("response_text", "")
+
+                document_info = result.get("document")
+                if document_info:
+                    doc_url = document_info.get("url")
+                    filename = document_info.get("filename", "Presupuesto.pdf")
+                    caption = response_text.strip() if response_text else ""
+                    if len(caption) <= 1024:
+                        await query.message.reply_document(
+                            document=doc_url,
+                            filename=filename,
+                            caption=caption if caption else None,
+                            parse_mode="Markdown" if caption else None,
+                        )
+                    else:
+                        await query.message.reply_document(
+                            document=doc_url,
+                            filename=filename,
+                        )
+                        if response_text:
+                            formatted = format_response(response_text)
+                            for chunk in chunk_message(formatted):
+                                await query.message.reply_text(chunk, parse_mode="Markdown")
+                    return
                 
                 import json as _json_parser
                 if response_text and response_text.strip().startswith("{") and response_text.strip().endswith("}"):
