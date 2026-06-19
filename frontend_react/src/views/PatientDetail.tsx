@@ -216,6 +216,13 @@ export default function PatientDetail() {
       }
     });
 
+    socketRef.current.on('RECORD_CREATED', (payload: { patient_id?: number }) => {
+      const currentPatientId = id ? parseInt(id) : null;
+      if (payload.patient_id && payload.patient_id === currentPatientId) {
+        fetchPatientData(); // Refresh all records when a new note/evolution is created
+      }
+    });
+
     // ODONTOGRAM_UPDATED is handled directly by the Odontogram component via its own socket listener.
     // No page reload needed — the component updates in real-time with animations.
 
@@ -281,6 +288,7 @@ export default function PatientDetail() {
       // Remove event handlers only — do NOT disconnect the singleton
       if (socketRef.current) {
         socketRef.current.off('PATIENT_UPDATED');
+        socketRef.current.off('RECORD_CREATED');
         socketRef.current.off('DIGITAL_RECORD_CREATED');
         socketRef.current.off('DIGITAL_RECORD_SENT');
         socketRef.current.off('TREATMENT_PLAN_UPDATED');
