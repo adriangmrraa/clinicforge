@@ -4947,11 +4947,7 @@ async def _crear_nota_clinica(args: Dict, tenant_id: int, user_role: str, user_i
         return "No encontre a ese paciente."
 
     # resolve professional id
-    prof_id = None
-    if user_id:
-        p_row = await db.pool.fetchrow("SELECT id FROM professionals WHERE user_id = $1 AND tenant_id = $2", user_id, tenant_id)
-        if p_row:
-            prof_id = p_row["id"]
+    prof_id = await _resolve_professional_id(user_id, tenant_id) if user_id else None
 
     # Build JSONs
     cnotes = {
