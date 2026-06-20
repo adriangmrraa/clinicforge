@@ -3341,7 +3341,7 @@ async def check_availability(
                 "consulta general",
             ):
                 lines.append(
-                    f'\n[BOOK_HINT: Cuando el paciente elija, llamá book_appointment con treatment_reason="{_offered_treatment_name}"]'
+                    f'\n[ACTION_HINT: Cuando el paciente elija, llamá book_appointment (o reschedule_appointment si está reprogramando) con treatment_reason="{_offered_treatment_name}"]'
                 )
 
             resp = "\n".join(lines)

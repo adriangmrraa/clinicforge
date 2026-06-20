@@ -2384,11 +2384,11 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                                 f"\n\n[STATE_HINT: El paciente ya tiene opciones de turno ofrecidas.{_slots_block}\n\n"
                                 "INSTRUCCIONES CRÍTICAS:\n"
                                 "- El paciente está SELECCIONANDO uno de los turnos ofrecidos.\n"
-                                "- DEBES llamar confirm_slot con slot_index=N (N = número de opción).\n"
-                                "- 'el primero', 'el 1', 'opción 1', o el día/hora de Opción 1 → slot_index=1\n"
-                                "- 'el segundo', 'el 2', 'opción 2', o el día/hora de Opción 2 → slot_index=2\n"
-                                "- 'cualquiera' o no especifica → slot_index=1\n"
-                                "- SIEMPRE usá slot_index. NUNCA pasés texto libre en date_time.\n"
+                                "- Si estás AGENDANDO un turno nuevo: DEBES llamar confirm_slot con slot_index=N (N = número de opción).\n"
+                                "- Si estás REPROGRAMANDO un turno existente: DEBES llamar reschedule_appointment DIRECTAMENTE (NUNCA llames confirm_slot ni book_appointment para reprogramar). Pasá original_date=fecha de tu turno actual, y new_date_time=fecha y hora de la Opción N.\n"
+                                "- 'el primero', 'el 1', 'opción 1', o el día/hora de Opción 1 → N=1\n"
+                                "- 'el segundo', 'el 2', 'opción 2', o el día/hora de Opción 2 → N=2\n"
+                                "- 'cualquiera' o no especifica → N=1\n"
                                 "- NO llamés check_availability de nuevo.]"
                             )
                             logger.info(
