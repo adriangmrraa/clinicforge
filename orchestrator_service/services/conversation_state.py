@@ -158,6 +158,8 @@ async def set_state(
             "frustration_mode": (_existing or {}).get("frustration_mode", False),
             "error_history": (_existing or {}).get("error_history", []),
             "turn_count": (_existing or {}).get("turn_count", 0),
+            # v8.4: scheduling constraints — preserved across all state transitions
+            "scheduling_constraints": (_existing or {}).get("scheduling_constraints", {}),
             "updated_at": _dt.now().isoformat(),
         }
 
@@ -559,3 +561,72 @@ async def has_insurance_been_asked(tenant_id: int, phone_number: str) -> bool:
     except Exception as e:
         logger.warning(f"[insurance_asked] Error checking insurance_asked: {e}")
         return False
+
+
+# ── Scheduling Constraints Helpers (v8.4) ──────────────────────────────────────
+# Persiste las restricciones horarias/de día que el paciente declaró durante la
+# conversación (ej: "a la tarde", "antes de las 18 no puedo", "los lunes no").
+# Se preservan en Redis con TTL 24h para sobrevivir horas entre mensajes sin
+# depender del historial del chat (que puede truncarse por límite de tokens).
+
+
+async def save_scheduling_constraints(
+    tenant_id: int,
+    phone_number: str,
+    *,
+    time_preference: Optional[str] = None,
+    min_time: Optional[str] = None,
+    max_time: Optional[str] = None,
+    exclude_days: Optional[List[str]] = None,
+    exclude_dates: Optional[List[str]] = None,
+) -> None:
+    """
+    Persiste restricciones horarias del paciente en el estado de conversación.
+    Es idempotente: hace merge con lo que ya estaba guardado (no sobreescribe).
+
+    Args:
+        time_preference: 'mañana' | 'tarde' | 'noche'
+        min_time: hora mínima en formato HH:MM (ej: '17:00') — "antes de esta hora no puedo"
+        max_time: hora máxima en formato HH:MM (ej: '12:00') — "después de esta hora no puedo"
+        exclude_days: lista de nombres de días a excluir (ej: ['lunes', 'viernes'])
+        exclude_dates: lista de fechas YYYY-MM-DD a excluir
+    """
+    try:
+        payload = await _read_payload(tenant_id, phone_number)
+        existing = payload.get("scheduling_constraints") or {}
+
+        if time_preference is not None:
+            existing["time_preference"] = time_preference
+        if min_time is not None:
+            existing["min_time"] = min_time
+        if max_time is not None:
+            existing["max_time"] = max_time
+        if exclude_days:
+            current_days = existing.get("exclude_days", [])
+            existing["exclude_days"] = list(set(current_days) | set(d.lower() for d in exclude_days))
+        if exclude_dates:
+            current_dates = existing.get("exclude_dates", [])
+            existing["exclude_dates"] = list(set(current_dates) | set(exclude_dates))
+
+        payload["scheduling_constraints"] = existing
+        payload["updated_at"] = _dt.now().isoformat()
+
+        # Usar TTL extendido (24h) para que las restricciones sobrevivan horas entre mensajes
+        await _raw_write(tenant_id, phone_number, payload, ttl=BOOKED_TTL)
+        logger.info(
+            f"[conversation_state] scheduling_constraints saved for {phone_number}: {existing}"
+        )
+    except Exception as e:
+        logger.warning(f"[conversation_state] save_scheduling_constraints failed: {e}")
+
+
+async def get_scheduling_constraints(tenant_id: int, phone_number: str) -> Dict[str, Any]:
+    """Devuelve las restricciones horarias persistidas del paciente. Dict vacío si no hay."""
+    try:
+        payload = await get_state(tenant_id, phone_number)
+        if not isinstance(payload, dict):
+            return {}
+        return payload.get("scheduling_constraints") or {}
+    except Exception as e:
+        logger.warning(f"[conversation_state] get_scheduling_constraints failed: {e}")
+        return {}

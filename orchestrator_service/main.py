@@ -7102,6 +7102,122 @@ async def save_patient_birth_date(
 
 
 @tool
+async def save_scheduling_constraint(
+    constraint_type: str,
+    value: str,
+) -> str:
+    """
+    Save a patient scheduling constraint so it is remembered across the entire
+    conversation even if the chat history gets truncated.
+
+    Call this IMMEDIATELY when the patient says any of these:
+    - "a la tarde", "a la manana", "solo de noche"
+      -> constraint_type="time_preference", value="tarde"|"manana"|"noche"
+    - "antes de las 17 no puedo", "a partir de las 16", "desde las 18"
+      -> constraint_type="min_time", value="17:00"
+    - "despues de las 12 no puedo", "solo hasta las 11 hs"
+      -> constraint_type="max_time", value="12:00"
+    - "los lunes no", "los viernes no puedo", "los fines de semana no"
+      -> constraint_type="exclude_days", value="lunes" (comma-sep: "lunes,viernes")
+    - "ese dia no tengo", "el 28/07 no puedo"
+      -> constraint_type="exclude_dates", value="2026-07-28"
+
+    Do NOT call this for the chosen slot - only for patient-declared constraints.
+    Always call BEFORE check_availability so the constraint is already persisted.
+    """
+    try:
+        from services.conversation_state import save_scheduling_constraints as _ssc
+
+        tid = current_tenant_id.get()
+        phone = current_customer_phone.get()
+        if not tid or not phone:
+            return "OK (context not available, constraint not persisted)"
+
+        kwargs: dict = {}
+        ct = constraint_type.lower().strip()
+        if ct == "time_preference":
+            kwargs["time_preference"] = value.lower().strip()
+        elif ct == "min_time":
+            kwargs["min_time"] = value.strip()
+        elif ct == "max_time":
+            kwargs["max_time"] = value.strip()
+        elif ct == "exclude_days":
+            kwargs["exclude_days"] = [d.strip().lower() for d in value.split(",") if d.strip()]
+        elif ct == "exclude_dates":
+            kwargs["exclude_dates"] = [d.strip() for d in value.split(",") if d.strip()]
+        else:
+            return (
+                f"constraint_type '{constraint_type}' not recognized. "
+                "Use: time_preference, min_time, max_time, exclude_days, exclude_dates"
+            )
+
+        await _ssc(tid, phone, **kwargs)
+        logger.info(f"[save_scheduling_constraint] Saved {ct}={value!r} for phone={phone}")
+        return f"OK: restriccion guardada ({ct}={value})"
+    except Exception as exc:
+        logger.warning(f"[save_scheduling_constraint] Failed (non-blocking): {exc}")
+        return "OK (saved with warning)"
+
+
+@tool
+async def save_scheduling_constraint(
+    constraint_type: str,
+    value: str,
+) -> str:
+    """
+    Save a patient scheduling constraint so it is remembered across the entire
+    conversation even if the chat history gets truncated.
+
+    Call this IMMEDIATELY when the patient says any of these:
+    - "a la tarde", "a la manana", "solo de noche"
+      -> constraint_type="time_preference", value="tarde"|"manana"|"noche"
+    - "antes de las 17 no puedo", "a partir de las 16", "desde las 18"
+      -> constraint_type="min_time", value="17:00"
+    - "despues de las 12 no puedo", "solo hasta las 11 hs"
+      -> constraint_type="max_time", value="12:00"
+    - "los lunes no", "los viernes no puedo", "los fines de semana no"
+      -> constraint_type="exclude_days", value="lunes" (comma-sep: "lunes,viernes")
+    - "ese dia no tengo", "el 28/07 no puedo"
+      -> constraint_type="exclude_dates", value="2026-07-28"
+
+    Do NOT call this for the chosen slot - only for patient-declared constraints.
+    Always call BEFORE check_availability so the constraint is already persisted.
+    """
+    try:
+        from services.conversation_state import save_scheduling_constraints as _ssc
+
+        tid = current_tenant_id.get()
+        phone = current_customer_phone.get()
+        if not tid or not phone:
+            return "OK (context not available, constraint not persisted)"
+
+        kwargs: dict = {}
+        ct = constraint_type.lower().strip()
+        if ct == "time_preference":
+            kwargs["time_preference"] = value.lower().strip()
+        elif ct == "min_time":
+            kwargs["min_time"] = value.strip()
+        elif ct == "max_time":
+            kwargs["max_time"] = value.strip()
+        elif ct == "exclude_days":
+            kwargs["exclude_days"] = [d.strip().lower() for d in value.split(",") if d.strip()]
+        elif ct == "exclude_dates":
+            kwargs["exclude_dates"] = [d.strip() for d in value.split(",") if d.strip()]
+        else:
+            return (
+                f"constraint_type '{constraint_type}' not recognized. "
+                "Use: time_preference, min_time, max_time, exclude_days, exclude_dates"
+            )
+
+        await _ssc(tid, phone, **kwargs)
+        logger.info(f"[save_scheduling_constraint] Saved {ct}={value!r} for phone={phone}")
+        return f"OK: restriccion guardada ({ct}={value})"
+    except Exception as exc:
+        logger.warning(f"[save_scheduling_constraint] Failed (non-blocking): {exc}")
+        return "OK (saved with warning)"
+
+
+@tool
 async def set_no_followup(reason: str = "patient_request") -> str:
     """Mark this lead as not interested in follow-up. Call this when the patient
     clearly says they don't want to be contacted, aren't interested, or already
@@ -9676,6 +9792,7 @@ DENTAL_TOOLS = [
     save_patient_anamnesis,
     save_patient_email,
     save_patient_birth_date,
+    save_scheduling_constraint,
     set_no_followup,
     get_patient_anamnesis,
     get_patient_payment_status,

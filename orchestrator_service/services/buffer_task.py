@@ -2032,6 +2032,33 @@ async def process_buffer_task(
                             logger.info(
                                 f"📌 MINOR BOOKING CONTEXT injected: {_minor_name_bt or 'pending'}"
                             )
+                    # v8.4: Scheduling constraints injection (persistent across context truncation)
+                    _sched_constraints = _cs_inject_data.get("scheduling_constraints") or {}
+                    if _sched_constraints:
+                        _sc_lines = ["RESTRICCIONES HORARIAS DEL PACIENTE (PERSISTIDAS - SIEMPRE VIGENTES):"]
+                        _tp = _sched_constraints.get("time_preference")
+                        _mt = _sched_constraints.get("min_time")
+                        _mxt = _sched_constraints.get("max_time")
+                        _exd2 = _sched_constraints.get("exclude_days") or []
+                        _exdt2 = _sched_constraints.get("exclude_dates") or []
+                        if _tp:
+                            _sc_lines.append(f"  - Preferencia horaria: {_tp.upper()} - Solo ofrecer turnos {_tp}.")
+                        if _mt:
+                            _sc_lines.append(f"  - Hora minima: {_mt} - PROHIBIDO ofrecer slots antes de {_mt}.")
+                        if _mxt:
+                            _sc_lines.append(f"  - Hora maxima: {_mxt} - PROHIBIDO ofrecer slots despues de {_mxt}.")
+                        if _exd2:
+                            _sc_lines.append(f"  - Dias excluidos: {', '.join(_exd2)} - NO ofrecer turnos esos dias.")
+                        if _exdt2:
+                            _sc_lines.append(f"  - Fechas excluidas: {', '.join(_exdt2)} - NO ofrecer esas fechas.")
+                        _sc_lines.append(
+                            "REGLA CRITICA: Estas restricciones fueron declaradas por el paciente. "
+                            "Aplicarlas en TODOS los check_availability siguientes, sin excepciones, "
+                            "aunque hayan pasado varios mensajes o el paciente no las repita."
+                        )
+                        system_prompt += "\n\n" + "\n".join(_sc_lines)
+                        logger.info(f"[buffer_task] scheduling_constraints injected: {_sched_constraints}")
+
         except Exception as _cs_inject_err:
             logger.debug(f"convstate context injection skipped: {_cs_inject_err}")
 
