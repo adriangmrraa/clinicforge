@@ -888,6 +888,7 @@ def generate_free_slots(
     limit=20,
     time_preference: Optional[str] = None,
     min_time: Optional[str] = None,
+    max_time: Optional[str] = None,
 ) -> List[str]:
     """Genera lista de horarios disponibles (si al menos un profesional tiene el hueco COMPLETO
     para la duración del tratamiento). Verificación con granularidad de 15 min para evitar solapamientos."""
@@ -937,6 +938,16 @@ def generate_free_slots(
                     continue
             except (ValueError, IndexError):
                 pass  # malformed min_time → no filtering
+
+        # Filtro por horario máximo ("antes de las X")
+        if max_time:
+            try:
+                max_h, max_m = map(int, max_time.strip().split(":"))
+                if current.hour > max_h or (current.hour == max_h and current.minute > max_m):
+                    current += timedelta(minutes=interval_minutes)
+                    continue
+            except (ValueError, IndexError):
+                pass  # malformed max_time → no filtering
 
         # Verificar si algún profesional tiene el hueco libre para TODA la duración
         time_needed = current + timedelta(minutes=duration_minutes)
@@ -1421,6 +1432,7 @@ async def _get_slots_for_extra_day(
         limit=50,
         time_preference=time_preference,
         min_time=min_time,
+        max_time=max_time,
     )
 
 
@@ -1960,6 +1972,7 @@ async def check_availability(
     exclude_days: Optional[str] = None,
     exclude_dates: Optional[str] = None,
     min_time: Optional[str] = None,
+    max_time: Optional[str] = None,
     preferred_days: Optional[str] = None,
     insurance_provider: Optional[str] = None,
 ):
@@ -1977,10 +1990,11 @@ async def check_availability(
     time_preference: Si el paciente pide horarios de un momento del día: 'mañana' (horario AM), 'tarde' (horario PM hasta ~18:00), o 'noche' (horario nocturno, después de las ~18:00). Si no especifica no pasar.
     specific_time: (Opcional) Hora EXACTA que el paciente pidió, en formato HH:MM (ej: "16:30", "10:00"). Usar SOLO cuando el paciente pide una hora concreta ("a las 16:30", "quiero a las 10"). Si el paciente solo dice "mañana" o "tarde" sin hora exacta, NO pasar este campo — usar time_preference. Si se pasa, la tool verifica si ESE slot exacto está libre y lo incluye primero en las opciones.
     exclude_days: (Opcional) Días de la semana que el paciente RECHAZÓ, separados por coma. Ej: "viernes", "lunes,miércoles". Si el paciente dijo "el viernes no puedo" o "los lunes no me sirven", pasá esos días acá para EXCLUIRLOS de los resultados. SIEMPRE pasar los días rechazados por el paciente en la conversación.
-    exclude_dates: (Opcional) Fechas específicas que el paciente RECHAZÓ, separadas por coma en formato YYYY-MM-DD. Ej: "2026-06-03", "2026-06-03,2026-06-05". Si el paciente dijo "el 3 de junio no puedo" o "mañana no puedo", pasá esas fechas acá para EXCLUIRLAS de los resultados. SIEMPRE pasar las fechas rechazadas por el paciente en TODAS las búsquedas siguientes.
-    min_time: (Opcional) Hora MÍNIMA a partir de la cual buscar, en formato HH:MM (ej: "14:30", "15:00"). Es un FILTRO DURO: todos los slots antes de esa hora se EXCLUYEN. Usar SOLO cuando el paciente dice "después de las X", "a partir de las X", "recién a las X". Si se combina con time_preference, ambos filtros se aplican (intersección). Si min_time es más estricto que el límite de time_preference, min_time gana.
-    preferred_days: (Opcional) Días de la semana que el paciente PREFIERE, separados por coma. Ej: "lunes,miércoles,viernes". La tool calcula automáticamente los días NO preferidos y los excluye. Si el paciente menciona varios días, pasalos TODOS — NUNCA le pidas que elija uno solo. Si se combina con exclude_days, gana la intersección (preferred menos excluded).
-    insurance_provider: (Opcional) Nombre de la obra social del paciente (ej. 'OSDE', 'Galeno'). PASALO SIEMPRE si el paciente mencionó tener obra social, para aplicar correctamente los filtros de agenda.
+    exclude_dates: (Opcional) Fechas a excluir, ej: "2024-05-15, 2024-05-16"
+    min_time: (Opcional) Límite inferior de horario (ej: "18:00") si el paciente pide "después de las 18".
+    max_time: (Opcional) Límite superior de horario (ej: "12:00") si el paciente pide "antes del mediodía".
+    preferred_days: (Opcional) Días de la semana preferidos (ej: "lunes,miercoles"). No bloquea otros días, solo prioriza.
+    insurance_provider: (Opcional) Obra social, prepaga o plan del paciente (ej: "Osde", "Swiss Medical", "Particular").
     La tool devuelve 2 opciones concretas de horario con sede. Presentá las opciones al paciente tal cual las recibís.
     """
     try:
@@ -3085,6 +3099,7 @@ async def check_availability(
             end_time_str=day_end,
             time_preference=time_preference,
             min_time=min_time,
+            max_time=max_time,
             interval_minutes=15,
             limit=50,
         )
@@ -3092,10 +3107,10 @@ async def check_availability(
             f"📅 DIAG generate_free_slots returned {len(available_slots)} slots: {available_slots[:10]}"
         )
 
-        # Fallback: if time_preference or min_time filtered ALL slots but there ARE slots without filter,
+        # Fallback: if time_preference, min_time or max_time filtered ALL slots but there ARE slots without filter,
         # retry without preference and prepend a note about unavailability in that time range
         _time_pref_note = ""
-        if not available_slots and (time_preference or min_time):
+        if not available_slots and (time_preference or min_time or max_time):
             all_day_slots = generate_free_slots(
                 target_date,
                 busy_map,
@@ -3104,6 +3119,7 @@ async def check_availability(
                 end_time_str=day_end,
                 time_preference=None,
                 min_time=None,
+                max_time=None,
                 interval_minutes=15,
                 limit=50,
             )
@@ -3111,12 +3127,21 @@ async def check_availability(
                 available_slots = all_day_slots
                 if min_time:
                     _time_pref_note = f"No hay turnos disponibles a partir de las {min_time} ese día, pero te ofrezco estas alternativas:\n\n"
+                elif max_time:
+                    _time_pref_note = f"No hay turnos disponibles antes de las {max_time} ese día, pero te ofrezco estas alternativas:\n\n"
                 elif time_preference:
                     franja = "la mañana" if time_preference == "mañana" else "la tarde" if time_preference == "tarde" else "la noche"
-                    _time_pref_note = f"No hay turnos disponibles por {franja} ese día, pero sí en otros horarios.\n\n"
+                    _time_pref_note = f"No hay turnos disponibles por {franja} ese día, pero sí en otros horarios:\n\n"
                 logger.info(
-                    f"📅 Filters (pref={time_preference}, min_time={min_time}) removed — fallback found {len(all_day_slots)} slots"
+                    f"📅 Filters (pref={time_preference}, min={min_time}, max={max_time}) removed — fallback found {len(all_day_slots)} slots"
                 )
+
+        # Fallback para specific_time: si pidieron una hora exacta y no está disponible, pero hay otros turnos,
+        # agregamos una nota explicativa para que la IA sepa por qué no le estamos dando la hora que pidió.
+        if specific_time and available_slots:
+            if specific_time not in available_slots:
+                _time_pref_note = f"El horario exacto de las {specific_time} no está disponible (o la clínica se encuentra cerrada), pero tengo estas alternativas:\n\n"
+
 
         # Filtrar slots con soft lock activo de otro paciente
         my_phone = current_customer_phone.get()
