@@ -3092,10 +3092,10 @@ async def check_availability(
             f"📅 DIAG generate_free_slots returned {len(available_slots)} slots: {available_slots[:10]}"
         )
 
-        # Fallback: if time_preference filtered ALL slots but there ARE slots without filter,
+        # Fallback: if time_preference or min_time filtered ALL slots but there ARE slots without filter,
         # retry without preference and prepend a note about unavailability in that time range
         _time_pref_note = ""
-        if not available_slots and time_preference:
+        if not available_slots and (time_preference or min_time):
             all_day_slots = generate_free_slots(
                 target_date,
                 busy_map,
@@ -3103,16 +3103,19 @@ async def check_availability(
                 start_time_str=day_start,
                 end_time_str=day_end,
                 time_preference=None,
-                min_time=min_time,
+                min_time=None,
                 interval_minutes=15,
                 limit=50,
             )
             if all_day_slots:
                 available_slots = all_day_slots
-                franja = "la mañana" if time_preference == "mañana" else "la tarde" if time_preference == "tarde" else "la noche"
-                _time_pref_note = f"No hay turnos disponibles por {franja} ese día, pero sí en otros horarios.\n\n"
+                if min_time:
+                    _time_pref_note = f"No hay turnos disponibles a partir de las {min_time} ese día, pero te ofrezco estas alternativas:\n\n"
+                elif time_preference:
+                    franja = "la mañana" if time_preference == "mañana" else "la tarde" if time_preference == "tarde" else "la noche"
+                    _time_pref_note = f"No hay turnos disponibles por {franja} ese día, pero sí en otros horarios.\n\n"
                 logger.info(
-                    f"📅 time_preference={time_preference!r} filtered all slots — retrying without filter, found {len(all_day_slots)} slots"
+                    f"📅 Filters (pref={time_preference}, min_time={min_time}) removed — fallback found {len(all_day_slots)} slots"
                 )
 
         # Filtrar slots con soft lock activo de otro paciente
