@@ -1987,7 +1987,7 @@ async def check_availability(
     - "open": Sin fecha fija ("lo antes posible", "cuando haya", "cualquier día", "me da igual cuándo").
     professional_name: (Opcional) Nombre del profesional.
     treatment_name: (Opcional) Tratamiento definido (ej. limpieza profunda, consulta).
-    time_preference: Si el paciente pide horarios de un momento del día: 'mañana' (horario AM), 'tarde' (horario PM hasta ~18:00), o 'noche' (horario nocturno, después de las ~18:00). Si no especifica no pasar.
+    time_preference: Si el paciente pide horarios de un momento del día: 'mañana' (horario AM), 'tarde' (horario PM hasta ~18:00, incluye "siesta" o "después de comer"), o 'noche' (horario nocturno, después de las ~18:00). Si no especifica no pasar.
     specific_time: (Opcional) Hora EXACTA que el paciente pidió, en formato HH:MM (ej: "16:30", "10:00"). Usar SOLO cuando el paciente pide una hora concreta ("a las 16:30", "quiero a las 10"). Si el paciente solo dice "mañana" o "tarde" sin hora exacta, NO pasar este campo — usar time_preference. Si se pasa, la tool verifica si ESE slot exacto está libre y lo incluye primero en las opciones.
     exclude_days: (Opcional) Días de la semana que el paciente RECHAZÓ, separados por coma. Ej: "viernes", "lunes,miércoles". Si el paciente dijo "el viernes no puedo" o "los lunes no me sirven", pasá esos días acá para EXCLUIRLOS de los resultados. SIEMPRE pasar los días rechazados por el paciente en la conversación.
     exclude_dates: (Opcional) Fechas a excluir, ej: "2024-05-15, 2024-05-16"
