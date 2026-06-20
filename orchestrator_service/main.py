@@ -2127,6 +2127,7 @@ async def check_availability(
         _ca_patient_id: Optional[int] = None
         unpaid_count: int = 0
         unpaid_total: float = 0.0
+        patient_row = None
         if not clean_name:
             try:
                 phone_for_lookup = current_customer_phone.get()
