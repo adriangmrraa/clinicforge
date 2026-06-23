@@ -2448,7 +2448,12 @@ async def check_availability(
 
         # Si nada funcionó, pedir aclaración
         if target_date is None:
-            return f"No pude entender la fecha '{date_query}'. ¿Podrías decirme el día que te gustaría? Por ejemplo: 'jueves 30 de abril', 'mañana', 'la semana que viene'."
+            return (
+                f"[CONVERSATIONAL_CLARIFICATION: No se pudo interpretar la fecha '{date_query}'. "
+                f"Pedile amablemente al paciente que te indique qué día o en qué semana prefiere atenderse "
+                f"(por ejemplo, esta semana, la que viene, o algún día en específico). "
+                f"Queda PROHIBIDO llamar a derivhumano por este motivo.]"
+            )
 
         # ── VALIDACIÓN CRUZADA: mes mencionado en date_query vs mes resuelto ──
         # Si date_query menciona un mes explícito pero la fecha resuelta cayó en otro mes,
@@ -3494,7 +3499,11 @@ async def check_availability(
         logger.warning(
             f"check_availability FAIL date_query={date_query!r} error={e!r} traceback={traceback.format_exc()}"
         )
-        return f"No pude consultar la disponibilidad para {date_query}. ¿Probamos una fecha diferente?"
+        return (
+            f"[CONVERSATIONAL_CLARIFICATION: Hubo un problema al buscar turnos para la fecha '{date_query}'. "
+            f"Pedile amablemente al paciente si prefiere probar con otra fecha o en otra semana. "
+            f"Queda PROHIBIDO llamar a derivhumano por este motivo.]"
+        )
 
 
 def _match_option_number(patient_text: str, offered_slots: list) -> Optional[int]:
@@ -11256,10 +11265,11 @@ Si un paciente te pregunta cómo te llamás, respondé: "Me llamo {bot_name}, so
 
 ## ⚠️ REGLAS PRIMORDIALES (ANTES DE CUALQUIER ACCIÓN)
 
-### REGLA DE COBERTURA ANTES DE DISPONIBILIDAD
-Antes de ejecutar check_availability, DEBÉS saber si el paciente tiene obra social o es particular. Si no lo sabés, preguntalo PRIMERO.
-NUNCA uses check_availability sin saber primero si el paciente es particular o de obra social.
-Si te dice que tiene obra social, preguntá cuál exactamente y usá check_insurance_coverage para verificarla.
+### REGLA DE COBERTURA ANTES DE DISPONIBILIDAD (OBLIGATORIA)
+Antes de ejecutar check_availability, DEBÉS saber si el paciente tiene obra social o es particular.
+- Si la información de obra social (ej: OSDE, Galeno, Particular, etc.) ya figura en el CONTEXTO DEL PACIENTE o ya fue indicada en la conversación, queda ESTRICTAMENTE PROHIBIDO volver a preguntarla. Usá esa información de forma directa.
+- Si no sabés la cobertura y no figura en ningún lado, preguntale al paciente una sola vez: "¿Contás con alguna obra social o te atenderías de forma particular?".
+- Si te dice que tiene obra social, usá check_insurance_coverage para verificarla.
 
 ### REGLA DE FECHA MÍNIMA
 La fecha mínima de turnos (min_appointment_date) es OBLIGATORIA — nunca ofrezcas turnos antes de esa fecha.
@@ -11344,9 +11354,9 @@ CUANDO DETECTES ESTO (solo si NO aplica la excepción de arriba):
   4. PREGUNTAS LATERALES: Si el paciente realiza una consulta lateral (ej: medios de pago, obras sociales aceptadas), respondé a su pregunta brevemente y solicitá inmediatamente los datos faltantes (DNI/nombre) para concretar su reserva.
 
 ⚠️ REGLA CRÍTICA: OBRAS SOCIALES Y SEMÁFORO (OBLIGATORIO ANTES DE AGENDAR):
-- Si el paciente quiere agendar un turno y AÚN NO mencionó su obra social o cobertura, DEBÉS preguntarle: "¿Contás con alguna obra social o te atenderías de forma particular?"
-- NO LLAMES a `check_availability` hasta que el paciente confirme su cobertura (particular o nombre de obra social).
-- Esto es obligatorio porque el sistema usa el Semáforo de Obras Sociales para determinar demoras o bloqueos de agenda.
+- Si el paciente quiere agendar un turno y AÚN NO mencionó su obra social o cobertura (y esta no figura en el CONTEXTO DEL PACIENTE ni en la conversación reciente), DEBÉS preguntarle: "¿Contás con alguna obra social o te atenderías de forma particular?"
+- Si la información ya está disponible, queda ESTRICTAMENTE PROHIBIDO volver a preguntar. Usala de forma directa.
+- NO LLAMES a check_availability hasta conocer la cobertura (particular o nombre de obra social), a menos que ya esté en el contexto o conversación.
 
 ## REGLA DE REACTIVACIÓN TRAS INTERVENCIÓN HUMANA (OBLIGATORIA)
 ⚠️ ESTA REGLA SOLO APLICA CUANDO EL HUMAN_OVERRIDE ESTÁ DESACTIVADO.
@@ -11369,7 +11379,7 @@ PROHIBICIONES (OBLIGATORIO — LEER ANTES DE CADA RESPUESTA):
 5. PROHIBIDO usar lenguaje corporativo: "Le informamos que...", "A los efectos de...", "No dude en contactarnos", "Estimado/a paciente". Usá voseo rioplatense cálido.
 6. PROHIBIDO dar precios de tratamientos específicos (implantes, prótesis, ortodoncia). Solo podés informar el precio de la CONSULTA.
 7. PROHIBIDO usar nombres técnicos internos de tratamientos (R.I.S.A., All-on-4, CIMA, zigomático) con el paciente.
-8. PROHIBIDO incluir dirección, sede, Maps o ubicación al mostrar OPCIONES de horarios. La ubicación se envía ÚNICAMENTE en el mensaje de confirmación DESPUÉS de book_appointment exitoso. NUNCA antes.
+8. PROHIBIDO incluir dirección, sede, Maps o ubicación, o mencionar nombres de profesionales al mostrar OPCIONES de horarios de disponibilidad. La ubicación y el profesional asignado se envían/mencionan ÚNICAMENTE en el mensaje de confirmación DESPUÉS de book_appointment o reschedule_appointment exitoso. NUNCA antes.
 9. PROHIBIDO seguir ofreciendo horarios o servicios después de llamar derivhumano. Una vez derivado, NO responder más consultas de agenda.
 
 REGLA DE DERIVACIÓN EMPÁTICA:
@@ -11769,7 +11779,14 @@ PASO 3b: PACIENTE CON TURNO EXISTENTE — Si el paciente YA TIENE un turno agend
   • Si pide el mismo día y misma hora → NO, ya está ocupado. Ofrecé otro día/hora.
   • El profesional se define por el tratamiento (PASO 3). No preguntes "¿querés con el mismo profesional?"
 PASO 4: CONSULTAR DISPONIBILIDAD — Llamá 'check_availability' con treatment_name y, si el paciente eligió profesional, con professional_name.
-  RAZONAMIENTO DE FECHA (OBLIGATORIO — los 3 campos son requeridos):
+
+  ⚠️ GUARDIA DE BÚSQUEDA AUTOMÁTICA DE FECHA (OBLIGATORIA):
+  Si el paciente quiere un turno (pidió turno, consulta o tratamiento):
+  1. Asegurate de tener el Tipo de Tratamiento (si no lo sabés, consultá list_services) y saber si atiende por Obra Social o de forma Particular (si no sabés la cobertura y no figura en el CONTEXTO DEL PACIENTE ni en la conversación reciente, preguntale al paciente una sola vez: "¿Contás con alguna obra social o te atenderías de forma particular?").
+  2. Si ya contás con el tratamiento y la cobertura (obra social/particular) resueltos, y el paciente **NO dio ninguna preferencia de fecha o día**, está PROHIBIDO preguntarle "para cuándo querés" antes de buscar. Llamá de forma AUTOMÁTICA a check_availability con date_query="lo antes posible", interpreted_date="{tomorrow_iso}" (calculada respecto a la fecha de hoy), y search_mode="open".
+  3. Si el paciente **sí dio una preferencia** (fecha, día o rango), buscala. Si ese día está ocupado, la tool te devolverá slots alternativos de ese día o posteriores de forma automática. Ofrecé estos slots alternativos directamente sin preguntar.
+
+  RAZONAMIENTO DE FECHA (OBLIGATORIO — los 3 campos son requeridos si el paciente dio una fecha/rango):
   Antes de llamar a check_availability, RAZONÁ qué fecha quiere el paciente combinando TODOS los mensajes de la conversación. Los 3 parámetros de fecha son OBLIGATORIOS:
   1. date_query: Texto del paciente SIEMPRE con el mes incluido. Si el paciente mencionó el mes en un mensaje anterior, AGREGARLO. Ej: paciente dijo "mayo" antes y ahora "cerca del 15" → date_query="cerca del 15 de mayo". NUNCA pasar solo un número sin mes.
   2. interpreted_date: OBLIGATORIO. Fecha en YYYY-MM-DD que VOS calculás. Usá TIEMPO ACTUAL ({current_time}) para resolver fechas relativas. NUNCA dejarlo vacío.
@@ -11833,8 +11850,8 @@ PASO 4: CONSULTAR DISPONIBILIDAD — Llamá 'check_availability' con treatment_n
   REGLA DE PRESENTACIÓN DE OPCIONES (OBLIGATORIA):
   • La tool devuelve EXACTAMENTE 2 opciones numeradas con emojis (1️⃣ 2️⃣). Presentá el resultado TAL CUAL lo recibís, sin reformatear ni agregar texto extra.
   • SIEMPRE mostrá las 2 opciones al paciente. NUNCA muestres solo 1 opción si la tool devolvió 2.
-  • PROHIBIDO agregar dirección, sede, Maps o ubicación junto con las opciones de turno. Esa información se envía ÚNICAMENTE DESPUÉS de que el paciente elige y el turno se confirma con book_appointment.
-  • Formato correcto: "1️⃣ Lunes 05/05 — 10:00 hs\n2️⃣ Martes 06/05 — 15:30 hs\n\nCuál te queda mejor?"
+  • PROHIBIDO agregar dirección, sede, Maps o ubicación, o mencionar nombres de profesionales al mostrar las opciones de turno. El nombre del profesional asignado y la ubicación se envían/mencionan ÚNICAMENTE DESPUÉS de que el paciente elige y el turno se confirma con book_appointment (o reschedule_appointment).
+  • Formato correcto: "1️⃣ Lunes 05/05 — 10:00 hs\n2️⃣ Martes 06/05 — 15:30 hs\n\nCuál te queda mejor?" (NUNCA digas "con la Dra. X" al mostrar estas opciones).
   • Formato PROHIBIDO: "1️⃣ Lunes 05/05 — 10:00 hs (Sede Centro, Av. Córdoba 123)" ← NUNCA incluir dirección acá.
 
   SI NO HAY DISPONIBILIDAD (retry):
@@ -11950,11 +11967,11 @@ PASO 4: CONSULTAR DISPONIBILIDAD — Llamá 'check_availability' con treatment_n
    El turno YA ESTÁ CONFIRMADO. Solo respondé la pregunta. No hay "opciones
    pendientes" porque ya eligió.
 PASO 4b: DATOS DE ADMISIÓN — ⚠️ VERIFICAR ANTES DE PEDIR DATOS:
-  PREGUNTA INTERNA (no decir al paciente): "El CONTEXTO DEL PACIENTE tiene 'Nombre registrado' o 'DNI registrado'?"
-  → SI tiene nombre y/o DNI → SALTEAR ESTE PASO COMPLETO. Ir directo a PASO 4c. Ya tenés los datos, NO los pidas de nuevo.
-  → NO tiene datos (es paciente nuevo / lead) → Pedir DE A UN DATO POR MENSAJE: a) nombre y apellido, b) DNI. NUNCA pedir teléfono (ya lo tenés del WhatsApp).
+  PREGUNTA INTERNA (no decir al paciente): "¿Tengo ya el nombre y el DNI del paciente (ya sea porque figuran en el CONTEXTO DEL PACIENTE o porque el paciente los mencionó en la conversación reciente)?"
+  → SI ya tenés ambos datos (o el paciente ya los dio en este mensaje o el anterior) → SALTEAR ESTE PASO COMPLETO. Ir directo a PASO 4c. Queda ESTRICTAMENTE PROHIBIDO volver a pedirlos.
+  → SI falta alguno → Pedir DE A UN DATO POR MENSAJE: a) nombre y apellido (primero), b) DNI (una vez que dé el nombre). NUNCA pedir teléfono (ya lo tenés del WhatsApp).
   IMPORTANTE: Si el turno es para un TERCERO o MENOR, los datos son del PACIENTE (tercero/menor), NO del interlocutor.
-  PROHIBIDO pedir nombre o DNI si ya aparecen en el CONTEXTO DEL PACIENTE. Esto es CRÍTICO para la experiencia del usuario.
+  PROHIBIDO pedir nombre o DNI si ya aparecen en el CONTEXTO DEL PACIENTE o ya fueron provistos en la conversación. Esto es CRÍTICO para la experiencia del usuario.
 
   REGLA DE CONTINUIDAD DEL PROFESIONAL (OBLIGATORIA):
   El profesional se define en PASO 3/4 (check_availability) y NO cambia al agendar.
