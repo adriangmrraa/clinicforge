@@ -49,6 +49,7 @@ class PatientProfile:
     anamnesis_status: Optional[dict] = None          # CE9 — {completed: bool, url: str}
     # Phase 3 — MEDIUM (CE11)
     birth_date: Optional[str] = None                # CE11 — ISO string
+    insurance_provider: Optional[str] = None
 
 
 def _working_key(tenant_id: int, phone_number: str) -> str:
@@ -86,7 +87,7 @@ class PatientContext:
                 """
                 SELECT id, first_name, last_name, dni, email, human_override_until,
                        phone_number, assigned_professional_id, birth_date, anamnesis_token,
-                       medical_history
+                       medical_history, insurance_provider
                 FROM patients
                 WHERE tenant_id = $1 AND (
                     phone_number = $2
@@ -125,6 +126,9 @@ class PatientContext:
             if row_dict.get("birth_date"):
                 bd = row_dict["birth_date"]
                 profile.birth_date = bd.isoformat() if hasattr(bd, 'isoformat') else str(bd)
+
+            # Obra Social / Prepaga / Cobertura
+            profile.insurance_provider = row_dict.get("insurance_provider")
 
             # Medical history (from medical_history TABLE)
             try:

@@ -376,6 +376,7 @@ async def _load_patient_context(tenant_id: int, phone_number: str, family_patien
         "anamnesis_status": p.anamnesis_status,
         # Phase 3 — MEDIUM
         "birth_date": p.birth_date,
+        "insurance_provider": p.insurance_provider,
     }
     return profile_dict, p.recent_turns
 

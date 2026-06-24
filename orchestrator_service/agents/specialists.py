@@ -312,6 +312,10 @@ def _inject_patient_context(state: AgentState) -> str:
     if p.get("birth_date"):
         lines.append(f"Fecha de nacimiento: {p['birth_date']}")
 
+    # Obra Social / Prepaga / Cobertura
+    if p.get("insurance_provider"):
+        lines.append(f"Obra Social registrada: {p['insurance_provider']}")
+
     # CE2 — Assigned professional
     ap = p.get("assigned_professional")
     if ap and ap.get("name"):
@@ -878,10 +882,18 @@ CUANDO el paciente pida reprogramar:
 
    CASO D — Semana que viene/rango: "la semana que viene", "los próximos días" →
      interpreted_date=próximo lunes hábil, search_mode="week", time_preference según restricción previa
+     Si el paciente NO dijo nada de fecha/hora → preguntá UNA VEZ: "¿Para cuándo lo querés cambiar? ¿Tenés algún día o horario en mente?" y esperá.
 
-   CASO E — Mes: "para agosto", "el mes que viene" →
-     interpreted_date=primer día hábil del mes, search_mode="month"
+    ⚠️ RESOLUCIÓN DEL TURNO ORIGINAL (CUANDO HAY MÚLTIPLES TURNOS):
+    Si el paciente tiene más de un turno activo e indica cuál quiere reprogramar (ej: "el 1", "el primero", "el del 08/07", "el del 8 de julio", "el que tengo a las 13:00"):
+    → Mapealo de inmediato al turno correspondiente de su lista.
+    → Queda ESTRICTAMENTE PROHIBIDO volver a preguntarle "cuál querés cambiar" o listar los turnos de nuevo si el paciente ya lo especificó en su mensaje anterior o si el número de opción es obvio.
+    → Procedé de inmediato a buscar disponibilidad (check_availability) para la nueva fecha/hora solicitada (o llamá a reschedule_appointment si el horario ya está confirmado).
 
+    ⚠️ LLAMADO OBLIGATORIO DE TOOLS EN REPROGRAMACIÓN:
+    En cuanto identifiques el turno original (ej: el 08/07) y la nueva fecha/hora (ej: 16 hs), llamá de inmediato a check_availability para verificar si las 16 hs del 08/07 están libres. Si el resultado de check_availability te dice que está libre, llamá inmediatamente a reschedule_appointment para reprogramar. NUNCA respondas conversacionalmente prometiendo reprogramar ("Claro, lo cambio") sin haber ejecutado las tools correspondientes.
+
+2. PASO 1 — Identificá el turno a reprogramar con `list_my_appointments` si no está en el contexto.
    CASO F — Indiferente: "cualquier día", "buscame vos", "lo que haya", "donde haya" →
      date_query="la próxima semana", interpreted_date=próximo lunes, search_mode="week",
      time_preference según restricción. NUNCA pidas un día específico.
