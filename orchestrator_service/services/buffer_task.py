@@ -2361,6 +2361,38 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                         f"📊 BOOKING_FLOW | phone={phone} | state={prev_state_str} | msg={chr(10).join(messages)[:120]!r}"
                     )
 
+                    user_msg = "\n".join(messages)
+                    if prev_state_str == "SLOT_LOCKED" and _detect_research_intent(user_msg):
+                        logger.info(f"🔒 STATE_GUARD: Rejection detected in SLOT_LOCKED state for phone={phone}. Releasing lock and transitioning back to OFFERED_SLOTS.")
+                        _slot = prev_state.get("last_locked_slot") or {}
+                        _date = _slot.get("date")
+                        _time = _slot.get("time")
+                        if _date and _time:
+                            _prof_id = _slot.get("professional_id") or 0
+                            try:
+                                from services.relay import get_redis
+                                r = get_redis()
+                                if r:
+                                    _spec_lock_key = f"slot_lock:{tenant_id}:{_prof_id}:{_date}:{_time}"
+                                    _generic_lock_key = f"slot_lock:{tenant_id}:0:{_date}:{_time}"
+                                    await r.delete(_spec_lock_key)
+                                    await r.delete(_generic_lock_key)
+                                    logger.info(f"🔒 STATE_GUARD: Released Redis locks: {_spec_lock_key}, {_generic_lock_key}")
+                            except Exception as redis_err:
+                                logger.warning(f"🔒 STATE_GUARD: Failed to release Redis lock: {redis_err}")
+                        try:
+                            from services.conversation_state import set_state
+                            await set_state(
+                                tenant_id,
+                                phone,
+                                "OFFERED_SLOTS",
+                                last_offered_slots=prev_state.get("last_offered_slots") or []
+                            )
+                            prev_state_str = "OFFERED_SLOTS"
+                            prev_state = await get_state(tenant_id, phone)
+                        except Exception as state_err:
+                            logger.warning(f"🔒 STATE_GUARD: Failed to set state to OFFERED_SLOTS: {state_err}")
+
                     # If previous state was OFFERED_SLOTS and user is selecting a slot
                     if prev_state_str == "OFFERED_SLOTS":
                         user_msg = "\n".join(messages)

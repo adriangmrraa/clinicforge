@@ -7726,6 +7726,7 @@ async def confirm_slot(
                         "date": date_str,
                         "time": time_str,
                         "professional": professional_name,
+                        "professional_id": prof_id,
                         "treatment": treatment_name,
                     },
                 )

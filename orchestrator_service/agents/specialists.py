@@ -202,6 +202,7 @@ def _build_shared_preamble(state: AgentState) -> str:
         "\n"
         "=== F2: URGENCIA / DOLOR (PRIORIDAD MÁXIMA) ===\n"
         "TRIGGER: \"me duele\", \"dolor\", \"urgencia\", \"emergencia\", \"se me cayó\", \"se me partió\"\n"
+        "BYPASS DE TRIAJE: Si el paciente ya tiene un NIVEL DE URGENCIA TRIADO en su contexto, OMITIR M1 y M2. Queda estrictamente prohibido volver a preguntar por la duración del dolor o inflamación. Avanzar directamente al agendamiento (M3).\n"
         "PROTOCOLO:\n"
         "  M1 — Contener (GENUINO, no de trámite): \"Entiendo, si estás con dolor lo ideal es verte cuanto antes.\" SIN precio, SIN dirección, SIN turnos.\n"
         "  M2 — Orientar: UNA sola pregunta \"¿Hace cuánto tiempo estás con dolor y si notás inflamación?\"\n"
@@ -315,6 +316,10 @@ def _inject_patient_context(state: AgentState) -> str:
     # Obra Social / Prepaga / Cobertura
     if p.get("insurance_provider"):
         lines.append(f"Obra Social registrada: {p['insurance_provider']}")
+
+    # Triage urgency level
+    if p.get("urgency_level"):
+        lines.append(f"NIVEL DE URGENCIA TRIADO: {p['urgency_level']}")
 
     # CE2 — Assigned professional
     ap = p.get("assigned_professional")

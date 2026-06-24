@@ -1,0 +1,21 @@
+BEGIN;
+
+-- 1. Borrar mensajes de las conversaciones de este teléfono
+DELETE FROM chat_messages 
+WHERE conversation_id IN (
+    SELECT id FROM chat_conversations WHERE external_user_id LIKE '%5493704868421%'
+);
+
+-- 2. Borrar las conversaciones en sí
+DELETE FROM chat_conversations 
+WHERE external_user_id LIKE '%5493704868421%';
+
+-- 3. Borrar logs de webhooks entrantes (YCloud)
+DELETE FROM inbound_messages 
+WHERE from_number LIKE '%5493704868421%';
+
+-- 4. Borrar logs de mensajes salientes
+DELETE FROM whatsapp_messages 
+WHERE to_number LIKE '%5493704868421%';
+
+COMMIT;

@@ -50,6 +50,7 @@ class PatientProfile:
     # Phase 3 — MEDIUM (CE11)
     birth_date: Optional[str] = None                # CE11 — ISO string
     insurance_provider: Optional[str] = None
+    urgency_level: Optional[str] = None
 
 
 def _working_key(tenant_id: int, phone_number: str) -> str:
@@ -87,7 +88,7 @@ class PatientContext:
                 """
                 SELECT id, first_name, last_name, dni, email, human_override_until,
                        phone_number, assigned_professional_id, birth_date, anamnesis_token,
-                       medical_history, insurance_provider
+                       medical_history, insurance_provider, urgency_level
                 FROM patients
                 WHERE tenant_id = $1 AND (
                     phone_number = $2
@@ -129,6 +130,7 @@ class PatientContext:
 
             # Obra Social / Prepaga / Cobertura
             profile.insurance_provider = row_dict.get("insurance_provider")
+            profile.urgency_level = row_dict.get("urgency_level")
 
             # Medical history (from medical_history TABLE)
             try:

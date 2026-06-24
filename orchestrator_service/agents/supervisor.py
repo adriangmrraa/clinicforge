@@ -38,7 +38,14 @@ class SupervisorAgent:
         r"quiero (info|información|informacion)",
     ]
     BILLING_PATTERNS = [r"pag[oó]", r"seña", r"transfer", r"comprobante", r"cbu", r"alias"]
-    ANAMNESIS_PATTERNS = [r"historia m[eé]dica", r"alergi", r"medicaci[oó]n", r"ficha", r"formulari"]
+    ANAMNESIS_PATTERNS = [
+        r"completar.*formulari",
+        r"llenar.*formulari",
+        r"link.*formulari",
+        r"enlace.*formulari",
+        r"link.*ficha",
+        r"enlace.*ficha",
+    ]
     HANDOFF_PATTERNS = [r"hablar con (alguien|humano|persona|secretar|recepcion)", r"humano", r"queja"]
     GREETING_PATTERNS = [r"^(hola|buenas|buen d[ií]a|buenas tardes|buenas noches|hi|hey)[\s!\.]*$"]
 
@@ -90,6 +97,11 @@ class SupervisorAgent:
             if re.search(pat, msg):
                 return "billing"
 
+        # Rule 8: booking
+        for pat in self.BOOKING_PATTERNS:
+            if re.search(pat, msg):
+                return "booking"
+
         # Rule 6: anamnesis
         for pat in self.ANAMNESIS_PATTERNS:
             if re.search(pat, msg):
@@ -99,11 +111,6 @@ class SupervisorAgent:
         for pat in self.HANDOFF_PATTERNS:
             if re.search(pat, msg):
                 return "handoff"
-
-        # Rule 8: booking
-        for pat in self.BOOKING_PATTERNS:
-            if re.search(pat, msg):
-                return "booking"
 
         # Rule 9: greeting
         for pat in self.GREETING_PATTERNS:
