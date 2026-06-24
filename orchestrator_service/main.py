@@ -6416,11 +6416,9 @@ async def list_services(category: str = None, patient_term: str = ""):
             )
         res = "🦷 Tratamientos disponibles:\n"
         for r in rows:
-            profs = prof_map.get(r["id"])
-            prof_str = f" — con: {', '.join(profs)}" if profs else ""
             priority_val = r.get("priority", "medium") or "medium"
             display_name = r.get("patient_display_name") or r["name"]
-            res += f"• {display_name} (código: {r['code']}){prof_str} [prioridad: {priority_val}]\n"
+            res += f"• {display_name} (código: {r['code']}) [prioridad: {priority_val}]\n"
         res += "\n💡 Para más detalles o fotos de un tratamiento, pedimelo usando su nombre o código."
         return res
     except Exception as e:
@@ -11850,9 +11848,10 @@ PASO 4: CONSULTAR DISPONIBILIDAD — Llamá 'check_availability' con treatment_n
   REGLA DE PRESENTACIÓN DE OPCIONES (OBLIGATORIA):
   • La tool devuelve EXACTAMENTE 2 opciones numeradas con emojis (1️⃣ 2️⃣). Presentá el resultado TAL CUAL lo recibís, sin reformatear ni agregar texto extra.
   • SIEMPRE mostrá las 2 opciones al paciente. NUNCA muestres solo 1 opción si la tool devolvió 2.
-  • PROHIBIDO agregar dirección, sede, Maps o ubicación, o mencionar nombres de profesionales al mostrar las opciones de turno. El nombre del profesional asignado y la ubicación se envían/mencionan ÚNICAMENTE DESPUÉS de que el paciente elige y el turno se confirma con book_appointment (o reschedule_appointment).
-  • Formato correcto: "1️⃣ Lunes 05/05 — 10:00 hs\n2️⃣ Martes 06/05 — 15:30 hs\n\nCuál te queda mejor?" (NUNCA digas "con la Dra. X" al mostrar estas opciones).
-  • Formato PROHIBIDO: "1️⃣ Lunes 05/05 — 10:00 hs (Sede Centro, Av. Córdoba 123)" ← NUNCA incluir dirección acá.
+  • ⚠️ REGLA DE SIGILO DE PROFESIONAL GENERALIZADA: Queda COMPLETAMENTE PROHIBIDO mencionar el nombre de cualquier profesional de la clínica (ej: Dra. Laura Delgado, Elizabeth Ester, Eli Perez, etc.) en cualquier interacción previa a la confirmación definitiva del turno. Esto incluye respuestas de triaje, listado de tratamientos/servicios, consultas generales o la visualización de slots de disponibilidad. El nombre del profesional asignado se le informará al paciente ÚNICAMENTE en el mensaje final de confirmación, luego de que book_appointment o reschedule_appointment hayan registrado el turno exitosamente.
+  • PROHIBIDO agregar dirección, sede, Maps o ubicación al mostrar las opciones de turno. La ubicación se envía ÚNICAMENTE DESPUÉS de que el turno se confirma.
+  • Formato correcto: "1️⃣ Lunes 05/05 — 10:00 hs\n2️⃣ Martes 06/05 — 15:30 hs\n\nCuál te queda mejor?" (NUNCA digas con quién es el turno).
+  • Formato PROHIBIDO: "1️⃣ Lunes 05/05 — 10:00 hs (Sede Centro)" ← NUNCA incluir dirección ni profesionales.
 
   SI NO HAY DISPONIBILIDAD (retry):
   • Si check_availability devuelve 0 slots o un mensaje de "no encontré":
@@ -11885,9 +11884,7 @@ PASO 4: CONSULTAR DISPONIBILIDAD — Llamá 'check_availability' con treatment_n
   • Confirmación genérica: "dale", "sí", "ese", "agendame ahí", "va", "listo", "perfecto", "ese me va", "me queda bien"
   • Single-option + confirmación: solo 1 opción mostrada y paciente confirma
 
-  ⚠️ NO-DISPARO: Si el paciente pide una hora que NO estaba en las opciones mostradas
-  (ej: mostraste 12:30 y 12:45, paciente dice "a las 16 mejor"), NO hay match →
-  la Priority Gate NO se activa → seguí normal con las reglas de horario nuevo debajo.
+  ⚠️ NO-DISPARO (REGLA DE NO AUTO-CONFIRMACIÓN): Si el paciente propone o pide una hora o día que NO coincide exactamente con las opciones mostradas (ej: mostraste 13:00 y 13:45, y el paciente dice "a las 16 hs si tenés", "16 hs", "prefiero a la tarde", "tenés a las 10?", "se puede otro día?"), NO hay match. La Priority Gate NO se activa y queda ESTRICTAMENTE PROHIBIDO llamar a confirm_slot o book_appointment. Debés interpretar el mensaje como una nueva búsqueda de disponibilidad y llamar a check_availability.
 
   RESOLUCIÓN POR SLOT_INDEX (cuando el paciente elige opción numerada):
   • SIEMPRE usá slot_index=1 o slot_index=2 en confirm_slot y book_appointment.
@@ -11915,9 +11912,13 @@ PASO 4: CONSULTAR DISPONIBILIDAD — Llamá 'check_availability' con treatment_n
   • Si el paciente elige una opción → PASO 4b.
 
   SI EL PACIENTE PIDE UN HORARIO NUEVO (NO mostrado en opciones):
-  Si el paciente pide un horario ESPECÍFICO o un RANGO horario que NO coincide con
-  ninguna opción mostrada:
-    Frases de horario EXACTO → specific_time (ej: "a las 16:30", "quiero a las 10", "a las 3", "a las 5", "a las 15.30 hs"):
+  Si el paciente pide un horario ESPECÍFICO o un RANGO horario que NO coincide con ninguna opción mostrada:
+    • LÓGICA DE BÚSQUEDA ANTE CAMBIO HORARIO (OBLIGATORIA):
+      - Si propone un horario distinto sin mencionar día (ej: "a las 16 hs", "a las 10 hs", "16 hs"): debés buscar disponibilidad en ese mismo día (el día de las opciones ofrecidas) pero en ese nuevo horario. Llamá a check_availability con interpreted_date=[día de las opciones], specific_time="[hora pedida]" (ej: "16:00") y search_mode="exact".
+      - Si pide otro día (ej: "el viernes mejor", "tenés otro día?", "puede ser el viernes?"): llamá a check_availability con la nueva fecha en interpreted_date (calculando el día futuro), search_mode="exact".
+      - Si pide día y hora específicos (ej: "el viernes a las 16", "jueves a las 10"): llamá a check_availability con interpreted_date=[fecha del viernes/jueves], specific_time="16:00" o "10:00", search_mode="exact".
+      - Si check_availability no encuentra disponibilidad en lo solicitado, la tool de forma automática te devolverá slots alternativos de ese día o posteriores. Ofrecé estos slots alternativos directamente sin volver a preguntar.
+    Frases de horario EXACTO genéricas → specific_time (ej: "a las 16:30", "quiero a las 10"):
       → Volver a llamar check_availability CON specific_time.
     Frases de horario DESDE / A PARTIR DE → min_time (ej: "desde las 16", "a partir de las 15", "después de las 14", "pasada las 5", "de 16 en adelante", "recién a las 17", "recién desde las 16", "tengo libre a partir de las 18", "puedo después de las 15", "a las 4 de la tarde en adelante"):
       → pasá min_time con ESA hora exacta (ej: "16:00"). Esto FILTRA todos los horarios anteriores — el paciente NO va a aceptar un turno antes de esa hora.
