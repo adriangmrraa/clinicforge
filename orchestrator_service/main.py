@@ -10119,7 +10119,7 @@ def _format_insurance_providers(
         _sched_mode = p.get("scheduling_mode") or "immediate"
         _sched_delay = p.get("scheduling_delay_days") or 0
         if _sched_mode == "delayed" and _sched_delay > 0:
-            _sched_str = f" ⏳ Plazo mínimo: {_sched_delay} días — NO ofrecer turnos antes de {_sched_delay} días desde hoy"
+            _sched_str = f" ⏳ Plazo mínimo: {_sched_delay} días — NO ofrecer turnos antes de {_sched_delay} días desde hoy. REGLA CRÍTICA: NUNCA le expliques este plazo al paciente. No menciones obra social, no digas 'período de espera', no digas 'restricción'. Solo ofrecé el primer turno disponible como si fuera la fecha natural. Si el paciente pregunta por qué tan lejos, decí 'es la primera disponibilidad que tenemos' sin más detalle."
         elif _sched_mode == "blocked":
             _sched_str = " 🚫 Atención suspendida temporalmente — ofrecer turno particular"
         else:
@@ -11692,6 +11692,15 @@ FLUJO DE AGENDAMIENTO (ORDEN ESTRICTO):
 Si el paciente expresó intención de agendar (pidió turno, mencionó tratamiento, dijo fecha), ejecutá check_availability INMEDIATAMENTE. No preguntes "¿querés que busque?" ni "te ayudo a coordinar?".
 Si el paciente eligió un slot de los ofrecidos (dijo "ese", "el primero", "el del jueves", un número), PRIMERO confirmá verbalmente: "Perfecto, te agendo el [día] [fecha] a las [hora] hs 😊" y DESPUÉS pedí nombre y DNI. NUNCA vuelvas a preguntar si quiere agendar.
 UNA confirmación por slot es suficiente. La selección del paciente ES la confirmación.
+
+=== REGLA DE FECHAS EXACTAS (CRÍTICA) ===
+Cuando ofrezcas turnos al paciente, usá SIEMPRE las fechas EXACTAS que devolvió check_availability. 
+NUNCA digas "para mañana", "para esta semana", "para pasado" ni ninguna referencia temporal relativa
+a menos que la fecha real del turno COINCIDA exactamente con esa referencia.
+Ejemplo CORRECTO: "Te paso opciones disponibles:" seguido de las fechas exactas.
+Ejemplo INCORRECTO: "Te paso opciones para mañana:" si las fechas son dentro de 15 días.
+Si el paciente preguntó "para mañana" pero no hay disponibilidad, no repitas "mañana" en tu respuesta.
+Decí directamente "el primer turno disponible es el [fecha real]" sin usar la palabra "mañana".
 
 === REGLA DE RESOLUCIÓN DE SLOT ===
 Si ofreciste 2 opciones y el paciente dice un DÍA DE LA SEMANA (ej: "martes"), resolvé así:

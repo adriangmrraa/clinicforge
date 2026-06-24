@@ -1,131 +1,127 @@
-Este chat es un claro ejemplo de como el agente de ia teniendo toda la informacion para agendarle el turno a un tercero para un chat, le sigue preguntando eternamente y nunca lo termina agendando.  Luego tuvo que intervenir la secretaria, y tuvo que hacer todo manual ya que la ia no lo hizo.La secretaria creo el apcxiente osea el registro con los datos que  mando la madre sobre su hioja, luego agendo el turno manualmente y luego tuvo que vincular manualmente el pacienter de Luisasa (la hija) al chat de la madre que seria este chat que te mando. 
+Hola que tal quiero un turno para mañana por favor
+04:31 p. m.
 
+🗓️ Te paso dos opciones para mañana:
+04:32 p. m.
 
+1️⃣ Martes 14/07 — 10:00 hs
+2️⃣ Miércoles 15/07 — 13:00 hs
+04:32 p. m.
 
-CHAT COMPLETO:
+Elegí la que te quede mejor y te lo reservo 😊
+04:32 p. m.
 
+El 1
+04:32 p. m.
 
-Buen día Laura cómo estás ? Te puedo pedir una consulta para mi nena de 11 años
-10:00 a.m.
+✅ Listo, quedó tu turno confirmado para el martes 14/07 a las 10:00 😊
+04:33 p. m.
 
-----------Este primer mensaje esta super bien----
+🦷 Consulta General
+📍 Salta 147, Neuquén Capital
+🗺️ https://maps.app.goo.gl/w8qH8FmQvhQ6b9iy9 
+04:33 p. m.
 
-Hola Katia 😊 Soy Paula, del equipo de la Clínica Dra. Laura Delgado. Sí, claro. Para coordinar el turno de tu nena necesito solo estos datos: nombre y apellido, y el DNI de ella
-10:01 a.m.
+💸 Podés adelantar una seña de $30.000 por transferencia:
+Alias: dradelgadoml
+CBU: 0970099455003515270012
+Titular: Delgado Maria Laura
+04:33 p. m.
 
----------Aca ya le dio los datos necesarios y deberioa haber hecho todo la ia, hasta lo de vincular el paciente, crearle el turno y crear la ficvha de paciente d deee la hija tambien, sin embargo no lo hizo------------
+📝 Para ahorrar tiempo en tu consulta podés completar tu ficha médica aquí: https://app.dralauradelgado.com/anamnesis/1/47232697-4cd7-4c07-9c15-cb8a3a842974 
+Cuando termines avisame para corroborar los datos.
+04:33 p. m.
 
-Luisana Zúñiga 54492865 - por favor de tarde
-10:18 a.m.
+Pero me diste para Julio! Para junio no se puede? Mañana no es julio
+04:34 p. m.
 
-Perfecto, Katia. Para tu nena de 11 años, el turno puede ser con la Dra. Laura Delgado. 😊 Decime si la querés para consulta general o de cirugía, así te lo coordino de tarde
-10:18 a.m.
+Tenés razón 😊
+04:34 p. m.
 
+Mañana no es julio, es junio.
+Ya tengo en cuenta tu consulta y, como ya tenés un turno confirmado, no te voy a ofrecer otro nuevo ahora. Si querés, te ayudo a revisar el turno que ya tenés o a reprogramarlo.
+04:34 p. m.
 
-----------Aca le pregunta si es para consulta o cirugia, y nada tiene que ver, ya que en el pri9mer mensaje dice claramente que quiere turno para consulta para su hija. Y ESTO SUCEDE MUCHO QUE YA HAY INFORMACION 2 O 3 MENSAJES ANTERIORES DIGAMOS EN EL HISTORIAL DE CHAT Y SE LE OLVIDA AL AGENTE O ES COMO QUE NO LOS VE O NO LOS TIENE EN CUENTA Y ES INACEPTABLE QU ESTO SUCEDA.-------
+Te dejo las instrucciones pre-tratamiento para Consulta General:
+04:35 p. m.
 
-Para tu nena de 11 años, lo ideal es una Consulta General con la Dra. Laura Delgado 😊 En este momento no pude ver horarios para la tarde. ¿Te parece si busco para mañana o para otro día de la semana
-10:40 a.m.
+• Si contás con estudios previos (radiografías u otros), por favor traelos a la consulta. Esto nos ayuda a brindarte una evaluación más precisa.
+04:35 p. m.
 
+═══════════════════════════════════════════
+NUEVO CASO 24/06 — OSDE 15 días, agente explica la restricción
+═══════════════════════════════════════════
 
----------------Aca le dice (por segunda vez que es para consulñta general porque ya lo dijo en el primer mensaje) pero de todas maneras el agente de ia vuelve a preguntarle si es para su nena de 11 años op para ella. LO CUAL ES INACEPTABLE, ES LO MISMO QUE TE DECIA ANTES, EN EL PRIMER MENSAJE YA QUEDO CLARO ESO, QUE ES PAR ALA HIJA ENTONCES LA IA DEBE TENER CLARO YA ESO Y NO PREGUNTARLO MAS, EN ESTE PASO YA DEBERIA HAGENDAR A LA HIJA Y VINCULAR AMBOS PACIENTES EN ESTE CHAT DE LA MADRE, NO TE PARECE? QUIERO QUE ASI SEA EL FUNCIONAMIENTO DIGAMOS. ES INACEPTABLE QUE FUNCIONE COMO ESTA AHORA. LE DIO MUCHAS VUEWLTAS AL PACIENTE-------------
+⚠️ BUG: El agente dice "para mañana" cuando debería decir la fecha real.
+Y explica la lógica de OSDE al paciente (no debe hacerlo).
 
-Consulta general
-10:43 a.m.
+El sistema aplica bien la restricción de 15 días para OSDE (paciente tiene OSDE,
+primer turno disponible cae 15+ días después). Pero el agente:
+1. Dice "para mañana" al ofrecer los slots -> las fechas NO son mañana,
+   son 15+ días después -> confunde al paciente
+2. Explica "como tu obra social OSDE tiene un período de espera" -> el paciente
+   no necesita saber la lógica interna del sistema
+3. Debería decir solo "el primer turno disponible es [fecha]" sin mencionar
+   OSDE ni restricciones
 
-Perfecto, la Consulta General está disponible con la Dra. Laura Delgado o con Elizabeth Ester 😊 Contame si es para vos o para tu nena de 11 años, así te lo coordino bien
-10:43 a.m.
+═══════════════════════════════════════════
 
+Hola quiero sacar un turno
+05:15 p. m.
 
------------Y ACA LA VERDAD NO ENTIENDO PORQUE LE DICE ESO, ES INSOLITA ESA RESPUESTA, EN TEORIA DEBERIA DARLE SI O SI SLOTS DISPONIBLES, NO SE A QUE FECHA SE REFIERE EL AGENTE DE IA PORQUE NADIE LE DIJO FECHA, PERO DEBERIA DAR SLOTS AHI EN BASE A LA LOGICA DE AGENDAMIENTO QUE TIENE YA EL AGENTE, POR EJEMPLO LA FECHA MINIMA DE AGENDAMIENTO. Y NO DEBE PREGUNTARLE SI QUERE4S PRUEBO CON OTRO DIA O CON OTRO HORARIO .... NO DEBE DECIR ESO, ES OBVIO QUE EL CLIENTE O PACIENTE QUIEE TURNO, DEBE DARLE SLOTS DISPONIBLE SSI O SI. PARECE UN TONTO, RE ESTUPIDO EL AGENTE, NO PARECE INTELIGENTE, ENO SIGUE EL HILO DEL CHAT, DAINFORMACION IRRELEVANTE Y HACE ESTE TIPO DE PREGUINTAS CUYA RESPUESTA ES OBVIA. NOSE PORQUE LO HACE, NOSE QUE ESTA PASANDO CON QUE HAY PROBLEMAS, PERO DEBES SOLUCIONARLO.------
+¡Hola! 😊 ¿Para qué especialidad querés el turno?
+05:15 p. m.
 
-Perdoná, no pude ver horarios para esa búsqueda en este momento. Si querés, pruebo con otro día o con otro horario de tarde con la Dra. Laura Delgado 😊
-10:50 a.m.
+consulta general
+05:15 p. m.
 
--------------Aca esto no deberia pedir la ia, pero ya que se interrumpio el chat se lopidio la secretaria, en este punto interrumpe la secretaria------
+Perfecto. Como tu obra social OSDE tiene un período de espera de 15 días,
+el primer turno disponible que tengo es para el 09/07.
+05:16 p. m.
 
-Me decis la fecha de nacimiento de Luisana porfavor
-10:52 a.m.
+🗓️ Te paso dos opciones para mañana:
+05:16 p. m.
 
-El próximo viernes a las 18 hs te quedaría bien?
-10:53 a.m.
+1️⃣ Jueves 09/07 — 10:00 hs
+2️⃣ Viernes 10/07 — 14:00 hs
+05:16 p. m.
 
-El viernes 26 de Junio tenemos disponible a las 18 hs, Katia
-10:55 a.m.
+Elegí la que te quede mejor y te lo agendo 😊
+05:16 p. m.
 
-Confirmame y ya lo agendo
-10:55 a.m.
+el 1
+05:17 p. m.
 
-26/03/2015
-10:56 a.m.
+✅ Listo, te confirmo el turno para el jueves 09/07 a las 10:00 😊
+05:17 p. m.
 
-Si
-10:57 a.m.
+🦷 Consulta General
+📍 Salta 147, Neuquén Capital
+🗺️ https://maps.app.goo.gl/w8qH8FmQvhQ6b9iy9
+05:17 p. m.
 
+Disculpa pero me dijiste para mañana y las fechas son en julio,
+mañana no es julio
+05:20 p. m.
 
-------------Aca por erjemplo la secretaria como ya tenia todos los datos en el chat, a modo de prueba le dio al botonn de forzar agendamiento, sin embargo el agente de ia le respoindio lo siguiente que se vencio lna reserva temporal y bla bla bla. ES INACEPTABLE, SI DOY CLICK AL BOTON DE FORZAR REAGENDAMIENTO DEBE ABSORVER TODOS LOS DATOS DEL CHAT Y PROCEDER A AGENDARLO DIGAMOS, NO TE PARECE? Y	a hay demasiadas confirmaciones explicitas, informacion que dio la mama, y ya hay que agendarlo nomas SIN TANTAS VUELTAS. MAS TODAVIA SI APRIETO EL BOTON DE FORZAR AGENDAMIENTO LO QUE DEBE HACER ERS AGARRAR  TODOS LOS VALORES QUE ESTAN EN EL CHAT Y AGENDARLO D DIGAMOS, TAMBIEN SE DEBE USAR LOS MENSAJES QUE SE MANDAN COMO PARTE DE LA SECRETARIA DIGAMOS, SON IMPORTANTES FIJATE QUE AHI ELLA DICE EL HORARIO Y LA FECHA, CLAVE QUE LA IA TOME ESO Y USE ESO, JUNTO CON TODOS LOS DATOS QUE YA LE DIO LA MADRE SOBRE LA HIJA. Y eso que dice tye coinsulto de nuevoi disponibilidad s mentira, porque erse mensaje se manda pero no funciona digamos, osea no es que vuelve en unos minutos a mandar slots luego de buscar, manda ese mensaje y muere ahi el chat, si no interviene alguien es un paciente que se pierde, que no se lo agenda y es inaceptable.-------------
+Tenés razón, disculpá el error 😊 Si necesitás algo más avisame.
+05:21 p. m.
 
-Se venció la reserva temporal y ya no puedo confirmar ese mismo horario. Te consulto de nuevo la disponibilidad para la nena de 11 años con la Dra. Laura Delgado y te paso opciones frescas
-10:59 a.m.
+═══════════════════════════════════════════
 
-----------------AQUI LO CONFIRMA LA SECRETARIA DEL CONSULTORIO, NO LA IA. Y LO TUVO QUE HACER TODO MANUAL, INCLUSO LUEGO DE APRETAR EL BOTON DE FORZAR AGENDAMIENTO.--------
+🔍 ANÁLISIS DEL CASO:
 
-Ya te confirmamos el turno para Luisana. El viernes 26 de Junio a las 18 hs
-10:59 a.m.
+✅ El booking funciona: agenda bien, aplica OSDE 15 días correctamente
+✅ Las fechas son coherentes: 09/07 y 10/07 están dentro del rango OSDE
+❌ El agente dice "para mañana" al ofrecer opciones -> debería decir las
+   fechas reales, no "mañana"
+❌ El agente explica "como tu obra social OSDE tiene un período de espera
+   de 15 días" -> el paciente no necesita saber eso
+❌ El paciente se confunde al leer "mañana" pero recibir fechas 15+ días
 
-Para ahorrarnos tiempo, te mando la ficha medica de Luisana para que la completes: https://app.dralauradelgado.com/anamnesis/1/d44d8350-5b5c-4d11-905c-49c44c60f6f3 
-11:00 a.m.
-
-Ingresas con el DNI de ella
-11:00 a.m.
-
- 
-
-
------
-
-
-ASI QUEDA EL CONTEXTO CLINICO DE LA MADRE, LUEGO DE AGENDAR Y VINCULAR A LA HIJA A SU CHAT, Y ES ASI COMO DEBERIA QUEDAR LUEGO DE QUE LA IA EN TEORIA LO DEBERIA HABER AGENDADO Y ASI DEBE SER, ENTIENDES? Fijate que el numero de la hija se pone un numero al azar o un place holder digamos, ya que no siempre daran el numero de telefono digamos de la persona o familiar o el tercero, a veces si pero a veces no. De todas maneras esto de vincular paciente sirve para mandarle todos los recordatorios y demas cosas tanto de la hija como de la madre al numero de la madre, netendes? ahora yo le puse cualuqer numero, no es real, pero si no no me deja crear un paciente:
-
-Contexto Clínico
-Estado del Bot
-Atención Humana
-
-Hasta: 11:00 a.m.
-
-PACIENTE
-Paciente
-Katia Di Paula
-
-+5492995183451
-
-Ver ficha del paciente
-Agendar turno
-Para hijo/familiar
-Vincular a paciente
-Forzar Procesamiento IA
-Forzar Agendamiento
-ÚLTIMA CITA
-control_revision
-
-21/04/2026 11:30 a.m.
-30 min
-Profesional: Laura
-
-PRÓXIMA CITA
-Sin citas programadas
-
-TRATAMIENTO ACTUAL
-Sin plan de tratamiento
-
-🦷
-Anamnesis
-Este paciente aún no
-completó la anamnesis.
-
-Familiares
-Luisana Zúñiga
-
-+5496598451278
-
-PRÓXIMA CITA: consulta_general — 26/06/2026 06:00 p.m.
+🎯 SOLUCIÓN DESEADA:
+- No explicar la lógica de obra social ni restricciones al paciente
+- Decir solo: "El primer turno disponible es el [fecha]. Te paso opciones:"
+  sin referencias temporales engañosas como "mañana"
+- Si el paciente pregunta "por qué tan lejos" ahí recién se puede
+  explicar o derivar a humano
