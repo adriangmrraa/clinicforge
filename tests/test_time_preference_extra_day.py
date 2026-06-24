@@ -193,3 +193,134 @@ def test_pick_representative_slots_signature_accepts_time_preference():
     assert params["time_preference"].default is None, (
         "time_preference debe tener default=None en pick_representative_slots"
     )
+
+
+# ── Test 7: _get_slots_for_extra_day firma acepta max_time ───────────────────
+
+def test_signature_accepts_max_time():
+    """
+    _get_slots_for_extra_day debe tener max_time como parámetro opcional
+    con default None en su firma para evitar NameError al propagar desde
+    pick_representative_slots.
+    """
+    from orchestrator_service.main import _get_slots_for_extra_day
+
+    sig = inspect.signature(_get_slots_for_extra_day)
+    params = sig.parameters
+
+    assert "max_time" in params, (
+        "La función _get_slots_for_extra_day debe aceptar el parámetro max_time"
+    )
+    assert params["max_time"].default is None, (
+        "max_time debe tener default=None"
+    )
+
+
+# ── Test 8: pick_representative_slots firma acepta max_time ───────────────────
+
+def test_pick_representative_slots_signature_accepts_max_time():
+    """
+    pick_representative_slots debe tener max_time como parámetro opcional
+    con default None — necesario para propagar desde check_availability.
+    """
+    from orchestrator_service.main import pick_representative_slots
+
+    sig = inspect.signature(pick_representative_slots)
+    params = sig.parameters
+
+    assert "max_time" in params, (
+        "pick_representative_slots debe aceptar max_time"
+    )
+    assert params["max_time"].default is None, (
+        "max_time debe tener default=None en pick_representative_slots"
+    )
+
+
+# ── Test 9: max_time filtra slots después del límite ──────────────────────────
+
+def test_generate_free_slots_max_time_filters_later_slots():
+    """
+    Con max_time='12:00', generate_free_slots no debe retornar slots
+    después de las 12:00. Slots a las 12:00 inclusive SÍ deben aparecer.
+    """
+    from orchestrator_service.main import generate_free_slots
+
+    target = date(2026, 5, 26)
+    busy_map = _build_single_prof_busy_map()
+
+    slots = generate_free_slots(
+        target,
+        busy_map,
+        start_time_str="09:00",
+        end_time_str="18:00",
+        interval_minutes=30,
+        duration_minutes=30,
+        limit=50,
+        max_time="12:00",
+    )
+
+    assert len(slots) > 0, "Deben existir slots antes de las 12:00"
+    for slot in slots:
+        hour = int(slot.split(":")[0])
+        minute = int(slot.split(":")[1])
+        assert (hour < 12) or (hour == 12 and minute == 0), (
+            f"Con max_time='12:00', el slot {slot} no debería aparecer (después de las 12:00)"
+        )
+
+
+# ── Test 10: propagación de max_time de pick_representative_slots
+#             a _get_slots_for_extra_day ────────────────────────────────────────
+
+@patch("orchestrator_service.main._get_slots_for_extra_day", new_callable=AsyncMock)
+async def test_propagates_max_time_to_get_slots_for_extra_day(mock_get_slots):
+    """
+    Verifica que pick_representative_slots propaga max_time a
+    _get_slots_for_extra_day en el loop de búsqueda de rango.
+    """
+    from orchestrator_service.main import pick_representative_slots
+
+    mock_get_slots.return_value = []
+
+    pool_mock = _make_pool_mock()
+
+    tenant_wh = {
+        "monday": {"enabled": True, "start": "09:00", "end": "18:00"},
+        "tuesday": {"enabled": True, "start": "09:00", "end": "18:00"},
+    }
+
+    async def _fake_fetchrow(query, *args, **kwargs):
+        return {"working_hours": '{"monday": {"enabled": true, "start": "09:00", "end": "18:00"}}', "address": None, "google_maps_url": None, "max_chairs": 1}
+
+    pool_mock.fetchrow = _fake_fetchrow
+    pool_mock.fetch = AsyncMock(return_value=[])
+
+    with patch("orchestrator_service.main.db") as mock_db:
+        mock_db.pool = pool_mock
+        mock_db.select = AsyncMock()
+
+        from datetime import date
+        target = date(2026, 5, 25)  # Monday
+
+        await pick_representative_slots(
+            ["10:00", "14:00"],
+            target,
+            tenant_id=1,
+            tenant_wh=tenant_wh,
+            tenant_row=None,
+            max_time="12:00",
+            search_range_days=3,
+        )
+
+    # _get_slots_for_extra_day should have been called at least once
+    assert mock_get_slots.call_count >= 1, (
+        "_get_slots_for_extra_day debería haber sido llamada al menos una vez"
+    )
+    # Each call should have max_time="12:00"
+    for call_args in mock_get_slots.call_args_list:
+        kwargs = call_args[1] if len(call_args) > 1 else {}
+        # Also check positional args — max_time might be keyword
+        assert kwargs.get("max_time") == "12:00" or (
+            len(call_args[0]) >= 12 and call_args[0][12] == "12:00"
+        ), (
+            "Cada llamada a _get_slots_for_extra_day debe recibir max_time='12:00'"
+        )

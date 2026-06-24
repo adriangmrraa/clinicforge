@@ -1204,6 +1204,7 @@ async def _get_slots_for_extra_day(
     prefetched_appointments: Optional[dict] = None,
     prefetched_gcal_blocks: Optional[dict] = None,
     min_time: Optional[str] = None,
+    max_time: Optional[str] = None,
 ) -> List[str]:
     """Obtiene slots libres para un día extra (para completar opciones multi-día). Versión simplificada.
 
@@ -1513,6 +1514,7 @@ async def pick_representative_slots(
     excluded_weekdays: Optional[set] = None,
     excluded_dates: Optional[set] = None,
     min_time: Optional[str] = None,
+    max_time: Optional[str] = None,
     preferred_days: Optional[str] = None,
 ) -> tuple:
     """
@@ -1662,6 +1664,7 @@ async def pick_representative_slots(
                 prefetched_appointments=_prefetched_apts,
                 prefetched_gcal_blocks=_prefetched_blocks,
                 min_time=min_time,
+                max_time=max_time,
             )
         except Exception as e:
             logger.warning(f"Error getting range day slots for {extra_date}: {e}")
@@ -1749,6 +1752,7 @@ async def pick_representative_slots(
                     prefetched_appointments=_prefetched_apts,
                     prefetched_gcal_blocks=_prefetched_blocks,
                     min_time=min_time,
+                    max_time=max_time,
                 )
             except Exception as e:
                 logger.warning(f"Error getting extra day slots for {extra_date}: {e}")
@@ -3270,6 +3274,7 @@ async def check_availability(
             excluded_weekdays=_excluded_weekdays if _excluded_weekdays else None,
         excluded_dates=_excluded_dates if _excluded_dates else None,
             min_time=min_time,
+            max_time=max_time,
             preferred_days=preferred_days,
         )
 
