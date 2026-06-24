@@ -85,14 +85,10 @@ def test_whatsapp_prompt_with_new_defaults_matches_golden_file():
 
     golden = GOLDEN_PATH.read_text(encoding="utf-8")
 
-    # Call with the 5 new social kwargs explicitly set to their defaults
+    # Call with defaults
     result = build_system_prompt(
         **GOLDEN_KWARGS,
         channel="whatsapp",
-        is_social_channel=False,
-        social_landings=None,
-        instagram_handle=None,
-        facebook_page_id=None,
     )
 
     assert result == golden, (
