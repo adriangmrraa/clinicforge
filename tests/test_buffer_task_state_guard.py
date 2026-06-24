@@ -696,3 +696,185 @@ class TestStateHooksInTools:
                                                             1,
                                                             "+5491112345678",
                                                         )
+
+
+class TestStaleBookingGuard:
+    """Tests for stale booking state detection in check_availability (fix-stale-redis-booking-guard).
+
+    Tests 4 scenarios:
+    1. Stale BOOKED with deleted appointment → auto-reset to IDLE → proceeds normally
+    2. Valid BOOKED with existing appointment → guard preserved, blocks with BOOKING_ALREADY_EXISTS
+    3. BOOKED without last_booked_appointment_id → skip verification, existing guard blocks
+    4. DB error during stale check → no crash, falls back to existing guard
+    """
+
+    @pytest.mark.asyncio
+    async def test_check_availability_stale_booked_resets(self):
+        """Stale BOOKED state: appointment deleted from DB → auto-reset to IDLE → proceeds normally."""
+        from datetime import timezone
+        UTC = timezone.utc
+
+        from orchestrator_service.main import check_availability
+        from tests.fixtures.tenants import make_tenant_row
+
+        mock_pool = MagicMock()
+        mock_pool.fetchrow = AsyncMock(
+            return_value=make_tenant_row(
+                working_hours='{"monday": {"enabled": true, "start": "08:00", "end": "18:00"}}',
+                address="Test Address",
+                google_maps_url="http://maps.test",
+                max_chairs=10,
+            )
+        )
+        mock_pool.fetch = AsyncMock(
+            side_effect=[
+                [{"id": 1, "first_name": "Dr", "last_name": "Test",
+                  "google_calendar_id": None, "working_hours": {},
+                  "is_priority_professional": False}],
+                [], [], [], [], [],
+            ]
+        )
+        # fetchval returns None → stale (appointment not found in DB)
+        mock_pool.fetchval = AsyncMock(return_value=None)
+        mock_db = MagicMock()
+        mock_db.pool = mock_pool
+
+        with patch(f"{_MAIN}.db", mock_db):
+            with patch(f"{_MAIN}.current_tenant_id") as mock_tid:
+                mock_tid.get = MagicMock(return_value=1)
+                with patch(f"{_MAIN}.current_customer_phone") as mock_phone:
+                    mock_phone.get = MagicMock(return_value="+5491112345678")
+                    with patch("services.conversation_state.get_state", new_callable=AsyncMock) as mock_get_state:
+                        mock_get_state.return_value = {
+                            "state": "BOOKED",
+                            "last_booked_appointment_id": "stale-apt-uuid",
+                        }
+                        with patch("services.conversation_state.set_state", new_callable=AsyncMock):
+                            with patch("services.conversation_state.reset", new_callable=AsyncMock) as mock_reset:
+                                with patch(f"{_MAIN}.get_tenant_calendar_provider", new_callable=AsyncMock) as mock_cal:
+                                    mock_cal.return_value = "local"
+                                    with patch(f"{_MAIN}.get_active_tz", return_value=UTC):
+                                        with patch("services.holiday_service.is_holiday", new_callable=AsyncMock,
+                                                  return_value=(False, None, None)):
+                                            with patch(f"{_MAIN}.generate_free_slots", return_value=["09:00"]):
+                                                with patch(f"{_MAIN}.pick_representative_slots",
+                                                          new_callable=AsyncMock) as mock_pick:
+                                                    mock_pick.return_value = (
+                                                        [{"date": "2026-05-12", "date_display": "Martes 12/05",
+                                                          "time": "09:00", "sede": "Sede Central",
+                                                          "professional": "Dr Test"}],
+                                                        1,
+                                                    )
+
+                                                    result = await check_availability.coroutine(
+                                                        date_query="12 de mayo",
+                                                        interpreted_date="2026-05-12",
+                                                        search_mode="exact",
+                                                    )
+
+                                                    # State was reset to IDLE
+                                                    mock_reset.assert_called_once_with(1, "+5491112345678")
+                                                    # Proceeded normally — NOT blocked
+                                                    assert result is None or "BOOKING_ALREADY_EXISTS" not in (result or "")
+
+    @pytest.mark.asyncio
+    async def test_check_availability_valid_booked_not_reset(self):
+        """Valid BOOKED state: appointment exists in DB → guard preserved, blocks with BOOKING_ALREADY_EXISTS."""
+        from orchestrator_service.main import check_availability
+
+        mock_pool = MagicMock()
+        # First fetchval = stale check (returns ID = appointment exists),
+        # Second fetchval = patient msg query (returns None = no enrichment)
+        mock_pool.fetchval = AsyncMock(side_effect=["valid-apt-uuid", None])
+        mock_db = MagicMock()
+        mock_db.pool = mock_pool
+
+        with patch(f"{_MAIN}.db", mock_db):
+            with patch(f"{_MAIN}.current_tenant_id") as mock_tid:
+                mock_tid.get = MagicMock(return_value=1)
+                with patch(f"{_MAIN}.current_customer_phone") as mock_phone:
+                    mock_phone.get = MagicMock(return_value="+5491112345678")
+                    with patch("services.conversation_state.get_state", new_callable=AsyncMock) as mock_get_state:
+                        mock_get_state.return_value = {
+                            "state": "BOOKED",
+                            "last_booked_appointment_id": "valid-apt-uuid",
+                        }
+                        with patch("services.conversation_state.reset", new_callable=AsyncMock) as mock_reset:
+
+                            result = await check_availability.coroutine(
+                                date_query="12 de mayo",
+                                interpreted_date="2026-05-12",
+                                search_mode="exact",
+                            )
+
+                            # Guard blocked as expected
+                            assert result and "BOOKING_ALREADY_EXISTS" in result
+                            # State was NOT reset
+                            mock_reset.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_check_availability_stale_no_appointment_id(self):
+        """BOOKED state without last_booked_appointment_id → skip verification, guard blocks."""
+        from orchestrator_service.main import check_availability
+
+        mock_pool = MagicMock()
+        # fetchval called only for patient msg query (stale check skipped — no apt_id)
+        mock_pool.fetchval = AsyncMock(return_value=None)
+        mock_db = MagicMock()
+        mock_db.pool = mock_pool
+
+        with patch(f"{_MAIN}.db", mock_db):
+            with patch(f"{_MAIN}.current_tenant_id") as mock_tid:
+                mock_tid.get = MagicMock(return_value=1)
+                with patch(f"{_MAIN}.current_customer_phone") as mock_phone:
+                    mock_phone.get = MagicMock(return_value="+5491112345678")
+                    with patch("services.conversation_state.get_state", new_callable=AsyncMock) as mock_get_state:
+                        # No last_booked_appointment_id in state
+                        mock_get_state.return_value = {"state": "BOOKED"}
+                        with patch("services.conversation_state.reset", new_callable=AsyncMock) as mock_reset:
+
+                            result = await check_availability.coroutine(
+                                date_query="12 de mayo",
+                                interpreted_date="2026-05-12",
+                                search_mode="exact",
+                            )
+
+                            # Guard blocked as expected (existing behavior)
+                            assert result and "BOOKING_ALREADY_EXISTS" in result
+                            # State was NOT reset
+                            mock_reset.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_check_availability_stale_db_error(self):
+        """DB query error during stale check → no crash, falls back to existing guard."""
+        from orchestrator_service.main import check_availability
+
+        mock_pool = MagicMock()
+        # First fetchval (stale check) raises Exception
+        # Second fetchval (patient msg) returns None
+        mock_pool.fetchval = AsyncMock(side_effect=[Exception("DB connection error"), None])
+        mock_db = MagicMock()
+        mock_db.pool = mock_pool
+
+        with patch(f"{_MAIN}.db", mock_db):
+            with patch(f"{_MAIN}.current_tenant_id") as mock_tid:
+                mock_tid.get = MagicMock(return_value=1)
+                with patch(f"{_MAIN}.current_customer_phone") as mock_phone:
+                    mock_phone.get = MagicMock(return_value="+5491112345678")
+                    with patch("services.conversation_state.get_state", new_callable=AsyncMock) as mock_get_state:
+                        mock_get_state.return_value = {
+                            "state": "BOOKED",
+                            "last_booked_appointment_id": "error-apt-uuid",
+                        }
+                        with patch("services.conversation_state.reset", new_callable=AsyncMock) as mock_reset:
+
+                            result = await check_availability.coroutine(
+                                date_query="12 de mayo",
+                                interpreted_date="2026-05-12",
+                                search_mode="exact",
+                            )
+
+                            # No crash — falls back to existing guard
+                            assert result and "BOOKING_ALREADY_EXISTS" in result
+                            # State was NOT reset (error is non-blocking)
+                            mock_reset.assert_not_called()

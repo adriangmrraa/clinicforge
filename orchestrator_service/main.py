@@ -2011,58 +2011,83 @@ async def check_availability(
             _ca_state = await _ca_get_state(tid, _ca_phone) if _ca_phone else {}
             _ca_state_str = _ca_state.get("state", "IDLE") if isinstance(_ca_state, dict) else "IDLE"
             if _ca_state_str in ("BOOKED", "PAYMENT_PENDING"):
+                # NEW: Verify the appointment actually exists in DB — stale state detection
+                try:
+                    _ba_apt_id = _ca_state.get("last_booked_appointment_id") if isinstance(_ca_state, dict) else None
+                    if _ba_apt_id:
+                        _ba_valid = await db.pool.fetchval(
+                            """
+                            SELECT id FROM appointments
+                            WHERE id = $1 AND tenant_id = $2
+                              AND status IN ('scheduled', 'confirmed')
+                              AND appointment_datetime >= NOW()
+                            """,
+                            _ba_apt_id, tid
+                        )
+                        if not _ba_valid:
+                            logger.warning(
+                                f"📊 BOOKING_FLOW | Stale BOOKED state detected: apt_id={_ba_apt_id} no longer valid. "
+                                f"Auto-resetting to IDLE. phone={_ca_phone}"
+                            )
+                            from services.conversation_state import reset as _ba_reset
+                            await _ba_reset(tid, _ca_phone)
+                            _ca_state_str = "IDLE"
+                except Exception as _ba_err:
+                    logger.warning(f"📊 BOOKING_FLOW | DB verification failed (non-blocking): {_ba_err}")
+
                 # DLD-89/92: Bloquear check_availability si el paciente ya tiene turno confirmado
                 # y no hay señal explícita de que QUIERE reprogramar, cancelar o pedir OTRO turno.
                 # IMPORTANTE: Leer el último mensaje REAL del paciente desde la DB para no
                 # bloquear flujos legítimos de reprogramación donde la IA pasa solo la fecha
                 # pero el paciente dijo "reprogramar" o "cualquier día a la tarde" antes.
-                _intent_signals = (
-                    r'\b(otro turno|nuevo turno|otra fecha|otro d[ii]a|quiero cambiar|'
-                    r'reagend|reprogram|mover el turno|cancel|dame otro|agendame otro|'
-                    r'necesito otro|sac[aa] otro|quiero uno m[aa]s|turno para|'
-                    r'cambiar el turno|mover turno|buscar|busqu[ee]|buscame|fijate|'
-                    r'cualquier d[ii]a|cualquier horario|disponib|disponibilidad|'
-                    r'horario libre|otro horario|verif[ii]c|intento|intentalo)\b'
-                )
-                _ca_input_text = f"{date_query} {treatment_name or ''} {professional_name or ''}"
-                # Ampliar la busqueda con el ultimo mensaje real del paciente (lectura rapida)
-                try:
-                    _last_patient_msg = await db.pool.fetchval(
-                        """
-                        SELECT cm.content FROM chat_messages cm
-                        JOIN chat_conversations cc ON cc.id = cm.conversation_id
-                        WHERE cc.external_user_id ILIKE $1
-                          AND cc.tenant_id = $2
-                          AND cm.role = 'user'
-                        ORDER BY cm.created_at DESC
-                        LIMIT 1
-                        """,
-                        f"%{re.sub(r'[^0-9]', '', _ca_phone or '')}%",
-                        tid,
+                if _ca_state_str in ("BOOKED", "PAYMENT_PENDING"):
+                    _intent_signals = (
+                        r'\b(otro turno|nuevo turno|otra fecha|otro d[ii]a|quiero cambiar|'
+                        r'reagend|reprogram|mover el turno|cancel|dame otro|agendame otro|'
+                        r'necesito otro|sac[aa] otro|quiero uno m[aa]s|turno para|'
+                        r'cambiar el turno|mover turno|buscar|busqu[ee]|buscame|fijate|'
+                        r'cualquier d[ii]a|cualquier horario|disponib|disponibilidad|'
+                        r'horario libre|otro horario|verif[ii]c|intento|intentalo)\b'
                     )
-                    if _last_patient_msg:
-                        _ca_input_text += f" {_last_patient_msg}"
-                        logger.info(
-                            f"📊 BOOKING_FLOW | intent check enriched with last patient msg: {str(_last_patient_msg)[:80]!r}"
+                    _ca_input_text = f"{date_query} {treatment_name or ''} {professional_name or ''}"
+                    # Ampliar la busqueda con el ultimo mensaje real del paciente (lectura rapida)
+                    try:
+                        _last_patient_msg = await db.pool.fetchval(
+                            """
+                            SELECT cm.content FROM chat_messages cm
+                            JOIN chat_conversations cc ON cc.id = cm.conversation_id
+                            WHERE cc.external_user_id ILIKE $1
+                              AND cc.tenant_id = $2
+                              AND cm.role = 'user'
+                            ORDER BY cm.created_at DESC
+                            LIMIT 1
+                            """,
+                            f"%{re.sub(r'[^0-9]', '', _ca_phone or '')}%",
+                            tid,
                         )
-                except Exception as _msg_err:
-                    logger.debug(f"📊 BOOKING_FLOW | last patient msg fetch failed (non-blocking): {_msg_err}")
-                if not re.search(_intent_signals, _ca_input_text, re.IGNORECASE):
-                    logger.warning(
-                        f"📊 BOOKING_FLOW | check_availability BLOCKED: state={_ca_state_str} "
-                        f"no reschedule/new-booking intent detected. phone={_ca_phone}"
-                    )
-                    return (
-                        "BOOKING_ALREADY_EXISTS: El paciente ya tiene un turno confirmado en esta conversacion. "
-                        "No se debe ofrecer un nuevo turno a menos que el paciente lo solicite explicitamente "
-                        "(diciendo 'quiero otro turno', 'necesito reagendar', etc.). "
-                        "Responde la consulta del paciente sin ofrecer turnos nuevos."
-                    )
-                else:
-                    logger.info(
-                        f"📊 BOOKING_FLOW | check_availability ALLOWED despite state={_ca_state_str} "
-                        f"reschedule/new-booking intent detected. phone={_ca_phone}"
-                    )
+                        if _last_patient_msg:
+                            _ca_input_text += f" {_last_patient_msg}"
+                            logger.info(
+                                f"📊 BOOKING_FLOW | intent check enriched with last patient msg: {str(_last_patient_msg)[:80]!r}"
+                            )
+                    except Exception as _msg_err:
+                        logger.debug(f"📊 BOOKING_FLOW | last patient msg fetch failed (non-blocking): {_msg_err}")
+                    if not re.search(_intent_signals, _ca_input_text, re.IGNORECASE):
+                        logger.warning(
+                            f"📊 BOOKING_FLOW | check_availability BLOCKED: state={_ca_state_str} "
+                            f"no reschedule/new-booking intent detected. phone={_ca_phone}"
+                        )
+                        return (
+                            "BOOKING_ALREADY_EXISTS: El paciente ya tiene un turno confirmado en esta conversacion. "
+                            "No se debe ofrecer un nuevo turno a menos que el paciente lo solicite explicitamente "
+                            "(diciendo 'quiero otro turno', 'necesito reagendar', etc.). "
+                            "Responde la consulta del paciente sin ofrecer turnos nuevos."
+                        )
+                    else:
+                        logger.info(
+                            f"📊 BOOKING_FLOW | check_availability ALLOWED despite state={_ca_state_str} "
+                            f"reschedule/new-booking intent detected. phone={_ca_phone}"
+                        )
             elif _ca_state_str == "OFFERED_SLOTS":
                 logger.warning(f"📊 BOOKING_FLOW | ⚠️ check_availability called in state=OFFERED_SLOTS — possible loop! phone={_ca_phone}")
                 # Increment availability_attempts counter
