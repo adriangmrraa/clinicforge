@@ -161,6 +161,53 @@ conn.close()
 print(f'Schema patches: {applied}/{len(patches)} applied')
 "
 
+# Fix: secuencia de patient_memories desincronizada (post-restore) + embedding bytea->vector
+echo "Aplicando fixes de schema (secuencia patient_memories + pgvector)..."
+python << 'PYFIX' 2>&1 || echo "  Schema fixes skipped (non-critical)"
+import os, psycopg2
+dsn = os.environ.get('POSTGRES_DSN', '').replace('postgresql+asyncpg://', 'postgresql://')
+if dsn.startswith('postgres://'):
+    dsn = dsn.replace('postgres://', 'postgresql://', 1)
+conn = psycopg2.connect(dsn)
+conn.autocommit = True
+cur = conn.cursor()
+
+# 1) patient_memories: resetear la secuencia del id. Se desincroniza al restaurar un backup
+#    (las filas entran con id explicito pero la secuencia no avanza) -> "duplicate key id".
+try:
+    cur.execute("SELECT pg_get_serial_sequence('patient_memories','id')")
+    seq = cur.fetchone()[0]
+    if seq:
+        cur.execute("SELECT setval('" + seq + "', GREATEST((SELECT COALESCE(MAX(id),0) FROM patient_memories),1))")
+        print("  patient_memories: secuencia del id reseteada a MAX(id)")
+except Exception as e:
+    print("  patient_memories seq skip:", e)
+
+# 2) pgvector: si embedding quedo como bytea (formato viejo inservible, no casteable a
+#    vector), recrearla como vector(1536). El app regenera los embeddings al arrancar.
+#    Solo actua si es bytea (idempotente). DROP+ADD atomico (rollback si falla el ADD).
+for tbl in ('faq_embeddings', 'document_embeddings'):
+    try:
+        cur.execute("SELECT udt_name FROM information_schema.columns WHERE table_name=%s AND column_name='embedding'", (tbl,))
+        row = cur.fetchone()
+        if row and row[0] == 'bytea':
+            conn.autocommit = False
+            try:
+                cur.execute('ALTER TABLE ' + tbl + ' DROP COLUMN embedding')
+                cur.execute('ALTER TABLE ' + tbl + ' ADD COLUMN embedding vector(1536)')
+                conn.commit()
+                print('  ' + tbl + ': columna embedding recreada como vector(1536)')
+            except Exception as e2:
+                conn.rollback()
+                print('  ' + tbl + ' pgvector recreate failed (rolled back):', e2)
+            finally:
+                conn.autocommit = True
+    except Exception as e:
+        print('  ' + tbl + ' pgvector skip:', e)
+
+conn.close()
+PYFIX
+
 # Auto-link: vincular pacientes existentes con conversaciones de chat huérfanas
 echo "Vinculando pacientes con conversaciones de chat..."
 python << 'PYEOF' 2>&1 || echo "  Auto-link skipped (non-critical)"
