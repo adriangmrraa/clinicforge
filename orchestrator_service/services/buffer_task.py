@@ -3775,8 +3775,14 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
     # --- SAFETY STRIP: remove any leaked internal tags before sending ---
     if response_text:
         import re as _re_safety
-        # Strip bracket tags like [CONSULTA_PREVIA_REQUISITOS:...], [INTERNAL_*:...], [BOOK_HINT:...], etc.
-        response_text = _re_safety.sub(r"\[(?:CONSULTA_PREVIA_REQUISITOS|INTERNAL_\w+|BOOK_HINT)[:\s][^\]]*\]", "", response_text).strip()
+        # Strip bracket tags like [CONSULTA_PREVIA_REQUISITOS:...], [INTERNAL_*:...], [BOOK_HINT:...], [SYSTEM_NOTE: ...]
+        response_text = _re_safety.sub(r"\[(?:CONSULTA_PREVIA_REQUISITOS|INTERNAL_\w+|BOOK_HINT|SYSTEM_NOTE)[:\s\-][^\]]*\]", "", response_text).strip()
+        # AG-03: nunca filtrar al paciente las directivas internas crudas del gate de turnos
+        response_text = _re_safety.sub(
+            r"(?im)^.*\b(?:BOOKING_ALREADY_EXISTS|BOOKING_ALREADY_IN_PROGRESS|AVAILABILITY_BLOCKED)\b.*$",
+            "",
+            response_text,
+        ).strip()
 
     # --- SUPPRESS ERROR FALLBACK: don't send internal error messages to patients ---
     _ERROR_FALLBACKS = (

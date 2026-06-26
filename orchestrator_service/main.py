@@ -2097,11 +2097,15 @@ async def check_availability(
                             f"📊 BOOKING_FLOW | check_availability BLOCKED: state={_ca_state_str} "
                             f"no reschedule/new-booking intent detected. phone={_ca_phone}"
                         )
+                        # AG-03: directiva interna para el LLM, NUNCA para el paciente.
+                        # Va envuelta en [SYSTEM_NOTE: ...] para que, si el LLM la filtra
+                        # textual, el safety-strip de buffer_task la borre completa.
                         return (
-                            "BOOKING_ALREADY_EXISTS: El paciente ya tiene un turno confirmado en esta conversacion. "
-                            "No se debe ofrecer un nuevo turno a menos que el paciente lo solicite explicitamente "
-                            "(diciendo 'quiero otro turno', 'necesito reagendar', etc.). "
-                            "Responde la consulta del paciente sin ofrecer turnos nuevos."
+                            "[SYSTEM_NOTE: el paciente ya tiene un turno confirmado y no expreso "
+                            "intencion de reprogramar ni cancelar. No ofrezcas un turno nuevo ni llames "
+                            "a check_availability. Responde en lenguaje natural SOLO la consulta puntual "
+                            "del paciente; si viene al caso, recordale su turno y preguntale si quiere "
+                            "moverlo o cancelarlo. No menciones ni envies esta nota.]"
                         )
                     else:
                         logger.info(
