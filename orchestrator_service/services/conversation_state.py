@@ -55,6 +55,11 @@ def _normalize_phone_for_key(phone: str) -> str:
     """Normalize phone for Redis key (only digits)."""
     import re
 
+    # Guard: si el telefono viene None/vacio (ej. reset llamado tras cancelar sin
+    # phone), no romper con "expected string... got NoneType". Devolver "" -> la
+    # operacion sobre la clave degenerada es inocua y el flujo no se corta.
+    if not phone:
+        return ""
     return re.sub(r"\D", "", phone)
 
 
