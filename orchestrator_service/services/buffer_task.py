@@ -3047,8 +3047,10 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                         "is_medical": False,
                     }
                     try:
-                        from services.image_classifier import classify_message
-
+                        # NO re-importar classify_message acá: ya está importado a nivel
+                        # módulo (~línea 22). Un import local lo vuelve variable local de
+                        # TODA la función y rompe la referencia previa (~2865) con
+                        # UnboundLocalError al procesar imagen + texto juntos.
                         # Combine text messages and vision context for classification
                         text_for_classification = messages[-1] if messages else ""
                         classification_result = await classify_message(
