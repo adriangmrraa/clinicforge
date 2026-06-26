@@ -172,16 +172,25 @@ conn = psycopg2.connect(dsn)
 conn.autocommit = True
 cur = conn.cursor()
 
-# 1) patient_memories: resetear la secuencia del id. Se desincroniza al restaurar un backup
-#    (las filas entran con id explicito pero la secuencia no avanza) -> "duplicate key id".
+# 1) Resetear TODAS las secuencias del schema public a MAX(columna). Se desincronizan al
+#    restaurar un backup (las filas entran con id explicito pero la secuencia no avanza)
+#    -> "duplicate key" al insertar (visto en patient_memories y appointment_audit_log).
 try:
-    cur.execute("SELECT pg_get_serial_sequence('patient_memories','id')")
-    seq = cur.fetchone()[0]
-    if seq:
-        cur.execute("SELECT setval('" + seq + "', GREATEST((SELECT COALESCE(MAX(id),0) FROM patient_memories),1))")
-        print("  patient_memories: secuencia del id reseteada a MAX(id)")
+    cur.execute("SELECT table_schema, table_name, column_name FROM information_schema.columns WHERE table_schema='public' AND column_default LIKE 'nextval(%'")
+    _cols = cur.fetchall()
+    _fixed = 0
+    for _sch, _tbl, _col in _cols:
+        try:
+            cur.execute(
+                'SELECT setval(pg_get_serial_sequence(%s, %s), GREATEST((SELECT COALESCE(MAX("' + _col + '"),0) FROM "' + _sch + '"."' + _tbl + '"), 1))',
+                (_sch + '.' + _tbl, _col),
+            )
+            _fixed += 1
+        except Exception as _se:
+            print('  seq skip ' + _tbl + '.' + _col + ':', _se)
+    print('  Secuencias reseteadas: ' + str(_fixed) + '/' + str(len(_cols)))
 except Exception as e:
-    print("  patient_memories seq skip:", e)
+    print('  reset secuencias skip:', e)
 
 # 2) pgvector: si embedding quedo como bytea (formato viejo inservible, no casteable a
 #    vector), recrearla como vector(1536). El app regenera los embeddings al arrancar.
