@@ -1238,12 +1238,14 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                     except Exception as cleanup_err:
                         logger.warning(f"⚠️ Override cleanup failed: {cleanup_err}")
                 try:
-                    import os
-                    import redis.asyncio as redis
                     from services.buffer_manager import BufferManager
+                    from services.redis_client import get_redis
 
-                    redis_url = os.getenv("REDIS_URL", "redis://redis:6379")
-                    redis_client = redis.from_url(redis_url, decode_responses=True)
+                    # BUF-01: usar el cliente Redis SINGLETON de larga vida. No crear uno
+                    # por-request ni cerrarlo en finally: el consumer process_user_buffer
+                    # corre desacoplado (debounce ~11s + LLM) y usaria un cliente ya cerrado
+                    # -> mensajes perdidos intermitentes. El BufferManager no cierra el cliente.
+                    redis_client = get_redis()
 
                     message_data = {
                         "text": msg.content,
@@ -1266,8 +1268,8 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                                 external_user_id=msg.external_user_id,
                                 message_data=message_data,
                             )
-                        finally:
-                            await redis_client.aclose()
+                        except Exception as _enq_err:
+                            logger.error(f"⚠️ enqueue_message failed: {_enq_err}")
 
                     background_tasks.add_task(enqueue_bg)
                     logger.info(f"⏳ Buffer task queued for {msg.external_user_id}")
