@@ -2067,7 +2067,8 @@ async def check_availability(
                         r'necesito otro|sac[aa] otro|quiero uno m[aa]s|turno para|cambiar el turno|'
                         r'busc\w*|fijate|cualquier|disponib\w*|horario libre|otro horario|'
                         r'verif\w*|intento|intentalo|no puedo ir|no podr[ee] ir|no voy a poder|'
-                        r'no llego|qu[ee] d[ii]a)'
+                        r'no llego|qu[ee] d[ii]a|para cuando|cuando puede|propon|lo que tengas|'
+                        r'el que sea|vos decim)'
                     )
                     _ca_input_text = f"{date_query} {treatment_name or ''} {professional_name or ''}"
                     # Ampliar la busqueda con el ultimo mensaje real del paciente (lectura rapida)
@@ -11827,8 +11828,9 @@ PASO 3b: PACIENTE CON TURNO EXISTENTE — Si el paciente YA TIENE un turno agend
   • REAGENDAMIENTO (DLD-88): Si el paciente pide REAGENDAR/CAMBIAR/MOVER el turno:
     PASO R0 — OBTENER NUEVA FECHA/HORA DESEADA (obligatorio antes de buscar disponibilidad):
     → Si el paciente YA dijo la nueva fecha u hora deseada (ej: "para el lunes 22 a las 17:45", "a las 18 hs", "para el jueves") → NO preguntes de nuevo. Usá esa info directamente en check_availability.
-    → Si el paciente NO dijo la nueva fecha u hora → preguntá UNA VEZ: "¿Para cuándo lo querés reprogramar?" y esperá la respuesta.
-    → NUNCA llamar reschedule_appointment ni check_availability sin saber al menos la preferencia de nueva fecha/hora.
+    → Si el paciente NO dijo la nueva fecha u hora → preguntá UNA SOLA VEZ: "¿Para cuándo lo querés reprogramar? ¿Tenés algún día u horario en mente?".
+    → Si el paciente NO tiene preferencia o te pide que propongas vos (ej: "decime qué tenés", "para cuándo puede ser", "lo que tengas", "cualquiera", "buscame vos", "el que sea", "vos decime") → NO repitas la pregunta: llamá check_availability buscando lo más cercano y ofrecé 2 opciones.
+    → NUNCA llamar reschedule_appointment sin que el paciente haya elegido una opción concreta.
     PASO R1 — BUSCAR DISPONIBILIDAD: Una vez que tenés la nueva fecha/hora deseada:
     → Si el paciente pidió una hora/día específico → llamá check_availability con esa fecha exacta primero (search_mode="exact").
     → Si ese slot está libre → REPROGRAMÁ DIRECTAMENTE con reschedule_appointment. NO preguntes "¿querés que te lo reprograme?" — es obvio que sí.
@@ -12341,8 +12343,8 @@ GESTIÓN DE TURNOS EXISTENTES:
   "Para agosto", "el mes que viene", "para fin de mes" →
     date_query=texto del paciente, interpreted_date=primer día hábil del período, search_mode="month"
 
-  CASO F — Sin fecha / indiferente:
-  "Cualquier día", "lo que haya", "buscame vos", "donde haya lugar", "indiferente" →
+  CASO F — Sin fecha / indiferente / "proponé vos":
+  "Cualquier día", "lo que haya", "buscame vos", "donde haya lugar", "indiferente", "decime qué tenés", "para cuándo puede ser", "dame opciones", "lo que tengas", "el que sea", "vos decime" →
     date_query="la próxima semana", interpreted_date=próximo lunes, search_mode="week",
     time_preference según restricción horaria. NUNCA pidas un día específico si el paciente ya dijo que le da igual.
 
@@ -12361,8 +12363,9 @@ GESTIÓN DE TURNOS EXISTENTES:
   los check_availability siguientes. NUNCA la olvidés aunque ya pasaron varios mensajes.
 
   Si el paciente NO dijo nada de horario ni fecha en ningún mensaje → preguntá UNA SOLA VEZ:
-  "¿Para cuándo lo querés cambiar? ¿Tenés algún día o horario en mente?" y esperá la respuesta.
-  → PROHIBIDO llamar reschedule_appointment ni check_availability sin tener al menos una preferencia.
+  "¿Para cuándo lo querés cambiar? ¿Tenés algún día o horario en mente?".
+  → Si el paciente responde que NO tiene preferencia o te pide que elijas vos (ej: "decime qué tenés", "para cuándo puede ser", "lo que tengas", "cualquiera", "buscame vos", "el que sea", "vos decime") → es el CASO F: llamá check_availability buscando lo más cercano y ofrecé 2 opciones. NUNCA repitas la pregunta.
+  → PROHIBIDO llamar reschedule_appointment sin que el paciente haya elegido una de las opciones ofrecidas.
 
   ⚠️ RESOLUCIÓN DEL TURNO ORIGINAL (CUANDO HAY MÚLTIPLES TURNOS):
   Si el paciente tiene más de un turno activo e indica cuál quiere reprogramar (ej: "el 1", "el primero", "el del 08/07", "el del 8 de julio", "el que tengo a las 13:00"):
