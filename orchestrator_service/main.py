@@ -2055,13 +2055,19 @@ async def check_availability(
                 # bloquear flujos legítimos de reprogramación donde la IA pasa solo la fecha
                 # pero el paciente dijo "reprogramar" o "cualquier día a la tarde" antes.
                 if _ca_state_str in ("BOOKED", "PAYMENT_PENDING"):
+                    # AG-03 fix: stems con \w* (sin \b final) para que matcheen las
+                    # palabras reales. Antes 'reprogram|cancel|reagend...)\b' NUNCA
+                    # matcheaba "reprogramar/cancelar/reagendar" (el \b exigia limite de
+                    # palabra justo tras el stem incompleto) -> el gate bloqueaba la
+                    # reprogramacion en loop. Se suman tokens del flujo real.
                     _intent_signals = (
                         r'\b(otro turno|nuevo turno|otra fecha|otro d[ii]a|quiero cambiar|'
-                        r'reagend|reprogram|mover el turno|cancel|dame otro|agendame otro|'
-                        r'necesito otro|sac[aa] otro|quiero uno m[aa]s|turno para|'
-                        r'cambiar el turno|mover turno|buscar|busqu[ee]|buscame|fijate|'
-                        r'cualquier d[ii]a|cualquier horario|disponib|disponibilidad|'
-                        r'horario libre|otro horario|verif[ii]c|intento|intentalo)\b'
+                        r'reagend\w*|reprogram\w*|mover el turno|mover turno|cancel\w*|'
+                        r'dame otro|dame otra|dame opciones|dame las opciones|agendame otro|'
+                        r'necesito otro|sac[aa] otro|quiero uno m[aa]s|turno para|cambiar el turno|'
+                        r'busc\w*|fijate|cualquier|disponib\w*|horario libre|otro horario|'
+                        r'verif\w*|intento|intentalo|no puedo ir|no podr[ee] ir|no voy a poder|'
+                        r'no llego|qu[ee] d[ii]a)'
                     )
                     _ca_input_text = f"{date_query} {treatment_name or ''} {professional_name or ''}"
                     # Ampliar la busqueda con el ultimo mensaje real del paciente (lectura rapida)
