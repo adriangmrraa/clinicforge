@@ -3786,6 +3786,12 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
         logger.warning(f"🔇 Suppressing error fallback message (not sending to patient): {response_text[:80]}")
         response_text = ""
 
+    # AG-12: nunca enviar el placeholder interno "[Sin respuesta]" al paciente.
+    # Si el motor no generó texto, queda vacío y el guard de abajo omite el envío.
+    if response_text and response_text.strip() == "[Sin respuesta]":
+        logger.warning("🔇 Suppressing placeholder '[Sin respuesta]' — not sending to patient")
+        response_text = ""
+
     # --- SEND RESPONSE ---
     from response_sender import ResponseSender
 
