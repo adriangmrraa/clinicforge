@@ -1131,37 +1131,46 @@ def _get_search_range_days(date_query: str, start_date: date) -> int:
 
 
 def _pick_from_slots(
-    slots: List[str], max_picks: int = 3, specific_time: Optional[str] = None
+    slots: List[str], max_picks: int = 3, specific_time: Optional[str] = None,
+    min_gap_minutes: int = 90,
 ) -> List[str]:
-    """Selecciona hasta max_picks slots representativos (mañana, tarde, comodín).
-    If specific_time is provided and available, it's placed FIRST in the picks.
+    """Selecciona hasta max_picks slots representativos y BIEN ESPACIADOS.
+    - Si specific_time está disponible, va PRIMERO en los picks.
+    - Las opciones devueltas se separan al menos min_gap_minutes entre sí, para
+      no ofrecer horarios pegados el mismo día (ej: 10:00 y 10:15).
     """
     if not slots:
         return []
-    if len(slots) <= max_picks:
-        return list(slots)
 
-    picks = []
+    def _to_min(s: str) -> int:
+        h, m = int(s.split(":")[0]), int(s.split(":")[1])
+        return h * 60 + m
 
-    # Priority: if patient asked for a specific time, check if it's available
+    picks: List[str] = []
+
+    def _try_add(candidate: Optional[str]) -> None:
+        if not candidate or candidate in picks or len(picks) >= max_picks:
+            return
+        cmin = _to_min(candidate)
+        # respetar la separación mínima con los slots ya elegidos
+        if any(abs(cmin - _to_min(p)) < min_gap_minutes for p in picks):
+            return
+        picks.append(candidate)
+
+    # Prioridad: si el paciente pidió una hora puntual y está disponible
     if specific_time:
-        # Normalize: "16:30" → find exact or closest match
         normalized = specific_time.strip()
         if normalized in slots:
             picks.append(normalized)
         else:
-            # Try rounding to nearest available slot (within 30 min)
+            # redondear al slot disponible más cercano (hasta 30 min)
             try:
-                sh, sm = int(normalized.split(":")[0]), int(normalized.split(":")[1])
-                target_min = sh * 60 + sm
-                closest = None
-                closest_diff = 999
+                target_min = _to_min(normalized)
+                closest, closest_diff = None, 999
                 for s in slots:
-                    h, m = int(s.split(":")[0]), int(s.split(":")[1])
-                    diff = abs(h * 60 + m - target_min)
+                    diff = abs(_to_min(s) - target_min)
                     if diff < closest_diff:
-                        closest = s
-                        closest_diff = diff
+                        closest, closest_diff = s, diff
                 if closest and closest_diff <= 30:
                     picks.append(closest)
             except (ValueError, IndexError):
@@ -1170,25 +1179,22 @@ def _pick_from_slots(
     morning = [s for s in slots if int(s.split(":")[0]) < 13]
     afternoon = [s for s in slots if int(s.split(":")[0]) >= 13]
 
-    # Opción A: primer slot de mañana
-    if morning and len(picks) < max_picks:
-        if morning[0] not in picks:
-            picks.append(morning[0])
-    # Opción B: primer slot de tarde
-    if afternoon and len(picks) < max_picks:
-        if afternoon[0] not in picks:
-            picks.append(afternoon[0])
-    # Opción C: comodín (slot espaciado del bloque más largo)
+    # Opción A: primer slot de mañana / Opción B: primer slot de tarde
+    _try_add(morning[0] if morning else None)
+    _try_add(afternoon[0] if afternoon else None)
+    # Opción C: comodín del bloque más largo
     if len(picks) < max_picks:
         larger_block = afternoon if len(afternoon) >= len(morning) else morning
         if larger_block:
-            mid_idx = len(larger_block) // 2
-            candidate = larger_block[mid_idx]
-            if candidate not in picks:
-                picks.append(candidate)
-    # Si aún faltan, agregar el último disponible
-    if len(picks) < max_picks and slots[-1] not in picks:
-        picks.append(slots[-1])
+            _try_add(larger_block[len(larger_block) // 2])
+    # Relleno: recorrer todos los slots respetando la separación mínima
+    for s in slots:
+        if len(picks) >= max_picks:
+            break
+        _try_add(s)
+    # Garantía mínima: si la separación dejó la lista vacía, devolver el 1°
+    if not picks:
+        picks.append(slots[0])
 
     return picks[:max_picks]
 
@@ -1581,6 +1587,16 @@ async def pick_representative_slots(
         slots = [] # Target date falls on an explicitly excluded date
         total_today = 0
 
+    # AG-05: si el paciente dio días preferidos (ej. "martes o jueves"), nunca
+    # limitar la búsqueda a un solo día → forzar el rango para poder repartir
+    # esos días en las próximas semanas.
+    if preferred_days and search_range_days <= 1:
+        search_range_days = 7
+
+    # days_with_slots se usa en el REPARTO (después del loop de rango). Se
+    # inicializa acá para que esté definido también en modo fecha específica.
+    days_with_slots = []
+
     if search_range_days <= 1:
         # ── MODO FECHA ESPECÍFICA: slots del mismo día (hasta max_options) ──
         day_name_en = DAYS_EN[target_date.weekday()]
@@ -1679,44 +1695,42 @@ async def pick_representative_slots(
                 }
             )
 
-        if days_with_slots:
-            # Distribuir: elegir días espaciados dentro del rango
-            if len(days_with_slots) <= max_options:
-                selected_days = days_with_slots
-            else:
-                # Espaciar: tomar el primero, uno del medio, y el último
-                step = max(1, (len(days_with_slots) - 1) / (max_options - 1))
-                indices = [round(i * step) for i in range(max_options)]
-                indices = sorted(
-                    set(min(idx, len(days_with_slots) - 1) for idx in indices)
+    # ── REPARTO: con TODOS los días del rango ya recolectados, elegir días
+    # DISTINTOS y bien espaciados (1 turno por día) para no ofrecer el mismo
+    # día con horarios pegados. Si faltan opciones, las completa el bloque
+    # EXPANDIR (mismo día en semanas siguientes). ──
+    if days_with_slots:
+        if len(days_with_slots) <= max_options:
+            selected_days = days_with_slots
+        else:
+            # Espaciar: tomar el primero, uno del medio, y el último
+            step = max(1, (len(days_with_slots) - 1) / (max_options - 1))
+            indices = [round(i * step) for i in range(max_options)]
+            indices = sorted(
+                set(min(idx, len(days_with_slots) - 1) for idx in indices)
+            )
+            selected_days = [days_with_slots[i] for i in indices]
+
+        for day_info in selected_days:
+            if len(options) >= max_options:
+                break
+            d = day_info["date"]
+            day_en = day_info["day_en"]
+            display = f"{DIAS_ES.get(day_en, '')} {d.strftime('%d/%m')}"
+            # 1 turno por día → días distintos. El resto de las opciones se
+            # completan con OTROS días (en el rango o en semanas siguientes).
+            picked = _pick_from_slots(day_info["slots"], 1, specific_time=specific_time)
+            for time_str in picked:
+                hour = int(time_str.split(":")[0])
+                options.append(
+                    {
+                        "time": time_str,
+                        "date": d.isoformat(),
+                        "date_display": display,
+                        "sede": day_info["sede"],
+                        "period": "mañana" if hour < 13 else "tarde",
+                    }
                 )
-                selected_days = [days_with_slots[i] for i in indices]
-
-            # If only 1 day has slots, pick multiple slots from that day
-            # to always offer max_options (e.g. 2) choices to the patient
-            slots_per_day = 1 if len(selected_days) >= max_options else max(1, max_options - len(options))
-
-            for day_info in selected_days:
-                if len(options) >= max_options:
-                    break
-                d = day_info["date"]
-                day_en = day_info["day_en"]
-                display = f"{DIAS_ES.get(day_en, '')} {d.strftime('%d/%m')}"
-                # Pick enough slots to fill max_options when few days available
-                remaining = max_options - len(options)
-                pick_count = min(slots_per_day, remaining) if len(selected_days) >= max_options else remaining
-                picked = _pick_from_slots(day_info["slots"], pick_count, specific_time=specific_time)
-                for time_str in picked:
-                    hour = int(time_str.split(":")[0])
-                    options.append(
-                        {
-                            "time": time_str,
-                            "date": d.isoformat(),
-                            "date_display": display,
-                            "sede": day_info["sede"],
-                            "period": "mañana" if hour < 13 else "tarde",
-                        }
-                    )
 
         # Contar total disponible en el rango para informar
         total_today = sum(len(d["slots"]) for d in days_with_slots)
