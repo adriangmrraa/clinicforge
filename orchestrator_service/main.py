@@ -2884,21 +2884,23 @@ async def check_availability(
             end_day,
         )
 
-        if calendar_provider == "google":
-            gcal_blocks = await db.pool.fetch(
-                """
-                SELECT professional_id, start_datetime as start, end_datetime as end
-                FROM google_calendar_blocks
-                WHERE tenant_id = $1 AND (professional_id = ANY($2) OR professional_id IS NULL)
-                AND (start_datetime < $4 AND end_datetime > $3)
-            """,
-                tenant_id,
-                prof_ids,
-                start_day,
-                end_day,
-            )
-        else:
-            gcal_blocks = []
+        # Bloqueos de agenda (viajes, ausencias, bloqueos manuales): SIEMPRE se leen,
+        # no solo con Google Calendar. Viven en google_calendar_blocks aunque el tenant
+        # use calendario local; si no se leen, el bot ofrece turnos en días que el
+        # profesional está bloqueado/de viaje (bug "ELY VIAJA"). Consistente con el
+        # path de días extra (_batch_fetch) que ya los lee siempre.
+        gcal_blocks = await db.pool.fetch(
+            """
+            SELECT professional_id, start_datetime as start, end_datetime as end
+            FROM google_calendar_blocks
+            WHERE tenant_id = $1 AND (professional_id = ANY($2) OR professional_id IS NULL)
+            AND (start_datetime < $4 AND end_datetime > $3)
+        """,
+            tenant_id,
+            prof_ids,
+            start_day,
+            end_day,
+        )
 
         # Mapear intervalos ocupados por profesional
         busy_map = {pid: set() for pid in prof_ids}
