@@ -4016,6 +4016,7 @@ async def book_appointment(
 
     # Recuperar obra social de lead_context
     lead_insurance = None
+    lead_professional_id = None
     if not is_third_party:
         try:
             from services.lead_context import get as lead_ctx_get
@@ -4024,6 +4025,7 @@ async def book_appointment(
             if lead_insurance:
                 lead_insurance = lead_insurance.strip()
                 logger.info(f"📅 BOOK: Retrieved insurance_provider '{lead_insurance}' from lead_context")
+            lead_professional_id = lead_data.get("professional_id")
         except Exception as e:
             logger.warning(f"📅 BOOK: Failed to retrieve insurance from lead_context: {e}")
 
@@ -4557,6 +4559,19 @@ async def book_appointment(
                     candidates = [c for c in candidates if c["id"] in assigned_set]
                     if not candidates:
                         return f"❌ No hay profesionales asignados a este tratamiento disponibles en ese horario. ¿Querés probar otro horario o tratamiento?"
+
+        # Respetar el profesional que ofreció check_availability (derivación): si el
+        # agente no especificó un profesional, reservar con el MISMO que se ofreció,
+        # no con el prioritario por defecto (evita que blanqueamiento nuevo caiga en Laura).
+        if lead_professional_id and not clean_p_name:
+            try:
+                _lpid = int(lead_professional_id)
+                _derived = [c for c in candidates if c["id"] == _lpid]
+                if _derived:
+                    candidates = _derived
+                    logger.info(f"📅 BOOK: usando profesional derivado de la oferta id={_lpid}")
+            except (ValueError, TypeError):
+                pass
 
         # Ordenar candidatos: profesionales prioritarios primero
         candidates = sorted(
