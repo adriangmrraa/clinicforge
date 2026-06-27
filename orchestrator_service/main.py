@@ -2759,14 +2759,14 @@ async def check_availability(
                 # Feriado con atención — guardar horario especial y continuar al slot generation
                 _working_holiday_hours = _custom_hours
                 if not auto_advanced:
-                    auto_advance_reason = f"⚠️ El {target_date.strftime('%d/%m')} es {_hol_name} — horario especial de {_custom_hours['start']} a {_custom_hours['end']}"
+                    auto_advance_reason = f"⚠️ El {target_date.strftime('%d/%m')} hay horario especial de {_custom_hours['start']} a {_custom_hours['end']}"
                     auto_advanced = True
                 # No hace continue — cae al break como día válido
             elif _is_hol:
                 # Feriado sin atención — saltar día como antes
                 if not auto_advanced:
                     auto_advance_reason = (
-                        f"El {target_date.strftime('%d/%m')} es feriado ({_hol_name})"
+                        f"El {target_date.strftime('%d/%m')} no hay atención"
                     )
                     auto_advanced = True
                 target_date += timedelta(days=1)
@@ -4319,7 +4319,7 @@ async def book_appointment(
             apt_time = apt_datetime.time()
             if apt_time < custom_start or apt_time >= custom_end:
                 return (
-                    f"⚠️ El {apt_datetime.strftime('%d/%m/%Y')} es {_hol_name} con horario especial de "
+                    f"⚠️ El {apt_datetime.strftime('%d/%m/%Y')} hay horario especial de "
                     f"{_custom_hours['start']} a {_custom_hours['end']}. "
                     f"Elegí un horario dentro de ese rango."
                 )
@@ -4328,7 +4328,7 @@ async def book_appointment(
             await _track_book_error(tenant_id, chat_phone, "HOLIDAY",
                 msg=f"Date {apt_datetime.strftime('%d/%m/%Y')} is holiday: {_hol_name}")
             return _format_book_error("HOLIDAY",
-                msg=f"No se puede agendar el {apt_datetime.strftime('%d/%m/%Y')}: es feriado ({_hol_name}). Por favor elegí otro día.",
+                msg=f"No se puede agendar el {apt_datetime.strftime('%d/%m/%Y')}: ese día no hay atención. Por favor elegí otro día.",
                 action="Pick another day; do NOT retry this date"
             )
         first_name = _clean_str(first_name)
@@ -6268,7 +6268,7 @@ async def reschedule_appointment(original_date: str, new_date_time: str, interpr
         # Feriado/cierre que afecta a toda la clínica (incluye feriados nacionales), sin atención
         if _rh_g_blocked and not _rh_g_hours:
             return (
-                f"No puedo reprogramar para el {new_dt.strftime('%d/%m/%Y')}: ese día no hay atención ({_rh_g_name}). "
+                f"No puedo reprogramar para el {new_dt.strftime('%d/%m/%Y')}: ese día no hay atención. "
                 f"¿Querés que busque otro día disponible?"
             )
         # Día con horario especial (override_open): el nuevo horario debe caer en el rango
@@ -6279,7 +6279,7 @@ async def reschedule_appointment(original_date: str, new_date_time: str, interpr
                 _rh_g_hours["start"]
             ) or new_dt.time() >= _rh_time_type.fromisoformat(_rh_g_hours["end"]):
                 return (
-                    f"⚠️ El {new_dt.strftime('%d/%m/%Y')} es {_rh_g_name} con horario especial de "
+                    f"⚠️ El {new_dt.strftime('%d/%m/%Y')} hay horario especial de "
                     f"{_rh_g_hours['start']} a {_rh_g_hours['end']}. Elegí un horario dentro de ese rango."
                 )
 
@@ -7756,7 +7756,7 @@ async def confirm_slot(
                 db.pool, tenant_id, _cf_date
             )
             if _cf_g_blocked and not _cf_g_hours:
-                return f"❌ El {apt_datetime.strftime('%d/%m/%Y')} no hay atención ({_cf_g_name}). Elegí otro día, por favor."
+                return f"❌ El {apt_datetime.strftime('%d/%m/%Y')} no hay atención. Elegí otro día, por favor."
             if _cf_g_blocked and _cf_g_hours:
                 from datetime import time as _cf_time_type
 
@@ -7764,7 +7764,7 @@ async def confirm_slot(
                     _cf_g_hours["start"]
                 ) or apt_datetime.time() >= _cf_time_type.fromisoformat(_cf_g_hours["end"]):
                     return (
-                        f"⚠️ El {apt_datetime.strftime('%d/%m/%Y')} es {_cf_g_name} con horario especial de "
+                        f"⚠️ El {apt_datetime.strftime('%d/%m/%Y')} hay horario especial de "
                         f"{_cf_g_hours['start']} a {_cf_g_hours['end']}. Elegí un horario dentro de ese rango."
                     )
             # Día especial del profesional elegido (scope='professional')
