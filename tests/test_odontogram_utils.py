@@ -183,7 +183,7 @@ class TestNormalizeToV3:
                     "occlusal": {"state": "caries", "condition": "malo", "color": "#ef4444"},
                     "mesial": {"state": "healthy", "condition": None, "color": None},
                     "distal": {"state": "healthy", "condition": None, "color": None},
-                    "buccal": {"state": "healthy", "condition": None, "color": None},
+                    "vestibular": {"state": "healthy", "condition": None, "color": None},
                     "lingual": {"state": "healthy", "condition": None, "color": None},
                 }, "notes": "Test v3"}]
             },
@@ -192,7 +192,7 @@ class TestNormalizeToV3:
                     "occlusal": {"state": "caries", "condition": "malo", "color": None},
                     "mesial": {"state": "healthy", "condition": None, "color": None},
                     "distal": {"state": "healthy", "condition": None, "color": None},
-                    "buccal": {"state": "healthy", "condition": None, "color": None},
+                    "vestibular": {"state": "healthy", "condition": None, "color": None},
                     "lingual": {"state": "healthy", "condition": None, "color": None},
                 }, "notes": ""}]
             }
@@ -256,7 +256,7 @@ class TestComputeGlobalState:
             "occlusal": {"state": "caries"},
             "mesial": {"state": "restauracion_resina"},
             "distal": {"state": "healthy"},
-            "buccal": {"state": "healthy"},
+            "vestibular": {"state": "healthy"},
             "lingual": {"state": "healthy"},
         }
         # Two distinct non-healthy states → falls back to "healthy"
