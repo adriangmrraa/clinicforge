@@ -10595,6 +10595,11 @@ async def _modificar_odontograma(
             "odontogram_data": v3_data,
         },
     )
+    # También emitir RECORD_CREATED para que la UI refresque la pestaña de historia clínica
+    await _nova_emit(
+        "RECORD_CREATED",
+        {"patient_id": int(pid), "tenant_id": tenant_id, "record_type": "evolution"},
+    )
 
     result = f"Odontograma de {name} actualizado ({len(piezas)} pieza(s)):\n"
     result += "\n".join(changes_summary)

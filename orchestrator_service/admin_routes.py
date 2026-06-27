@@ -7364,6 +7364,25 @@ async def add_clinical_note(
         odontogram_json,
         clinical_notes_json,
     )
+
+    # Emit Socket.IO event for real-time UI updates
+    try:
+        from main import sio, to_json_safe
+
+        await sio.emit(
+            "RECORD_CREATED",
+            to_json_safe(
+                {
+                    "patient_id": id,
+                    "tenant_id": tenant_id,
+                    "record_type": note.record_type or "evolution",
+                }
+            ),
+            room=f"tenant:{tenant_id}",
+        )
+    except Exception:
+        pass  # Non-critical — UI can refresh manually
+
     return {"status": "ok"}
 
 
@@ -7429,6 +7448,18 @@ async def update_odontogram(
                     "record_id": record_id,
                     "tenant_id": tenant_id,
                     "odontogram_data": v3_normalized,
+                }
+            ),
+            room=f"tenant:{tenant_id}",
+        )
+        # También emitir RECORD_CREATED para que la UI refresque la pestaña de historia clínica
+        await sio.emit(
+            "RECORD_CREATED",
+            to_json_safe(
+                {
+                    "patient_id": patient_id,
+                    "tenant_id": tenant_id,
+                    "record_type": "evolution",
                 }
             ),
             room=f"tenant:{tenant_id}",
