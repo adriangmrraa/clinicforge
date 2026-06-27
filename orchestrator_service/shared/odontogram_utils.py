@@ -58,7 +58,7 @@ class ToothSurfacesV3(BaseModel):
     occlusal: SurfaceState = SurfaceState.healthy()
     mesial: SurfaceState = SurfaceState.healthy()
     distal: SurfaceState = SurfaceState.healthy()
-    buccal: SurfaceState = SurfaceState.healthy()
+    vestibular: SurfaceState = SurfaceState.healthy()
     lingual: SurfaceState = SurfaceState.healthy()
 
 
@@ -122,7 +122,7 @@ VALID_DECIDUOUS_FDI: frozenset = frozenset(ALL_DECIDUOUS_FDI)
 VALID_ALL_FDI: frozenset = VALID_PERMANENT_FDI | VALID_DECIDUOUS_FDI
 
 # Claves válidas de superficies (orden canónico)
-SURFACE_KEYS: List[str] = ["occlusal", "mesial", "distal", "buccal", "lingual"]
+SURFACE_KEYS: List[str] = ["occlusal", "mesial", "distal", "vestibular", "lingual"]
 
 
 # ---------------------------------------------------------------------------
@@ -210,6 +210,27 @@ def _migrate_surface_to_v3(surface_val: Any) -> dict:
     return {"state": "healthy", "condition": None, "color": None}
 
 
+def _canonicalize_surface_keys(surfaces: dict) -> dict:
+    """
+    Remap legacy 'buccal' key to canonical 'vestibular' in a surfaces dict.
+
+    Handles three cases:
+    - surfaces has 'buccal' but not 'vestibular' → rename 'buccal' to 'vestibular'
+    - surfaces has both 'buccal' and 'vestibular' → remove 'buccal', keep 'vestibular'
+    - surfaces has neither → returned unchanged
+
+    Returns a new dict; does NOT mutate the input.
+    """
+    if not isinstance(surfaces, dict) or "buccal" not in surfaces:
+        return surfaces
+    result = dict(surfaces)
+    if "vestibular" not in result:
+        result["vestibular"] = result.pop("buccal")
+    else:
+        del result["buccal"]
+    return result
+
+
 def _migrate_v1_to_v3(data: dict) -> dict:
     """
     Migra formato v1 legacy al formato v3.0.
@@ -250,7 +271,7 @@ def _migrate_v1_to_v3(data: dict) -> dict:
             state = _resolve_legacy_state(raw_state)
             teeth_map[fdi]["state"] = state
 
-            surfaces = value.get("surfaces", {})
+            surfaces = _canonicalize_surface_keys(value.get("surfaces", {}))
             for sk in SURFACE_KEYS:
                 if isinstance(surfaces, dict) and sk in surfaces:
                     teeth_map[fdi]["surfaces"][sk] = _migrate_surface_to_v3(surfaces[sk])
@@ -295,7 +316,7 @@ def _migrate_v2_to_v3(data: dict) -> dict:
         teeth_map[fdi]["state"] = state
         teeth_map[fdi]["notes"] = v2_tooth.get("notes", "")
 
-        v2_surfaces = v2_tooth.get("surfaces", {})
+        v2_surfaces = _canonicalize_surface_keys(v2_tooth.get("surfaces", {}))
         if isinstance(v2_surfaces, dict):
             for sk in SURFACE_KEYS:
                 if sk in v2_surfaces:
@@ -349,11 +370,14 @@ def _normalize_v3_inplace(raw: dict) -> dict:
                     continue
                 perm_map[fdi]["state"] = tooth.get("state", "healthy")
                 perm_map[fdi]["notes"] = tooth.get("notes", "")
-                if isinstance(tooth.get("surfaces"), dict):
+                raw_surfaces = _canonicalize_surface_keys(
+                    tooth["surfaces"] if isinstance(tooth.get("surfaces"), dict) else {}
+                )
+                if raw_surfaces:
                     for sk in SURFACE_KEYS:
-                        if sk in tooth["surfaces"]:
+                        if sk in raw_surfaces:
                             perm_map[fdi]["surfaces"][sk] = _migrate_surface_to_v3(
-                                tooth["surfaces"][sk]
+                                raw_surfaces[sk]
                             )
 
     # Procesar dentición decidua
@@ -369,11 +393,14 @@ def _normalize_v3_inplace(raw: dict) -> dict:
                     continue
                 dec_map[fdi]["state"] = tooth.get("state", "healthy")
                 dec_map[fdi]["notes"] = tooth.get("notes", "")
-                if isinstance(tooth.get("surfaces"), dict):
+                raw_surfaces = _canonicalize_surface_keys(
+                    tooth["surfaces"] if isinstance(tooth.get("surfaces"), dict) else {}
+                )
+                if raw_surfaces:
                     for sk in SURFACE_KEYS:
-                        if sk in tooth["surfaces"]:
+                        if sk in raw_surfaces:
                             dec_map[fdi]["surfaces"][sk] = _migrate_surface_to_v3(
-                                tooth["surfaces"][sk]
+                                raw_surfaces[sk]
                             )
 
     return result
