@@ -1522,6 +1522,7 @@ async def pick_representative_slots(
     min_time: Optional[str] = None,
     max_time: Optional[str] = None,
     preferred_days: Optional[str] = None,
+    prefer_nearest: bool = False,
 ) -> tuple:
     """
     Selecciona hasta max_options slots representativos.
@@ -1704,6 +1705,10 @@ async def pick_representative_slots(
     if days_with_slots:
         if len(days_with_slots) <= max_options:
             selected_days = days_with_slots
+        elif prefer_nearest:
+            # Cercanía: el paciente no pidió rango ni días específicos ("para cuando
+            # tengas") → ofrecer los días con turno MÁS CERCANOS, no los más espaciados.
+            selected_days = days_with_slots[:max_options]
         else:
             # Espaciar: tomar el primero, uno del medio, y el último
             step = max(1, (len(days_with_slots) - 1) / (max_options - 1))
@@ -3328,6 +3333,7 @@ async def check_availability(
             min_time=min_time,
             max_time=max_time,
             preferred_days=preferred_days,
+            prefer_nearest=(search_mode in ("open", "exact") and not preferred_days),
         )
 
         if options:
