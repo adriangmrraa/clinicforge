@@ -8808,6 +8808,8 @@ async def update_appointment(
                 appointment_type = $4,
                 notes = $5,
                 duration_minutes = $6,
+                reminder_sent = false,
+                reminder_sent_at = NULL,
                 updated_at = NOW()
             WHERE id = $7 AND tenant_id = $8
         """,

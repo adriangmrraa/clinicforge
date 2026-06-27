@@ -1178,10 +1178,11 @@ async def check_appointment_reminders():
             _ar_tz = ZoneInfo("America/Argentina/Buenos_Aires")
             today_local = datetime.now(_ar_tz).date()
         except Exception:
+            _ar_tz = None
             today_local = datetime.now().date()
         tomorrow = today_local + timedelta(days=1)
-        tomorrow_start = datetime.combine(tomorrow, datetime.min.time())
-        tomorrow_end = datetime.combine(tomorrow, datetime.max.time())
+        tomorrow_start = datetime.combine(tomorrow, datetime.min.time(), tzinfo=_ar_tz)
+        tomorrow_end = datetime.combine(tomorrow, datetime.max.time(), tzinfo=_ar_tz)
 
         # Find all active playbooks with appointment_reminder trigger
         playbooks = await db.pool.fetch("""
@@ -1216,7 +1217,7 @@ async def check_appointment_reminders():
                   AND NOT EXISTS (
                       SELECT 1 FROM automation_executions ae
                       WHERE ae.appointment_id = a.id::text
-                        AND ae.status IN ('running', 'waiting_response', 'paused', 'completed')
+                        AND ae.status IN ('running', 'waiting_response', 'paused')
                   )
                 LIMIT 50
             """, tenant_id, tomorrow_start, tomorrow_end)

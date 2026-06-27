@@ -8111,7 +8111,7 @@ async def _reprogramar_turno(args: Dict, tenant_id: int) -> str:
         tenant_id,
     )
     result = await db.pool.execute(
-        "UPDATE appointments SET appointment_datetime = $1, status = 'scheduled', updated_at = NOW() WHERE id = $2 AND tenant_id = $3",
+        "UPDATE appointments SET appointment_datetime = $1, status = 'scheduled', reminder_sent = false, reminder_sent_at = NULL, updated_at = NOW() WHERE id = $2 AND tenant_id = $3",
         new_dt,
         appt_uuid,
         tenant_id,
