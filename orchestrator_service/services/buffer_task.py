@@ -2597,8 +2597,16 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                                 is_followup_response = True
                                 followup_context = (
                                     "⚠️ ATENCIÓN: El paciente está respondiendo a un mensaje de "
-                                    "seguimiento post-atención. DEBÉS evaluar síntomas con 'triage_urgency' "
-                                    "y aplicar las 6 reglas maxilofaciales de urgencia."
+                                    "seguimiento post-atención. Evaluá los síntomas con 'triage_urgency'. "
+                                    "SEGÚN EL GRADO: "
+                                    "(a) Si reporta DOLOR FUERTE, una COMPLICACIÓN (punto/sutura suelta, "
+                                    "inflamación que no baja, sangrado, fiebre, supuración) o ya pasaron "
+                                    "varios días/semanas del turno → es una complicación: DERIVÁ al equipo "
+                                    "con 'derivhumano' para que lo vean (triage_urgency ya avisa a Telegram "
+                                    "si es grave). "
+                                    "(b) Si es una MOLESTIA LEVE y el turno fue reciente (pocos días) → "
+                                    "tranquilizá: es esperable los primeros días; deciles que quedás atento "
+                                    "a cualquier cosa. NO derives si es leve."
                                 )
                                 logger.info(
                                     f"🔍 Detectada respuesta a seguimiento post-atención"
