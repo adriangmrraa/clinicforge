@@ -2777,6 +2777,7 @@ async def check_availability(
             # When forced_prof_id or derivation_filter_prof_id is set, we also have
             # a single professional that must be checked.
             prof_closed = False
+            prof_closed_reason = None
             if len(active_professionals) == 1:
                 prof = active_professionals[0]
                 wh = prof.get("working_hours")
@@ -2790,10 +2791,24 @@ async def check_availability(
                 day_config = wh.get(day_name_en, {})
                 if day_config and not day_config.get("enabled", True):
                     prof_closed = True
+                    prof_closed_reason = f"El/la Dr/a. {prof['first_name']} no atiende los {dias_es.get(day_name_en, day_name_en)}"
+                else:
+                    # Cierre puntual / día especial del profesional (tenant_holidays scope='professional'):
+                    # si es el ÚNICO profesional para este pedido, avanzar hasta su próximo día con
+                    # atención en vez de cortar. Para tratamientos compartidos (varios profs) NO se
+                    # entra acá: el helper marca ocupado al bloqueado y se ofrece al otro ese mismo día.
+                    from services.holiday_service import is_holiday as _check_seed_prof_holiday
+
+                    _sp_blocked, _sp_name, _sp_hours = await _check_seed_prof_holiday(
+                        db.pool, tid, target_date, professional_id=prof["id"]
+                    )
+                    if _sp_blocked and not _sp_hours:
+                        prof_closed = True
+                        prof_closed_reason = f"El {target_date.strftime('%d/%m')} no hay disponibilidad"
 
             if prof_closed:
                 if not auto_advanced:
-                    auto_advance_reason = f"El/la Dr/a. {active_professionals[0]['first_name']} no atiende los {dias_es.get(day_name_en, day_name_en)}"
+                    auto_advance_reason = prof_closed_reason or f"El {target_date.strftime('%d/%m')} no hay disponibilidad"
                     auto_advanced = True
                 target_date += timedelta(days=1)
                 continue
@@ -6259,8 +6274,8 @@ async def reschedule_appointment(original_date: str, new_date_time: str, interpr
         # El profesional no atiende ese día (cierre/viaje per-prof, sin horario especial)
         if _rh_p_blocked and not _rh_p_hours:
             return (
-                f"No puedo reprogramar para el {new_dt.strftime('%d/%m/%Y')}: el/la profesional no atiende ese día. "
-                f"¿Querés que busque otro día disponible?"
+                f"Para el {new_dt.strftime('%d/%m/%Y')} no tengo disponibilidad. "
+                f"¿Querés que te pase las opciones más cercanas?"
             )
         _rh_g_blocked, _rh_g_name, _rh_g_hours = await _check_resched_holiday(
             db.pool, tenant_id, _rh_date
@@ -7789,8 +7804,8 @@ async def confirm_slot(
                     )
                     if _cf_p_blocked and not _cf_p_hours:
                         return (
-                            f"❌ El/la profesional no atiende el {apt_datetime.strftime('%d/%m/%Y')}. "
-                            f"¿Querés que busque otro día disponible?"
+                            f"Para el {apt_datetime.strftime('%d/%m/%Y')} no tengo disponibilidad. "
+                            f"¿Querés que te ofrezca las opciones más cercanas?"
                         )
         except Exception as _cf_hol_err:
             logger.warning(
