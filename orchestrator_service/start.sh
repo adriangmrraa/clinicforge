@@ -214,6 +214,20 @@ for tbl in ('faq_embeddings', 'document_embeddings'):
     except Exception as e:
         print('  ' + tbl + ' pgvector skip:', e)
 
+# 3) Regenerar embeddings vacios: si la columna embedding es vector pero las filas tienen
+#    NULL (quedaron asi tras un recreate previo o un restore), borrarlas para que el app
+#    las vuelva a generar al arrancar (el sync solo crea las FAQs SIN fila). Idempotente.
+for tbl in ('faq_embeddings', 'document_embeddings'):
+    try:
+        cur.execute("SELECT udt_name FROM information_schema.columns WHERE table_name=%s AND column_name='embedding'", (tbl,))
+        r2 = cur.fetchone()
+        if r2 and r2[0] == 'vector':
+            cur.execute('DELETE FROM ' + tbl + ' WHERE embedding IS NULL')
+            if cur.rowcount:
+                print('  ' + tbl + ': ' + str(cur.rowcount) + ' filas con embedding NULL borradas (se regeneran al arrancar)')
+    except Exception as e:
+        print('  ' + tbl + ' null-embedding cleanup skip:', e)
+
 conn.close()
 PYFIX
 
