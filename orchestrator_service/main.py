@@ -6183,8 +6183,8 @@ async def reschedule_appointment(original_date: str, new_date_time: str, interpr
             """
             SELECT COUNT(*) FROM appointments
             WHERE tenant_id = $1 AND professional_id = $2 AND status IN ('scheduled', 'confirmed') AND id != $3
-            AND appointment_datetime < $4 + interval '1 minute' * $5
-            AND (appointment_datetime + interval '1 minute' * COALESCE(duration_minutes, 60)) > $4
+            AND appointment_datetime < $4::timestamptz + interval '1 minute' * $5
+            AND (appointment_datetime + interval '1 minute' * COALESCE(duration_minutes, 60)) > $4::timestamptz
         """,
             tenant_id,
             apt["professional_id"],
