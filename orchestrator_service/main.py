@@ -1638,8 +1638,10 @@ async def pick_representative_slots(
                     excluded_weekdays.add(day_map_complement[d])
             logger.info(f"📅 preferred_days={preferred_days!r} → complement={complement_days} → excluded_weekdays={excluded_weekdays}")
 
-        # Día target (ya tenemos sus slots)
-        if slots:
+        # Día target (ya tenemos sus slots) — SOLO si su día de semana NO está excluido
+        # (incluye el complemento de preferred_days recién calculado arriba). Sin esto, el
+        # día semilla se colaba como opción aunque el paciente pidiera otros días.
+        if slots and not (excluded_weekdays and target_date.weekday() in excluded_weekdays):
             day_name_en = DAYS_EN[target_date.weekday()]
             tenant_day_cfg = tenant_wh.get(day_name_en, {})
             days_with_slots.append(
