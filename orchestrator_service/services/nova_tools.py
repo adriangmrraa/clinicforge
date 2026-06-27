@@ -7630,7 +7630,7 @@ _META_TOOL_SCHEMA: Dict[str, Any] = {
                     "buscar_en_base_conocimiento, consultar_obra_social, ver_reglas_derivacion, "
                     "resumen_sedes, comparar_sedes, switch_sede, onboarding_status, "
                     "listar_plantillas, enviar_plantilla, accion_masiva, "
-                    "registrar_nota_clinica, ver_contexto_memorias, "
+                    "crear_nota_clinica, ver_contexto_memorias, "
                     "ver_memorias_paciente, agregar_memoria_paciente"
                 ),
             },
@@ -7816,7 +7816,7 @@ async def execute_nova_tool(
             return await _actualizar_email_paciente(args, tenant_id)
         elif name == "ver_historia_clinica":
             return await _ver_historia_clinica(args, tenant_id, user_role)
-        elif name == "crear_nota_clinica":
+        elif name == "registrar_nota_clinica" or name == "crear_nota_clinica":
             return await _crear_nota_clinica(args, tenant_id, user_role, user_id)
         elif name == "resumen_evolucion":
             return await _resumen_evolucion(args, tenant_id, user_role)
