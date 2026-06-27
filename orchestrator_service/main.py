@@ -4872,7 +4872,7 @@ async def book_appointment(
                     updated_at = NOW()
                     WHERE tenant_id = $2
                       AND (REGEXP_REPLACE(COALESCE(phone_number, ''), '[^0-9]', '', 'g') = REGEXP_REPLACE(COALESCE($3, ''), '[^0-9]', '', 'g') OR REGEXP_REPLACE(COALESCE(guardian_phone, ''), '[^0-9]', '', 'g') = REGEXP_REPLACE(COALESCE($4, ''), '[^0-9]', '', 'g'))
-                      AND NOT (COALESCE(family_patient_ids, '{}'::integer[]) @> ARRAY[$1])
+                      AND NOT ($1 = ANY(COALESCE(family_patient_ids, '{}'::integer[])))
                     """,
                     patient_id,
                     tenant_id,
@@ -5436,7 +5436,7 @@ async def book_appointment(
             if phone and is_third_party:
                 try:
                     conv = await db.pool.fetchrow(
-                        "SELECT id FROM chat_conversations WHERE tenant_id = $1 AND phone_number = $2",
+                        "SELECT id FROM chat_conversations WHERE tenant_id = $1 AND external_user_id = $2",
                         tenant_id, chat_phone
                     )
                     if conv:
