@@ -625,8 +625,10 @@ def _handle_agent_error(response_text: str) -> str:
             )
             break  # Only fix one occurrence per call
 
-    # 4. Remove trailing/leading garbage from stripping operations
-    text = text.strip().strip(".,;:!?").strip()
+    # 4. Remove trailing/leading garbage from stripping operations.
+    # OJO: NO sacar . ! ? — son cierres de oración legítimos (antes se comía el "?"
+    # de las preguntas y quedaban sin cerrar). Solo limpiamos , ; : que sí son basura.
+    text = text.strip().strip(",;:").strip()
     if not text:
         text = _SYSTEM_ERROR_FALLBACK
 
