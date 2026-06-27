@@ -1199,6 +1199,58 @@ def _pick_from_slots(
     return picks[:max_picks]
 
 
+async def _mark_blocked_profs_busy(
+    tenant_id: int,
+    target_date,
+    active_professionals: list,
+    busy_map: dict,
+    day_start: str,
+    day_end: str,
+) -> None:
+    """Marca TODO el día ocupado en busy_map para cada profesional que tenga un cierre /
+    día especial cargado en tenant_holidays (scope='professional') para esa fecha.
+
+    Helper compartido entre el día base de check_availability y la búsqueda multi-día
+    (_get_slots_for_extra_day) para evitar que un path quede atrás (drift). is_holiday
+    con professional_id ya contempla tanto el día especial del profesional
+    (scope='professional') como los feriados/cierres globales, así que una sola llamada
+    por profesional cubre ambos casos. book_appointment aplica el mismo criterio vía
+    su propio check_prof_block, manteniendo paridad oferta↔reserva.
+    """
+    from services.holiday_service import is_holiday as _is_holiday
+
+    try:
+        sh, sm = int(day_start.split(":")[0]), int(day_start.split(":")[1])
+        eh, em = int(day_end.split(":")[0]), int(day_end.split(":")[1])
+    except Exception:
+        sh, sm, eh, em = 6, 0, 23, 0
+
+    for prof in active_professionals:
+        prof_id = prof["id"]
+        _is_blocked, _blk_name, _blk_hours = await _is_holiday(
+            db.pool, tenant_id, target_date, professional_id=prof_id
+        )
+        # Cierre del profesional sin horario especial → todo el día ocupado.
+        # Si trae custom_hours (override_open) se respeta el horario y NO se bloquea.
+        if _is_blocked and not _blk_hours:
+            cur = datetime.combine(target_date, datetime.min.time()).replace(
+                hour=sh, minute=sm
+            )
+            end_dt = datetime.combine(target_date, datetime.min.time()).replace(
+                hour=eh, minute=em
+            )
+            _count = 0
+            while cur < end_dt:
+                if prof_id in busy_map:
+                    busy_map[prof_id].add(cur.strftime("%H:%M"))
+                    _count += 1
+                cur += timedelta(minutes=15)
+            logger.info(
+                f"📅 PROFESSIONAL BLOCK: prof={prof_id} ({prof.get('first_name')}) "
+                f"blocked={_blk_name} slots=({_count}) range=({day_start}-{day_end})"
+            )
+
+
 async def _get_slots_for_extra_day(
     target_date,
     tenant_id: int,
@@ -1428,6 +1480,19 @@ async def _get_slots_for_extra_day(
                     for pid in busy_map:
                         busy_map[pid].add(gap_t.strftime("%H:%M"))
                     gap_t += timedelta(minutes=15)
+
+    # Feriado/override_open con horario especial: acotar el rango al horario reducido
+    # (paridad con el día base que usa _working_holiday_hours)
+    if _custom_hours:
+        day_start = _custom_hours["start"]
+        day_end = _custom_hours["end"]
+
+    # Días especiales por profesional (tenant_holidays scope='professional'):
+    # marcar el día completo ocupado para el profesional que no atiende esa fecha.
+    # Mismo helper que el día base → la búsqueda multi-día deja de ofrecer días de viaje/cierre.
+    await _mark_blocked_profs_busy(
+        tenant_id, target_date, active_professionals, busy_map, day_start, day_end
+    )
 
     return generate_free_slots(
         target_date,
@@ -3126,27 +3191,10 @@ async def check_availability(
                 )
 
         # --- Per-professional block check: marcar TODO el día ocupado para profesionales bloqueados ---
-        from services.holiday_service import is_holiday as check_prof_holiday
-
-        for prof in active_professionals:
-            prof_id = prof["id"]
-            _is_blocked, _blk_name, _blk_hours = await check_prof_holiday(
-                db.pool, tid, target_date, professional_id=prof_id
-            )
-            if _is_blocked:
-                # Professional has a block on this date — mark ALL day slots as busy
-                all_slots = set()
-                current_slot = datetime.combine(target_date, datetime.min.time()).replace(hour=int(day_start.split(":")[0]), minute=int(day_start.split(":")[1]))
-                end_dt = datetime.combine(target_date, datetime.min.time()).replace(hour=int(day_end.split(":")[0]), minute=int(day_end.split(":")[1]))
-                while current_slot < end_dt:
-                    all_slots.add(current_slot.strftime("%H:%M"))
-                    current_slot += timedelta(minutes=15)
-                if prof_id in busy_map:
-                    busy_map[prof_id].update(all_slots)
-                logger.info(
-                    f"📅 PROFESSIONAL BLOCK: prof={prof_id} ({prof.get('first_name')}) "
-                    f"blocked={_blk_name} all_slots=({len(all_slots)})"
-                )
+        # (helper compartido con la búsqueda multi-día _get_slots_for_extra_day para evitar drift)
+        await _mark_blocked_profs_busy(
+            tid, target_date, active_professionals, busy_map, day_start, day_end
+        )
 
         # Diagnóstico: resumen de busy_map antes de generar slots
         for _dpid in busy_map:
@@ -6201,6 +6249,40 @@ async def reschedule_appointment(original_date: str, new_date_time: str, interpr
         if not apt:
             return f"No encontré tu turno para el {original_date}. ¿Podrías confirmarme la fecha original?"
 
+        # No reprogramar a un día sin atención: feriado nacional/global o día especial del profesional asignado
+        from services.holiday_service import is_holiday as _check_resched_holiday
+
+        _rh_date = new_dt.date()
+        _rh_p_blocked, _rh_p_name, _rh_p_hours = await _check_resched_holiday(
+            db.pool, tenant_id, _rh_date, professional_id=apt["professional_id"]
+        )
+        # El profesional no atiende ese día (cierre/viaje per-prof, sin horario especial)
+        if _rh_p_blocked and not _rh_p_hours:
+            return (
+                f"No puedo reprogramar para el {new_dt.strftime('%d/%m/%Y')}: el/la profesional no atiende ese día. "
+                f"¿Querés que busque otro día disponible?"
+            )
+        _rh_g_blocked, _rh_g_name, _rh_g_hours = await _check_resched_holiday(
+            db.pool, tenant_id, _rh_date
+        )
+        # Feriado/cierre que afecta a toda la clínica (incluye feriados nacionales), sin atención
+        if _rh_g_blocked and not _rh_g_hours:
+            return (
+                f"No puedo reprogramar para el {new_dt.strftime('%d/%m/%Y')}: ese día no hay atención ({_rh_g_name}). "
+                f"¿Querés que busque otro día disponible?"
+            )
+        # Día con horario especial (override_open): el nuevo horario debe caer en el rango
+        if _rh_g_blocked and _rh_g_hours:
+            from datetime import time as _rh_time_type
+
+            if new_dt.time() < _rh_time_type.fromisoformat(
+                _rh_g_hours["start"]
+            ) or new_dt.time() >= _rh_time_type.fromisoformat(_rh_g_hours["end"]):
+                return (
+                    f"⚠️ El {new_dt.strftime('%d/%m/%Y')} es {_rh_g_name} con horario especial de "
+                    f"{_rh_g_hours['start']} a {_rh_g_hours['end']}. Elegí un horario dentro de ese rango."
+                )
+
         apt_dur = apt["duration_minutes"] or 60
         overlap = await db.pool.fetchval(
             """
@@ -7662,6 +7744,58 @@ async def confirm_slot(
         logger.info(f"🕐 confirm_slot DATETIME CHECK | apt_datetime={apt_datetime} (tz={apt_datetime.tzinfo}) vs now={now} (tz={now.tzinfo}) | is_past={apt_datetime <= now}")
         if apt_datetime <= now:
             return "❌ Ese horario ya pasó. Pedí otro horario o día."
+
+        # No confirmar un slot en un día sin atención (feriado/cierre global o día especial del
+        # profesional). Evita el "✅ reservado" seguido del rechazo de book_appointment. Fail-open:
+        # si el chequeo falla, sigue (book_appointment es el portero final).
+        try:
+            from services.holiday_service import is_holiday as _check_confirm_holiday
+
+            _cf_date = apt_datetime.date()
+            _cf_g_blocked, _cf_g_name, _cf_g_hours = await _check_confirm_holiday(
+                db.pool, tenant_id, _cf_date
+            )
+            if _cf_g_blocked and not _cf_g_hours:
+                return f"❌ El {apt_datetime.strftime('%d/%m/%Y')} no hay atención ({_cf_g_name}). Elegí otro día, por favor."
+            if _cf_g_blocked and _cf_g_hours:
+                from datetime import time as _cf_time_type
+
+                if apt_datetime.time() < _cf_time_type.fromisoformat(
+                    _cf_g_hours["start"]
+                ) or apt_datetime.time() >= _cf_time_type.fromisoformat(_cf_g_hours["end"]):
+                    return (
+                        f"⚠️ El {apt_datetime.strftime('%d/%m/%Y')} es {_cf_g_name} con horario especial de "
+                        f"{_cf_g_hours['start']} a {_cf_g_hours['end']}. Elegí un horario dentro de ese rango."
+                    )
+            # Día especial del profesional elegido (scope='professional')
+            if professional_name:
+                _cf_clean = re.sub(
+                    r"^(dr|dra|doctor|doctora)\.?\s+",
+                    "",
+                    professional_name,
+                    flags=re.IGNORECASE,
+                ).strip()
+                _cf_prof = await db.pool.fetchrow(
+                    """SELECT id FROM professionals
+                       WHERE tenant_id = $1 AND is_active = true
+                       AND (first_name ILIKE $2 OR last_name ILIKE $2 OR (first_name || ' ' || COALESCE(last_name,'')) ILIKE $2)
+                       LIMIT 1""",
+                    tenant_id,
+                    f"%{_cf_clean}%",
+                )
+                if _cf_prof:
+                    _cf_p_blocked, _cf_p_name, _cf_p_hours = await _check_confirm_holiday(
+                        db.pool, tenant_id, _cf_date, professional_id=_cf_prof["id"]
+                    )
+                    if _cf_p_blocked and not _cf_p_hours:
+                        return (
+                            f"❌ El/la profesional no atiende el {apt_datetime.strftime('%d/%m/%Y')}. "
+                            f"¿Querés que busque otro día disponible?"
+                        )
+        except Exception as _cf_hol_err:
+            logger.warning(
+                f"confirm_slot: holiday check failed (non-blocking): {_cf_hol_err}"
+            )
 
         # v8.3: Anchor date cross-validation (resolve-13-booking-errors T12 fix)
         # Reject if the confirmed date's day-of-week doesn't match what the patient asked
