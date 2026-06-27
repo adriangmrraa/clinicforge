@@ -11404,13 +11404,6 @@ CUANDO DETECTES ESTO (solo si NO aplica la excepción de arriba):
     2. Queda TERMINANTEMENTE PROHIBIDO volver a usar el término coloquial o inicial del paciente (como "extracción de muelas") en las llamadas a las tools una vez acordado el servicio correcto del sistema.
     3. Si el paciente te pasa sus datos (nombre, DNI) después de haber acordado el servicio correcto, llamá a `book_appointment` con el nombre correcto de la agenda ("Consulta de Cirugía S"), NUNCA con el término del paciente.
 
-⚠️ REGLAS CRÍTICAS PARA ESTADO SLOT_LOCKED:
-- Si el paciente tiene un turno pre-reservado (estado `SLOT_LOCKED`):
-   1. Tu única misión es recolectar el nombre completo y el número de DNI (numérico de 7 a 11 dígitos, ej: 12345678) para confirmar y agendar el turno usando `book_appointment`. EXCEPCIÓN — PACIENTE EXTRANJERO: Si el paciente no tiene DNI argentino, aceptá pasaporte, cédula extranjera u otro documento de identidad sin exigir formato numérico.
-  2. Si el usuario te responde de manera ambigua o no numérica ante el pedido del DNI (ej: "Así es", "Sí", "Eso es"), debés insistir educadamente en que te pase los números del DNI.
-  3. PROHIBICIÓN ABSOLUTA CONTRA LOOPS Y RE-OFERTAS: NUNCA llames a `check_availability` para buscar disponibilidad, ni ofrezcas horarios alternativos o nuevos profesionales, a menos que el paciente te pida explícitamente reprogramar o cancelar el turno pre-reservado.
-  4. PREGUNTAS LATERALES: Si el paciente realiza una consulta lateral (ej: medios de pago, obras sociales aceptadas), respondé a su pregunta brevemente y solicitá inmediatamente los datos faltantes (DNI/nombre) para concretar su reserva.
-
 ⚠️ REGLA CRÍTICA: OBRAS SOCIALES Y SEMÁFORO (OBLIGATORIO ANTES DE AGENDAR):
 - Si el paciente quiere agendar un turno y AÚN NO mencionó su obra social o cobertura (y esta no figura en el CONTEXTO DEL PACIENTE ni en la conversación reciente), DEBÉS preguntarle: "¿Contás con alguna obra social o te atenderías de forma particular?"
 - Si la información ya está disponible, queda ESTRICTAMENTE PROHIBIDO volver a preguntar. Usala de forma directa.
@@ -12528,7 +12521,7 @@ def get_agent_executable(
         # LangChain AgentExecutor not available (e.g. langchain >=1.x test env)
         return None  # type: ignore[return-value]
     agent = create_openai_tools_agent(llm, DENTAL_TOOLS, prompt)
-    return AgentExecutor(agent=agent, tools=DENTAL_TOOLS, verbose=False)
+    return AgentExecutor(agent=agent, tools=DENTAL_TOOLS, verbose=False, max_iterations=8, handle_parsing_errors=True)
 
 
 async def get_agent_executable_for_tenant(tenant_id: int):

@@ -3778,7 +3778,7 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
     if response_text:
         import re as _re_safety
         # Strip bracket tags like [CONSULTA_PREVIA_REQUISITOS:...], [INTERNAL_*:...], [BOOK_HINT:...], [SYSTEM_NOTE: ...]
-        response_text = _re_safety.sub(r"\[(?:CONSULTA_PREVIA_REQUISITOS|INTERNAL_\w+|BOOK_HINT|SYSTEM_NOTE)[:\s\-][^\]]*\]", "", response_text).strip()
+        response_text = _re_safety.sub(r"\[(?:CONSULTA_PREVIA_REQUISITOS|INTERNAL_\w+|BOOK_HINT|ACTION_HINT|SYSTEM_NOTE)[:\s\-][^\]]*\]", "", response_text).strip()
         # AG-03: nunca filtrar al paciente las directivas internas crudas del gate de turnos
         response_text = _re_safety.sub(
             r"(?im)^.*\b(?:BOOKING_ALREADY_EXISTS|BOOKING_ALREADY_IN_PROGRESS|AVAILABILITY_BLOCKED)\b.*$",
