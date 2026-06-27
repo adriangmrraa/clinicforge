@@ -10466,18 +10466,7 @@ async def _modificar_odontograma(
         )
         current_teeth = _build_default_teeth()
 
-    # Surface name mapping: Spanish/legacy → canonical v3 keys
-    surface_map = {
-        "oclusal": "occlusal",
-        "occlusal": "occlusal",
-        "mesial": "mesial",
-        "distal": "distal",
-        "bucal": "vestibular",
-        "buccal": "vestibular",
-        "vestibular": "vestibular",
-        "lingual": "lingual",
-        "palatino": "lingual",
-    }
+    # Surface keys must match shared/odontogram_utils.SURFACE_KEYS (order irrelevant)
     SURFACE_KEYS = ["occlusal", "vestibular", "lingual", "mesial", "distal"]
 
     # Determine dentition type from the pieces
@@ -10515,26 +10504,19 @@ async def _modificar_odontograma(
 
         tooth = teeth_map[num]
 
-        # Update surfaces: if specific surfaces given, only change those.
-        # Otherwise, set ALL surfaces to the new state.
-        surfaces_input = pieza.get("superficies", {})
+        # Update surfaces: if specific surfaces listed, update only those.
+        # If superficies is empty {} or None, surfaces stay unchanged.
+        surfaces_input = pieza.get("superficies")
         if surfaces_input and isinstance(surfaces_input, dict):
             for s_name, s_val in surfaces_input.items():
-                en_name = surface_map.get(s_name.lower(), s_name.lower())
+                en_name = s_name.lower()
                 if en_name in SURFACE_KEYS:
                     tooth["surfaces"][en_name] = {
                         "state": s_val,
                         "condition": None,
                         "color": None,
                     }
-        else:
-            # No specific surfaces → apply state to ALL surfaces
-            for sk in SURFACE_KEYS:
-                tooth["surfaces"][sk] = {
-                    "state": estado,
-                    "condition": None,
-                    "color": None,
-                }
+        # else: no specific surfaces → surfaces stay unchanged
 
         # Compute tooth-level state from surfaces
         non_healthy = set()
@@ -10560,8 +10542,9 @@ async def _modificar_odontograma(
         surf_details = []
         if surfaces_input and isinstance(surfaces_input, dict):
             for s_name, s_val in surfaces_input.items():
-                en_name = surface_map.get(s_name.lower(), s_name.lower())
-                surf_details.append(f"{en_name}={_STATUS_ES.get(s_val, s_val)}")
+                en_name = s_name.lower()
+                if en_name in SURFACE_KEYS:
+                    surf_details.append(f"{en_name}={_STATUS_ES.get(s_val, s_val)}")
 
         summary = f"  Pieza {num} ({fdi_name}) → {status_es}"
         if surf_details:
