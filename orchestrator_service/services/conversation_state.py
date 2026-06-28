@@ -406,6 +406,24 @@ async def reset_booking_attempts(tenant_id: int, phone_number: str) -> None:
         logger.warning(f"[conversation_state] reset_booking_attempts failed: {e}")
 
 
+async def decrement_booking_attempts(tenant_id: int, phone_number: str) -> None:
+    """Resta 1 a booking_attempts (piso 0). Se llama cuando el fallo NO es atribuible
+    al paciente (slot ocupado / race / conflicto de agenda): ese intento no debe contar
+    para la derivacion por max_attempts."""
+    try:
+        payload = await _read_payload(tenant_id, phone_number)
+        current = int(payload.get("booking_attempts") or 0)
+        new_val = max(0, current - 1)
+        payload["booking_attempts"] = new_val
+        payload["updated_at"] = _dt.now().isoformat()
+        await _raw_write(tenant_id, phone_number, payload)
+        logger.info(
+            f"[conversation_state] booking_attempts decrement: {current} -> {new_val} for {phone_number}"
+        )
+    except Exception as e:
+        logger.warning(f"[conversation_state] decrement_booking_attempts failed: {e}")
+
+
 async def set_anchor_date(tenant_id: int, phone_number: str, anchor_date: str) -> None:
     """Store the resolved anchor date so downstream tools use it, never recalculate."""
     try:

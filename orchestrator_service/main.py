@@ -164,6 +164,12 @@ async def _track_book_error(tenant_id: int, phone: str, code: str, msg: str = ""
             "turn_number": 0,
             "at": datetime.now().isoformat(),
         })
+        # Un fallo por slot ocupado / race / conflicto de agenda (UNAVAILABLE) NO es
+        # atribuible al paciente: des-contamos el intento para no derivar de más por
+        # max_attempts (F5/F6). El increment ocurrió al entrar a book_appointment.
+        if code == "UNAVAILABLE":
+            from services.conversation_state import decrement_booking_attempts as _ba_dec
+            await _ba_dec(tenant_id, phone)
     except Exception:
         pass
 
