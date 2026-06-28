@@ -2266,7 +2266,7 @@ async def check_availability(
 
         # 0. Pre) Cargar working_hours y max_chairs del tenant
         tenant_row = await db.pool.fetchrow(
-            "SELECT working_hours, address, google_maps_url, max_chairs FROM tenants WHERE id = $1",
+            "SELECT working_hours, address, google_maps_url, max_chairs, config FROM tenants WHERE id = $1",
             tenant_id,
         )
         tenant_wh_raw = tenant_row["working_hours"] if tenant_row else None
@@ -2719,6 +2719,23 @@ async def check_availability(
                 if target_date < min_allowed_date:
                     logger.info(f"⏳ SEMAPHORE: Delayed scheduling for patient {_ca_patient_id} (insurance '{_prov}'). Adjusted target_date from {target_date} to {min_allowed_date}")
                     target_date = min_allowed_date
+
+        # PISO DURO de min_appointment_date (fecha mínima del tenant): garantiza el
+        # MAX(hoy+delay_OS, min_appointment_date) en CÓDIGO, sin depender del LLM. Se
+        # aplica acá (antes del auto-advance) para que los días-extra y el salto de
+        # feriados hereden el piso igual que el delay de la obra social.
+        try:
+            _cfg_min = tenant_row["config"] if tenant_row else None
+            if isinstance(_cfg_min, str):
+                _cfg_min = json.loads(_cfg_min) if _cfg_min else {}
+            _min_apt_raw = _cfg_min.get("min_appointment_date") if isinstance(_cfg_min, dict) else None
+            if _min_apt_raw:
+                _min_apt_date = datetime.strptime(str(_min_apt_raw)[:10], "%Y-%m-%d").date()
+                if target_date < _min_apt_date:
+                    logger.info(f"📅 MIN_APT_DATE: target_date {target_date} -> {_min_apt_date} (fecha mínima del tenant)")
+                    target_date = _min_apt_date
+        except Exception as _min_apt_err:
+            logger.warning(f"min_appointment_date floor failed (non-blocking): {_min_apt_err}")
 
         # 0. B) Auto-avanzar si el día está cerrado (clínica o profesional)
         # En vez de retornar error, buscamos el próximo día válido automáticamente.
