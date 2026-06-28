@@ -244,7 +244,7 @@ NOVA_TOOLS_SCHEMA: List[Dict[str, Any]] = [
     {
         "type": "function",
         "name": "verificar_disponibilidad",
-        "description": "Verifica si hay disponibilidad para un tipo de tratamiento en una fecha determinada.",
+        "description": "Verifica disponibilidad real para una fecha. Devuelve SOLO horarios dentro de la franja horaria real del profesional/sede; NUNCA inventa horarios fuera de la agenda configurada. Si no hay opciones reales, lo dice.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -258,7 +258,11 @@ NOVA_TOOLS_SCHEMA: List[Dict[str, Any]] = [
                 },
                 "professional_id": {
                     "type": "integer",
-                    "description": "ID del profesional especifico (opcional)",
+                    "description": "ID del profesional especifico (opcional). Si se pasa, usa la franja horaria propia de ese profesional.",
+                },
+                "slot_minutes": {
+                    "type": "integer",
+                    "description": "Duracion del bloque en minutos (opcional, ej. 45). Si no se pasa, usa la duracion del tratamiento o 30.",
                 },
             },
             "required": ["date"],
@@ -5136,17 +5140,47 @@ async def _verificar_disponibilidad(args: Dict, tenant_id: int) -> str:
     from services.holiday_service import is_holiday as check_is_holiday
 
     _is_hol, _hol_name, _custom_hours = await check_is_holiday(db.pool, tenant_id, dt)
+
+    # --- Resolver la franja horaria REAL del dia ---
+    # Schema correcto: day_config = {"enabled": bool, "slots": [{"start","end"}, ...], "location": ...}
+    # Cadena: feriado-con-horario-especial -> franja propia del profesional (si se pidio) -> franja del tenant.
+    # NUNCA usar un horario fijo inventado: si no hay franja real, no hay disponibilidad.
+    day_intervals: list = []  # lista de (start_str, end_str)
+    day_location = day_config.get("location", "")
     if _is_hol and _custom_hours:
-        # Feriado con atención — usar horario especial
-        start_hour = _custom_hours["start"]
-        end_hour = _custom_hours["end"]
+        day_intervals = [(_custom_hours["start"], _custom_hours["end"])]
     elif _is_hol:
         return f"El {_fmt_date(dt)} es feriado ({_hol_name}). La clinica no atiende."
     else:
-        start_hour = day_config.get("start", "09:00")
-        end_hour = day_config.get("end", "18:00")
+        src_day = day_config  # por defecto, la franja del tenant
+        src_label = "La clinica"
+        if prof_id:
+            prof_wh = await db.pool.fetchval(
+                "SELECT working_hours FROM professionals WHERE id = $1 AND tenant_id = $2",
+                int(prof_id), tenant_id,
+            )
+            if isinstance(prof_wh, str):
+                try:
+                    prof_wh = json.loads(prof_wh)
+                except (json.JSONDecodeError, TypeError):
+                    prof_wh = None
+            if isinstance(prof_wh, dict) and prof_wh.get(day_key) is not None:
+                src_day = prof_wh[day_key]  # el profesional tiene config propia ese dia -> manda
+                src_label = "La profesional"
+        if not src_day.get("enabled", False):
+            return f"{src_label} no atiende el {_fmt_date(dt)}."
+        if src_day.get("location"):
+            day_location = src_day["location"]
+        for slot in (src_day.get("slots") or []):
+            if slot.get("start") and slot.get("end"):
+                day_intervals.append((slot["start"], slot["end"]))
+        # Compatibilidad con data vieja de claves planas (sin "slots")
+        if not day_intervals and src_day.get("start") and src_day.get("end"):
+            day_intervals.append((src_day["start"], src_day["end"]))
+        if not day_intervals:
+            return f"No hay franja horaria configurada para el {_fmt_date(dt)}."
 
-    # Get duration for treatment
+    # Duracion del bloque: slot_minutes pedido > duracion del tratamiento > 30
     duration = 30  # default
     if treatment_type:
         tt_row = await db.pool.fetchval(
@@ -5156,6 +5190,12 @@ async def _verificar_disponibilidad(args: Dict, tenant_id: int) -> str:
         )
         if tt_row:
             duration = int(tt_row)
+    _slot_min = args.get("slot_minutes")
+    if _slot_min:
+        try:
+            duration = int(_slot_min)
+        except (ValueError, TypeError):
+            pass
 
     # Get existing appointments for that date
     query = """
@@ -5173,47 +5213,43 @@ async def _verificar_disponibilidad(args: Dict, tenant_id: int) -> str:
     query += " ORDER BY appointment_datetime ASC"
     existing = await db.pool.fetch(query, *params)
 
-    # Build occupied intervals
+    # Build occupied intervals (naive)
     occupied = []
     for appt in existing:
         appt_start = appt["appointment_datetime"]
+        appt_start = appt_start.replace(tzinfo=None) if appt_start.tzinfo else appt_start
         appt_dur = appt["duration_minutes"] or 30
-        appt_end = appt_start + timedelta(minutes=appt_dur)
-        occupied.append((appt_start, appt_end))
+        occupied.append((appt_start, appt_start + timedelta(minutes=appt_dur)))
 
-    # Find free slots
-    try:
-        sh, sm = map(int, start_hour.split(":"))
-        eh, em = map(int, end_hour.split(":"))
-    except (ValueError, AttributeError):
-        sh, sm, eh, em = 9, 0, 18, 0
-
-    slot_start = datetime(dt.year, dt.month, dt.day, sh, sm)
-    day_end = datetime(dt.year, dt.month, dt.day, eh, em)
-
-    free_slots = []
-    while slot_start + timedelta(minutes=duration) <= day_end and len(free_slots) < 5:
-        slot_end = slot_start + timedelta(minutes=duration)
-        conflict = False
-        for occ_start, occ_end in occupied:
-            occ_start_naive = (
-                occ_start.replace(tzinfo=None) if occ_start.tzinfo else occ_start
+    # Generar candidatos SOLO dentro de cada franja real, en bloques de `duration`
+    # que NO crucen el corte de la franja y NO se pisen con turnos reservados.
+    free_slots: list = []
+    for (_s, _e) in day_intervals:
+        try:
+            sh, sm = map(int, _s.split(":"))
+            eh, em = map(int, _e.split(":"))
+        except (ValueError, AttributeError):
+            continue
+        slot_start = datetime(dt.year, dt.month, dt.day, sh, sm)
+        interval_end = datetime(dt.year, dt.month, dt.day, eh, em)
+        while slot_start + timedelta(minutes=duration) <= interval_end and len(free_slots) < 6:
+            slot_end = slot_start + timedelta(minutes=duration)
+            conflict = any(
+                slot_start < occ_end and slot_end > occ_start
+                for occ_start, occ_end in occupied
             )
-            occ_end_naive = occ_end.replace(tzinfo=None) if occ_end.tzinfo else occ_end
-            if slot_start < occ_end_naive and slot_end > occ_start_naive:
-                conflict = True
-                break
-        if not conflict:
-            free_slots.append(slot_start.strftime("%H:%M"))
-        slot_start += timedelta(minutes=30)  # check every 30min
+            if not conflict:
+                free_slots.append(slot_start.strftime("%H:%M"))
+            slot_start += timedelta(minutes=duration)  # bloques consecutivos, no se pisan entre si
+        if len(free_slots) >= 6:
+            break
 
-    location = day_config.get("location", "")
-    loc_msg = f" Sede: {location}." if location else ""
+    loc_msg = f" Sede: {day_location}." if day_location else ""
 
     if not free_slots:
-        return f"No hay disponibilidad para el {_fmt_date(dt)}.{loc_msg}"
+        return f"No hay disponibilidad real en la franja del {_fmt_date(dt)}.{loc_msg}"
 
-    slots_str = ", ".join(free_slots[:5])
+    slots_str = ", ".join(free_slots[:6])
     tt_msg = f" para {treatment_type}" if treatment_type else ""
     return f"Horarios disponibles el {_fmt_date(dt)}{tt_msg}: {slots_str}.{loc_msg}"
 
