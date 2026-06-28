@@ -2596,8 +2596,9 @@ async def _ver_paciente(args: Dict, tenant_id: int) -> str:
     if appts:
         parts.append("Proximos turnos:")
         for a in appts:
+            _apt_when = await _fmt_local_time(a['appointment_datetime'], tenant_id, "%d/%m/%Y %H:%M")
             parts.append(
-                f"  • {_fmt_date(a['appointment_datetime'])} — {a['appointment_type']} ({a['status']})"
+                f"  • {_apt_when} — {a['appointment_type']} ({a['status']})"
             )
     else:
         parts.append("Sin turnos proximos.")
@@ -5691,7 +5692,8 @@ async def _cancelar_turno(args: Dict, tenant_id: int) -> str:
         "APPOINTMENT_DELETED",
         {"appointment_id": str(appt_uuid), "tenant_id": tenant_id},
     )
-    return f"Turno cancelado: {row['patient_name']} — {row['appointment_type']} del {_fmt_date(row['appointment_datetime'])}."
+    _cancel_when = await _fmt_local_time(row['appointment_datetime'], tenant_id, "%d/%m/%Y %H:%M")
+    return f"Turno cancelado: {row['patient_name']} — {row['appointment_type']} del {_cancel_when}."
 
 
 async def _confirmar_turnos(args: Dict, tenant_id: int) -> str:
@@ -6072,7 +6074,7 @@ async def _facturacion_pendiente(tenant_id: int, paciente: str = None) -> str:
     if rows:
         lines.append(f"Facturación pendiente{patient_label} ({len(rows)} turnos):")
         for r in rows:
-            dt = _fmt_date(r["appointment_datetime"])
+            dt = await _fmt_local_time(r["appointment_datetime"], tenant_id, "%d/%m/%Y %H:%M")
             amount = r.get("billing_amount") or r.get("base_price")
             price = _fmt_money(amount) if amount else "sin precio"
             status = r.get("payment_status") or "sin pago"
@@ -9808,7 +9810,10 @@ async def _obtener_registros(args: Dict, tenant_id: int, user_role: str) -> str:
             row_data = dict(r)
             # Convert special types
             for k, v in row_data.items():
-                if isinstance(v, (datetime, date)):
+                if isinstance(v, datetime):
+                    # Mostrar en hora local del tenant (los timestamptz vienen en UTC)
+                    row_data[k] = (v.astimezone(_tz) if v.tzinfo is not None else v).isoformat()
+                elif isinstance(v, date):
                     row_data[k] = v.isoformat()
                 elif isinstance(v, Decimal):
                     row_data[k] = float(v)
