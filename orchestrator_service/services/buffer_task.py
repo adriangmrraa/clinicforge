@@ -271,6 +271,37 @@ def _detect_research_intent(msg: str) -> bool:
     return _RESEARCH_INTENT_PATTERN.search(text) is not None
 
 
+_PERIOD_CHANGE_PATTERN = None
+
+
+def _detect_period_change(msg: str) -> bool:
+    """Detecta si el paciente cambia a un MES o PERÍODO nuevo (para julio, en agosto,
+    principios/mediados/fines de mes, el mes que viene, quincena, más adelante, etc.).
+    Complementa _detect_research_intent (que NO cubre meses/períodos). Se usa para
+    liberar el lock SLOT_LOCKED y re-buscar disponibilidad en vez de derivar.
+    Los nombres de mes exigen una preposición previa (para/en/a/hacia) o un día (5 de
+    julio) para NO confundir un nombre propio como 'Julio Gómez' con un cambio de fecha."""
+    import re
+
+    global _PERIOD_CHANGE_PATTERN
+    if _PERIOD_CHANGE_PATTERN is None:
+        _meses = "enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre"
+        patterns = [
+            rf"\b(para|en|a|hacia)\s+(el\s+)?({_meses})\b",  # "para julio", "en agosto"
+            rf"\b\d{{1,2}}\s+de\s+({_meses})\b",             # "5 de julio" (el dígito evita apellidos)
+            r"\b(principios?|mediados?|fin(es)?|final(es)?|inicio|comienzos?)\s+de\b",
+            r"\bel\s+mes\s+que\s+viene\b",
+            r"\bmes\s+pr[oó]ximo\b",
+            r"\bpr[oó]ximo\s+mes\b",
+            r"\bpara\s+el\s+mes\b",
+            r"\bquincena\b",
+            r"\bm[aá]s\s+adelante\b",
+        ]
+        _PERIOD_CHANGE_PATTERN = re.compile("|".join(patterns), re.IGNORECASE)
+
+    return _PERIOD_CHANGE_PATTERN.search(msg.strip()) is not None
+
+
 def classify_intent(messages: list) -> set:
     """
     Classify patient message intent via keyword detection (<1ms, no LLM).
@@ -2364,8 +2395,8 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                     )
 
                     user_msg = "\n".join(messages)
-                    if prev_state_str == "SLOT_LOCKED" and _detect_research_intent(user_msg):
-                        logger.info(f"🔒 STATE_GUARD: Rejection detected in SLOT_LOCKED state for phone={phone}. Releasing lock and transitioning back to OFFERED_SLOTS.")
+                    if prev_state_str == "SLOT_LOCKED" and (_detect_research_intent(user_msg) or _detect_period_change(user_msg)):
+                        logger.info(f"🔒 STATE_GUARD: Rejection/cambio-de-período detectado en SLOT_LOCKED para phone={phone}. Libero el lock y vuelvo a OFFERED_SLOTS.")
                         _slot = prev_state.get("last_locked_slot") or {}
                         _date = _slot.get("date")
                         _time = _slot.get("time")
@@ -2394,12 +2425,20 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                             prev_state = await get_state(tenant_id, phone)
                         except Exception as state_err:
                             logger.warning(f"🔒 STATE_GUARD: Failed to set state to OFFERED_SLOTS: {state_err}")
+                        # Un cambio de fecha/período NO es un fallo de agendamiento: reseteo los
+                        # contadores para que el cambio de mes/preferencia no acerque a la derivación.
+                        try:
+                            from services.conversation_state import reset_booking_attempts, reset_availability_attempts
+                            await reset_booking_attempts(tenant_id, phone)
+                            await reset_availability_attempts(tenant_id, phone)
+                        except Exception as _reset_err:
+                            logger.warning(f"🔒 STATE_GUARD: reset de contadores falló: {_reset_err}")
 
                     # If previous state was OFFERED_SLOTS and user is selecting a slot
                     if prev_state_str == "OFFERED_SLOTS":
                         user_msg = "\n".join(messages)
                         _is_selection = _detect_selection_intent(user_msg)
-                        _is_research = _detect_research_intent(user_msg)
+                        _is_research = _detect_research_intent(user_msg) or _detect_period_change(user_msg)
                         logger.info(f"🔒 STATE_GUARD EVAL | state={prev_state_str} msg={user_msg[:80]!r} selection={_is_selection} research={_is_research}")
                         if _is_selection:
                             # Build a detailed hint including the actual offered slots
