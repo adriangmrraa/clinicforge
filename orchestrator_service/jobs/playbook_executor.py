@@ -384,8 +384,15 @@ async def _action_send_template(pool, tenant_id, phone, step, variables) -> bool
 def _auto_detect_template_vars(template_name: str) -> list:
     """Auto-detect variable order for known template patterns."""
     name = (template_name or "").lower()
-    # Recordatorio de Asistencia: nombre_paciente, dia_semana, fecha_turno, hora_turno
-    if "recordatorio" in name or "reminder" in name or "asistencia" in name:
+    # Recordatorio de Asistencia / Confirmación de turno agendado:
+    # nombre_paciente, dia_semana, fecha_turno, hora_turno
+    if (
+        "recordatorio" in name
+        or "reminder" in name
+        or "asistencia" in name
+        or "confirmar" in name
+        or "agendado" in name
+    ):
         return ["nombre_paciente", "dia_semana", "fecha_turno", "hora_turno"]
     # Seguimiento Rápido: nombre_paciente
     if "seguimiento" in name:

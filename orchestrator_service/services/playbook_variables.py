@@ -94,6 +94,17 @@ async def resolve_variables(
             )
             if apt:
                 apt_dt = apt["appointment_datetime"]
+                # Convertir a hora Argentina ANTES de formatear. La columna es timestamptz
+                # (UTC); sin esto el recordatorio mostraba la hora en UTC (+3h, ej. 17:00 en
+                # vez de 14:00) y cerca de medianoche erraba también la fecha y el día.
+                try:
+                    from zoneinfo import ZoneInfo
+                    from datetime import timezone as _tz
+                    if apt_dt.tzinfo is None:
+                        apt_dt = apt_dt.replace(tzinfo=_tz.utc)
+                    apt_dt = apt_dt.astimezone(ZoneInfo("America/Argentina/Buenos_Aires"))
+                except Exception as _tz_err:
+                    logger.warning(f"resolve_variables: conversión a hora Argentina falló (no bloqueante): {_tz_err}")
                 variables["fecha_turno"] = apt_dt.strftime("%d/%m")
                 variables["hora_turno"] = apt_dt.strftime("%H:%M")
                 variables["dia_semana"] = _DAYS_ES[apt_dt.weekday()]
