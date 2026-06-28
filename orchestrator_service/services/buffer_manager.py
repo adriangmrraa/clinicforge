@@ -42,8 +42,8 @@ class BufferManager:
     # Valores por defecto globales unificados como fallback (Regla C5)
     GLOBAL_DEFAULTS = {
         "whatsapp": {
-            "debounce_seconds": 11,
-            "bubble_delay": 4,
+            "debounce_seconds": 8,
+            "bubble_delay": 2.5,
             "max_message_length": 400,
             "typing_indicator": True
         },
@@ -169,7 +169,7 @@ class BufferManager:
             while True:
                 # 1. FASE DEBOUNCE: Esperar hasta que timer expire
                 while True:
-                    await asyncio.sleep(2)
+                    await asyncio.sleep(1)
                     ttl = await redis_client.ttl(timer_key)
                     if ttl <= 0:  # Timer expiró, el usuario terminó de escribir la ráfaga
                         break

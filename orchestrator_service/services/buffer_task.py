@@ -3817,6 +3817,31 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
         logger.info(f"🔇 No response to send (empty text, no media) — skipping send for {external_user_id}")
         return
 
+    # --- ABORT-AND-RECOMPUTE (anti "mensajes que se pisan") ---
+    # Si el paciente mandó mensajes nuevos mientras corría el LLM, esta respuesta
+    # quedó vieja. NO la enviamos: el loop de BufferManager ve el buffer con mensajes,
+    # reinicia el debounce y recombina. El mensaje anterior ya está en el historial,
+    # así que la próxima respuesta cubre ambos de forma coherente y se evita el
+    # doble-reply / contestar el mensaje pasado.
+    try:
+        from services.relay import get_redis as _get_redis_recompute
+        from services.buffer_manager import BufferManager as _BufferManager_recompute
+
+        _r_recompute = _get_redis_recompute()
+        if _r_recompute is not None:
+            _buffer_key_recompute = _BufferManager_recompute.get_buffer_key(
+                provider, tenant_id, external_user_id
+            )
+            _pending_new = await _r_recompute.llen(_buffer_key_recompute)
+            if _pending_new and _pending_new > 0:
+                logger.info(
+                    f"♻️ ABORT-AND-RECOMPUTE: {_pending_new} mensaje(s) nuevo(s) llegaron durante el LLM — "
+                    f"descarto respuesta stale y dejo recombinar para {external_user_id}"
+                )
+                return
+    except Exception as _recompute_err:
+        logger.warning(f"abort-and-recompute check failed (non-blocking): {_recompute_err}")
+
     if provider == "chatwoot":
         account_id = row.get("external_account_id")
         cw_conv_id = row.get("external_chatwoot_id")
