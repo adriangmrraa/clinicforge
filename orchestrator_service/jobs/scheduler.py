@@ -104,27 +104,32 @@ class JobScheduler:
 scheduler = JobScheduler()
 
 
-def schedule_daily_at(hour: int, minute: int = 0, second: int = 0):
+def schedule_daily_at(hour: int, minute: int = 0, second: int = 0, tz=None):
     """
     Decorador para programar un job diario a una hora específica.
-    
+
     Args:
         hour: Hora del día (0-23)
         minute: Minuto (0-59)
         second: Segundo (0-59)
+        tz: zona horaria (tzinfo). Si se pasa, 'hour' se interpreta en ESA zona
+            (ej. ZoneInfo('America/Argentina/Buenos_Aires') = hora Argentina).
+            Si es None, se usa la hora del servidor (naive = UTC) como hasta ahora.
     """
     def decorator(task_func: Callable[[], Coroutine[Any, Any, None]]):
         async def scheduled_task():
             """Task que calcula el próximo tiempo de ejecución y se auto-reprograma."""
             while True:
-                now = datetime.now()
+                now = datetime.now(tz) if tz is not None else datetime.now()
                 target_time = time(hour, minute, second)
 
-                # Calcular segundos hasta la próxima ejecución
+                # Calcular segundos hasta la próxima ejecución (en la zona horaria dada si tz != None)
                 if now.time() < target_time:
                     target_datetime = datetime.combine(now.date(), target_time)
                 else:
                     target_datetime = datetime.combine(now.date() + timedelta(days=1), target_time)
+                if tz is not None:
+                    target_datetime = target_datetime.replace(tzinfo=tz)
 
                 seconds_until_target = (target_datetime - now).total_seconds()
 

@@ -1164,9 +1164,19 @@ async def daily_reset_counters():
         logger.error(f"❌ daily_reset_counters error: {e}")
 
 
-@schedule_daily_at(hour=10, minute=0)
+# Zona horaria Argentina para que el job de recordatorios corra a las 10:00 ART
+# (NO 10:00 UTC = 07:00 ART, que era demasiado temprano). Se define a nivel módulo
+# porque el decorador se evalúa al importar.
+try:
+    from zoneinfo import ZoneInfo as _ZoneInfo_sched
+    _AR_TZ_SCHED = _ZoneInfo_sched("America/Argentina/Buenos_Aires")
+except Exception:
+    _AR_TZ_SCHED = None
+
+
+@schedule_daily_at(hour=10, minute=0, tz=_AR_TZ_SCHED)
 async def check_appointment_reminders():
-    """Daily at 10:00 UTC (07:00 ART): find tomorrow's appointments and create playbook executions for reminders."""
+    """Daily at 10:00 ART (hora Argentina): find tomorrow's appointments and create playbook executions for reminders."""
     try:
         from db import db
         if not db.pool:
