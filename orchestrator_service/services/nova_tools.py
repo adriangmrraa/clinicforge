@@ -5221,27 +5221,44 @@ async def _verificar_disponibilidad(args: Dict, tenant_id: int) -> str:
         appt_dur = appt["duration_minutes"] or 30
         occupied.append((appt_start, appt_start + timedelta(minutes=appt_dur)))
 
-    # Generar candidatos SOLO dentro de cada franja real, en bloques de `duration`
-    # que NO crucen el corte de la franja y NO se pisen con turnos reservados.
-    free_slots: list = []
+    # --- Calcular los HUECOS libres reales (franja menos turnos ocupados) ---
+    # Asi se detecta tambien el espacio ENTRE dos turnos (ej. turno 13:00-13:30 y
+    # 14:00-14:30 -> hueco 13:30-14:00, donde entra uno de 30 min).
+    free_intervals: list = []
     for (_s, _e) in day_intervals:
         try:
             sh, sm = map(int, _s.split(":"))
             eh, em = map(int, _e.split(":"))
         except (ValueError, AttributeError):
             continue
-        slot_start = datetime(dt.year, dt.month, dt.day, sh, sm)
-        interval_end = datetime(dt.year, dt.month, dt.day, eh, em)
-        while slot_start + timedelta(minutes=duration) <= interval_end and len(free_slots) < 6:
-            slot_end = slot_start + timedelta(minutes=duration)
-            conflict = any(
-                slot_start < occ_end and slot_end > occ_start
-                for occ_start, occ_end in occupied
-            )
-            if not conflict:
-                free_slots.append(slot_start.strftime("%H:%M"))
-            slot_start += timedelta(minutes=duration)  # bloques consecutivos, no se pisan entre si
-        if len(free_slots) >= 6:
+        segments = [(datetime(dt.year, dt.month, dt.day, sh, sm),
+                     datetime(dt.year, dt.month, dt.day, eh, em))]
+        for (occ_s, occ_e) in sorted(occupied):
+            nuevos = []
+            for (seg_s, seg_e) in segments:
+                if occ_e <= seg_s or occ_s >= seg_e:
+                    nuevos.append((seg_s, seg_e))  # el turno no toca este segmento
+                else:
+                    if occ_s > seg_s:
+                        nuevos.append((seg_s, occ_s))  # parte libre antes del turno
+                    if occ_e < seg_e:
+                        nuevos.append((occ_e, seg_e))  # parte libre despues del turno
+            segments = nuevos
+        free_intervals.extend(segments)
+
+    # Ofrecer bloques de `duration` dentro de cada hueco. Hasta 3 por hueco (para que
+    # los espacios chicos entre turnos tambien aparezcan) y hasta 9 en total.
+    free_slots: list = []
+    _MAX_POR_HUECO = 3
+    _MAX_TOTAL = 9
+    for (g_start, g_end) in sorted(free_intervals):
+        n = 0
+        cur = g_start
+        while cur + timedelta(minutes=duration) <= g_end and n < _MAX_POR_HUECO and len(free_slots) < _MAX_TOTAL:
+            free_slots.append(cur.strftime("%H:%M"))
+            cur += timedelta(minutes=duration)
+            n += 1
+        if len(free_slots) >= _MAX_TOTAL:
             break
 
     loc_msg = f" Sede: {day_location}." if day_location else ""
@@ -5249,7 +5266,7 @@ async def _verificar_disponibilidad(args: Dict, tenant_id: int) -> str:
     if not free_slots:
         return f"No hay disponibilidad real en la franja del {_fmt_date(dt)}.{loc_msg}"
 
-    slots_str = ", ".join(free_slots[:6])
+    slots_str = ", ".join(free_slots)
     tt_msg = f" para {treatment_type}" if treatment_type else ""
     return f"Horarios disponibles el {_fmt_date(dt)}{tt_msg}: {slots_str}.{loc_msg}"
 
