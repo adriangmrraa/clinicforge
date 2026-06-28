@@ -3333,8 +3333,11 @@ async def check_availability(
                 f"📅 search_range={search_range} days (inferred from query={date_query!r} target={target_date})"
             )
 
-        # SPEC-5: High-priority treatments get nearest slots — cap search window
-        if treatment_priority in ("high", "medium-high"):
+        # SPEC-5: High-priority treatments get nearest slots — cap search window.
+        # EXCEPCIÓN: si el paciente delimitó un período explícito (search_mode 'month'/'week',
+        # ej. "para julio", "esta semana"), NO recortar a 3 días — respetar el rango pedido.
+        _period_explicit = bool(search_mode and search_mode.lower() in ("month", "week"))
+        if treatment_priority in ("high", "medium-high") and not _period_explicit:
             max_search_days = 3
             if search_range > max_search_days:
                 search_range = max_search_days
