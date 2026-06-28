@@ -1194,10 +1194,31 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
 
             if not msg.is_agent and _is_reschedule:
                 try:
-                    _resched_msg = (
-                        "Entendemos 😊 No hay problema. Contame qué día y horario "
-                        "te quedaría mejor y te ayudo a reprogramar tu turno."
+                    # Buscar el turno próximo para nombrar la fecha en el mensaje (un solo mensaje, sin AI)
+                    _resched_row = await pool.fetchrow(
+                        """SELECT a.appointment_datetime FROM appointments a
+                           INNER JOIN patients p ON a.patient_id = p.id AND p.tenant_id = a.tenant_id
+                           WHERE a.tenant_id = $1
+                           AND REGEXP_REPLACE(p.phone_number, '[^0-9]', '', 'g') = REGEXP_REPLACE($2, '[^0-9]', '', 'g')
+                           AND a.status IN ('scheduled', 'confirmed', 'pending')
+                           AND a.appointment_datetime > NOW()
+                           ORDER BY a.appointment_datetime ASC LIMIT 1""",
+                        tenant_id, msg.external_user_id,
                     )
+                    if _resched_row:
+                        from datetime import timezone, timedelta
+                        _dias_es = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
+                        _r_dt = _resched_row["appointment_datetime"].astimezone(timezone(timedelta(hours=-3)))
+                        _resched_msg = (
+                            f"Entendemos 😊 Tu turno es el {_dias_es[_r_dt.weekday()]} "
+                            f"{_r_dt.strftime('%d/%m')} a las {_r_dt.strftime('%H:%M')} hs. "
+                            f"Contame qué día y horario te quedaría mejor y lo movemos."
+                        )
+                    else:
+                        _resched_msg = (
+                            "Entendemos 😊 No hay problema. Contame qué día y horario "
+                            "te quedaría mejor y te ayudo a reprogramar tu turno."
+                        )
                     from services.response_sender import ResponseSender
                     await ResponseSender.send_sequence(
                         tenant_id=tenant_id,
@@ -1210,10 +1231,10 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                         messages_text=_resched_msg,
                     )
                     logger.info(f"🔄 Reschedule button tapped by {msg.external_user_id} tenant={tenant_id}")
+                    continue  # Skip AI agent — un solo mensaje limpio ya enviado (sin doble respuesta)
                 except Exception as _resch_err:
                     logger.error(f"❌ Reschedule button reply failed: {_resch_err}")
-                # Allow AI agent to handle the reschedule conversation after the initial reply
-                # but do NOT double-respond: the bot already sent the opening message above.
+                    # Si falló el mensaje fijo, dejamos que el AI maneje la reprogramación (fallback)
 
             # --- Playbook V2: Check if patient has active execution waiting for response ---
             if not msg.is_agent and not _is_confirm and not _is_cancel:
