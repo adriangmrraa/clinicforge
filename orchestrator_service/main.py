@@ -1441,15 +1441,31 @@ async def _get_slots_for_extra_day(
                     busy_map[b["professional_id"]].add(h_m)
             else:
                 global_busy.add(h_m)
-            it += timedelta(minutes=30)
+            it += timedelta(minutes=15)
 
     for appt in appointments:
         it = appt["start"].astimezone(get_active_tz())
-        end_it = it + timedelta(minutes=appt["duration_minutes"])
-        while it < end_it:
-            if appt["professional_id"] in busy_map:
-                busy_map[appt["professional_id"]].add(it.strftime("%H:%M"))
-            it += timedelta(minutes=30)
+        # Coalesce duración NULL/<=0 (paridad con el día-semilla): evita crashear el día
+        # entero y ofrecer un slot que book_appointment rechazaría por overlap.
+        appt_duration = (
+            appt["duration_minutes"] if appt["duration_minutes"] is not None else 60
+        )
+        if appt_duration <= 0:
+            appt_duration = 30
+        end_it = it + timedelta(minutes=appt_duration)
+        pid = appt["professional_id"]
+        if pid not in busy_map:
+            continue
+        # Marcar CADA slot de 15 min desde el inicio exacto + backfill de bordes de 30 min
+        # (igual que el día-semilla): un turno desalineado :15/:45 ya no deja libre el :30.
+        check = it.replace(second=0, microsecond=0)
+        while check < end_it:
+            busy_map[pid].add(check.strftime("%H:%M"))
+            check += timedelta(minutes=15)
+        boundary = it.replace(minute=(it.minute // 30) * 30, second=0, microsecond=0)
+        while boundary < end_it:
+            busy_map[pid].add(boundary.strftime("%H:%M"))
+            boundary += timedelta(minutes=30)
 
     for pid in busy_map:
         busy_map[pid].update(global_busy)
