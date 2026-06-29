@@ -244,13 +244,17 @@ NOVA_TOOLS_SCHEMA: List[Dict[str, Any]] = [
     {
         "type": "function",
         "name": "verificar_disponibilidad",
-        "description": "Verifica disponibilidad real para una fecha. Devuelve SOLO horarios dentro de la franja horaria real del profesional/sede; NUNCA inventa horarios fuera de la agenda configurada. Si no hay opciones reales, lo dice.",
+        "description": "Verifica disponibilidad real para una fecha O un rango de fechas. Devuelve SOLO horarios dentro de la franja horaria real del profesional/sede; NUNCA inventa horarios fuera de la agenda configurada. Si te piden un RANGO (ej. 'del 1 al 8 de julio'), pasá 'date' (inicio) y 'end_date' (fin) y la tool recorre cada dia real — NO la llames varias veces ni inventes los dias. Si no hay opciones reales en un dia, lo dice.",
         "parameters": {
             "type": "object",
             "properties": {
                 "date": {
                     "type": "string",
-                    "description": "Fecha en formato YYYY-MM-DD",
+                    "description": "Fecha (o inicio del rango) en formato YYYY-MM-DD",
+                },
+                "end_date": {
+                    "type": "string",
+                    "description": "Fin del rango en formato YYYY-MM-DD (opcional). Si se pasa, devuelve la disponibilidad real de cada dia entre 'date' y 'end_date' inclusive.",
                 },
                 "treatment_type": {
                     "type": "string",
@@ -5002,7 +5006,22 @@ async def _crear_nota_clinica(args: Dict, tenant_id: int, user_role: str, user_i
 
     await _nova_emit("RECORD_CREATED", {"patient_id": int(pid), "tenant_id": tenant_id, "record_type": rtype})
     await _nova_emit("PATIENT_UPDATED", {"patient_id": int(pid), "tenant_id": tenant_id})
-    return f"Nota clinica ({rtype}) registrada exitosamente."
+
+    # Devolver el DETALLE real guardado (no un generico). El doctor dicta una nota y debe
+    # ver exactamente que quedo registrado, no un "listo/hecho" sin contenido. Si el LLM
+    # solo repite este resultado, igual muestra la prueba de lo que se grabo.
+    detail = [f"✅ Nota clinica registrada ({rtype}):"]
+    if args.get("chief_complaint"):
+        detail.append(f"• Motivo: {args.get('chief_complaint')}")
+    if args.get("notes"):
+        detail.append(f"• Notas: {args.get('notes')}")
+    if diagnosis:
+        detail.append(f"• Diagnostico: {diagnosis}")
+    if args.get("treatment_plan"):
+        detail.append(f"• Plan: {args.get('treatment_plan')}")
+    if recommendations:
+        detail.append(f"• Recomendaciones: {recommendations}")
+    return "\n".join(detail)
 
 
 async def _resumen_evolucion(args: Dict, tenant_id: int, user_role: str) -> str:
@@ -5109,6 +5128,26 @@ async def _verificar_disponibilidad(args: Dict, tenant_id: int) -> str:
     target_date = _parse_date_str(args.get("date", str(_today())))
     if not target_date:
         return "Necesito una fecha para verificar disponibilidad."
+
+    # --- Modo RANGO ---
+    # Si se pide un rango (end_date posterior a date), recorremos cada dia INTERNAMENTE y
+    # devolvemos la disponibilidad real de cada uno. Asi el LLM llama la tool UNA vez y no
+    # puede inventar los dias ni los horarios. Reusa la logica de un solo dia (delegacion).
+    _end_raw = args.get("end_date")
+    if _end_raw:
+        end_date = _parse_date_str(_end_raw)
+        if end_date and end_date > target_date:
+            lineas: list = []
+            cur = target_date
+            dias = 0
+            while cur <= end_date and dias < 14:  # tope 14 dias para acotar el costo
+                day_args = dict(args)
+                day_args["date"] = cur.isoformat()
+                day_args.pop("end_date", None)
+                lineas.append(await _verificar_disponibilidad(day_args, tenant_id))
+                cur += timedelta(days=1)
+                dias += 1
+            return "\n".join(lineas)
 
     treatment_type = args.get("treatment_type")
     prof_id = args.get("professional_id")
@@ -8224,7 +8263,7 @@ async def _reprogramar_turno(args: Dict, tenant_id: int) -> str:
 
 async def _ver_configuracion(tenant_id: int) -> str:
     row = await db.pool.fetchrow(
-        """SELECT clinic_name, address, bot_phone_number, website, working_hours,
+        """SELECT clinic_name, address, bot_phone_number, clinic_website AS website, working_hours,
                   bank_cbu, bank_alias, bank_holder_name, consultation_price, owner_email,
                   calendar_provider, max_chairs
            FROM tenants WHERE id = $1""",
@@ -8297,8 +8336,9 @@ async def _actualizar_configuracion(args: Dict, tenant_id: int, user_role: str) 
     ]
     if field not in allowed:
         return f"Campo '{field}' no permitido. Opciones: {', '.join(allowed)}"
-    # Map clinic_phone to actual DB column
-    db_field = "bot_phone_number" if field == "clinic_phone" else field
+    # Map UI-facing field names to actual DB columns
+    _DB_FIELD_MAP = {"clinic_phone": "bot_phone_number", "website": "clinic_website"}
+    db_field = _DB_FIELD_MAP.get(field, field)
     # consultation_price needs numeric conversion
     if field == "consultation_price":
         try:
