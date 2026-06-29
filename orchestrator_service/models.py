@@ -353,6 +353,54 @@ class TenantInsuranceProvider(Base):
     )
 
 
+class BlockedPhoneNumber(Base):
+    """Lista de bloqueo: numeros que el agente (Paula) NO debe contestar, por clinica.
+    behavior=SILENCIO -> no responde nada (lo toma un humano).
+    behavior=MENSAJE  -> responde el message_template UNA vez y entra en enfriamiento
+                         (cooldown_hours) antes de poder volver a responder.
+    notify_email -> ademas avisa por mail al derivation_email del tenant (con su propio
+                    enfriamiento via last_notified_at)."""
+
+    __tablename__ = "blocked_phone_numbers"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    tenant_id = Column(
+        Integer, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    # Telefono NORMALIZADO (solo digitos) para matchear confiable.
+    phone_digits = Column(String(32), nullable=False)
+    # Telefono tal cual lo cargaron (para mostrar en la UI).
+    phone_display = Column(Text, nullable=True)
+    label = Column(String(30), nullable=False)
+    behavior = Column(String(20), nullable=False)
+    message_template = Column(Text, nullable=True)
+    notify_email = Column(Boolean, nullable=False, server_default=text("false"))
+    cooldown_hours = Column(Integer, nullable=False, server_default=text("24"))
+    last_autoreply_at = Column(DateTime(timezone=True), nullable=True)
+    last_notified_at = Column(DateTime(timezone=True), nullable=True)
+    note = Column(Text, nullable=True)
+    is_active = Column(Boolean, nullable=False, server_default=text("true"))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "label IN ('profesional_clinica','inconveniente_ia','laboratorio','proveedor','otros','spam')",
+            name="ck_blocked_phone_numbers_label",
+        ),
+        CheckConstraint(
+            "behavior IN ('SILENCIO','MENSAJE')",
+            name="ck_blocked_phone_numbers_behavior",
+        ),
+        UniqueConstraint(
+            "tenant_id", "phone_digits", name="uq_blocked_phone_numbers_tenant_phone"
+        ),
+        Index("ix_blocked_phone_numbers_tenant_active", "tenant_id", "is_active"),
+    )
+
+
 class Credential(Base):
     __tablename__ = "credentials"
 

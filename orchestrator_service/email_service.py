@@ -512,6 +512,101 @@ class EmailService:
             logger.error(f"Error sending payment verification failed email: {e}")
             return False
 
+    def send_blocked_contact_notification(
+        self,
+        to_email: str,
+        clinic_name: str,
+        phone: str,
+        label: str,
+        behavior: str,
+        message_text: str = "",
+    ) -> bool:
+        """Avisa a la clinica que un numero de la LISTA DE BLOQUEO escribio.
+        Solo va al derivation_email del tenant (no a profesionales)."""
+        if not self.smtp_host or not self.smtp_user:
+            logger.warning("SMTP not configured. Skipping blocked contact email.")
+            return False
+        if not to_email or not to_email.strip():
+            return False
+
+        to_emails = [to_email.strip()]
+        phone_digits = (phone or "").replace("+", "").replace(" ", "").replace("-", "")
+        wa_link = f"https://wa.me/{phone_digits}"
+        label_es = {
+            "profesional_clinica": "Profesional de la clínica",
+            "inconveniente_ia": "Inconveniente con la IA",
+            "laboratorio": "Laboratorio",
+            "proveedor": "Proveedor",
+            "otros": "Otros",
+            "spam": "Spam",
+        }.get(label, label or "Sin etiqueta")
+        comportamiento = (
+            "Paula no respondió (silencio)"
+            if behavior == "SILENCIO"
+            else "Paula respondió el mensaje predeterminado"
+        )
+        msg_block = (
+            f"""<div style="background: rgba(255,255,255,0.05); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+                <h3 style="color: #60a5fa; margin: 0 0 12px;">Mensaje recibido</h3>
+                <p style="color: #e6edf3; margin: 0; white-space: pre-wrap;">{message_text}</p>
+            </div>"""
+            if (message_text or "").strip()
+            else ""
+        )
+
+        html_content = f"""
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; background: #0d1117; color: #e6edf3; padding: 24px; border-radius: 12px;">
+            <div style="background: linear-gradient(135deg, #6d28d9, #7c3aed); padding: 20px; border-radius: 8px; text-align: center; margin-bottom: 24px;">
+                <h1 style="color: white; margin: 0; font-size: 20px;">🔕 Número en lista de bloqueo escribió</h1>
+                <p style="color: rgba(255,255,255,0.8); margin: 8px 0 0; font-size: 14px;">{clinic_name}</p>
+            </div>
+
+            <div style="background: rgba(255,255,255,0.05); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+                <table style="width: 100%; color: #e6edf3;">
+                    <tr><td style="padding: 4px 8px; color: #9ca3af;">Número</td><td style="padding: 4px 8px;">{phone}</td></tr>
+                    <tr><td style="padding: 4px 8px; color: #9ca3af;">Etiqueta</td><td style="padding: 4px 8px;">{label_es}</td></tr>
+                    <tr><td style="padding: 4px 8px; color: #9ca3af;">Acción</td><td style="padding: 4px 8px;">{comportamiento}</td></tr>
+                </table>
+            </div>
+            {msg_block}
+
+            <div style="text-align: center; margin-top: 20px;">
+                <a href="{wa_link}" style="background: #25D366; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: bold;">
+                    💬 Abrir conversación
+                </a>
+            </div>
+
+            <p style="color: #6b7280; font-size: 12px; text-align: center; margin-top: 24px;">
+                Este número está en la lista de bloqueo, por eso Paula no lo gestionó automáticamente.
+                Si querés que el equipo lo atienda, hacelo desde el panel.
+            </p>
+        </div>
+        """
+
+        try:
+            msg = MIMEMultipart("alternative")
+            msg["Subject"] = f"🔕 Lista de bloqueo: escribió un {label_es} — {clinic_name}"
+            msg["From"] = self.smtp_sender
+            msg["To"] = ", ".join(to_emails)
+            msg.attach(MIMEText(html_content, "html"))
+
+            if self.smtp_port == 465:
+                server = smtplib.SMTP_SSL(self.smtp_host, self.smtp_port)
+            else:
+                server = smtplib.SMTP(self.smtp_host, self.smtp_port)
+                server.starttls()
+
+            server.login(self.smtp_user, self.smtp_pass)
+            server.sendmail(self.smtp_sender, to_emails, msg.as_string())
+            server.quit()
+
+            logger.info(f"📧 Blocked contact notification sent to {to_email} for {phone}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Error sending blocked contact email: {e}")
+            return False
+
     def send_digital_record_email(
         self,
         to_email: str,
