@@ -4851,7 +4851,7 @@ async def _ver_historia_clinica(args: Dict, tenant_id: int, user_role: str) -> s
     rows = await db.pool.fetch(
         """
         SELECT cr.id, cr.record_date, cr.diagnosis, cr.clinical_notes,
-               cr.odontogram_data, cr.treatments, cr.recommendations,
+               cr.odontogram_data, cr.treatments, cr.treatment_plan, cr.recommendations,
                p.first_name || ' ' || p.last_name AS professional_name
         FROM clinical_records cr
         LEFT JOIN professionals p ON p.id = cr.professional_id
