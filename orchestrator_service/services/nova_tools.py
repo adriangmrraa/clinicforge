@@ -10741,6 +10741,21 @@ async def _consultar_obra_social(args: Dict, tenant_id: int) -> str:
             nombre,
         )
 
+        # 1b. Alias conocido: "ISSN" == "Instituto" (Instituto de Seguridad Social del Neuquén),
+        #     la misma OS. La sigla y el nombre largo no matchean por trigram; lo resolvemos
+        #     explicito (solo el caso inequivoco: un unico proveedor con "issn"/"instituto").
+        if not row:
+            _ql = nombre.lower()
+            if "issn" in _ql or "instituto" in _ql:
+                _alias_rows = await db.pool.fetch(
+                    "SELECT * FROM tenant_insurance_providers "
+                    "WHERE tenant_id = $1 AND is_active = true "
+                    "AND (provider_name ILIKE '%issn%' OR provider_name ILIKE '%instituto%')",
+                    tenant_id,
+                )
+                if len(_alias_rows) == 1:
+                    row = _alias_rows[0]
+
         # 2. If no exact match, try trigram similarity (handles "ISSN" → "Instituto de Seguridad Social...")
         if not row:
             trigram_rows = await db.pool.fetch(

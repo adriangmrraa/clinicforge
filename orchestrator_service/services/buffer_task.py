@@ -263,6 +263,18 @@ def _detect_research_intent(msg: str) -> bool:
             r"\bprefiero\s+otra\b",               # "prefiero otra fecha"
             r"\bmejor\s+otro\b",                  # "mejor otro día"
             r"\bmejor\s+otra\b",                  # "mejor otra semana"
+            # --- Pide algo MÁS CERCANO / "antes" (caso Veronica: pedía antes y no re-buscaba) ---
+            # Contextual a propósito: NO usamos "\bantes\b" pelado para no matchear
+            # "antes venía", "antes de ir", etc. Solo cuando hay señal de horario/turno.
+            r"\bantes\s+si\s+(puede|puedo|se\s+puede|hay)\b",                       # "antes si puede"
+            r"\bantes\s+de\s+(la|las|el|del|los)\s+\d{1,2}",                        # "antes de las 15"
+            r"\bantes\s+d?el?\s*(mediod[ií]a|tarde|mañana|manana|noche)\b",         # "antes del mediodía"
+            r"\bantes\s+del\s+(lunes|martes|mi[ée]rcoles|jueves|viernes|s[áa]bado|domingo)\b",  # "antes del viernes"
+            r"\b(algo|ten[ée]s?|hay|nada|turno|lugar|opci[oó]n)\s+\w{0,8}\s*antes\b",  # "algo antes", "hay algo antes", "un lugar antes"
+            r"\blo\s+antes\s+posible\b",          # "lo antes posible"
+            r"\bcuanto\s+antes\b",                # "cuanto antes"
+            r"\bm[áa]s\s+cerca(no|na)?\b",        # "más cerca", "una opción más cercana"
+            r"\bm[áa]s\s+pr[oó]xim",              # "más próximo/a"
         ]
         combined = "|".join(patterns)
         _RESEARCH_INTENT_PATTERN = re.compile(combined, re.IGNORECASE)
@@ -1152,8 +1164,15 @@ async def process_buffer_task(
 
         if patient_row:
             p_id = patient_row["id"]
-            p_first = patient_row["first_name"] or ""
-            p_last = patient_row["last_name"] or ""
+            # AG-09: tratar nombres placeholder ('Visitante'/'Paciente', vacío o solo espacios) como
+            # SIN NOMBRE. Un registro guest sin nombre real NO debe inyectar "Nombre registrado": esa
+            # línea activa la REGLA SUPREMA y el agente agenda sin pedir los datos -> turno en blanco
+            # ("no disponible"). El set espeja el de db.py (ensure_patient_exists). Nombre real -> idéntico.
+            _PLACEHOLDER_NAMES = {"visitante", "paciente"}
+            _raw_first = (patient_row["first_name"] or "").strip()
+            _raw_last = (patient_row["last_name"] or "").strip()
+            p_first = "" if _raw_first.lower() in _PLACEHOLDER_NAMES else _raw_first
+            p_last = "" if _raw_last.lower() in _PLACEHOLDER_NAMES else _raw_last
             p_dni = patient_row["dni"] or ""
 
             # 1. Building Identity Context
@@ -3249,7 +3268,12 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                                 "NO digas que ya verificaste el pago. Esperá a saber PARA QUIÉN es."
                             )
                         else:
-                            media_context += "Responde confirmando que recibiste el archivo y que ya lo guardaste en su ficha médica para que la Dra. lo vea. Usa un tono amable y profesional."
+                            media_context += (
+                                "Responde confirmando que recibiste el archivo y que ya lo guardaste en su ficha médica para que la Dra. lo vea. "
+                                "Si en el CONTEXTO VISUAL hay una descripción de la imagen (ej. una foto clínica de un diente o de la boca), "
+                                "comentá brevemente y con prudencia lo que se observa y sugerí que lo ideal es evaluarlo en consulta. "
+                                "NO diagnostiques con certeza ni derives a un humano SOLO por la foto. Usa un tono amable y profesional."
+                            )
             else:
                 # Contact is NOT a patient
                 if is_classified_payment:

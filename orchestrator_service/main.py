@@ -4619,6 +4619,19 @@ async def book_appointment(
                     fields_list = ", ".join(missing_fields)
                     return f"❌ Para agendar por primera vez necesito: {fields_list}. Formato esperado: Nombre y Apellido por separado; DNI solo números."
 
+        # AG-09 — Red de seguridad: un paciente EXISTENTE con nombre placeholder (guest "Visitante",
+        # "Paciente" o vacío) NO debe agendarse sin pedir los datos reales. Si el turno es para sí
+        # mismo y el LLM no pasó un nombre en esta llamada, exigir los datos como en el flujo nuevo.
+        # (No toca tercero/menor/ART: esos traen o auto-rellenan el nombre del paciente real.)
+        if existing_patient and not first_name and not is_third_party and not is_minor and not is_art:
+            _existing_first = await db.pool.fetchval(
+                "SELECT first_name FROM patients WHERE id = $1 AND tenant_id = $2",
+                existing_patient["id"], tenant_id,
+            )
+            _en = (_existing_first or "").strip()
+            if not _en or _en.lower() in ("visitante", "paciente"):
+                return "❌ Para agendar necesito tus datos: Nombre, Apellido y DNI. Decímelos y te los agendo enseguida 😊"
+
         # G1 GUARDRAIL: Seña pendiente — solo informativo, NO bloquea
         # La seña no es obligatoria. El paciente puede tener múltiples turnos sin pagar seña.
 
@@ -9250,6 +9263,22 @@ async def check_insurance_coverage(insurance_provider: str) -> str:
             tenant_id,
             insurance_provider.strip(),
         )
+        # 1b. Alias conocido: "ISSN" y "Instituto" (Instituto de Seguridad Social del Neuquén)
+        #     son la MISMA obra social. La sigla y el nombre largo NO matchean por trigram, asi
+        #     que lo resolvemos explicito para no confundir al paciente (caso real reportado).
+        #     Solo auto-resuelve el caso inequivoco: un unico proveedor con "issn"/"instituto".
+        if not row:
+            _ql = insurance_provider.strip().lower()
+            if "issn" in _ql or "instituto" in _ql:
+                _alias_rows = await db.pool.fetch(
+                    "SELECT * FROM tenant_insurance_providers "
+                    "WHERE tenant_id = $1 AND is_active = true "
+                    "AND (provider_name ILIKE '%issn%' OR provider_name ILIKE '%instituto%')",
+                    tenant_id,
+                )
+                if len(_alias_rows) == 1:
+                    row = _alias_rows[0]
+
         # 2. If no exact match, try trigram similarity (handles "ISSN" → "Instituto de Seguridad Social...")
         if not row:
             trigram_rows = await db.pool.fetch(
@@ -11306,6 +11335,12 @@ IMPORTANTE: NO agregar "¿Necesitás agendar un turno?" ni preguntas extra si el
 
 B) Si el paciente YA indicó qué necesita → presentate BREVE y respondé directamente:
 "Hola 😊 Soy {bot_name}. [Respondé a lo que el paciente pidió]"
+
+C) AVANCE ANTE AFIRMACIÓN (CRÍTICO — que el paciente NO quede en el aire):
+Si el paciente pidió o insinuó un turno en esta conversación (ej: "¿tendrás un turno?", "necesito un turno", "quiero turno") y vos ya le ofreciste coordinar uno, y luego responde con una AFIRMACIÓN ("ok", "dale", "sí", "bueno", "listo", "va", "siii quiero un turno") SIN negar ni dudar:
+→ INTERPRETALO como un SÍ y AVANZÁ el agendamiento YA: seguí la REGLA DE COBERTURA (preguntá particular/obra social si todavía no lo sabés) y/o llamá check_availability para ofrecerle horarios concretos.
+→ PROHIBIDO repetir la oferta ("si querés te ayudo a coordinar...") o volver a explicar que no tiene turno. Repetir lo deja en el aire y se va.
+→ Como ya pidió turno, sé proactiva: ofrecé en concreto, no esperes que lo vuelva a pedir.
 """
     elif patient_status == "patient_with_appointment":
         greeting_rule = f"""

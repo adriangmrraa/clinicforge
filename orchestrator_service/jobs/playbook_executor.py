@@ -367,7 +367,7 @@ async def _action_send_template(pool, tenant_id, phone, step, variables) -> bool
             components = [{"type": "body", "parameters": body_params}] if body_params else None
 
         yc = YCloudClient(api_key=api_key, business_number=biz_num)
-        await yc.send_template(
+        yc_resp = await yc.send_template(
             to=phone,
             template_name=template_name,
             language_code=real_lang,
@@ -375,6 +375,83 @@ async def _action_send_template(pool, tenant_id, phone, step, variables) -> bool
         )
         await _update_message_counters(pool, tenant_id, phone, step)
         logger.info(f"✅ Template '{template_name}' sent to {phone} (lang={real_lang})")
+
+        # Persistir la plantilla como mensaje SALIENTE en el hilo (mismo formato que los demas
+        # envios via ResponseSender, response_sender.py:190-193). Sin esto, el recordatorio /
+        # confirmacion HSM no aparece en la conversacion de la plataforma y el paciente responde
+        # sin el mensaje de referencia arriba. TODO en try/except aislado: si la DB/socket fallan,
+        # el HSM YA salio -> nunca convertir un envio exitoso en fallido.
+        try:
+            yc_msg_id = yc_resp.get("id") if isinstance(yc_resp, dict) else None
+
+            # Reconstruir el texto legible de la plantilla (cuerpo con {{n}} sustituidos)
+            body_text = ""
+            if tpl_components:
+                for _comp in tpl_components:
+                    if str(_comp.get("type", "")).upper() == "BODY":
+                        body_text = _comp.get("text", "") or ""
+                        break
+            if body_text:
+                rendered = re.sub(
+                    r"\{\{(\w+)\}\}",
+                    lambda m: positional_values.get(m.group(1), m.group(0)),
+                    body_text,
+                )
+            else:
+                _vals = [positional_values[str(i)] for i in range(1, len(_auto_vars) + 1) if positional_values.get(str(i))]
+                rendered = f"[{template_name}] " + (" · ".join(_vals) if _vals else "")
+
+            conv_row = await pool.fetchrow(
+                "SELECT id, channel FROM chat_conversations "
+                "WHERE tenant_id = $1 AND external_user_id = $2 ORDER BY updated_at DESC LIMIT 1",
+                tenant_id, phone,
+            )
+            from db import db as _db_inst
+            if conv_row:
+                conv_id = conv_row["id"]
+                conv_channel = conv_row.get("channel") or "whatsapp"
+            else:
+                conv_id = await _db_inst.get_or_create_conversation(
+                    tenant_id, "whatsapp", phone, provider="ycloud"
+                )
+                conv_channel = "whatsapp"
+
+            meta_json = json.dumps({
+                "provider": "ycloud",
+                "provider_message_id": str(yc_msg_id) if yc_msg_id else None,
+                "message_type": "template",
+                "template_name": template_name,
+                "delivery_status": "sent",
+            })
+            try:
+                await pool.execute(
+                    "INSERT INTO chat_messages (tenant_id, conversation_id, role, content, from_number, platform_metadata) "
+                    "VALUES ($1, $2, 'assistant', $3, $4, $5::jsonb)",
+                    tenant_id, str(conv_id), rendered, phone, meta_json,
+                )
+            except Exception as _ins_err:
+                logger.warning(f"HSM outbound INSERT skipped (posible dedup): {_ins_err}")
+
+            # Socket en vivo + preview de la conversacion (no critico)
+            try:
+                from main import app
+                sio = getattr(app.state, "sio", None)
+                to_json_safe = getattr(app.state, "to_json_safe", lambda x: x)
+                if sio:
+                    await sio.emit("NEW_MESSAGE", to_json_safe({
+                        "phone_number": phone,
+                        "tenant_id": tenant_id,
+                        "message": rendered,
+                        "attachments": [],
+                        "role": "assistant",
+                        "channel": conv_channel,
+                    }), room=f"tenant:{tenant_id}")
+                await _db_inst.sync_conversation(tenant_id, conv_channel, phone, rendered, is_user=False)
+            except Exception as _sock_err:
+                logger.debug(f"HSM outbound socket/sync skipped: {_sock_err}")
+        except Exception as _persist_err:
+            logger.warning(f"HSM outbound persist failed (non-fatal): {_persist_err}")
+
         return True
     except Exception as e:
         logger.error(f"❌ send_template failed for {phone}: {e}")
@@ -410,6 +487,40 @@ def _auto_detect_template_vars(template_name: str) -> list:
     return ["nombre_paciente"]
 
 
+async def _persist_playbook_outbound(pool, tenant_id, phone, message, yc_msg_id=None):
+    """Guardar un mensaje saliente de playbook en chat_messages para que aparezca en el
+    chat web, creando la conversacion si no existe. Espeja la persistencia de send_template /
+    ResponseSender. Se usa SOLO en los fallbacks sin conversacion previa (el camino con
+    conversacion ya persiste via ResponseSender.send_sequence)."""
+    try:
+        from db import db as _db_inst
+        import json as _json
+        conv_row = await pool.fetchrow(
+            "SELECT id FROM chat_conversations WHERE tenant_id = $1 AND external_user_id = $2 "
+            "ORDER BY updated_at DESC LIMIT 1",
+            tenant_id, phone,
+        )
+        if conv_row:
+            conv_id = conv_row["id"]
+        else:
+            conv_id = await _db_inst.get_or_create_conversation(
+                tenant_id, "whatsapp", phone, provider="ycloud"
+            )
+        meta_json = _json.dumps({
+            "provider": "ycloud",
+            "provider_message_id": str(yc_msg_id) if yc_msg_id else None,
+            "delivery_status": "sent" if yc_msg_id else "failed",
+            "source": "playbook",
+        })
+        await pool.execute(
+            "INSERT INTO chat_messages (tenant_id, conversation_id, role, content, from_number, platform_metadata) "
+            "VALUES ($1, $2, 'assistant', $3, $4, $5::jsonb)",
+            tenant_id, str(conv_id), message, phone, meta_json,
+        )
+    except Exception as _persist_err:
+        logger.warning(f"playbook outbound persist skipped: {_persist_err}")
+
+
 async def _action_send_text(pool, tenant_id, phone, step, variables) -> bool:
     """Send a free text message."""
     try:
@@ -443,7 +554,10 @@ async def _action_send_text(pool, tenant_id, phone, step, variables) -> bool:
             if not api_key:
                 return False
             yc = YCloudClient(api_key=api_key, business_number=biz_num)
-            await yc.send_text_message(to=phone, text=message)
+            _yc_resp = await yc.send_text_message(to=phone, text=message)
+            _yc_mid = _yc_resp.get("id") if isinstance(_yc_resp, dict) else None
+            # Guardar como saliente (el camino con conversacion ya persiste via ResponseSender)
+            await _persist_playbook_outbound(pool, tenant_id, phone, message, _yc_mid)
 
         await _update_message_counters(pool, tenant_id, phone, step)
         return True
@@ -559,7 +673,10 @@ Respondé SOLO con el mensaje a enviar, o "NO_ENVIAR" si no corresponde."""
             if not api_key:
                 return False
             yc = YCloudClient(api_key=api_key, business_number=biz_num)
-            await yc.send_text_message(to=phone, text=message)
+            _yc_resp = await yc.send_text_message(to=phone, text=message)
+            _yc_mid = _yc_resp.get("id") if isinstance(_yc_resp, dict) else None
+            # Guardar como saliente (el camino con conversacion ya persiste via ResponseSender)
+            await _persist_playbook_outbound(pool, tenant_id, phone, message, _yc_mid)
 
         await _update_message_counters(pool, tenant_id, phone, step)
         logger.info(f"✅ AI-generated message sent to {phone}: {message[:60]}...")
