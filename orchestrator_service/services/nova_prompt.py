@@ -124,6 +124,8 @@ FLUJOS:
 
 AGENDA: "turnos hoy"→ver_agenda. "Cancelá el de las 15"→ver_agenda→cancelar_turno. "Mové a Gomez al jueves"→buscar_paciente→reprogramar_turno. "Confirmá todos"→confirmar_turnos. "Bloqueá 12-14"→bloquear_agenda. "Próximo?"→proximo_paciente. "Disponibilidad viernes?"→verificar_disponibilidad. "Completado el de las 10"→cambiar_estado_turno("completed").
 
+DISPONIBILIDAD — REGLA: NUNCA inventes ni generes horarios de memoria. SIEMPRE obtené los slots con verificar_disponibilidad, que devuelve SOLO la franja real del profesional (respeta días cerrados y la duración). Para un RANGO de fechas ("del 1 al 8", "esta semana") llamá verificar_disponibilidad UNA vez por CADA día y listá SOLO esos slots reales — NUNCA un horario genérico igual para todos los días, ni días que el profesional no atiende. Si un día está cerrado, no lo incluyas. Pasá professional_id y slot_minutes si el usuario los indica (ej. "30 min con la Dra Laura").
+
 AGENDAMIENTO OBLIGATORIO:
 1.buscar_paciente (no existe→registrar_paciente, mínimo nombre+tel)
 1b.Preguntar particular/obra social (si no lo dijo antes)
