@@ -79,6 +79,7 @@ Sirve para responder *"desde qué cambio empezó a fallar"* y poder **volver a u
 | 2026-06-29 | `a576e72` | buffer_task.py · media_context foto clínica | Comentar la foto con prudencia, no derivar solo por imagen | El bot ignoraba la foto y derivaba | `git revert a576e72` |
 | 2026-06-29 | `68d8006` | main.py · VERIFICACIÓN DE COMPROBANTE (tono) | No arrancar con "no pude verificarlo"; transmitir tranquilidad sin confirmar de más | El bot parafraseaba el resultado en negativo y generaba rechazo | `git revert 68d8006` |
 | 2026-06-29 | `2c03f29` | nova_prompt.py + nova_tools.py · enviar_instrucciones_tratamiento | Nova puede mandar las instrucciones pre/post CARGADAS en el tratamiento (no solo plantillas HSM); completa el nombre | Faltaba poder enviar a pedido las instrucciones del tratamiento desde Telegram | `git revert 2c03f29` |
+| 2026-06-29 | `a0745c4` | main.py · COSEGURO/OS (cierre condicional) | "¿Te paso turnos?" solo si el paciente NO tiene turno; si ya reservó, no re-ofrece | Re-ofrecía turnos a quien ya había agendado (efecto colateral de 0c09584) | `git revert a0745c4` |
 
 > A partir de acá, cada cambio de prompt agrega su fila ANTES de commitear.
 
