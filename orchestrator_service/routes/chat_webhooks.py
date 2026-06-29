@@ -782,6 +782,12 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                                 # Buscamos el item correspondiente en content_attrs y actualizamos su URL
                                 for attr in content_attrs:
                                     if attr.get("url") == m_item.url:
+                                        # Preservar la URL remota original: la tarea de vision
+                                        # (process_vision_task) se agendo con la URL remota y
+                                        # matchea el adjunto por URL. Si solo reescribimos a local,
+                                        # el match falla y la descripcion nunca se guarda (el bot
+                                        # queda ciego a la imagen).
+                                        attr["original_url"] = m_item.url
                                         attr["url"] = local_url
                                         logger.info(
                                             f"📍 URL de media actualizada a local: {local_url}"

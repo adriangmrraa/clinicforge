@@ -426,10 +426,12 @@ async def process_vision_task(message_id: int, image_url: str, tenant_id: int):
         attrs = json.loads(current_attrs_json)
         updated = False
 
-        # Buscamos el adjunto por URL y le pegamos la descripción
+        # Buscamos el adjunto por URL y le pegamos la descripción.
+        # Matcheamos tanto la URL actual como la original remota (original_url): el handler del
+        # webhook reescribe att["url"] a la ruta local tras descargar, pero esta tarea se agendo
+        # con la URL remota. Sin el match por original_url, la descripción se perdía siempre.
         for att in attrs:
-            # Comparación simple de URL (podría mejorarse si la URL cambia)
-            if att.get("url") == image_url:
+            if att.get("url") == image_url or att.get("original_url") == image_url:
                 att["description"] = description
                 updated = True
                 # También podríamos inyectar la descripción en el campo 'content' del mensaje para que Buffer Task lo vea directo?
