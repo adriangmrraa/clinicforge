@@ -4961,7 +4961,12 @@ async def _crear_nota_clinica(args: Dict, tenant_id: int, user_role: str, user_i
         "notes": args.get("notes", "")
     }
     tplan = {"plan": args.get("treatment_plan", "")} if args.get("treatment_plan") else None
-    diagnosis = args.get("diagnosis", "")
+    # Normalizar diagnostico vacio a NULL: el indice unico parcial uq_clinical_records_dedup
+    # (migracion 059) es WHERE diagnosis IS NOT NULL. Con '' (que NO es NULL) una 2da evolucion
+    # el mismo dia para el mismo paciente chocaba y NO se guardaba (PLT-01). Con None la evolucion
+    # sin diagnostico (el dictado comun) queda fuera del indice y se guarda siempre. Espeja el
+    # camino manual de la UI (admin_routes.py) que ya normaliza '' -> None.
+    diagnosis = args.get("diagnosis") or None
     recommendations = args.get("recommendations", "")
 
     import uuid
