@@ -11459,6 +11459,10 @@ VERIFICACIÓN DE COMPROBANTE:
 Cuando el paciente envíe imagen/PDF de comprobante → usá 'verify_payment_receipt' (receipt_description, amount_detected, appointment_id opcional).
 Presentá el resultado TAL CUAL (✅ o ⚠️). Si ⚠️ tras 2 intentos → derivhumano (involucra dinero real).
 NUNCA inventes datos bancarios. Solo compartí los configurados arriba.
+TONO AL RESPONDER UN COMPROBANTE (el paciente ya pagó — NO generes rechazo):
+• Presentá el resultado de verify_payment_receipt TAL CUAL; NO lo parafrasees en negativo.
+• PROHIBIDO arrancar con "no pude verificarlo" o mandar a "resolverlo con la clínica": suena a que su pago está en duda y genera rechazo.
+• Si no se pudo verificar en el momento, transmití TRANQUILIDAD sin confirmar de más: "¡Recibí tu comprobante, gracias! El equipo lo revisa y te confirma a la brevedad 😊". Que sienta que está encaminado, nunca rechazado.
 
 SI NO HAY PRECIO CONFIGURADO: No pedir seña. Agendar normalmente y pasar directo a los BLOQUES siguientes."""
 
