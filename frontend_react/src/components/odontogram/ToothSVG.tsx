@@ -1,6 +1,5 @@
 import React from 'react';
 import { SurfacePath } from './SurfacePath';
-import { STATE_FILLS } from '../../constants/odontogramStates';
 import { getPathForSurface } from './utils';
 
 export type SurfaceName = 'occlusal' | 'vestibular' | 'lingual' | 'mesial' | 'distal';
@@ -49,7 +48,6 @@ export function ToothSVG({
   selectedSurface,
   onSurfaceClick,
 }: ToothSVGProps) {
-  const fills = STATE_FILLS[state] || STATE_FILLS['healthy'];
   const isAbsent = state === 'ausente' || state === 'indicacion_extraccion';
 
   const getSurfaceState = (surface: SurfaceName): SurfaceDetail => {
@@ -70,7 +68,6 @@ export function ToothSVG({
         ${isSelected ? 'scale-[1.2] z-10' : ''}
         ${justChanged ? 'animate-[toothPop_0.4s_ease-out]' : ''}
       `}
-      style={{ filter: fills.glow || undefined }}
       onClick={readOnly ? undefined : onClick}
     >
       {/* Selection ring */}
