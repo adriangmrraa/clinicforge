@@ -2105,6 +2105,42 @@ IMPORTANTE — REGLAS QUIRÚRGICAS:
             "required": ["template_name"],
         },
     },
+    {
+        "type": "function",
+        "name": "enviar_instrucciones_tratamiento",
+        "description": "Enviar a UN paciente las instrucciones PRE o POST que estan CARGADAS en un tratamiento (las mismas que salen automaticamente al completar el turno) — NO es una plantilla HSM. Usala cuando te pidan 'mandale a tal paciente las instrucciones post quirurgicas / pre del tratamiento X'. Completa el nombre del paciente automaticamente. Necesita que el paciente tenga conversacion de WhatsApp reciente (ventana de 24hs); si esta fuera de esa ventana, WhatsApp puede no entregarlo y conviene usar enviar_plantilla con la plantilla HSM aprobada.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "tipo": {
+                    "type": "string",
+                    "enum": ["pre", "post"],
+                    "description": "pre = antes del tratamiento; post = despues (post-quirurgicas). Default: post.",
+                },
+                "treatment_code": {
+                    "type": "string",
+                    "description": "Codigo del tratamiento (opcional si pasas treatment_name).",
+                },
+                "treatment_name": {
+                    "type": "string",
+                    "description": "Nombre del tratamiento para buscar (opcional si pasas treatment_code).",
+                },
+                "patient_id": {
+                    "type": "integer",
+                    "description": "ID del paciente (opcional si pasas patient_name o phone).",
+                },
+                "patient_name": {
+                    "type": "string",
+                    "description": "Nombre del paciente para buscar (opcional).",
+                },
+                "phone": {
+                    "type": "string",
+                    "description": "Telefono directo (opcional si pasas patient_id o patient_name).",
+                },
+            },
+            "required": ["tipo"],
+        },
+    },
     # -------------------------------------------------------
     # N+1. Acción Masiva (herramienta Jarvis-style — reemplaza enviar_plantilla_masiva)
     # -------------------------------------------------------
@@ -6995,6 +7031,124 @@ async def _enviar_plantilla(args: Dict, tenant_id: int, user_role: str) -> str:
         return f"Error: {str(e)[:200]}"
 
 
+def _fill_instruction_name(text: str, first_name: str, full_name: str) -> str:
+    """Reemplaza placeholders de nombre en una instruccion para que NO salga crudo.
+    Cubre {{nombre_paciente}}/{{nombre}}/{{first_name}}/{{paciente}} y los de corchetes
+    [Nombre]/[nombre_paciente]/[Paciente]."""
+    if not text:
+        return text
+    import re as _re
+    out = text
+    for k in ("nombre_paciente", "nombre", "first_name"):
+        out = out.replace("{{" + k + "}}", first_name or "")
+    out = out.replace("{{paciente}}", full_name or first_name or "")
+    out = _re.sub(r"\[\s*nombre(?:_paciente)?\s*\]", first_name or "", out, flags=_re.IGNORECASE)
+    out = _re.sub(r"\[\s*paciente\s*\]", full_name or first_name or "", out, flags=_re.IGNORECASE)
+    return out
+
+
+async def _enviar_instrucciones_tratamiento(args: Dict, tenant_id: int, user_role: str) -> str:
+    """Enviar a un paciente las instrucciones pre/post CARGADAS en un tratamiento (no una plantilla HSM).
+    Reusa el formateo del envio automatico (_format_pre/post_instructions) y el envio multicanal de Nova
+    (_enviar_mensaje), completando el nombre del paciente."""
+    if user_role not in ("ceo", "secretary", "professional"):
+        return _role_error("enviar_instrucciones_tratamiento", ["ceo", "secretary", "professional"])
+
+    tipo = (args.get("tipo") or "post").strip().lower()
+    if tipo not in ("pre", "post"):
+        tipo = "post"
+
+    # 1. Resolver el tratamiento (por codigo o nombre)
+    t_code = (args.get("treatment_code") or "").strip()
+    t_name_in = (args.get("treatment_name") or "").strip()
+    trow = None
+    if t_code:
+        trow = await db.pool.fetchrow(
+            "SELECT code, name, pre_instructions, post_instructions FROM treatment_types "
+            "WHERE tenant_id = $1 AND code = $2 AND is_active = true",
+            tenant_id, t_code,
+        )
+    elif t_name_in:
+        trow = await db.pool.fetchrow(
+            "SELECT code, name, pre_instructions, post_instructions FROM treatment_types "
+            "WHERE tenant_id = $1 AND is_active = true AND name ILIKE $2 ORDER BY name LIMIT 1",
+            tenant_id, f"%{t_name_in}%",
+        )
+    else:
+        return "Necesito el tratamiento (treatment_code o treatment_name) cuyas instrucciones querés enviar."
+    if not trow:
+        return "No encontré ese tratamiento. Usá listar_tratamientos para ver los códigos/nombres."
+
+    # 2. Cargar y formatear las instrucciones (mismo formateo que el envio automatico)
+    from jobs.playbook_executor import (
+        _parse_jsonb_field,
+        _format_pre_instructions,
+        _format_post_instructions,
+    )
+    field = "pre_instructions" if tipo == "pre" else "post_instructions"
+    instr = _parse_jsonb_field(trow[field])
+    if not instr:
+        return f"El tratamiento '{trow['name']}' no tiene instrucciones {tipo} cargadas."
+    treatment_name = trow["name"]
+    if tipo == "pre":
+        if isinstance(instr, dict):
+            bubbles = _format_pre_instructions(instr, treatment_name)
+        else:
+            # Formato lista o texto plano: extraer SOLO el contenido cargado, sin inventar nada.
+            _txt = ""
+            if isinstance(instr, list) and instr:
+                _e = instr[0]
+                _txt = (_e.get("text") or _e.get("content") or "") if isinstance(_e, dict) else str(_e)
+            elif isinstance(instr, str):
+                _txt = instr
+            bubbles = (
+                [f"Te dejo las instrucciones pre-tratamiento para {treatment_name}:", _txt]
+                if _txt and _txt.strip()
+                else []
+            )
+    else:
+        bubbles = _format_post_instructions(instr, treatment_name)
+    bubbles = [b for b in (bubbles or []) if b and str(b).strip()]
+    if not bubbles:
+        return f"El tratamiento '{treatment_name}' tiene instrucciones {tipo} pero quedaron vacías al armarlas."
+
+    # 3. Resolver el paciente (para completar el nombre)
+    patient = None
+    if args.get("patient_id"):
+        patient = await db.pool.fetchrow(
+            "SELECT id, first_name, last_name FROM patients WHERE id = $1 AND tenant_id = $2",
+            int(args["patient_id"]), tenant_id,
+        )
+    elif args.get("patient_name"):
+        patient = await db.pool.fetchrow(
+            "SELECT id, first_name, last_name FROM patients WHERE tenant_id = $1 AND status = 'active' "
+            "AND (first_name ILIKE $2 OR last_name ILIKE $2 OR (first_name || ' ' || COALESCE(last_name,'')) ILIKE $2) "
+            "ORDER BY updated_at DESC LIMIT 1",
+            tenant_id, f"%{args['patient_name']}%",
+        )
+    elif args.get("phone"):
+        patient = await db.pool.fetchrow(
+            "SELECT id, first_name, last_name FROM patients WHERE phone_number = $1 AND tenant_id = $2",
+            args["phone"], tenant_id,
+        )
+    if not patient:
+        return "No encontré al paciente. Decime el nombre, ID o teléfono (o usá buscar_paciente primero)."
+
+    first = (patient["first_name"] or "").strip()
+    full = f"{first} {patient['last_name'] or ''}".strip()
+
+    # 4. Completar el nombre en cada burbuja y unirlas en un solo mensaje
+    message = "\n\n".join(_fill_instruction_name(b, first, full) for b in bubbles)
+
+    # 5. Enviar reusando el envio multicanal de Nova (WhatsApp/IG/FB + persistencia en chat_messages)
+    send_result = await _enviar_mensaje(
+        {"patient_id": patient["id"], "message": message},
+        tenant_id, user_role,
+    )
+    tipo_label = "pre-tratamiento" if tipo == "pre" else "post-tratamiento"
+    return f"Instrucciones {tipo_label} de '{treatment_name}' → {send_result}"
+
+
 def _describe_filters(args: Dict) -> str:
     """Build a human-readable description of applied filters."""
     parts = []
@@ -8139,6 +8293,8 @@ async def execute_nova_tool(
             return await _listar_plantillas(tenant_id)
         elif name == "enviar_plantilla":
             return await _enviar_plantilla(args, tenant_id, user_role)
+        elif name == "enviar_instrucciones_tratamiento":
+            return await _enviar_instrucciones_tratamiento(args, tenant_id, user_role)
         elif name == "enviar_plantilla_masiva":
             # Alias: redirect to accion_masiva with accion="plantilla"
             args.setdefault("accion", "plantilla")
