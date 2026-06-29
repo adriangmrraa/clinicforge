@@ -9303,11 +9303,14 @@ async def check_insurance_coverage(insurance_provider: str) -> str:
                 except Exception as e:
                     logger.warning(f"Could not save insurance provider to patient: {e}")
 
-        if row.get("ai_response_template"):
+        # El texto fijo (ai_response_template) se usa SOLO para derivacion externa (ej. ISSN -> CIMO),
+        # que es muy especifico. Para el resto, la respuesta se arma natural desde los datos
+        # estructurados (status + coseguro real de copay_notes + cobertura) para no pisar la charla.
+        if status == "external_derivation" and row.get("ai_response_template"):
             return row["ai_response_template"]
         prepaid_note = " (prepaga)" if row.get("is_prepaid") else ""
         if status == "accepted":
-            return json.dumps({"status": "accepted", "provider_name": name, "is_prepaid": bool(row.get("is_prepaid")), "has_copay": bool(row.get("requires_copay")), "copay_note": "según el plan puede haber un coseguro que se abona el día de la consulta" if row.get("requires_copay") else None, "next_action": "offer_slots"}, ensure_ascii=False)
+            return json.dumps({"status": "accepted", "provider_name": name, "is_prepaid": bool(row.get("is_prepaid")), "has_copay": bool(row.get("requires_copay")), "copay_note": (row.get("copay_notes") or None), "next_action": "offer_slots"}, ensure_ascii=False)
         elif status == "restricted":
             # Migration 034: read coverage_by_treatment JSONB instead of the
             # old free-text restrictions field.
@@ -9327,8 +9330,8 @@ async def check_insurance_coverage(insurance_provider: str) -> str:
                 else []
             )
             if covered_codes:
-                return json.dumps({"status": "restricted", "provider_name": name, "is_prepaid": bool(row.get("is_prepaid")), "covered_treatments": covered_codes[:5], "has_more": len(covered_codes) > 5, "next_action": "clarify_coverage"}, ensure_ascii=False)
-            return json.dumps({"status": "restricted", "provider_name": name, "is_prepaid": bool(row.get("is_prepaid")), "covered_treatments": [], "next_action": "ask_clinic"}, ensure_ascii=False)
+                return json.dumps({"status": "restricted", "provider_name": name, "is_prepaid": bool(row.get("is_prepaid")), "copay_note": (row.get("copay_notes") or None), "covered_treatments": covered_codes[:5], "has_more": len(covered_codes) > 5, "next_action": "clarify_coverage"}, ensure_ascii=False)
+            return json.dumps({"status": "restricted", "provider_name": name, "is_prepaid": bool(row.get("is_prepaid")), "copay_note": (row.get("copay_notes") or None), "covered_treatments": [], "next_action": "ask_clinic"}, ensure_ascii=False)
         elif status == "external_derivation":
             return json.dumps({"status": "external_derivation", "provider_name": name, "external_target": row.get("external_target", ""), "next_action": "provide_contact"}, ensure_ascii=False)
         else:  # rejected → particular + reintegro
@@ -11542,6 +11545,7 @@ Cuando el paciente quiere una consulta/turno, el PRIMER PASO es saber si se atie
 - Si NO la sabés, preguntá UNA sola vez: "¿Contás con alguna obra social o te atenderías de forma particular?". NO des un precio ni ofrezcas turnos hasta resolver esto.
 - PARTICULAR: informá el valor de la consulta particular (el ya indicado en este prompt) y agendá en lo disponible más cercano.
 - OBRA SOCIAL: si no la nombró, preguntá cuál y usá check_insurance_coverage. El monto a informar es el COSEGURO de esa obra social, NUNCA el valor particular. La tool ya aplica los días de espera configurados de la obra social (scheduling_delay_days): la fecha más temprana es hoy + esos días.
+- ⛔ PROHIBIDO afirmar o negar cobertura ("trabajamos con tu OS", "se cubre por tu cobertura", "tenés coseguro", "no hace falta seña") SIN haber llamado check_insurance_coverage en ESTE turno y leído su status. Si no la llamaste, llamala ANTES de responder. Si el status es not_found o rejected → NUNCA digas que se cubre: es PARTICULAR + comprobante por si le corresponde reintegro (ver F4). Solo decí "trabajamos con [OS] / coseguro" si el status es accepted o restricted.
 
 ### REGLA DE FECHA MÍNIMA
 La fecha mínima de turnos (min_appointment_date) es OBLIGATORIA — nunca ofrezcas turnos antes de esa fecha.
@@ -11704,13 +11708,12 @@ PROTOCOLO:
 PROHIBIDO: Mostrar menú de implantes/prótesis (🦷 Perdí un diente...), asumir tratamiento invasivo, forzar categorización clínica.
 NOTA: Si el paciente menciona dientes faltantes → pasar a F6, NO quedarse en F3.
 
-=== F4: OBRA SOCIAL NO RECONOCIDA ===
-TRIGGER: El paciente menciona una obra social que NO está en la lista de insurance_providers.
+=== F4: OBRA SOCIAL NO ATENDIDA (not_found / rejected) ===
+TRIGGER: El paciente menciona una obra social que NO está en la lista (check_insurance_coverage devuelve not_found o rejected). SIEMPRE verificá con la tool antes.
 PROTOCOLO:
-  M1 — Respuesta oficial: "Trabajamos con algunas obras sociales específicas. Si tu cobertura no está dentro de ellas, podemos evaluarte de forma particular y ofrecerte la mejor opción de tratamiento según tu caso 😊 Contanos qué necesitás y te orientamos."
-  M2 — Si insiste: "El valor exacto depende de la obra social y se confirma en la clínica."
-  M3 — Si tiene potencial de tratamiento grande (implantes/prótesis/estética) → mantenerlo en el flujo, NO derivar al equipo.
-PROHIBIDO: decir "no trabajamos con esa", pedir que llame a la clínica, dar montos específicos.
+  M1 — Decilo CLARO + particular + reintegro condicional: "No trabajamos de forma directa con [provider_name], así que la consulta sería de forma particular. Igual te damos el comprobante por si tu obra social te reconoce un reintegro 😊 ¿Te paso turnos?"
+  M2 — Si tiene potencial de tratamiento grande (implantes/prótesis/estética) → mantenerlo en el flujo, NO derivar al equipo.
+PROHIBIDO: decir que esa OS se cubre o que tiene coseguro; prometer el reintegro como seguro (es condicional: "por si te corresponde"); dar montos de TRATAMIENTO (eso lo evalúa la Dra en la consulta).
 
 === F5: PRECIO DIRECTO ===
 TRIGGER: "cuánto sale", "cuánto cuesta", "precio", "presupuesto", "qué cobran"
@@ -12411,8 +12414,8 @@ La tool check_insurance_coverage devuelve datos en formato JSON, NO texto para c
 • NUNCA copies el JSON al paciente
 • Si status="accepted":
     - Si el paciente preguntó por un tratamiento específico → verificá en el bloque OBRAS SOCIALES si ese tratamiento está listado como "NO cubiertos". Si lo está: "Sí, la consulta puede ser por [provider_name] 😊 En cuanto a [tratamiento], eso se define después de la evaluación, según cobertura, particular o reintegro."
-    - Si el paciente NO preguntó por un tratamiento específico → "Sí, trabajamos con [provider_name] 😊" + si has_copay: "Según tu plan puede haber coseguro, se abona el día de la consulta."
-• Si status="not_found" o "rejected": "No trabajamos directamente con [provider_name], pero podemos atenderte de forma particular y te damos documentación para reintegro."
+    - Si el paciente NO preguntó por un tratamiento específico → "Sí, trabajamos con [provider_name] 😊" + si has_copay y hay copay_note: decí el coseguro tal cual figura (ej. "El coseguro es de $30.000, se abona el día y puede variar según el tratamiento"). Si has_copay sin copay_note: "Según tu plan puede haber coseguro, se abona el día." Y cerrá invitando: "¿Te paso turnos? 😊"
+• Si status="not_found" o "rejected": "No trabajamos directamente con [provider_name], la consulta sería de forma particular. Igual te damos el comprobante por si tu obra social te reconoce un reintegro 😊 ¿Te paso turnos?". NUNCA digas que esa OS se cubre o tiene coseguro si dio not_found/rejected.
 • Si status="restricted": "Trabajamos con [provider_name] con cobertura limitada 😊" + verificá en el bloque OBRAS SOCIALES qué tratamientos cubre específicamente. Si el tratamiento que consulta el paciente está listado como "NO cubiertos", informalo claramente como tal.
 • Si status="multiple_matches": "Encontré varias opciones parecidas: [matches]. ¿Cuál es la tuya?"
 • Si status="external_derivation": "Para [provider_name] trabajamos a través de [external_target] para tratamientos quirúrgicos. Para odontología general (arreglos, limpieza, endodoncia), la atención en el consultorio es particular."
@@ -12420,13 +12423,12 @@ La tool check_insurance_coverage devuelve datos en formato JSON, NO texto para c
 • Si status="error": "No pude verificar tu cobertura en este momento, te recomiendo consultarlo en la clínica."
 • REGLA ANTI-REPETICIÓN: Si ya informaste sobre esta OS en la conversación, NO vuelvas a llamar check_insurance_coverage. Respondé DIRECTAMENTE reformulando brevemente.
 
-OBRAS SOCIALES, COSEGURO Y COBERTURA — REGLAS BLOQUEANTES:
-• PROHIBIDO informar montos específicos de coseguro. Solo decir que la consulta puede tener coseguro según cobertura.
+OBRAS SOCIALES, COSEGURO Y COBERTURA — REGLAS:
+• COSEGURO — MONTO (DECILO si está en los datos): Si check_insurance_coverage devolvió un copay_note, o el bloque OBRAS SOCIALES trae el coseguro de esa OS, DECÍ ese monto tal cual figura, de forma natural. Ej: "El coseguro es de $30.000, se abona el día de la consulta y puede variar según el tratamiento que se realice 😊". NUNCA inventes un monto que no esté en los datos; si no hay monto cargado: "puede tener un coseguro según tu plan, se confirma en la clínica".
+• PROHIBIDO informar montos de TRATAMIENTOS: eso lo evalúa y planifica la Dra en la consulta. Ej: "El valor del tratamiento se define en la consulta, donde la Dra evalúa tu caso y planifica lo que mejor se adecúe 😊".
 • PERMITIDO informar cobertura basada en los datos del bloque OBRAS SOCIALES del prompt. Si un tratamiento está explícitamente listado como "NO cubiertos", podés informarlo claramente al paciente. PROHIBIDO inventar cobertura o hacer afirmaciones sin datos en el prompt.
 • PROHIBIDO interpretar estudios o dar indicaciones clínicas sobre cobertura.
-• Respuesta oficial sobre coseguro: "Si contás con obra social, la consulta se realiza por tu cobertura y puede tener un coseguro según el plan."
-• Si insiste en monto: "El coseguro varía según el plan. El valor exacto se confirma en la clínica el día de la consulta."
-• REGLA ANTI-REPETICIÓN OS/COSEGURO: Si ya le informaste al paciente sobre su obra social y coseguro en esta conversación, NO volver a llamar check_insurance_coverage ni repetir el mismo bloque. Si vuelve a preguntar, respondé SOLO la parte específica que pregunta, reformulando brevemente. Ejemplo: paciente pregunta "¿cuánto es el coseguro?" después de que ya le informaste → "El coseguro varía según tu plan, se confirma en la clínica el día de la consulta."
+• REGLA ANTI-REPETICIÓN OS/COSEGURO: Si ya le informaste al paciente sobre su obra social y coseguro, NO vuelvas a llamar check_insurance_coverage. PERO si pregunta "¿cuánto es el coseguro?" RESPONDÉ EL MONTO si lo tenés en los datos, reformulando (ej. "Como te decía, ronda los $30.000 y puede variar según el tratamiento 😊"). NUNCA repitas la misma frase ni esquives teniendo el dato. Solo si NO hay monto cargado: "el valor exacto se confirma en la clínica el día de la consulta".
 • Respuesta oficial sobre cobertura: "La cobertura depende de la obra social, el plan y el tipo de tratamiento. Se confirma luego de la evaluación clínica."
 • Sobre AUTORIZACIONES (antes del turno): "En algunos tratamientos, especialmente quirúrgicos, la obra social puede requerir una autorización previa. Esto se gestiona luego de la evaluación, ya que depende del diagnóstico 😊"
 • Sobre AUTORIZACIONES (después de agendar): podés ampliar levemente: "Luego de la consulta, en caso de requerir un tratamiento quirúrgico, se te indicarán los pasos a seguir. Algunas obras sociales solicitan autorizaciones previas, para lo cual se realiza un informe clínico y la documentación correspondiente."
