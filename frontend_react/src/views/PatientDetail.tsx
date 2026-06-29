@@ -743,11 +743,20 @@ export default function PatientDetail() {
             ) : (
               <div className="space-y-4">
                 {records.map((record) => {
-                  // Records generated from odontogram saves get a specialized card
-                  const isOdontogramRecord =
+                  // La tarjeta de odontograma se usa SOLO si el registro NACIO de un cambio de
+                  // odontograma (record_type='Odontograma', que setea modificar_odontograma).
+                  // Las evoluciones de TEXTO heredan el ultimo odontogram_data (para no perder el
+                  // grafico) pero conservan su record_type -> deben mostrar el texto dictado
+                  // (Motivo/Notas/Plan), NO "Odontograma actualizado".
+                  const isOdontogramOrigin = (record.record_type || '').toLowerCase() === 'odontograma';
+                  // Fallback para registros legacy sin record_type: el diagnosis trae lineas de cambio de pieza.
+                  const diagnosisHasToothChanges = !!record.diagnosis &&
+                    /(^|\n)\s*(Pieza\s+\d+|Diente\s+\d+|\d+\s+\S.*(LINGUAL|VESTIBULAR|OCLUSAL|MESIAL|DISTAL|CARIES))/i.test(record.diagnosis);
+                  const hasOdontogramData =
                     record.odontogram_data &&
                     typeof record.odontogram_data === 'object' &&
                     Object.keys(record.odontogram_data).length > 0;
+                  const isOdontogramRecord = hasOdontogramData && (isOdontogramOrigin || diagnosisHasToothChanges);
 
                   if (isOdontogramRecord) return renderOdontogramCard(record);
 
