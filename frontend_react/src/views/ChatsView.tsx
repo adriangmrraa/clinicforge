@@ -45,6 +45,8 @@ interface ChatSession {
   last_derivhumano_at?: string;
   is_window_open?: boolean;
   last_user_message_time?: string;
+  agent_failed?: boolean;
+  last_agent_error_at?: string;
 }
 
 interface ChatMessage {
@@ -1190,6 +1192,18 @@ export default function ChatsView() {
         cardBorder: session.last_derivhumano_at ? 'border-l-4 border-orange-500' : '',
       };
     }
+    // BLINDAJE: el bot falló y todavía no lo tomó un humano → alerta ROJA
+    if (session.agent_failed) {
+      return {
+        badge: (
+          <span className="flex items-center gap-1 text-xs font-medium text-red-400">
+            <AlertCircle size={12} className="text-red-500" /> {t('chats.agent_failed')}
+          </span>
+        ),
+        avatarBg: 'bg-red-600',
+        cardBorder: 'border-l-4 border-red-600',
+      };
+    }
     return {
       badge: (
         <span className="flex items-center gap-1 text-xs text-green-600">
@@ -1355,7 +1369,7 @@ export default function ChatsView() {
             mergedList.map(row => {
               if (row.type === 'ycloud') {
                 const session = row.session;
-                const { avatarBg } = getStatusConfig(session);
+                const { avatarBg, cardBorder } = getStatusConfig(session);
                 const platform = getPlatformConfig('whatsapp');
                 const isSelected = selectedSession?.phone_number === session.phone_number;
                 return (
@@ -1363,7 +1377,7 @@ export default function ChatsView() {
                     key={`ycloud-${session.phone_number}`}
                     onClick={() => { setSelectedSession(session); setSelectedChatwoot(null); }}
                     className={`px-4 py-3 border-b border-white/[0.06] cursor-pointer transition-all relative border-l-4
-                      ${isSelected ? `bg-white/[0.08] ${platform.borderColor}` : `hover:bg-white/[0.04] border-transparent`}
+                      ${isSelected ? `bg-white/[0.08] ${platform.borderColor}` : `hover:bg-white/[0.04] ${cardBorder || 'border-transparent'}`}
                     `}
                   >
                     <div className="flex items-center gap-3">
@@ -1388,6 +1402,11 @@ export default function ChatsView() {
                                 ) : (
                                   <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/20 shrink-0">
                                     {t('chats.badge_lead')}
+                                  </span>
+                                )}
+                                {session.agent_failed && (
+                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-red-500/15 text-red-400 border border-red-500/30 shrink-0 flex items-center gap-0.5">
+                                    <AlertCircle size={9} /> {t('chats.agent_failed')}
                                   </span>
                                 )}
                               </span>

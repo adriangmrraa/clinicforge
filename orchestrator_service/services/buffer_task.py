@@ -768,6 +768,123 @@ async def _notify_blocked_contact_email(tenant_id, phone, blocked, messages, poo
         logger.warning(f"notify_blocked_contact_email fail (no bloqueante): {e}")
 
 
+async def _flag_agent_failure_and_alert(pool, tenant_id, conversation_id, phone, row, reason):
+    """Blindaje "esto no puede pasar": cuando el agente cae y el paciente quedaria
+    en silencio total, (1) marcamos la conversacion (bandera ROJA en el panel de Chats)
+    y (2) avisamos a la clinica por email (igual que una derivacion), con rate-limit de
+    30 min por conversacion para no spamear si falla varias veces seguidas.
+    Todo best-effort: NUNCA debe romper el flujo del mensaje."""
+    import os
+    from datetime import datetime, timezone, timedelta
+
+    # 1) estado previo (para el rate-limit del email)
+    prev_at = None
+    try:
+        prev = await pool.fetchrow(
+            "SELECT last_agent_error_at FROM chat_conversations WHERE id = $1 AND tenant_id = $2",
+            conversation_id,
+            tenant_id,
+        )
+        prev_at = prev["last_agent_error_at"] if prev else None
+    except Exception as e:
+        logger.warning(f"agent-failure: no pude leer estado previo: {e}")
+
+    # 2) marcar la conversacion (alimenta la marca roja del panel de Chats)
+    try:
+        await pool.execute(
+            "UPDATE chat_conversations SET last_agent_error_at = NOW(), agent_error_reason = $3 "
+            "WHERE id = $1 AND tenant_id = $2",
+            conversation_id,
+            tenant_id,
+            (reason or "")[:300],
+        )
+    except Exception as e:
+        logger.warning(f"agent-failure: no pude marcar la conversacion: {e}")
+
+    # 3) email a la clinica con rate-limit
+    now = datetime.now(timezone.utc)
+    if prev_at is not None:
+        prev_aware = prev_at if prev_at.tzinfo else prev_at.replace(tzinfo=timezone.utc)
+        if (now - prev_aware) < timedelta(minutes=30):
+            logger.info("agent-failure: email throttled (<30min desde el ultimo aviso)")
+            return
+
+    # destinatarios: derivation_email del tenant + profesionales activos (igual que derivhumano)
+    emails = set()
+    clinic_name = "tu clinica"
+    try:
+        trow = await pool.fetchrow(
+            "SELECT derivation_email, clinic_name FROM tenants WHERE id = $1", tenant_id
+        )
+        if trow:
+            clinic_name = trow.get("clinic_name") or clinic_name
+            if trow.get("derivation_email"):
+                emails.add(trow["derivation_email"].strip())
+        prof_rows = await pool.fetch(
+            """SELECT p.email FROM professionals p
+               INNER JOIN users u ON p.user_id = u.id AND u.status = 'active'
+               WHERE p.tenant_id = $1 AND p.is_active = true
+                 AND p.email IS NOT NULL AND p.email != ''""",
+            tenant_id,
+        )
+        for pr in prof_rows:
+            if pr["email"] and pr["email"].strip():
+                emails.add(pr["email"].strip())
+    except Exception as e:
+        logger.warning(f"agent-failure: no pude resolver destinatarios: {e}")
+    if not emails:
+        fb = os.getenv("NOTIFICATIONS_EMAIL")
+        if fb:
+            emails.add(fb)
+    if not emails:
+        logger.warning(
+            "agent-failure: sin destinatarios de email; la conversacion quedo marcada igual"
+        )
+        return
+
+    # nombre del paciente (best-effort)
+    patient_name = phone or "Paciente"
+    try:
+        linked_id = row.get("linked_patient_id") if row else None
+        if linked_id:
+            prow = await pool.fetchrow(
+                "SELECT first_name, last_name FROM patients WHERE id = $1 AND tenant_id = $2",
+                linked_id,
+                tenant_id,
+            )
+        else:
+            prow = await pool.fetchrow(
+                "SELECT first_name, last_name FROM patients "
+                "WHERE tenant_id = $1 AND phone_number = $2 ORDER BY id LIMIT 1",
+                tenant_id,
+                phone,
+            )
+        if prow:
+            nm = " ".join(filter(None, [prow.get("first_name"), prow.get("last_name")])).strip()
+            if nm:
+                patient_name = nm
+    except Exception:
+        pass
+
+    # enviar (email_service es sync -> to_thread para no bloquear el event loop)
+    try:
+        import asyncio as _asyncio
+        from email_service import email_service as _email_service
+
+        await _asyncio.to_thread(
+            _email_service.send_agent_failure_email,
+            list(emails),
+            patient_name,
+            phone,
+            clinic_name,
+            (reason or "")[:300],
+            now.strftime("%d/%m/%Y %H:%M UTC"),
+        )
+        logger.info(f"📧 agent-failure: email enviado a {len(emails)} destinatario(s)")
+    except Exception as e:
+        logger.warning(f"agent-failure: email fallo (non-blocking): {e}")
+
+
 async def process_buffer_task(
     tenant_id: int,
     conversation_id: str,
@@ -4004,12 +4121,30 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
             response_text,
         ).strip()
 
-    # --- SUPPRESS ERROR FALLBACK: don't send internal error messages to patients ---
+    # --- AGENT FAILURE GUARD (blindaje "esto no puede pasar") ---
+    # Si el motor cayó y quedó el fallback de error, NO lo mandamos como mensaje
+    # robótico al paciente, PERO tampoco lo dejamos en silencio invisible:
+    #   1) marcamos la conversación (bandera ROJA en el panel de Chats)
+    #   2) avisamos a la clínica por email (igual que una derivación, con rate-limit)
+    # Así un humano toma la conversación enseguida en vez de que el paciente quede colgado.
     _ERROR_FALLBACKS = (
         "Disculpas, estoy experimentando intermitencias",
     )
     if response_text and any(response_text.startswith(fb) for fb in _ERROR_FALLBACKS):
-        logger.warning(f"🔇 Suppressing error fallback message (not sending to patient): {response_text[:80]}")
+        logger.warning(
+            f"⚠️ Agent failure detected — flag chat + alert clinic (no silent drop): {response_text[:80]}"
+        )
+        try:
+            await _flag_agent_failure_and_alert(
+                pool=pool,
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                phone=external_user_id,
+                row=row,
+                reason=response_text[:300],
+            )
+        except Exception as _flag_err:
+            logger.warning(f"agent-failure flag/alert failed (non-blocking): {_flag_err}")
         response_text = ""
 
     # AG-12: nunca enviar el placeholder interno "[Sin respuesta]" al paciente.
@@ -4017,6 +4152,19 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
     if response_text and response_text.strip() == "[Sin respuesta]":
         logger.warning("🔇 Suppressing placeholder '[Sin respuesta]' — not sending to patient")
         response_text = ""
+
+    # --- BLINDAJE: limpiar la bandera de fallo si el bot respondió bien ---
+    # Si llegamos hasta acá con una respuesta real (los fallbacks de error ya se
+    # vaciaron arriba), el agente se recuperó → sacamos la marca roja del panel.
+    if response_text:
+        try:
+            await pool.execute(
+                "UPDATE chat_conversations SET last_agent_error_at = NULL, agent_error_reason = NULL "
+                "WHERE id = $1 AND last_agent_error_at IS NOT NULL",
+                conversation_id,
+            )
+        except Exception:
+            pass
 
     # --- SEND RESPONSE ---
     from response_sender import ResponseSender

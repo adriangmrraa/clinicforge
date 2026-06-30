@@ -545,6 +545,7 @@
   "chats": {
     "badge_patient": "Patient",
     "badge_lead": "Lead",
+    "agent_failed": "Bot failed",
     "linked_as": "→ {name}",
     "title": "Conversations",
     "select_clinic": "Select clinic",

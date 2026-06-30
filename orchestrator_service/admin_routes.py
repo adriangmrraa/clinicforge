@@ -1691,6 +1691,7 @@ async def get_chat_sessions(
                         p.id as patient_id,
                         p.first_name || ' ' || COALESCE(p.last_name, '') as patient_name,
                         cc.linked_patient_id,
+                        cc.last_agent_error_at,
                         linked_p.first_name || ' ' || COALESCE(linked_p.last_name, '') as linked_patient_name,
                         cm.content as last_message,
                         cm.created_at as last_message_time,
@@ -1756,7 +1757,8 @@ async def get_chat_sessions(
                         urgency.urgency_level,
                         cc.last_read_at,
                         cc.last_user_message_at as conv_last_user_msg_at,
-                        cc.id as conversation_id
+                        cc.id as conversation_id,
+                        cc.last_agent_error_at
                     FROM patients p
                     LEFT JOIN chat_conversations cc ON cc.tenant_id = p.tenant_id AND cc.channel = 'whatsapp' AND replace(regexp_replace(cc.external_user_id, '\D', '', 'g'), '549', '54') = replace(regexp_replace(p.phone_number, '[^0-9]', '', 'g'), '549', '54')
                     LEFT JOIN patients linked_p ON linked_p.id = cc.linked_patient_id AND linked_p.tenant_id = p.tenant_id
@@ -1922,6 +1924,7 @@ async def get_chat_sessions(
                 if row["human_override_until"]
                 else None,
                 "urgency_level": row["urgency_level"],
+                "agent_failed": bool(row.get("last_agent_error_at")),
                 "last_derivhumano_at": row["last_derivhumano_at"].isoformat()
                 if row["last_derivhumano_at"]
                 else None,

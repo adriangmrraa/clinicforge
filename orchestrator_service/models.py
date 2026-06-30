@@ -183,6 +183,10 @@ class ChatConversation(Base):
     last_user_message_at = Column(DateTime(timezone=True))
     last_derivhumano_at = Column(DateTime(timezone=True))
     no_followup = Column(Boolean, nullable=False, server_default="false")
+    # Blindaje "esto no puede pasar": fallo del agente -> marca roja en Chats + alerta clinica.
+    # last_agent_error_at NULL = sin fallo / recuperado.
+    last_agent_error_at = Column(DateTime(timezone=True), nullable=True)
+    agent_error_reason = Column(Text, nullable=True)
     last_automation_message_at = Column(DateTime(timezone=True))
     recovery_touch_count = Column(Integer, nullable=False, server_default="0")
     last_recovery_at = Column(DateTime(timezone=True), nullable=True)

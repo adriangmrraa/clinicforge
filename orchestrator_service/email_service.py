@@ -512,6 +512,106 @@ class EmailService:
             logger.error(f"Error sending payment verification failed email: {e}")
             return False
 
+    def send_agent_failure_email(
+        self,
+        to_emails: list,
+        patient_name: str,
+        phone: str,
+        clinic_name: str,
+        failure_reason: str = "",
+        occurred_at: str = "",
+    ) -> bool:
+        """
+        Alerta a la clinica que el asistente (bot) FALLO al responderle a un paciente
+        y que la conversacion quedo marcada en ROJO para atencion humana en el panel
+        de Chats. Se envia a derivation_email + profesionales activos (igual que una
+        derivacion). Best-effort: nunca debe romper el flujo del mensaje.
+        """
+        if not self.smtp_host or not self.smtp_user:
+            logger.warning("SMTP not configured. Skipping agent failure email.")
+            return False
+        clean = [e.strip() for e in (to_emails or []) if e and e.strip()]
+        if not clean:
+            return False
+
+        phone_digits = (phone or "").replace("+", "").replace(" ", "").replace("-", "")
+        wa_link = f"https://wa.me/{phone_digits}"
+        safe_reason = _html.escape(failure_reason or "")
+        detail_block = ""
+        if safe_reason:
+            detail_block = (
+                '<div style="background: rgba(255,255,255,0.03); padding: 12px 16px; '
+                'border-radius: 8px; margin-bottom: 16px;">'
+                '<h3 style="color: #9ca3af; margin: 0 0 8px; font-size:12px;">Detalle técnico</h3>'
+                '<p style="color: #6b7280; margin: 0; font-size: 12px; font-family: monospace;">'
+                + safe_reason
+                + "</p></div>"
+            )
+
+        html_content = f"""
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; background: #0d1117; color: #e6edf3; padding: 24px; border-radius: 12px;">
+            <div style="background: linear-gradient(135deg, #b91c1c, #dc2626); padding: 20px; border-radius: 8px; text-align: center; margin-bottom: 24px;">
+                <h1 style="color: white; margin: 0; font-size: 20px;">⚠️ El asistente no pudo responder</h1>
+                <p style="color: rgba(255,255,255,0.8); margin: 8px 0 0; font-size: 14px;">{clinic_name}</p>
+            </div>
+
+            <div style="background: rgba(255,255,255,0.05); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+                <p style="color: #e6edf3; margin: 0;">
+                    Un paciente le escribió y el asistente tuvo un problema técnico al responderle.
+                    <strong style="color:#f87171;">La conversación quedó marcada en rojo en el panel de Chats</strong>
+                    para que alguien del equipo la tome cuanto antes.
+                </p>
+            </div>
+
+            <div style="background: rgba(255,255,255,0.05); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+                <h3 style="color: #60a5fa; margin: 0 0 12px;">Datos del paciente</h3>
+                <table style="width: 100%; color: #e6edf3;">
+                    <tr><td style="padding: 4px 8px; color: #9ca3af;">Paciente</td><td style="padding: 4px 8px;">{patient_name}</td></tr>
+                    <tr><td style="padding: 4px 8px; color: #9ca3af;">Teléfono</td><td style="padding: 4px 8px;">{phone}</td></tr>
+                    <tr><td style="padding: 4px 8px; color: #9ca3af;">Cuándo</td><td style="padding: 4px 8px;">{occurred_at or "recién"}</td></tr>
+                </table>
+            </div>
+            {detail_block}
+
+            <div style="text-align: center; margin-top: 20px;">
+                <a href="{wa_link}" style="background: #25D366; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: bold;">
+                    💬 Responderle al paciente
+                </a>
+            </div>
+
+            <p style="color: #6b7280; font-size: 12px; text-align: center; margin-top: 24px;">
+                Este aviso es automático. Revisá la conversación desde el panel de Chats
+                (aparece marcada en rojo) y respondé vos al paciente.
+            </p>
+        </div>
+        """
+
+        try:
+            msg = MIMEMultipart("alternative")
+            msg["Subject"] = f"⚠️ El asistente no pudo responder a {patient_name}"
+            msg["From"] = self.smtp_sender
+            msg["To"] = ", ".join(clean)
+            msg.attach(MIMEText(html_content, "html"))
+
+            if self.smtp_port == 465:
+                server = smtplib.SMTP_SSL(self.smtp_host, self.smtp_port)
+            else:
+                server = smtplib.SMTP(self.smtp_host, self.smtp_port)
+                server.starttls()
+
+            server.login(self.smtp_user, self.smtp_pass)
+            server.sendmail(self.smtp_sender, clean, msg.as_string())
+            server.quit()
+
+            logger.info(
+                f"📧 Agent failure email sent to {len(clean)} recipient(s) for {patient_name}"
+            )
+            return True
+
+        except Exception as e:
+            logger.error(f"Error sending agent failure email: {e}")
+            return False
+
     def send_blocked_contact_notification(
         self,
         to_email: str,
