@@ -20,6 +20,7 @@ import {
   Zap,
   TrendingUp,
   Wallet,
+  Ban,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTranslation } from '../context/LanguageContext';
@@ -126,6 +127,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle, onCloseMo
     { id: 'agenda', labelKey: 'nav.agenda' as const, icon: <Calendar size={17} />, path: '/agenda', roles: ['ceo', 'professional', 'secretary'], hint: 'Agenda interactiva de turnos por profesional y sede' },
     { id: 'patients', labelKey: 'nav.patients' as const, icon: <Users size={17} />, path: '/pacientes', roles: ['ceo', 'professional', 'secretary'], hint: 'Base de pacientes con ficha clinica, odontograma y anamnesis' },
     { id: 'chats', labelKey: 'nav.chats' as const, icon: <MessageSquare size={17} />, path: '/chats', roles: ['ceo', 'professional', 'secretary'], hint: 'Conversaciones de WhatsApp, Instagram y Facebook en un solo lugar' },
+    { id: 'blocked', labelKey: 'nav.blocked' as const, icon: <Ban size={17} />, path: '/bloqueados', roles: ['ceo', 'secretary'], hint: 'Numeros que el agente no debe contestar (labs, proveedores, spam)' },
     { id: 'approvals', labelKey: 'nav.staff' as const, icon: <ShieldCheck size={17} />, path: '/aprobaciones', roles: ['ceo'], hint: 'Aprobar o suspender acceso de profesionales y secretarias' },
     { id: 'tenants', labelKey: 'nav.clinics' as const, icon: <Stethoscope size={17} />, path: '/sedes', roles: ['ceo'], hint: 'Configurar sedes, horarios por dia, direcciones y datos bancarios' },
     { id: 'analytics', labelKey: 'nav.strategy' as const, icon: <BarChart3 size={17} />, path: '/analytics/professionals', roles: ['ceo', 'secretary'], hint: 'Rendimiento de cada profesional: turnos, retención, facturación' },

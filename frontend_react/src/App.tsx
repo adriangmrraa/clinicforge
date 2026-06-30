@@ -28,6 +28,7 @@ const PrivacyTermsView = lazy(() => import('./views/PrivacyTermsView'));
 const AnamnesisPublicView = lazy(() => import('./views/AnamnesisPublicView'));
 const FinancialCommandCenterView = lazy(() => import('./views/FinancialCommandCenterView'));
 const ProfessionalLiquidationsView = lazy(() => import('./views/ProfessionalLiquidationsView'));
+const BlockedContactsView = lazy(() => import('./views/BlockedContactsView'));
 
 const PageLoader = () => (
   <div className="flex items-center justify-center h-screen bg-[#06060e] text-white">
@@ -68,6 +69,11 @@ function App() {
                     <Route path="pacientes" element={<PatientsView />} />
                     <Route path="pacientes/:id" element={<PatientDetail />} />
                     <Route path="chats" element={<ChatsView />} />
+                    <Route path="bloqueados" element={
+                      <ProtectedRoute allowedRoles={['ceo', 'secretary']}>
+                        <BlockedContactsView />
+                      </ProtectedRoute>
+                    } />
                     <Route path="profesionales" element={<Navigate to="/aprobaciones" replace />} />
                     <Route path="analytics/professionals" element={
                       <ProtectedRoute allowedRoles={['ceo', 'secretary']}>
