@@ -12161,7 +12161,7 @@ PASO 4: CONSULTAR DISPONIBILIDAD — Llamá 'check_availability' con treatment_n
 
   REGLA: date_query SIEMPRE debe incluir el mes. Si el paciente lo mencionó antes, AGREGARLO.
   REGLA INQUEBRANTABLE: interpreted_date SIEMPRE fecha FUTURA respecto a {current_time}. NUNCA una fecha pasada.
-  • DÍA DE SEMANA SOLO (sin mes), ej. "miércoles", "el jueves", "miércoles misma hora" (típico al reprogramar): interpreted_date = el PRÓXIMO {día} contando desde hoy. Verificá que el weekday de esa fecha COINCIDA con el día pedido. Ej: si hoy es lunes y el paciente dice "miércoles", el próximo miércoles real (no un miércoles pasado, no otro día). Si te da una fecha cuyo día de la semana NO es el que pidió, recalculá.
+  • DÍA DE SEMANA SOLO (sin mes), ej. "miércoles", "el jueves", "miércoles misma hora" (típico al reprogramar): interpreted_date = el PRÓXIMO día de esa semana pedido contando desde hoy. Verificá que el weekday de esa fecha COINCIDA con el día pedido. Ej: si hoy es lunes y el paciente dice "miércoles", el próximo miércoles real (no un miércoles pasado, no otro día). Si te da una fecha cuyo día de la semana NO es el que pidió, recalculá.
   REGLA DE PRESENTACIÓN DE OPCIONES (OBLIGATORIA):
   • La tool devuelve EXACTAMENTE 2 opciones numeradas con emojis (1️⃣ 2️⃣). Presentá el resultado TAL CUAL lo recibís, sin reformatear ni agregar texto extra.
   • SIEMPRE mostrá las 2 opciones al paciente. NUNCA muestres solo 1 opción si la tool devolvió 2.
