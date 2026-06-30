@@ -10670,6 +10670,7 @@ class BlockedContactIn(BaseModel):
     phone: str
     label: str
     behavior: str
+    contact_name: Optional[str] = None
     message_template: Optional[str] = None
     notify_email: bool = False
     cooldown_hours: int = 24
@@ -10707,7 +10708,7 @@ def _validate_blocked_contact(data: "BlockedContactIn") -> str:
 async def list_blocked_contacts(tenant_id: int = Depends(get_resolved_tenant_id)):
     rows = await db.pool.fetch(
         """
-        SELECT id, phone_digits, phone_display, label, behavior, message_template,
+        SELECT id, phone_digits, phone_display, contact_name, label, behavior, message_template,
                notify_email, cooldown_hours, last_autoreply_at, last_notified_at, note,
                is_active, created_at, updated_at
         FROM blocked_phone_numbers
@@ -10739,14 +10740,15 @@ async def create_blocked_contact(
     row = await db.pool.fetchrow(
         """
         INSERT INTO blocked_phone_numbers
-            (tenant_id, phone_digits, phone_display, label, behavior, message_template,
+            (tenant_id, phone_digits, phone_display, contact_name, label, behavior, message_template,
              notify_email, cooldown_hours, note, is_active, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW())
         RETURNING id
         """,
         tenant_id,
         digits,
         data.phone.strip(),
+        (data.contact_name or None),
         data.label,
         data.behavior,
         (data.message_template or None),
@@ -10781,13 +10783,14 @@ async def update_blocked_contact(
     result = await db.pool.execute(
         """
         UPDATE blocked_phone_numbers SET
-            phone_digits = $1, phone_display = $2, label = $3, behavior = $4,
-            message_template = $5, notify_email = $6, cooldown_hours = $7,
-            note = $8, is_active = $9, updated_at = NOW()
-        WHERE id = $10 AND tenant_id = $11
+            phone_digits = $1, phone_display = $2, contact_name = $3, label = $4, behavior = $5,
+            message_template = $6, notify_email = $7, cooldown_hours = $8,
+            note = $9, is_active = $10, updated_at = NOW()
+        WHERE id = $11 AND tenant_id = $12
         """,
         digits,
         data.phone.strip(),
+        (data.contact_name or None),
         data.label,
         data.behavior,
         (data.message_template or None),

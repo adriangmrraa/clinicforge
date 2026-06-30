@@ -7,6 +7,7 @@ interface BlockedContact {
   id: number;
   phone_digits: string;
   phone_display?: string | null;
+  contact_name?: string | null;
   label: string;
   behavior: 'SILENCIO' | 'MENSAJE';
   message_template?: string | null;
@@ -30,6 +31,7 @@ const LABELS: { value: string; es: string }[] = [
 interface FormState {
   id: number | null;
   phone: string;
+  contact_name: string;
   label: string;
   behavior: 'SILENCIO' | 'MENSAJE';
   message_template: string;
@@ -42,6 +44,7 @@ interface FormState {
 const EMPTY_FORM: FormState = {
   id: null,
   phone: '',
+  contact_name: '',
   label: 'laboratorio',
   behavior: 'MENSAJE',
   message_template: '',
@@ -89,6 +92,7 @@ export default function BlockedContactsView() {
     setForm({
       id: it.id,
       phone: it.phone_display || it.phone_digits,
+      contact_name: it.contact_name || '',
       label: it.label,
       behavior: it.behavior,
       message_template: it.message_template || '',
@@ -114,6 +118,7 @@ export default function BlockedContactsView() {
     setSaving(true);
     const payload = {
       phone: form.phone.trim(),
+      contact_name: form.contact_name.trim() || null,
       label: form.label,
       behavior: form.behavior,
       message_template: form.behavior === 'MENSAJE' ? form.message_template.trim() : null,
@@ -189,6 +194,7 @@ export default function BlockedContactsView() {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-white/[0.03] text-white/50 text-left">
+                <th className="px-4 py-3 font-medium">{t('blocked.colName')}</th>
                 <th className="px-4 py-3 font-medium">{t('blocked.colPhone')}</th>
                 <th className="px-4 py-3 font-medium">{t('blocked.colLabel')}</th>
                 <th className="px-4 py-3 font-medium">{t('blocked.colBehavior')}</th>
@@ -199,6 +205,14 @@ export default function BlockedContactsView() {
             <tbody>
               {items.map((it) => (
                 <tr key={it.id} className="border-t border-white/[0.06] hover:bg-white/[0.02]">
+                  <td className="px-4 py-3">
+                    {it.contact_name ? (
+                      <div className="text-white font-medium">{it.contact_name}</div>
+                    ) : (
+                      <span className="text-white/30">—</span>
+                    )}
+                    {it.note && <div className="text-xs text-white/40 mt-0.5">{it.note}</div>}
+                  </td>
                   <td className="px-4 py-3 text-white">
                     {it.phone_display || it.phone_digits}
                     {!it.is_active && (
@@ -264,6 +278,16 @@ export default function BlockedContactsView() {
                   placeholder="+54 9 299 ..."
                   value={form.phone}
                   onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs text-white/50 mb-1">{t('blocked.colName')}</label>
+                <input
+                  className={inputCls}
+                  placeholder={t('blocked.namePlaceholder')}
+                  value={form.contact_name}
+                  onChange={(e) => setForm({ ...form, contact_name: e.target.value })}
                 />
               </div>
 

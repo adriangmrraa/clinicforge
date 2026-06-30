@@ -375,6 +375,8 @@ class BlockedPhoneNumber(Base):
     phone_digits = Column(String(32), nullable=False)
     # Telefono tal cual lo cargaron (para mostrar en la UI).
     phone_display = Column(Text, nullable=True)
+    # A quien pertenece el numero (ej: "Laboratorio Central", "Dra. Gomez") para identificarlo en la UI.
+    contact_name = Column(Text, nullable=True)
     label = Column(String(30), nullable=False)
     behavior = Column(String(20), nullable=False)
     message_template = Column(Text, nullable=True)

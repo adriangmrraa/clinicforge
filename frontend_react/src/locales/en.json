@@ -32,6 +32,8 @@
     "editTitle": "Edit blocked number",
     "loading": "Loading…",
     "empty": "No numbers in the block list yet.",
+    "colName": "Name",
+    "namePlaceholder": "Central Lab, Dr. Gómez...",
     "colPhone": "Number",
     "colLabel": "Label",
     "colBehavior": "Behavior",

@@ -31,6 +31,8 @@
     "editTitle": "Modifier le numéro bloqué",
     "loading": "Chargement…",
     "empty": "Aucun numéro dans la liste de blocage.",
+    "colName": "Nom",
+    "namePlaceholder": "Labo Central, Dre Gómez...",
     "colPhone": "Numéro",
     "colLabel": "Étiquette",
     "colBehavior": "Comportement",
