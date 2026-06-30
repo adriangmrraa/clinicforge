@@ -10648,6 +10648,177 @@ async def reorder_insurance_providers(
     return {"status": "reordered", "count": len(body.order)}
 
 
+# ==================== LISTA DE BLOQUEO ====================
+# Numeros que el agente (Paula) NO debe contestar. El motor esta en
+# services/buffer_task.check_blocked_contact. Todo aislado por tenant_id (Regla de Oro).
+
+VALID_BLOCK_LABELS = (
+    "profesional_clinica",
+    "inconveniente_ia",
+    "laboratorio",
+    "proveedor",
+    "otros",
+    "spam",
+)
+VALID_BLOCK_BEHAVIORS = ("SILENCIO", "MENSAJE")
+
+
+class BlockedContactIn(BaseModel):
+    phone: str
+    label: str
+    behavior: str
+    message_template: Optional[str] = None
+    notify_email: bool = False
+    cooldown_hours: int = 24
+    note: Optional[str] = None
+    is_active: bool = True
+
+
+def _validate_blocked_contact(data: "BlockedContactIn") -> str:
+    """Valida y devuelve el telefono normalizado (solo digitos)."""
+    if data.label not in VALID_BLOCK_LABELS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Etiqueta invalida. Validas: {', '.join(VALID_BLOCK_LABELS)}",
+        )
+    if data.behavior not in VALID_BLOCK_BEHAVIORS:
+        raise HTTPException(status_code=422, detail="Comportamiento invalido (SILENCIO o MENSAJE)")
+    if data.behavior == "MENSAJE" and not (data.message_template or "").strip():
+        raise HTTPException(
+            status_code=422, detail="Si el comportamiento es MENSAJE, hace falta el texto del mensaje"
+        )
+    import re as _re
+
+    digits = _re.sub(r"\D", "", data.phone or "")
+    if len(digits) < 8:
+        raise HTTPException(status_code=422, detail="Telefono invalido")
+    return digits
+
+
+@router.get(
+    "/blocked-contacts",
+    dependencies=[Depends(verify_admin_token)],
+    tags=["Lista de bloqueo"],
+    summary="Listar numeros de la lista de bloqueo",
+)
+async def list_blocked_contacts(tenant_id: int = Depends(get_resolved_tenant_id)):
+    rows = await db.pool.fetch(
+        """
+        SELECT id, phone_digits, phone_display, label, behavior, message_template,
+               notify_email, cooldown_hours, last_autoreply_at, last_notified_at, note,
+               is_active, created_at, updated_at
+        FROM blocked_phone_numbers
+        WHERE tenant_id = $1
+        ORDER BY created_at DESC
+        """,
+        tenant_id,
+    )
+    return [dict(r) for r in rows]
+
+
+@router.post(
+    "/blocked-contacts",
+    dependencies=[Depends(verify_admin_token)],
+    tags=["Lista de bloqueo"],
+    summary="Agregar un numero a la lista de bloqueo",
+)
+async def create_blocked_contact(
+    data: BlockedContactIn, tenant_id: int = Depends(get_resolved_tenant_id)
+):
+    digits = _validate_blocked_contact(data)
+    existing = await db.pool.fetchval(
+        "SELECT id FROM blocked_phone_numbers WHERE tenant_id = $1 AND phone_digits = $2",
+        tenant_id,
+        digits,
+    )
+    if existing:
+        raise HTTPException(status_code=409, detail="Ese numero ya esta en la lista de bloqueo")
+    row = await db.pool.fetchrow(
+        """
+        INSERT INTO blocked_phone_numbers
+            (tenant_id, phone_digits, phone_display, label, behavior, message_template,
+             notify_email, cooldown_hours, note, is_active, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
+        RETURNING id
+        """,
+        tenant_id,
+        digits,
+        data.phone.strip(),
+        data.label,
+        data.behavior,
+        (data.message_template or None),
+        data.notify_email,
+        data.cooldown_hours,
+        (data.note or None),
+        data.is_active,
+    )
+    return {"status": "created", "id": row["id"]}
+
+
+@router.put(
+    "/blocked-contacts/{contact_id}",
+    dependencies=[Depends(verify_admin_token)],
+    tags=["Lista de bloqueo"],
+    summary="Editar un numero de la lista de bloqueo",
+)
+async def update_blocked_contact(
+    contact_id: int,
+    data: BlockedContactIn,
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    digits = _validate_blocked_contact(data)
+    dup = await db.pool.fetchval(
+        "SELECT id FROM blocked_phone_numbers WHERE tenant_id = $1 AND phone_digits = $2 AND id <> $3",
+        tenant_id,
+        digits,
+        contact_id,
+    )
+    if dup:
+        raise HTTPException(status_code=409, detail="Otro registro ya usa ese numero")
+    result = await db.pool.execute(
+        """
+        UPDATE blocked_phone_numbers SET
+            phone_digits = $1, phone_display = $2, label = $3, behavior = $4,
+            message_template = $5, notify_email = $6, cooldown_hours = $7,
+            note = $8, is_active = $9, updated_at = NOW()
+        WHERE id = $10 AND tenant_id = $11
+        """,
+        digits,
+        data.phone.strip(),
+        data.label,
+        data.behavior,
+        (data.message_template or None),
+        data.notify_email,
+        data.cooldown_hours,
+        (data.note or None),
+        data.is_active,
+        contact_id,
+        tenant_id,
+    )
+    if result == "UPDATE 0":
+        raise HTTPException(status_code=404, detail="Numero no encontrado")
+    return {"status": "updated", "id": contact_id}
+
+
+@router.delete(
+    "/blocked-contacts/{contact_id}",
+    dependencies=[Depends(verify_admin_token)],
+    tags=["Lista de bloqueo"],
+    summary="Sacar un numero de la lista (desbloquear)",
+)
+async def delete_blocked_contact(
+    contact_id: int, tenant_id: int = Depends(get_resolved_tenant_id)
+):
+    result = await db.pool.execute(
+        "DELETE FROM blocked_phone_numbers WHERE id = $1 AND tenant_id = $2",
+        contact_id,
+        tenant_id,
+    )
+    if result == "DELETE 0":
+        raise HTTPException(status_code=404, detail="Numero no encontrado")
+    return {"status": "deleted", "id": contact_id}
+
+
 # ==================== REGLAS DE DERIVACIÓN ====================
 
 VALID_PATIENT_CONDITIONS = ("new_patient", "existing_patient", "any")
