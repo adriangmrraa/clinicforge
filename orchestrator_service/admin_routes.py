@@ -3553,7 +3553,6 @@ async def request_review(
 
     return {
         "status": "sent",
-        "correlation_id": correlation_id,
         "month_count": int(month_count),
         "goal": goal,
     }
