@@ -1057,7 +1057,10 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
             _norm_text = _ud.normalize("NFKD", _btn_text).encode("ascii", "ignore").decode("ascii")
             _norm_text = " ".join(_re.sub(r"[^\w\s]", " ", _norm_text).split())
             _padded = " " + _norm_text + " "
-            _neg_markers = (" no ", " cancel", " reprogram", " otro dia", " otra fecha", " no puedo", " mas adelante")
+            # Excluir negaciones, gestiones de turno y CONFIRMACIONES DE PAGO (comprobante ≠ asistencia).
+            _neg_markers = (" no ", " cancel", " reprogram", " otro dia", " otra fecha", " no puedo",
+                            " mas adelante", " pago", " pagu", " pague", " transfer", " comprobante",
+                            " sena", " abon", " deposit", " recib")
             # Confirmación por texto: mensaje CORTO (<=3 palabras) con "confirm"/"asisto", SIN negación.
             # Los "sí/dale/ok" a secas los maneja el prompt del agente (con contexto de PRÓXIMO TURNO),
             # acá solo capturamos frases específicas de confirmación para no dar falsos positivos.
@@ -1065,6 +1068,7 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
             _is_question = _btn_text.strip().endswith("?")
             _looks_confirm = (
                 not _is_question
+                and not msg.media  # con adjunto (posible comprobante/foto) → que lo maneje el agente
                 and len(_norm_text.split()) <= 3
                 and ("confirm" in _norm_text or "asisto" in _norm_text or "asistire" in _norm_text
                      or _norm_text in ("si voy", "ahi voy", "ahi estare", "alli estare", "acepto"))
