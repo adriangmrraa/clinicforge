@@ -6532,7 +6532,11 @@ async def reschedule_appointment(original_date: str, new_date_time: str, interpr
                 f"[conversation_state] reset in reschedule_appointment failed (non-blocking): {state_err}"
             )
 
-        return f"Listo! Tu turno ha sido reprogramado para el {new_date_time}. Te esperamos."
+        # Confirmamos con la fecha/hora REAL guardada en la DB (new_dt), no con el texto
+        # que interpretó el LLM (new_date_time) — así el bot nunca se contradice.
+        _dias_conf = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
+        _conf_fecha = f"{_dias_conf[new_dt.weekday()]} {new_dt.strftime('%d/%m a las %H:%M')}"
+        return f"Listo! Tu turno ha sido reprogramado para el {_conf_fecha}. Te esperamos."
 
     except asyncpg.exceptions.PostgresError as e:
         logger.error(f"[RESCHEDULE] DB error: {e}", exc_info=True)
@@ -12292,6 +12296,7 @@ PASO 4: CONSULTAR DISPONIBILIDAD — Llamá 'check_availability' con treatment_n
    conversación y hace una pregunta lateral, NO retomés el tema del turno.
    El turno YA ESTÁ CONFIRMADO. Solo respondé la pregunta. No hay "opciones
    pendientes" porque ya eligió.
+⚠️ COMPUERTA DE SELECCIÓN (OBLIGATORIA — ANTES DE PASO 4b, cuando ofreciste turnos y el paciente AÚN no confirmó): No pidas nombre/DNI ni llames confirm_slot/book_appointment hasta que el paciente haya ELEGIDO uno de los turnos ofrecidos, según la DETECCIÓN DE MATCH de la REGLA DE PRESENTACIÓN DE OPCIONES (número de opción, hora/día mostrado, día único, o confirmación genérica "dale/sí/ese/va/listo"). Si ofreciste UNA sola opción, cualquier afirmación ("dale/ok/sí") YA es esa opción → avanzá a PASO 4b. Solo NO avances si el paciente propuso otro horario, pidió otra semana, preguntó otra cosa, o dijo "sí" con 2+ opciones sin aclarar cuál: ahí seguí ofreciendo o re-buscá, y con 2+ opciones ambiguas preguntá UNA sola vez cuál prefiere (si reafirma sin aclarar, tomá la opción 1 y avanzá). NUNCA agendes por defecto una opción que el paciente no eligió.
 PASO 4b: DATOS DE ADMISIÓN — ⚠️ VERIFICAR ANTES DE PEDIR DATOS:
   PREGUNTA INTERNA (no decir al paciente): "¿Tengo ya el nombre y el DNI del paciente (ya sea porque figuran en el CONTEXTO DEL PACIENTE o porque el paciente los mencionó en la conversación reciente)?"
   → SI ya tenés ambos datos (o el paciente ya los dio en este mensaje o el anterior) → SALTEAR ESTE PASO COMPLETO. Ir directo a PASO 4c. Queda ESTRICTAMENTE PROHIBIDO volver a pedirlos.
