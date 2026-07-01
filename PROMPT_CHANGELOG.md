@@ -84,6 +84,7 @@ Sirve para responder *"desde qué cambio empezó a fallar"* y poder **volver a u
 | 2026-06-30 | `5e61d19` | main.py · f-string del prompt (CRÍTICO) | Quitar `{día}` (variable inexistente) del f-string | Un `{día}` sin definir crasheaba `build_system_prompt` en runtime → bot MUDO para todos los pacientes. py_compile no lo detecta (los f-strings evalúan en runtime). | `git revert 5e61d19` |
 | 2026-07-01 | `b223273` | buffer_task.py · `_detect_research_intent` | Reconocer "semana siguiente / siguiente semana / la que sigue" | Pedía "la semana siguiente" y el bot repetía los mismos turnos (Vanesa). Faltaba el sinónimo (tenía "que viene"/"próxima"). **En PRODUCCIÓN.** | `git revert b223273` |
 | 2026-07-01 | `b4d1b8a` | main.py · `build_system_prompt` (ORDEN, no contenido) | Mover el contexto dinámico (paciente + saludo) del INICIO al FINAL del prompt; feriados 10→5 | Activar el caché de prompt de OpenAI: el bloque estático (~37.5k tokens, igual por clínica) queda como prefijo cacheable → ~50% menos de input. **NO cambia el contenido, solo el orden.** Solo PRUEBAS por ahora. | `git revert b4d1b8a` |
+| 2026-07-01 | `b9f961c` | main.py (HOY ES + regla turno de hoy/reprogramar) + buffer_task.py (marca `⚠️ TURNO DE HOY` calculada en código) | El bot reconoce el turno de HOY; regla de reprogramar mismo-día sin loop (derivar si no hay) | Decía "hoy no tenés turno" con turno agendado HOY (caso Matías); el LLM hacía mal la resta de fechas. **En PRODUCCIÓN.** | `git revert b9f961c` |
 
 > A partir de acá, cada cambio de prompt agrega su fila ANTES de commitear.
 
