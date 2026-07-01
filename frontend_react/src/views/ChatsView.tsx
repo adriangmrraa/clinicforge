@@ -145,6 +145,7 @@ export default function ChatsView() {
   const [voiceRecording, setVoiceRecording] = useState(false);
   const [newMessage, setNewMessage] = useState('');
   const [reviewSending, setReviewSending] = useState(false);
+  const reviewSendingRef = useRef(false); // guard sincrónico (el state no alcanza para doble click en el mismo tick)
   const [reviewStats, setReviewStats] = useState<{ month_count: number; goal: number } | null>(null);
   const [reviewedPhones, setReviewedPhones] = useState<Set<string>>(new Set());
   const [showReviewConfirm, setShowReviewConfirm] = useState(false);
@@ -747,6 +748,8 @@ export default function ChatsView() {
 
   const handleRequestReview = async () => {
     if (!selectedSession) return;
+    if (reviewSendingRef.current) return; // doble click en el mismo tick no dispara 2 POST
+    reviewSendingRef.current = true;
     const phone = selectedSession.phone_number;
     const nombre = selectedSession.patient_name || phone;
     setReviewSending(true);
@@ -777,6 +780,7 @@ export default function ChatsView() {
       setTimeout(() => setShowToast(null), 5000);
     } finally {
       setReviewSending(false);
+      reviewSendingRef.current = false;
     }
   };
 

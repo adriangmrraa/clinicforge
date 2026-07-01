@@ -3348,15 +3348,23 @@ async def request_review(
     prow = None
     if payload.patient_id:
         prow = await db.pool.fetchrow(
-            "SELECT id, first_name FROM patients WHERE id = $1 AND tenant_id = $2",
+            "SELECT id, first_name, review_requested_at FROM patients WHERE id = $1 AND tenant_id = $2",
             payload.patient_id,
             payload.tenant_id,
         )
     if not prow:
         prow = await db.pool.fetchrow(
-            "SELECT id, first_name FROM patients WHERE tenant_id = $1 AND phone_number = $2 ORDER BY id LIMIT 1",
+            "SELECT id, first_name, review_requested_at FROM patients WHERE tenant_id = $1 AND phone_number = $2 ORDER BY id LIMIT 1",
             payload.tenant_id,
             payload.phone,
+        )
+    # Candado anti-repetición en el BACKEND (el de la UI es solo visual):
+    # si ya se le pidió reseña a este paciente, rechazar — evita dobles envíos
+    # por doble click, doble pestaña o requests concurrentes.
+    if prow and prow.get("review_requested_at"):
+        raise HTTPException(
+            status_code=409,
+            detail="Ya se le pidió una reseña a este paciente.",
         )
     nombre = ((prow.get("first_name") if prow else "") or "").strip()
     saludo = f"¡Hola {nombre}!" if nombre else "¡Hola!"
@@ -10916,6 +10924,10 @@ def _validate_blocked_contact(data: "BlockedContactIn") -> str:
         raise HTTPException(
             status_code=422, detail="Si el comportamiento es MENSAJE, hace falta el texto del mensaje"
         )
+    if data.cooldown_hours is not None and not (1 <= int(data.cooldown_hours) <= 720):
+        raise HTTPException(
+            status_code=422, detail="cooldown_hours debe estar entre 1 y 720 (horas)"
+        )
     import re as _re
 
     digits = _re.sub(r"\D", "", data.phone or "")
@@ -10955,8 +10967,10 @@ async def create_blocked_contact(
     data: BlockedContactIn, tenant_id: int = Depends(get_resolved_tenant_id)
 ):
     digits = _validate_blocked_contact(data)
+    # Duplicado con el MISMO criterio que el matcher de bloqueo (sufijo de 10 dígitos):
+    # evita cargar "+54 9 299 123 4567" y "299 123 4567" como dos filas del mismo número.
     existing = await db.pool.fetchval(
-        "SELECT id FROM blocked_phone_numbers WHERE tenant_id = $1 AND phone_digits = $2",
+        "SELECT id FROM blocked_phone_numbers WHERE tenant_id = $1 AND RIGHT(phone_digits, 10) = RIGHT($2, 10)",
         tenant_id,
         digits,
     )
@@ -10998,7 +11012,7 @@ async def update_blocked_contact(
 ):
     digits = _validate_blocked_contact(data)
     dup = await db.pool.fetchval(
-        "SELECT id FROM blocked_phone_numbers WHERE tenant_id = $1 AND phone_digits = $2 AND id <> $3",
+        "SELECT id FROM blocked_phone_numbers WHERE tenant_id = $1 AND RIGHT(phone_digits, 10) = RIGHT($2, 10) AND id <> $3",
         tenant_id,
         digits,
         contact_id,

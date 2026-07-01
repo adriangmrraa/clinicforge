@@ -19,14 +19,14 @@ interface BlockedContact {
   created_at?: string;
 }
 
-const LABELS: { value: string; es: string }[] = [
-  { value: 'laboratorio', es: 'Laboratorio' },
-  { value: 'proveedor', es: 'Proveedor' },
-  { value: 'profesional_clinica', es: 'Profesional de la clínica' },
-  { value: 'inconveniente_ia', es: 'Inconveniente con la IA' },
-  { value: 'otros', es: 'Otros' },
-  { value: 'spam', es: 'Spam' },
-];
+const LABEL_VALUES = [
+  'laboratorio',
+  'proveedor',
+  'profesional_clinica',
+  'inconveniente_ia',
+  'otros',
+  'spam',
+] as const;
 
 interface FormState {
   id: number | null;
@@ -152,7 +152,7 @@ export default function BlockedContactsView() {
     }
   };
 
-  const labelEs = (v: string) => LABELS.find((l) => l.value === v)?.es || v;
+  const labelText = (v: string) => t(`blocked.label_${v}`) || v;
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
@@ -219,7 +219,7 @@ export default function BlockedContactsView() {
                       <span className="ml-2 text-xs text-white/30">({t('blocked.inactive')})</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-white/70">{labelEs(it.label)}</td>
+                  <td className="px-4 py-3 text-white/70">{labelText(it.label)}</td>
                   <td className="px-4 py-3">
                     {it.behavior === 'SILENCIO' ? (
                       <span className="inline-flex items-center gap-1.5 text-xs bg-white/[0.06] text-white/60 px-2 py-1 rounded">
@@ -299,9 +299,9 @@ export default function BlockedContactsView() {
                     value={form.label}
                     onChange={(e) => setForm({ ...form, label: e.target.value })}
                   >
-                    {LABELS.map((l) => (
-                      <option key={l.value} value={l.value} className="bg-[#0d1117]">
-                        {l.es}
+                    {LABEL_VALUES.map((v) => (
+                      <option key={v} value={v} className="bg-[#0d1117]">
+                        {labelText(v)}
                       </option>
                     ))}
                   </select>

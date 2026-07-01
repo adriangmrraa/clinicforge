@@ -536,6 +536,10 @@ class EmailService:
 
         phone_digits = (phone or "").replace("+", "").replace(" ", "").replace("-", "")
         wa_link = f"https://wa.me/{phone_digits}"
+        # Escapar TODO lo que puede venir del paciente (nombre que él mismo dio, teléfono):
+        # evita que un remitente hostil inyecte HTML/links en el mail de la clínica.
+        patient_name = _html.escape(patient_name or "")
+        phone = _html.escape(phone or "")
         safe_reason = _html.escape(failure_reason or "")
         detail_block = ""
         if safe_reason:
@@ -645,10 +649,14 @@ class EmailService:
             if behavior == "SILENCIO"
             else "Paula respondió el mensaje predeterminado"
         )
+        # Escapar el contenido controlado por el remitente (mensaje crudo + teléfono):
+        # evita inyección de HTML/links de phishing en el mail que recibe la clínica.
+        safe_message_text = _html.escape(message_text or "")
+        phone = _html.escape(phone or "")
         msg_block = (
             f"""<div style="background: rgba(255,255,255,0.05); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
                 <h3 style="color: #60a5fa; margin: 0 0 12px;">Mensaje recibido</h3>
-                <p style="color: #e6edf3; margin: 0; white-space: pre-wrap;">{message_text}</p>
+                <p style="color: #e6edf3; margin: 0; white-space: pre-wrap;">{safe_message_text}</p>
             </div>"""
             if (message_text or "").strip()
             else ""

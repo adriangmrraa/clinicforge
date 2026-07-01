@@ -4183,19 +4183,6 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
         logger.warning("🔇 Suppressing placeholder '[Sin respuesta]' — not sending to patient")
         response_text = ""
 
-    # --- BLINDAJE: limpiar la bandera de fallo si el bot respondió bien ---
-    # Si llegamos hasta acá con una respuesta real (los fallbacks de error ya se
-    # vaciaron arriba), el agente se recuperó → sacamos la marca roja del panel.
-    if response_text:
-        try:
-            await pool.execute(
-                "UPDATE chat_conversations SET last_agent_error_at = NULL, agent_error_reason = NULL "
-                "WHERE id = $1 AND last_agent_error_at IS NOT NULL",
-                conversation_id,
-            )
-        except Exception:
-            pass
-
     # --- SEND RESPONSE ---
     from response_sender import ResponseSender
 
@@ -4294,6 +4281,20 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
             messages_text=response_text,
             media_urls=media_urls,
         )
+
+    # --- BLINDAJE: limpiar la bandera de fallo DESPUÉS del envío real ---
+    # Recién acá sabemos que la respuesta salió (si send_sequence falló, no llegamos;
+    # si hubo abort-and-recompute, retornamos antes) → sacamos la marca roja del panel.
+    if response_text:
+        try:
+            await pool.execute(
+                "UPDATE chat_conversations SET last_agent_error_at = NULL, agent_error_reason = NULL "
+                "WHERE id = $1 AND tenant_id = $2 AND last_agent_error_at IS NOT NULL",
+                conversation_id,
+                tenant_id,
+            )
+        except Exception:
+            pass
 
     # Bug #8: Mark greeting as sent after successful response delivery
     if is_greeting_pending:

@@ -120,6 +120,23 @@ async def _get_candidates(pool, tenant_id: int, touch_number: int, delay_minutes
 
     t_max = now_utc - timedelta(minutes=delay_minutes)
 
+    # Lista de bloqueo: los números bloqueados NO reciben toques proactivos.
+    # Guard de despliegue: la tabla la crea la migración 067 — si todavía no existe
+    # (entorno sin la feature), el filtro se omite y el job funciona como siempre.
+    _blocked_filter = ""
+    try:
+        if await pool.fetchval("SELECT to_regclass('public.blocked_phone_numbers')"):
+            _blocked_filter = """
+              AND NOT EXISTS (
+                  SELECT 1 FROM blocked_phone_numbers b
+                  WHERE b.tenant_id = c.tenant_id
+                    AND b.is_active = true
+                    AND RIGHT(REGEXP_REPLACE(b.phone_digits, '[^0-9]', '', 'g'), 10)
+                        = RIGHT(REGEXP_REPLACE(c.external_user_id, '[^0-9]', '', 'g'), 10)
+              )"""
+    except Exception:
+        _blocked_filter = ""
+
     if touch_number == 1:
         # Touch 1: based on last_user_message_at, recovery_touch_count = 0
         t_min = t_max - timedelta(minutes=30)
@@ -158,9 +175,10 @@ async def _get_candidates(pool, tenant_id: int, touch_number: int, delay_minutes
                     AND al.trigger_type = 'lead_recovery_touch1'
                     AND al.triggered_at > $2 - INTERVAL '30 minutes'
               )
+              {blocked_filter}
             ORDER BY c.last_user_message_at ASC
             LIMIT 20
-        """, tenant_id, now_utc, t_max, t_min)
+        """.format(blocked_filter=_blocked_filter), tenant_id, now_utc, t_max, t_min)
     else:
         # Touch 2 and 3: based on last_recovery_at
         expected_touch_count = touch_number - 1
@@ -200,9 +218,10 @@ async def _get_candidates(pool, tenant_id: int, touch_number: int, delay_minutes
                     AND al.trigger_type = $5
                     AND al.triggered_at > $2 - INTERVAL '30 minutes'
               )
+              {blocked_filter}
             ORDER BY c.last_recovery_at ASC
             LIMIT 20
-        """, tenant_id, now_utc, t_max, expected_touch_count, trigger_type)
+        """.format(blocked_filter=_blocked_filter), tenant_id, now_utc, t_max, expected_touch_count, trigger_type)
 
     return [dict(r) for r in rows]
 
