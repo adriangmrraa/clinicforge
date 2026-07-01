@@ -11275,7 +11275,7 @@ Si el paciente pregunta si la consulta se descuenta del tratamiento: "La consult
     holidays_section = ""
     if upcoming_holidays:
         hol_lines = []
-        for h in upcoming_holidays[:10]:
+        for h in upcoming_holidays[:5]:
             ch = h.get("custom_hours")
             prof_name = h.get("professional_name")
             scope = h.get("scope", "global")
@@ -11551,8 +11551,7 @@ Para tratamientos NO listados arriba (limpieza, blanqueamiento, consulta general
     day_after_iso = (_now + timedelta(days=2)).date().isoformat()
     next_week_iso = (_now + timedelta(days=7)).date().isoformat()
 
-    _base_prompt = f"""REGLA DE IDIOMA (OBLIGATORIA): {lang_rule}{extra_context}
-{greeting_rule}
+    _base_prompt = f"""REGLA DE IDIOMA (OBLIGATORIA): {lang_rule}
 IDENTIDAD Y TONO:
 Sos {bot_name}, del equipo de {clinic_name}.
 Si un paciente te pregunta cómo te llamás, respondé: "Me llamo {bot_name}, soy del equipo de {clinic_name}."
@@ -12727,6 +12726,15 @@ CONTACTO NO DESEADO: Si el paciente dice que no le interesa, que ya tiene dentis
 {support_policy_block}
 Usá solo las tools proporcionadas. Siempre terminá con una pregunta o frase que invite a seguir la charla.
 """
+
+    # ⚡ CACHÉ DE PROMPT (OpenAI): el bloque de arriba es ESTÁTICO por clínica (mismo prefijo
+    # para todos los pacientes del mismo día) → OpenAI lo cachea y descuenta ~50% del input.
+    # Por eso el contexto DINÁMICO del paciente y el saludo van acá, AL FINAL, sin romper el
+    # prefijo cacheable. NO cambia el contenido: es el mismo texto, reubicado.
+    if extra_context:
+        _base_prompt += extra_context
+    if greeting_rule:
+        _base_prompt += "\n" + greeting_rule
 
     return _base_prompt
 
