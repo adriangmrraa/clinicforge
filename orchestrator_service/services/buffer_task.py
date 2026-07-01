@@ -1275,7 +1275,11 @@ async def process_buffer_task(
                 now_arg = get_now_arg()
                 delta = dt - now_arg
                 total_hours = delta.total_seconds() / 3600.0
-                if total_hours < 0.5:
+                # Calculamos en CÓDIGO si el turno es HOY (los LLM hacen mal la resta de fechas).
+                es_hoy = dt.date() == now_arg.date()
+                if es_hoy:
+                    time_until = f"ES HOY, a las {dt.strftime('%H:%M')}"
+                elif total_hours < 0.5:
                     time_until = "menos de 30 minutos"
                 elif total_hours < 1:
                     time_until = "menos de 1 hora"
@@ -1286,8 +1290,9 @@ async def process_buffer_task(
                     time_until = f"mañana a las {dt.strftime('%H:%M')}"
                 else:
                     time_until = f"el {dt_str}"
+                _hoy_marca = "⚠️ TURNO DE HOY — " if es_hoy else ""
                 identity_lines.append(
-                    f"• PRÓXIMO TURNO: Tiene un turno de {next_apt['treatment_name'] or 'Consulta'} con el/la Dr/a. {next_apt['professional_name']} el {dt_str}."
+                    f"• PRÓXIMO TURNO: {_hoy_marca}Tiene un turno de {next_apt['treatment_name'] or 'Consulta'} con el/la Dr/a. {next_apt['professional_name']} el {dt_str}."
                 )
                 identity_lines.append(
                     f"• FECHA EXACTA DEL TURNO: {dt.strftime('%d/%m/%Y')} a las {dt.strftime('%H:%M')}. {time_until}."
