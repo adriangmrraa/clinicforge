@@ -1051,12 +1051,31 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                 "quiero cancelar", "cancelar turno", "cancelar",
             }
 
-            # Match by stable ID first (reliable), fall back to display text
-            _is_confirm = _btn_id in _CONFIRM_IDS or _btn_text in _CONFIRM_BUTTONS
+            # Normalización tolerante para respuestas por TEXTO (no botón): "Si confirmo.." → "si confirmo"
+            import re as _re
+            import unicodedata as _ud
+            _norm_text = _ud.normalize("NFKD", _btn_text).encode("ascii", "ignore").decode("ascii")
+            _norm_text = " ".join(_re.sub(r"[^\w\s]", " ", _norm_text).split())
+            _padded = " " + _norm_text + " "
+            _neg_markers = (" no ", " cancel", " reprogram", " otro dia", " otra fecha", " no puedo", " mas adelante")
+            # Confirmación por texto: mensaje CORTO (<=3 palabras) con "confirm"/"asisto", SIN negación.
+            # Los "sí/dale/ok" a secas los maneja el prompt del agente (con contexto de PRÓXIMO TURNO),
+            # acá solo capturamos frases específicas de confirmación para no dar falsos positivos.
+            # Excluir preguntas ("confirmás?", "confirmo?") — pide confirmación, no la da.
+            _is_question = _btn_text.strip().endswith("?")
+            _looks_confirm = (
+                not _is_question
+                and len(_norm_text.split()) <= 3
+                and ("confirm" in _norm_text or "asisto" in _norm_text or "asistire" in _norm_text
+                     or _norm_text in ("si voy", "ahi voy", "ahi estare", "alli estare", "acepto"))
+                and not any(_n in _padded for _n in _neg_markers)
+            )
+            # Match by stable ID first (reliable), fall back to display text (+ texto tolerante para confirmar)
+            _is_confirm = _btn_id in _CONFIRM_IDS or _btn_text in _CONFIRM_BUTTONS or _looks_confirm
             _is_reschedule = _btn_id in _RESCHEDULE_IDS or _btn_text in _RESCHEDULE_BUTTONS
             _is_cancel = _btn_id in _CANCEL_IDS or _btn_text in _CANCEL_BUTTONS
 
-            if not msg.is_agent and _is_confirm:
+            if not msg.is_agent and not is_locked and _is_confirm:
                 try:
                     _apt_row = await pool.fetchrow(
                         """UPDATE appointments SET status = 'confirmed', updated_at = NOW()
@@ -1128,7 +1147,7 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                 except Exception as _conf_err:
                     logger.error(f"❌ Appointment confirm button failed: {_conf_err}")
 
-            if not msg.is_agent and _is_cancel:
+            if not msg.is_agent and not is_locked and _is_cancel:
                 try:
                     _cancel_row = await pool.fetchrow(
                         """UPDATE appointments SET status = 'cancelled',
@@ -1198,7 +1217,7 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                 except Exception as _cancel_err:
                     logger.error(f"❌ Cancel button failed: {_cancel_err}")
 
-            if not msg.is_agent and _is_reschedule:
+            if not msg.is_agent and not is_locked and _is_reschedule:
                 try:
                     # Buscar el turno próximo para nombrar la fecha en el mensaje (un solo mensaje, sin AI)
                     _resched_row = await pool.fetchrow(
