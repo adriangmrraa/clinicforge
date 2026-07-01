@@ -231,7 +231,7 @@ async def _prioritize_high_ticket(pool, tenant_id: int, candidates: List[Dict]) 
         cand["_is_high_ticket"] = False
         try:
             msgs = await pool.fetch(
-                "SELECT content FROM chat_messages WHERE tenant_id = $1 AND phone_number = $2 ORDER BY created_at DESC LIMIT 20",
+                "SELECT content FROM chat_messages WHERE tenant_id = $1 AND from_number = $2 ORDER BY created_at DESC LIMIT 20",
                 tenant_id, cand["phone"],
             )
             all_text = " ".join(m["content"] or "" for m in msgs).lower()
@@ -303,7 +303,7 @@ async def _process_touch1(pool, cand, rule, lead_name, clinic_name, now_utc, win
 
     # Fetch conversation history
     msg_rows = await pool.fetch(
-        "SELECT role, content FROM chat_messages WHERE tenant_id = $1 AND phone_number = $2 ORDER BY created_at DESC LIMIT 20",
+        "SELECT role, content FROM chat_messages WHERE tenant_id = $1 AND from_number = $2 ORDER BY created_at DESC LIMIT 20",
         tenant_id, phone,
     )
     messages = [{"role": r["role"], "content": r["content"]} for r in reversed(msg_rows)]
@@ -552,7 +552,7 @@ async def _get_lead_name(pool, tenant_id: int, phone: str, lead_ctx: dict = None
     # Fallback: extract from first user message
     try:
         first_msg = await pool.fetchval(
-            "SELECT content FROM chat_messages WHERE tenant_id = $1 AND phone_number = $2 AND role = 'user' ORDER BY created_at ASC LIMIT 1",
+            "SELECT content FROM chat_messages WHERE tenant_id = $1 AND from_number = $2 AND role = 'user' ORDER BY created_at ASC LIMIT 1",
             tenant_id, phone,
         )
         if first_msg and len(first_msg) < 50:
