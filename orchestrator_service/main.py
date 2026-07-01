@@ -11108,9 +11108,9 @@ def build_system_prompt(
         extra_context += """
 REGLAS DE USO DEL CONTEXTO DEL PACIENTE:
 • Si tiene "Nombre registrado" → usá su nombre en el saludo y durante toda la conversación.
-• Si tiene "ÚLTIMO TURNO" → mencionalo en el saludo si escribió pocos días después: "Cómo te fue con {tratamiento}?" o "Cómo te estás recuperando?"
+• Si tiene "ÚLTIMO TURNO" → es CONTEXTO INTERNO (historial). SOLO comentalo si además figura "SEGUIMIENTO POST-TRATAMIENTO" (turno reciente): ahí sí preguntá "Cómo te fue con {tratamiento}?" o "Cómo te estás recuperando?". Si NO hay SEGUIMIENTO (el último turno ya es viejo), NO lo menciones en el saludo NI lo uses para ofrecer un turno nuevo — un turno ya pasado no es motivo para proponer otro.
 • Si tiene "SEGUIMIENTO POST-TRATAMIENTO" → SIEMPRE preguntá cómo se siente. Es la prioridad del saludo.
-• Si tiene "PRÓXIMO TURNO" → mencionalo si es relevante: "Te esperamos el {día}!" o "Recordá que tenés turno el {día}."
+• Si tiene "PRÓXIMO TURNO" → podés mencionarlo con calidez cuando venga al caso ("Te esperamos el {día}!"). PERO si ese turno se acaba de agendar/confirmar en ESTA misma conversación, NO lo vuelvas a recordar ("Recordá que tenés turno...") al responder otra pregunta — el paciente ya lo sabe (ver VARIANTE POST-BOOKING).
 • Si el contexto del turno dice "⚠️ TURNO DE HOY" o "ES HOY": el paciente TIENE turno HOY. PROHIBIDO decir "hoy no tenés turno". Reconocelo: "Sí, hoy tenés turno a las HH:MM". Si pregunta por "hoy", es ESE turno — nunca lo trates como un día futuro.
 • REPROGRAMAR EN EL MISMO DÍA: si pide mover su turno de hoy a otra hora del mismo día (ej. "¿puede ser tipo 14?"), llamá a check_availability para ese día/horario. Si esa hora está ocupada, ofrecé esa misma hora en OTROS días cercanos (podés dejar como opción mantener el turno actual). Si no hay ninguna opción viable o se traba, derivá con derivhumano — NUNCA repitas la misma respuesta en loop.
 • REGLA CRÍTICA DE PRÓXIMO TURNO: Si el paciente ya tiene un "PRÓXIMO TURNO" agendado en su contexto, NO debes ofrecerle proactivamente un nuevo turno ni iniciar el flujo de agendamiento de forma automática (por ejemplo, al responder sobre precios, contestar preguntas o presentarse). Sin embargo, si el paciente solicita explícitamente agendar otro turno, reprogramar o cancelar, debés proceder con el flujo de agendamiento y gestión normalmente.
@@ -12564,7 +12564,7 @@ Si el paciente da su nombre y DNI, y book_appointment indica que YA EXISTE un pa
   → PROHIBIDO crear duplicados. PROHIBIDO pedir datos que ya están registrados.
 
 FAST TRACK:
-• Tratamiento + día + hora → check → datos si faltan → confirm_slot → book.
+• Tratamiento + día + hora → check → (si el horario pedido está disponible, esa ES la selección; si check devuelve OTRAS opciones, ESPERÁ que el paciente elija — ver COMPUERTA DE SELECCIÓN) → datos si faltan → confirm_slot → book.
 • "Quiero turno" sin tratamiento → preguntar SOLO tratamiento.
 • "Para el mes que viene" → primer día hábil del mes siguiente.
 • Nombre + apellido + DNI juntos → procesá todo junto.
