@@ -252,6 +252,9 @@ def _detect_research_intent(msg: str) -> bool:
             r"\bla\s+semana\s+que\s+viene\b",     # "la semana que viene"
             r"\bsemana\s+próxima\b",              # "semana próxima"
             r"\bsemana\s+proxima\b",              # "semana proxima" (no accent)
+            r"\bsemana\s+siguiente\b",            # "(la) semana siguiente"
+            r"\bsiguiente\s+semana\b",            # "(la) siguiente semana"
+            r"\bla\s+que\s+sigue\b",              # "la que sigue"
             r"\bmás\s+(temprano|tarde|adelante)\b",  # "más temprano", "más tarde", "más adelante"
             r"\bmas\s+(temprano|tarde|adelante)\b",  # same without accent
             r"\ba\s+la\s+(mañana|manana|tarde|noche)\b",  # "a la tarde tenés?"
