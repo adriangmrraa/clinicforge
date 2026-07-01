@@ -3366,6 +3366,18 @@ async def request_review(
             status_code=409,
             detail="Ya se le pidió una reseña a este paciente.",
         )
+    if not prow:
+        # Contacto sin ficha de paciente: el candado vive en review_requests (por teléfono).
+        _already = await db.pool.fetchval(
+            "SELECT 1 FROM review_requests WHERE tenant_id = $1 AND phone = $2 LIMIT 1",
+            payload.tenant_id,
+            payload.phone,
+        )
+        if _already:
+            raise HTTPException(
+                status_code=409,
+                detail="Ya se le pidió una reseña a este contacto.",
+            )
     nombre = ((prow.get("first_name") if prow else "") or "").strip()
     saludo = f"¡Hola {nombre}!" if nombre else "¡Hola!"
 
@@ -3404,15 +3416,69 @@ async def request_review(
         "¡Gracias de corazón! 🤍"
     )
 
-    # 5) Enviar (mismo mecanismo que el envío manual)
-    correlation_id = str(uuid.uuid4())
-    await db.append_chat_message(
-        from_number=payload.phone,
-        role="assistant",
-        content=message,
-        correlation_id=correlation_id,
-        tenant_id=payload.tenant_id,
+    # 5) Enviar por el MISMO camino que usa el bot (ResponseSender → YCloud directo),
+    # NO por el WhatsApp Service del envío manual: ese falla en silencio si el
+    # servicio no está autorizado (visto en PRUEBAS: el panel mostraba el mensaje
+    # pero al paciente nunca le llegaba). ResponseSender además persiste el mensaje
+    # en chat_messages con el estado REAL de entrega (no hace falta append manual).
+    conv = await db.pool.fetchrow(
+        """
+        SELECT id, provider, channel, external_account_id, external_chatwoot_id, external_user_id
+        FROM chat_conversations
+        WHERE tenant_id = $1
+          AND RIGHT(REGEXP_REPLACE(external_user_id, '[^0-9]', '', 'g'), 10)
+              = RIGHT(REGEXP_REPLACE($2, '[^0-9]', '', 'g'), 10)
+        ORDER BY last_user_message_at DESC NULLS LAST
+        LIMIT 1
+        """,
+        payload.tenant_id,
+        payload.phone,
     )
+    if not conv:
+        raise HTTPException(
+            status_code=404,
+            detail="No encontramos la conversación de chat de este contacto.",
+        )
+    from services.response_sender import ResponseSender
+
+    # Usar el identificador EXACTO de la conversación (mismo formato que usa el bot)
+    _send_to = conv.get("external_user_id") or payload.phone
+    try:
+        await ResponseSender.send_sequence(
+            tenant_id=payload.tenant_id,
+            external_user_id=_send_to,
+            conversation_id=str(conv["id"]),
+            provider=conv.get("provider") or "ycloud",
+            channel=conv.get("channel") or "whatsapp",
+            account_id=conv.get("external_account_id") or "",
+            cw_conv_id=conv.get("external_chatwoot_id") or "",
+            messages_text=message,
+        )
+    except Exception as _send_err:
+        raise HTTPException(
+            status_code=502, detail=f"No se pudo enviar el mensaje: {_send_err}"
+        )
+
+    # 5b) Verificar la ENTREGA real: ResponseSender guarda delivery_status por mensaje.
+    # Si WhatsApp rechazó el envío, avisamos al usuario y NO marcamos el pedido.
+    try:
+        _sent_row = await db.pool.fetchrow(
+            "SELECT platform_metadata FROM chat_messages "
+            "WHERE tenant_id = $1 AND conversation_id = $2 AND role = 'assistant' "
+            "ORDER BY id DESC LIMIT 1",
+            payload.tenant_id,
+            conv["id"],
+        )
+        _meta_raw = _sent_row.get("platform_metadata") if _sent_row else None
+        _meta = json.loads(_meta_raw) if isinstance(_meta_raw, str) else (_meta_raw or {})
+    except Exception as _verify_err:
+        logger.warning(f"review-request: no pude verificar la entrega: {_verify_err}")
+        _meta = {}
+    if (_meta or {}).get("delivery_status") == "failed":
+        raise HTTPException(
+            status_code=502,
+            detail="WhatsApp no aceptó el envío: el mensaje NO llegó al paciente. Revisá la conexión del número e intentá de nuevo.",
+        )
 
     # 6) Registrar el pedido + marcar al paciente (best-effort, no bloqueante)
     _pid = prow.get("id") if prow else None
@@ -3432,8 +3498,11 @@ async def request_review(
                 payload.tenant_id,
             )
         else:
+            # Fallback por teléfono TOLERANTE a formatos (+549 vs 549 vs espacios):
+            # igualdad exacta fallaba si la ficha guardaba el número con otro formato.
             await db.pool.execute(
-                "UPDATE patients SET review_requested_at = NOW() WHERE tenant_id = $1 AND phone_number = $2",
+                "UPDATE patients SET review_requested_at = NOW() WHERE tenant_id = $1 "
+                "AND RIGHT(REGEXP_REPLACE(phone_number, '[^0-9]', '', 'g'), 10) = RIGHT(REGEXP_REPLACE($2, '[^0-9]', '', 'g'), 10)",
                 payload.tenant_id,
                 payload.phone,
             )
@@ -3454,12 +3523,8 @@ async def request_review(
                 "role": "assistant",
             },
         )
-    business_number = (
-        os.getenv("YCLOUD_Phone_Number_ID") or os.getenv("BOT_PHONE_NUMBER") or "default"
-    )
-    background_tasks.add_task(
-        send_to_whatsapp_task, payload.phone, message, business_number
-    )
+    # (El envío ya se hizo y verificó en el paso 5 — vía ResponseSender, el mismo
+    # camino que usa el bot. Ya no se usa el WhatsApp Service del envío manual.)
 
     # 8) Contar el mes + avisar a Telegram si se alcanzó el objetivo
     month_count = 0
