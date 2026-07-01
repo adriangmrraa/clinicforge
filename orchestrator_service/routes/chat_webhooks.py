@@ -1068,7 +1068,7 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
             _is_question = _btn_text.strip().endswith("?")
             _looks_confirm = (
                 not _is_question
-                and not msg.media  # con adjunto (posible comprobante/foto) → que lo maneje el agente
+                and not any(getattr(_m, "type", None) != "audio" for _m in msg.media)  # imagen/doc/video (posible comprobante) → al agente; el audio (nota de voz) SÍ confirma
                 and len(_norm_text.split()) <= 3
                 and ("confirm" in _norm_text or "asisto" in _norm_text or "asistire" in _norm_text
                      or _norm_text in ("si voy", "ahi voy", "ahi estare", "alli estare", "acepto"))
