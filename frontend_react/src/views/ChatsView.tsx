@@ -747,6 +747,7 @@ export default function ChatsView() {
   const handleRequestReview = async () => {
     if (!selectedSession) return;
     const phone = selectedSession.phone_number;
+    const nombre = selectedSession.patient_name || phone;
     setReviewSending(true);
     try {
       const { data } = await api.post('/admin/chat/request-review', {
@@ -757,8 +758,21 @@ export default function ChatsView() {
       if (data && typeof data.month_count === 'number') {
         setReviewStats({ month_count: data.month_count, goal: data.goal || 0 });
       }
+      setShowToast({
+        id: Date.now().toString(),
+        type: 'success',
+        title: '⭐ ' + t('chats.review_toast_sent_title'),
+        message: t('chats.review_toast_sent_message', { name: nombre }),
+      });
+      setTimeout(() => setShowToast(null), 4000);
     } catch (err: any) {
-      alert(err?.response?.data?.detail || t('chats.review_error'));
+      setShowToast({
+        id: Date.now().toString(),
+        type: 'error',
+        title: '⚠️ ' + t('chats.review_toast_error_title'),
+        message: err?.response?.data?.detail || t('chats.review_error'),
+      });
+      setTimeout(() => setShowToast(null), 5000);
     } finally {
       setReviewSending(false);
     }
@@ -1315,8 +1329,15 @@ export default function ChatsView() {
       {/* ======================================== */}
       {showToast && (
         <div className="fixed top-4 right-4 z-50 animate-slide-in">
-          <div className="bg-orange-500 text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-3">
-            <Bell className="w-5 h-5" />
+          <div className={`text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 ${
+            showToast.type === 'success' ? 'bg-emerald-500'
+              : showToast.type === 'error' ? 'bg-red-500'
+              : showToast.type === 'info' ? 'bg-blue-500'
+              : 'bg-orange-500'
+          }`}>
+            {showToast.type === 'success' ? <Star className="w-5 h-5 fill-current" />
+              : showToast.type === 'error' ? <XCircle className="w-5 h-5" />
+              : <Bell className="w-5 h-5" />}
             <div>
               <p className="font-semibold">{showToast.title}</p>
               <p className="text-sm opacity-90">{showToast.message}</p>
