@@ -146,6 +146,7 @@ export default function ChatsView() {
   const [reviewSending, setReviewSending] = useState(false);
   const [reviewStats, setReviewStats] = useState<{ month_count: number; goal: number } | null>(null);
   const [reviewedPhones, setReviewedPhones] = useState<Set<string>>(new Set());
+  const [showReviewConfirm, setShowReviewConfirm] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -1685,7 +1686,7 @@ export default function ChatsView() {
                   )}
                   {selectedSession && (
                     <button
-                      onClick={handleRequestReview}
+                      onClick={() => setShowReviewConfirm(true)}
                       disabled={reviewSending || selectedSession.is_window_open === false || reviewedPhones.has(selectedSession.phone_number)}
                       title={selectedSession.is_window_open === false ? t('chats.window_closed_warning') : t('chats.request_review')}
                       className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold transition-all shadow-sm
@@ -1711,6 +1712,45 @@ export default function ChatsView() {
                   )}
                 </div>
               </div>
+
+              {/* Confirmación antes de mandar el pedido de reseña (evita envíos por error) */}
+              {showReviewConfirm && selectedSession && (
+                <div
+                  className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+                  onClick={() => setShowReviewConfirm(false)}
+                >
+                  <div
+                    className="bg-[#0d1117] border border-white/[0.08] rounded-xl w-full max-w-md p-6"
+                    onClick={e => e.stopPropagation()}
+                  >
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="p-2 rounded-lg bg-yellow-500/10 text-yellow-400">
+                        <Star size={20} className="fill-current" />
+                      </div>
+                      <h2 className="text-lg font-semibold text-white">{t('chats.review_confirm_title')}</h2>
+                    </div>
+                    <p className="text-sm text-white/80 mb-1">
+                      {t('chats.review_confirm_body', { name: selectedSession.patient_name || selectedSession.phone_number })}
+                    </p>
+                    <p className="text-xs text-white/40 mb-5">{t('chats.review_confirm_help')}</p>
+                    <div className="flex justify-end gap-2">
+                      <button
+                        onClick={() => setShowReviewConfirm(false)}
+                        className="px-4 py-2 rounded-lg text-sm text-white/60 hover:text-white hover:bg-white/[0.06]"
+                      >
+                        {t('chats.review_confirm_cancel')}
+                      </button>
+                      <button
+                        onClick={() => { setShowReviewConfirm(false); handleRequestReview(); }}
+                        disabled={reviewSending}
+                        className="flex items-center gap-2 bg-yellow-500 text-[#0a0e1a] px-4 py-2 rounded-lg text-sm font-medium hover:bg-yellow-400 disabled:opacity-50"
+                      >
+                        <Star size={14} className="fill-current" /> {t('chats.review_confirm_send')}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Alert Banner para derivhumano (YCloud & Chatwoot) */}
               {(selectedSession?.last_derivhumano_at || selectedChatwoot?.last_derivhumano_at) ? (

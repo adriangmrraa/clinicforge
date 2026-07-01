@@ -3318,6 +3318,8 @@ async def request_review(
             rp = json.loads(rp)
         except Exception:
             rp = None
+    if isinstance(rp, dict):
+        rp = [rp]
     if isinstance(rp, list):
         for item in rp:
             if isinstance(item, dict) and (item.get("url") or "").strip():
