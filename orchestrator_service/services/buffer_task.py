@@ -1297,6 +1297,25 @@ async def process_buffer_task(
                 identity_lines.append(
                     f"• FECHA EXACTA DEL TURNO: {dt.strftime('%d/%m/%Y')} a las {dt.strftime('%H:%M')}. {time_until}."
                 )
+                # Si tiene MÁS de un turno futuro, avisar al agente: el contexto solo
+                # muestra el más próximo, y ante cancelar/reprogramar debe confirmar CUÁL.
+                try:
+                    _future_count = await pool.fetchval(
+                        """
+                        SELECT COUNT(*) FROM appointments
+                        WHERE tenant_id = $1 AND patient_id = $2
+                        AND appointment_datetime >= NOW()
+                        AND status IN ('scheduled', 'confirmed')
+                        """,
+                        tenant_id,
+                        p_id,
+                    )
+                    if _future_count and int(_future_count) > 1:
+                        identity_lines.append(
+                            f"• OJO: el paciente tiene {_future_count} turnos futuros (arriba solo se muestra el más próximo). Ante cancelar/reprogramar, llamá list_my_appointments y confirmá CUÁL de los turnos es."
+                        )
+                except Exception:
+                    pass
 
             # 3b. Fetch LAST completed appointment (for post-treatment follow-up)
             last_apt = await pool.fetchrow(
@@ -2493,7 +2512,8 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                                 "- Si estás REPROGRAMANDO un turno existente: DEBES llamar reschedule_appointment DIRECTAMENTE (NUNCA llames confirm_slot ni book_appointment para reprogramar). Pasá original_date=fecha de tu turno actual, y new_date_time=fecha y hora de la Opción N.\n"
                                 "- 'el primero', 'el 1', 'opción 1', o el día/hora de Opción 1 → N=1\n"
                                 "- 'el segundo', 'el 2', 'opción 2', o el día/hora de Opción 2 → N=2\n"
-                                "- 'cualquiera' o no especifica → N=1\n"
+                                "- 'cualquiera' / 'lo que sea' / 'el que tengas' → N=1\n"
+                                "- Si solo dice 'dale'/'sí'/'ok' SIN especificar cuál y hay 2+ opciones → NO llames confirm_slot todavía: preguntá UNA sola vez '¿El 1 o el 2?'. Si reafirma sin aclarar, N=1.\n"
                                 "- NO llamés check_availability de nuevo.]"
                             )
                             logger.info(
