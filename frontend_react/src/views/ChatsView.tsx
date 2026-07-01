@@ -754,6 +754,7 @@ export default function ChatsView() {
       const { data } = await api.post('/admin/chat/request-review', {
         phone,
         tenant_id: selectedSession.tenant_id,
+        patient_id: selectedSession.patient_id ?? null,
       });
       setReviewedPhones(prev => new Set(prev).add(phone));
       if (data && typeof data.month_count === 'number') {

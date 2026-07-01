@@ -1289,6 +1289,7 @@ class ChatSendMessage(BaseModel):
 class ReviewRequestIn(BaseModel):
     phone: str
     tenant_id: int
+    patient_id: Optional[int] = None
 
 
 class HumanInterventionToggle(BaseModel):
@@ -3344,11 +3345,19 @@ async def request_review(
         payload.phone = normalize_phone_for_tenant(payload.phone, cc)
     except Exception:
         pass
-    prow = await db.pool.fetchrow(
-        "SELECT id, first_name FROM patients WHERE tenant_id = $1 AND phone_number = $2 ORDER BY id LIMIT 1",
-        payload.tenant_id,
-        payload.phone,
-    )
+    prow = None
+    if payload.patient_id:
+        prow = await db.pool.fetchrow(
+            "SELECT id, first_name FROM patients WHERE id = $1 AND tenant_id = $2",
+            payload.patient_id,
+            payload.tenant_id,
+        )
+    if not prow:
+        prow = await db.pool.fetchrow(
+            "SELECT id, first_name FROM patients WHERE tenant_id = $1 AND phone_number = $2 ORDER BY id LIMIT 1",
+            payload.tenant_id,
+            payload.phone,
+        )
     nombre = ((prow.get("first_name") if prow else "") or "").strip()
     saludo = f"¡Hola {nombre}!" if nombre else "¡Hola!"
 
@@ -3398,18 +3407,31 @@ async def request_review(
     )
 
     # 6) Registrar el pedido + marcar al paciente (best-effort, no bloqueante)
+    _pid = prow.get("id") if prow else None
     try:
         await db.pool.execute(
             "INSERT INTO review_requests (tenant_id, patient_id, phone, requested_at) VALUES ($1, $2, $3, NOW())",
             payload.tenant_id,
-            (prow.get("id") if prow else None),
+            _pid,
             payload.phone,
         )
-        await db.pool.execute(
-            "UPDATE patients SET review_requested_at = NOW() WHERE tenant_id = $1 AND phone_number = $2",
-            payload.tenant_id,
-            payload.phone,
-        )
+        # Marcamos por patient_id (confiable: el mismo id que muestra la lista de chats).
+        # Solo caemos a match por telefono si no resolvimos el paciente.
+        if _pid is not None:
+            await db.pool.execute(
+                "UPDATE patients SET review_requested_at = NOW() WHERE id = $1 AND tenant_id = $2",
+                _pid,
+                payload.tenant_id,
+            )
+        else:
+            await db.pool.execute(
+                "UPDATE patients SET review_requested_at = NOW() WHERE tenant_id = $1 AND phone_number = $2",
+                payload.tenant_id,
+                payload.phone,
+            )
+            logger.warning(
+                f"review-request: paciente no resuelto por id; marcado por telefono {payload.phone}"
+            )
     except Exception as e:
         logger.warning(f"review_request tracking failed (non-blocking): {e}")
 
