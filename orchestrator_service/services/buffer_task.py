@@ -963,8 +963,9 @@ async def process_buffer_task(
                 await _notify_blocked_contact_email(tenant_id, external_user_id, blocked, messages, pool)
                 try:
                     await pool.execute(
-                        "UPDATE blocked_phone_numbers SET last_notified_at = NOW() WHERE id = $1",
+                        "UPDATE blocked_phone_numbers SET last_notified_at = NOW() WHERE id = $1 AND tenant_id = $2",
                         blocked["id"],
+                        tenant_id,
                     )
                 except Exception:
                     pass
@@ -992,8 +993,9 @@ async def process_buffer_task(
                         tenant_id, conversation_id, external_user_id, provider, channel, _msg, pool
                     )
                     await pool.execute(
-                        "UPDATE blocked_phone_numbers SET last_autoreply_at = NOW() WHERE id = $1",
+                        "UPDATE blocked_phone_numbers SET last_autoreply_at = NOW() WHERE id = $1 AND tenant_id = $2",
                         blocked["id"],
+                        tenant_id,
                     )
                     logger.info(
                         f"✉️ Autoreply de bloqueo enviado tenant={tenant_id} label={blocked.get('label')}"
