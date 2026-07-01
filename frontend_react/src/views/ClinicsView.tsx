@@ -88,6 +88,7 @@ export interface Clinica {
     review_platforms?: ReviewPlatformItem[] | null;
     complaint_handling_protocol?: { level_1?: string; level_2?: string; level_3?: string } | null;
     auto_send_review_link_after_followup?: boolean;
+    review_goal_monthly?: number;
     config?: { calendar_provider?: 'local' | 'google' };
     created_at: string;
     updated_at?: string;
@@ -269,6 +270,7 @@ export default function ClinicsView() {
         review_platforms: [] as ReviewPlatformItem[],
         complaint_handling_protocol: { level_1: '', level_2: '', level_3: '' },
         auto_send_review_link_after_followup: false,
+        review_goal_monthly: 0,
         // Min appointment date (fecha mínima para turnos)
         min_appointment_date: '',
     });
@@ -704,6 +706,7 @@ export default function ClinicsView() {
                 review_platforms: Array.isArray(clinica.review_platforms) ? clinica.review_platforms : [],
                 complaint_handling_protocol: clinica.complaint_handling_protocol || { level_1: '', level_2: '', level_3: '' },
                 auto_send_review_link_after_followup: Boolean(clinica.auto_send_review_link_after_followup),
+                review_goal_monthly: Number(clinica.review_goal_monthly) || 0,
                 // Min appointment date
                 min_appointment_date: minDate,
             });
@@ -735,6 +738,7 @@ export default function ClinicsView() {
                 review_platforms: [],
                 complaint_handling_protocol: { level_1: '', level_2: '', level_3: '' },
                 auto_send_review_link_after_followup: false,
+                review_goal_monthly: 0,
                 // Min appointment date
                 min_appointment_date: '',
             });
@@ -817,6 +821,7 @@ export default function ClinicsView() {
                     || formData.complaint_handling_protocol.level_3
                 ) ? formData.complaint_handling_protocol : null,
                 auto_send_review_link_after_followup: formData.auto_send_review_link_after_followup,
+                review_goal_monthly: Number(formData.review_goal_monthly) || 0,
             };
             if (editingClinica) {
                 await api.put(`/admin/tenants/${editingClinica.id}`, payload);
@@ -2517,6 +2522,19 @@ export default function ClinicsView() {
                                                 <p className="text-xs text-white/40">{t('clinics.support.auto_send_review_help')}</p>
                                             </div>
                                         </label>
+
+                                        <div className="mt-3">
+                                            <label className="text-sm font-semibold text-white">{t('clinics.support.review_goal_monthly')}</label>
+                                            <p className="text-xs text-white/40 mb-1">{t('clinics.support.review_goal_monthly_help')}</p>
+                                            <input
+                                                type="number"
+                                                min={0}
+                                                value={formData.review_goal_monthly ?? 0}
+                                                onChange={e => setFormData(p => ({ ...p, review_goal_monthly: parseInt(e.target.value) || 0 }))}
+                                                className="w-32 bg-white/[0.04] border border-white/[0.08] text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-white/30"
+                                                placeholder="0"
+                                            />
+                                        </div>
                                     </div>
                                 )}
                             </div>

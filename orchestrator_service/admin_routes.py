@@ -1286,6 +1286,11 @@ class ChatSendMessage(BaseModel):
     message: str
 
 
+class ReviewRequestIn(BaseModel):
+    phone: str
+    tenant_id: int
+
+
 class HumanInterventionToggle(BaseModel):
     phone: str
     tenant_id: int  # Clínica: override/silencio es por (tenant_id, phone), independiente por clínica
@@ -3288,6 +3293,189 @@ async def send_chat_message(
         raise HTTPException(status_code=500, detail="Error interno del servidor")
 
 
+@router.post("/chat/request-review", dependencies=[Depends(verify_admin_token)], tags=["Chat"])
+async def request_review(
+    payload: ReviewRequestIn,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    allowed_ids: List[int] = Depends(get_allowed_tenant_ids),
+):
+    """Motor de reseñas: manda al paciente el pedido de reseña de Google (mensaje + link),
+    reusando el envío manual y el chequeo de ventana 24h. Registra el pedido y avisa a
+    Telegram si se cumple el objetivo mensual."""
+    if payload.tenant_id not in allowed_ids:
+        raise HTTPException(status_code=403, detail="No tienes acceso a esta clínica.")
+
+    # 1) Link de reseña (de tenants.review_platforms, configurable en Ajustes)
+    trow = await db.pool.fetchrow(
+        "SELECT review_platforms, review_goal_monthly, clinic_name, country_code FROM tenants WHERE id = $1",
+        payload.tenant_id,
+    )
+    review_url = None
+    rp = trow.get("review_platforms") if trow else None
+    if isinstance(rp, str):
+        try:
+            rp = json.loads(rp)
+        except Exception:
+            rp = None
+    if isinstance(rp, list):
+        for item in rp:
+            if isinstance(item, dict) and (item.get("url") or "").strip():
+                review_url = item["url"].strip()
+                break
+    if not review_url:
+        raise HTTPException(
+            status_code=422,
+            detail="No hay link de reseña configurado. Cargalo en Ajustes de la clínica (Reseñas).",
+        )
+
+    # 2) Normalizar teléfono + resolver paciente
+    try:
+        from main import normalize_phone_for_tenant
+
+        cc = (trow.get("country_code") if trow else None) or "AR"
+        payload.phone = normalize_phone_for_tenant(payload.phone, cc)
+    except Exception:
+        pass
+    prow = await db.pool.fetchrow(
+        "SELECT id, first_name FROM patients WHERE tenant_id = $1 AND phone_number = $2 ORDER BY id LIMIT 1",
+        payload.tenant_id,
+        payload.phone,
+    )
+    nombre = ((prow.get("first_name") if prow else "") or "").strip()
+    saludo = f"¡Hola {nombre}!" if nombre else "¡Hola!"
+
+    # 3) Ventana 24h (mismo criterio que /chat/send)
+    last_user_msg = await db.pool.fetchval(
+        "SELECT created_at FROM chat_messages WHERE from_number = $1 AND role = 'user' AND tenant_id = $2 "
+        "ORDER BY created_at DESC LIMIT 1",
+        payload.phone,
+        payload.tenant_id,
+    )
+    if not last_user_msg:
+        raise HTTPException(
+            status_code=403, detail="No se puede enviar si el paciente nunca escribió."
+        )
+    try:
+        from services.tz_resolver import get_tenant_tz
+
+        _fallback_tz = await get_tenant_tz(payload.tenant_id)
+    except Exception:
+        _fallback_tz = ARG_TZ
+    now_localized = datetime.now(
+        last_user_msg.tzinfo if last_user_msg.tzinfo else _fallback_tz
+    )
+    if (now_localized - last_user_msg) > timedelta(hours=24):
+        raise HTTPException(
+            status_code=403,
+            detail="La ventana de 24hs de WhatsApp está cerrada. El paciente debe escribir primero.",
+        )
+
+    # 4) Armar el mensaje (marco altruista, personalizado)
+    message = (
+        f"{saludo} 😊 Fue un gusto atenderte.\n\n"
+        "Si te sentís cómodo/a, tu opinión nos ayuda un montón — y sobre todo a otras personas "
+        "que tienen dudas o miedo antes de dar el paso.\n\n"
+        f"Si querés dejarnos una reseña, es acá (te toma 1 minuto):\n{review_url}\n\n"
+        "¡Gracias de corazón! 🤍"
+    )
+
+    # 5) Enviar (mismo mecanismo que el envío manual)
+    correlation_id = str(uuid.uuid4())
+    await db.append_chat_message(
+        from_number=payload.phone,
+        role="assistant",
+        content=message,
+        correlation_id=correlation_id,
+        tenant_id=payload.tenant_id,
+    )
+
+    # 6) Registrar el pedido + marcar al paciente (best-effort, no bloqueante)
+    try:
+        await db.pool.execute(
+            "INSERT INTO review_requests (tenant_id, patient_id, phone, requested_at) VALUES ($1, $2, $3, NOW())",
+            payload.tenant_id,
+            (prow.get("id") if prow else None),
+            payload.phone,
+        )
+        await db.pool.execute(
+            "UPDATE patients SET review_requested_at = NOW() WHERE tenant_id = $1 AND phone_number = $2",
+            payload.tenant_id,
+            payload.phone,
+        )
+    except Exception as e:
+        logger.warning(f"review_request tracking failed (non-blocking): {e}")
+
+    # 7) Socket + envío por WhatsApp
+    if hasattr(request.app.state, "emit_appointment_event"):
+        await request.app.state.emit_appointment_event(
+            "NEW_MESSAGE",
+            {
+                "phone_number": payload.phone,
+                "tenant_id": payload.tenant_id,
+                "message": message,
+                "role": "assistant",
+            },
+        )
+    business_number = (
+        os.getenv("YCLOUD_Phone_Number_ID") or os.getenv("BOT_PHONE_NUMBER") or "default"
+    )
+    background_tasks.add_task(
+        send_to_whatsapp_task, payload.phone, message, business_number
+    )
+
+    # 8) Contar el mes + avisar a Telegram si se alcanzó el objetivo
+    month_count = 0
+    goal = int((trow.get("review_goal_monthly") if trow else 0) or 0)
+    try:
+        month_count = (
+            await db.pool.fetchval(
+                "SELECT COUNT(*) FROM review_requests "
+                "WHERE tenant_id = $1 AND requested_at >= date_trunc('month', NOW())",
+                payload.tenant_id,
+            )
+            or 0
+        )
+        if goal > 0 and month_count == goal:
+            import html as _html
+            from services.telegram_notifier import send_proactive_message
+
+            _cn = _html.escape((trow.get("clinic_name") if trow else "") or "la clínica")
+            await send_proactive_message(
+                payload.tenant_id,
+                f"🎉 <b>¡Objetivo de reseñas cumplido!</b>\n\nSe pidieron <b>{month_count}</b> "
+                f"reseñas este mes (objetivo {goal}). ¡Felicitaciones al equipo de {_cn}! 🦷",
+            )
+    except Exception as e:
+        logger.warning(f"review milestone notify failed (non-blocking): {e}")
+
+    return {
+        "status": "sent",
+        "correlation_id": correlation_id,
+        "month_count": int(month_count),
+        "goal": goal,
+    }
+
+
+@router.get("/reviews/stats", dependencies=[Depends(verify_admin_token)], tags=["Chat"])
+async def reviews_stats(tenant_id: int = Depends(get_resolved_tenant_id)):
+    """Progreso del mes: reseñas pedidas vs el objetivo mensual (para la barra en el chat)."""
+    row = await db.pool.fetchrow(
+        "SELECT COALESCE(review_goal_monthly, 0) AS goal FROM tenants WHERE id = $1",
+        tenant_id,
+    )
+    goal = int(row["goal"]) if row else 0
+    month_count = (
+        await db.pool.fetchval(
+            "SELECT COUNT(*) FROM review_requests "
+            "WHERE tenant_id = $1 AND requested_at >= date_trunc('month', NOW())",
+            tenant_id,
+        )
+        or 0
+    )
+    return {"month_count": int(month_count), "goal": goal}
+
+
 # ==================== ENDPOINTS DASHBOARD ====================
 
 
@@ -4160,6 +4348,14 @@ async def update_tenant(
     if "auto_send_review_link_after_followup" in data:
         params.append(bool(data.get("auto_send_review_link_after_followup")))
         updates.append(f"auto_send_review_link_after_followup = ${len(params)}")
+
+    if "review_goal_monthly" in data:
+        try:
+            _goal = int(data.get("review_goal_monthly") or 0)
+        except (TypeError, ValueError):
+            _goal = 0
+        params.append(max(0, _goal))
+        updates.append(f"review_goal_monthly = ${len(params)}")
 
     if not updates:
         return {"status": "updated"}

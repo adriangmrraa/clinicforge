@@ -548,6 +548,10 @@
     "badge_patient": "Patient",
     "badge_lead": "Lead",
     "agent_failed": "Bot failed",
+    "request_review": "Request review",
+    "review_sent": "Review requested",
+    "review_error": "Could not send the review request.",
+    "reviews_month_progress": "Reviews requested this month vs. goal",
     "linked_as": "→ {name}",
     "title": "Conversations",
     "select_clinic": "Select clinic",
@@ -903,7 +907,9 @@
       "review_platforms": "Review platforms",
       "add_platform": "Add platform",
       "auto_send_review": "Auto-send review link",
-      "auto_send_review_help": "When the post-treatment followup job runs, append a review link to the message."
+      "auto_send_review_help": "When the post-treatment followup job runs, append a review link to the message.",
+      "review_goal_monthly": "Review goal (monthly)",
+      "review_goal_monthly_help": "How many reviews the team wants to request per month. 0 = no goal."
     },
     "holidays": {
       "section_title": "Holidays & Special Days",

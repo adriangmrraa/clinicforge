@@ -217,6 +217,30 @@ class ChatConversation(Base):
     )
 
 
+class ReviewRequest(Base):
+    """Motor de reseñas: un registro por cada pedido de reseña de Google que hace el
+    equipo desde el chat. Sirve para contar cuántas se pidieron por mes (objetivo)."""
+
+    __tablename__ = "review_requests"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    tenant_id = Column(
+        Integer, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    patient_id = Column(
+        Integer, ForeignKey("patients.id", ondelete="SET NULL"), nullable=True
+    )
+    phone = Column(Text, nullable=True)
+    requested_by = Column(Text, nullable=True)
+    requested_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        Index("ix_review_requests_tenant_at", "tenant_id", "requested_at"),
+    )
+
+
 # =============================================================================
 # TENANT & CONFIGURATION
 # =============================================================================
@@ -269,6 +293,8 @@ class Tenant(Base):
     auto_send_review_link_after_followup = Column(
         Boolean, nullable=False, server_default="false"
     )
+    # Motor de reseñas: objetivo mensual de reseñas pedidas (0 = sin objetivo)
+    review_goal_monthly = Column(Integer, nullable=False, server_default="0")
 
     # Payment & financing configuration (migration 035)
     payment_methods = Column(JSONB, nullable=True)
@@ -632,6 +658,8 @@ class Patient(Base):
     human_handoff_requested = Column(Boolean, default=False)
     human_override_until = Column(DateTime(timezone=True))
     last_derivhumano_at = Column(DateTime(timezone=True))
+    # Motor de reseñas: cuándo se le pidió reseña (candado anti-repetir + estado del botón)
+    review_requested_at = Column(DateTime(timezone=True), nullable=True)
 
     # First-Touch Attribution (renamed from meta_ad_* in patch_020)
     first_touch_source = Column(String(50), server_default="ORGANIC")

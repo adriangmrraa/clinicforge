@@ -542,6 +542,10 @@
     "badge_patient": "Patient",
     "badge_lead": "Prospect",
     "agent_failed": "Bot en échec",
+    "request_review": "Demander un avis",
+    "review_sent": "Avis demandé",
+    "review_error": "Impossible d'envoyer la demande d'avis.",
+    "reviews_month_progress": "Avis demandés ce mois vs. objectif",
     "linked_as": "→ {name}",
     "title": "Conversations",
     "select_clinic": "Choisir la clinique",
@@ -898,7 +902,9 @@
       "review_platforms": "Plateformes d'avis",
       "add_platform": "Ajouter une plateforme",
       "auto_send_review": "Envoyer le lien d'avis automatiquement",
-      "auto_send_review_help": "Quand le job de suivi post-traitement s'exécute, ajoute un lien d'avis au message."
+      "auto_send_review_help": "Quand le job de suivi post-traitement s'exécute, ajoute un lien d'avis au message.",
+      "review_goal_monthly": "Objectif d'avis (mensuel)",
+      "review_goal_monthly_help": "Combien d'avis l'équipe veut demander par mois. 0 = pas d'objectif."
     },
     "holidays": {
       "section_title": "Jours fériés et jours spéciaux",

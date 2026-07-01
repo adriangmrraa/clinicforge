@@ -4,7 +4,7 @@ import {
   MessageCircle, Send, Calendar, User, Activity,
   Pause, Play, AlertCircle, Clock, ChevronLeft,
   Search, XCircle, Bell, Volume2, VolumeX,
-  Instagram, Facebook, Lock, ChevronRight, Paperclip, LinkIcon, CalendarCheck, Users
+  Instagram, Facebook, Lock, ChevronRight, Paperclip, LinkIcon, CalendarCheck, Users, Star
 } from 'lucide-react';
 import api, { setTenantId } from '../api/axios';
 import * as chatsApi from '../api/chats';
@@ -143,6 +143,9 @@ export default function ChatsView() {
   const [sending, setSending] = useState(false);
   const [voiceRecording, setVoiceRecording] = useState(false);
   const [newMessage, setNewMessage] = useState('');
+  const [reviewSending, setReviewSending] = useState(false);
+  const [reviewStats, setReviewStats] = useState<{ month_count: number; goal: number } | null>(null);
+  const [reviewedPhones, setReviewedPhones] = useState<Set<string>>(new Set());
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -734,6 +737,31 @@ export default function ChatsView() {
   // ============================================
   // ACCIONES
   // ============================================
+
+  // Motor de reseñas: progreso del mes (pedidas vs objetivo) para el badge del header
+  useEffect(() => {
+    api.get('/admin/reviews/stats').then(({ data }) => setReviewStats(data)).catch(() => {});
+  }, []);
+
+  const handleRequestReview = async () => {
+    if (!selectedSession) return;
+    const phone = selectedSession.phone_number;
+    setReviewSending(true);
+    try {
+      const { data } = await api.post('/admin/chat/request-review', {
+        phone,
+        tenant_id: selectedSession.tenant_id,
+      });
+      setReviewedPhones(prev => new Set(prev).add(phone));
+      if (data && typeof data.month_count === 'number') {
+        setReviewStats({ month_count: data.month_count, goal: data.goal || 0 });
+      }
+    } catch (err: any) {
+      alert(err?.response?.data?.detail || t('chats.review_error'));
+    } finally {
+      setReviewSending(false);
+    }
+  };
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1622,6 +1650,14 @@ export default function ChatsView() {
 
                 {/* Header Buttons */}
                 <div className="flex items-center gap-1 sm:gap-2">
+                  {reviewStats && reviewStats.goal > 0 && (
+                    <span
+                      className="hidden md:flex items-center gap-1 text-[11px] font-bold text-yellow-400/80 mr-1"
+                      title={t('chats.reviews_month_progress')}
+                    >
+                      <Star size={11} className="fill-current" /> {reviewStats.month_count}/{reviewStats.goal}
+                    </span>
+                  )}
                   {(selectedSession || selectedChatwoot) && (
                     <button
                       onClick={() => setShowMobileContext(!showMobileContext)}
@@ -1645,6 +1681,23 @@ export default function ChatsView() {
                       ) : (
                         <><Pause size={14} className="fill-current" /> <span className="hidden sm:inline">{t('chats.manual')}</span></>
                       )}
+                    </button>
+                  )}
+                  {selectedSession && (
+                    <button
+                      onClick={handleRequestReview}
+                      disabled={reviewSending || selectedSession.is_window_open === false || reviewedPhones.has(selectedSession.phone_number)}
+                      title={selectedSession.is_window_open === false ? t('chats.window_closed_warning') : t('chats.request_review')}
+                      className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold transition-all shadow-sm
+                      ${(selectedSession.is_window_open === false || reviewedPhones.has(selectedSession.phone_number))
+                          ? 'bg-white/[0.04] text-white/30 border border-white/[0.06] cursor-not-allowed'
+                          : 'bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20 border border-yellow-500/20'
+                        }`}
+                    >
+                      <Star size={14} className="fill-current" />
+                      <span className="hidden sm:inline">
+                        {reviewedPhones.has(selectedSession.phone_number) ? t('chats.review_sent') : t('chats.request_review')}
+                      </span>
                     </button>
                   )}
                   {selectedChatwoot && (
