@@ -47,6 +47,7 @@ interface ChatSession {
   last_user_message_time?: string;
   agent_failed?: boolean;
   last_agent_error_at?: string;
+  review_requested_at?: string | null;
 }
 
 interface ChatMessage {
@@ -1708,17 +1709,17 @@ export default function ChatsView() {
                   {selectedSession && (
                     <button
                       onClick={() => setShowReviewConfirm(true)}
-                      disabled={reviewSending || selectedSession.is_window_open === false || reviewedPhones.has(selectedSession.phone_number)}
+                      disabled={reviewSending || selectedSession.is_window_open === false || reviewedPhones.has(selectedSession.phone_number) || !!selectedSession.review_requested_at}
                       title={selectedSession.is_window_open === false ? t('chats.window_closed_warning') : t('chats.request_review')}
                       className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold transition-all shadow-sm
-                      ${(selectedSession.is_window_open === false || reviewedPhones.has(selectedSession.phone_number))
+                      ${(selectedSession.is_window_open === false || reviewedPhones.has(selectedSession.phone_number) || !!selectedSession.review_requested_at)
                           ? 'bg-white/[0.04] text-white/30 border border-white/[0.06] cursor-not-allowed'
                           : 'bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20 border border-yellow-500/20'
                         }`}
                     >
                       <Star size={14} className="fill-current" />
                       <span className="hidden sm:inline">
-                        {reviewedPhones.has(selectedSession.phone_number) ? t('chats.review_sent') : t('chats.request_review')}
+                        {(reviewedPhones.has(selectedSession.phone_number) || !!selectedSession.review_requested_at) ? t('chats.review_sent') : t('chats.request_review')}
                       </span>
                     </button>
                   )}
