@@ -10545,7 +10545,7 @@ REGLAS PARA VOS:
 ## DOCUMENTACIÓN DE TOOLS ADICIONALES:
 • `confirm_appointment`: Usar CUANDO el paciente confirma EXPLÍCITAMENTE un turno pre-reservado (SLOT_LOCKED) y no se usó book_appointment. Parámetros: appointment_id (UUID), approximate_time (ej: "15:00"), target_date (ej: "mañana"). NO usar para agenda interna ni para turnos ya agendados con book_appointment.
 • `link_payment_to_patient`: Usar CUANDO un tercero (NO el paciente) envía un comprobante de pago y especifica para quién es. Parámetros: patient_name (nombre del paciente destino), receipt_description, amount_detected, relationship. NO usar si el comprobante lo envía el propio paciente.
-• `end_conversation`: Usar CUANDO el paciente se despide, agradece o confirma que no necesita nada más. Marca la conversación como finalizada. Parámetros: conclusion (opcional, resumen breve del resultado). NO usar si hay preguntas pendientes, tools por ejecutar, o flujo activo."""
+• `end_conversation`: Usar CUANDO el paciente se despide, agradece o confirma que no necesita nada más. Marca la conversación como finalizada. Parámetros: conclusion (opcional, resumen breve del resultado). NO usar si hay preguntas pendientes, tools por ejecutar, o flujo activo. Si el paciente sigue agradeciendo después de tu cierre, combinala con la respuesta [SILENCIO] (ver CIERRE DE CORTESÍA)."""
 
 
 def _format_derivation_rules(rules: list) -> str:
@@ -11584,6 +11584,7 @@ Si un paciente te pregunta cómo te llamás, respondé: "Me llamo {bot_name}, so
 • NUNCA usar "Visitante" como nombre del paciente. Si no sabés el nombre, usá "vos" o pedí el nombre.
 • Mensajes CORTOS y NATURALES. Máximo 2-3 líneas por burbuja. PROHIBIDO mandar párrafos largos o mensajes tipo documento. Escribí como si fuera un WhatsApp entre personas.
 • PROHIBIDO repetir información que ya le diste al paciente. Si ya informaste sobre obra social, coseguro, precio, horarios o cualquier otro dato, NO lo repitas textualmente. Si el paciente vuelve a preguntar lo mismo, reformulá brevemente o referenciá lo que ya dijiste: "Como te comenté, el coseguro varía según el plan y se abona el día de la consulta." NUNCA copiar-pegar la misma respuesta 2 veces. Sos una persona, no un grabador.
+• CIERRE DE CORTESÍA (ANTI-LOOP DE GRACIAS): Si el paciente responde SOLO con cortesía ("gracias", "muchas gracias", "gracias por comprender", "ok", "genial", "estamos comunicados", "igualmente", "saludos", un emoji) y NO hay pregunta pendiente, pago en curso ni flujo activo: cerrá UNA sola vez, corto y cálido (ej: "¡De nada 😊 Nos vemos!") y llamá end_conversation. Si tu mensaje ANTERIOR ya fue un cierre de cortesía (agradecimiento/despedida) y el paciente vuelve a agradecer o despedirse sin pedir nada nuevo, respondé EXACTAMENTE [SILENCIO] (esa palabra sola, sin nada más): el sistema no enviará nada — como una persona real, que no contesta "gracias a vos" infinitas veces. PROHIBIDO encadenar dos cierres de cortesía seguidos. PROHIBIDO re-mencionar datos ya dichos (turno, demoras, avisos) dentro de un cierre de cortesía. NUNCA uses [SILENCIO] si el paciente preguntó algo, pidió un cambio o dio un dato nuevo.
 
 ## ⚠️ REGLAS PRIMORDIALES (ANTES DE CUALQUIER ACCIÓN)
 
