@@ -4183,6 +4183,18 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
         logger.warning("🔇 Suppressing placeholder '[Sin respuesta]' — not sending to patient")
         response_text = ""
 
+    # ANTI-LOOP DE CORTESÍA: el prompt instruye responder exactamente [SILENCIO]
+    # cuando el paciente solo agradece/se despide tras un cierre ya hecho
+    # (regla CIERRE DE CORTESÍA). Red de seguridad: si viene embebido junto a
+    # texto real, se quita el token y se envía solo el resto.
+    if response_text and "[SILENCIO]" in response_text:
+        _sil_rest = response_text.replace("[SILENCIO]", "").strip()
+        if not _sil_rest:
+            logger.info(f"🔇 [SILENCIO] — cierre de cortesía para {external_user_id}: no se envía respuesta")
+        else:
+            logger.info("🔇 [SILENCIO] embebido en texto — se envía solo el resto")
+        response_text = _sil_rest
+
     # --- SEND RESPONSE ---
     from response_sender import ResponseSender
 
