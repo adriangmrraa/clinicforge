@@ -3904,15 +3904,21 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
 
     # ANTI-LOOP DE CORTESÍA: el prompt instruye responder exactamente [SILENCIO]
     # cuando el paciente solo agradece/se despide tras un cierre ya hecho
-    # (regla CIERRE DE CORTESÍA). Red de seguridad: si viene embebido junto a
-    # texto real, se quita el token y se envía solo el resto.
-    if response_text and "[SILENCIO]" in response_text:
-        _sil_rest = response_text.replace("[SILENCIO]", "").strip()
-        if not _sil_rest:
-            logger.info(f"🔇 [SILENCIO] — cierre de cortesía para {external_user_id}: no se envía respuesta")
-        else:
-            logger.info("🔇 [SILENCIO] embebido en texto — se envía solo el resto")
-        response_text = _sil_rest
+    # (regla CIERRE DE CORTESÍA). Red de seguridad: case-insensitive; si viene
+    # embebido junto a texto real, se quita el token y se envía solo el resto.
+    if response_text:
+        import re as _sil_re_mod
+        _sil_pat = _sil_re_mod.compile(r"\[\s*silencio\s*\]", _sil_re_mod.IGNORECASE)
+        if _sil_pat.search(response_text):
+            _sil_rest = _sil_pat.sub("", response_text).strip()
+            # Si solo quedan restos de puntuación, es silencio total.
+            if not _sil_rest.strip(" .,;:!¡¿?…-*"):
+                _sil_rest = ""
+            if not _sil_rest:
+                logger.info(f"🔇 [SILENCIO] — cierre de cortesía para {external_user_id}: no se envía respuesta")
+            else:
+                logger.info("🔇 [SILENCIO] embebido en texto — se envía solo el resto")
+            response_text = _sil_rest
 
     # --- SEND RESPONSE ---
     from response_sender import ResponseSender
