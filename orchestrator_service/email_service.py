@@ -239,6 +239,14 @@ class EmailService:
             </html>
             """
 
+            # Dedup case-insensitive: evita enviar 2 veces a la misma casilla
+            # (ej. "Consultorio..." y "consultorio..." son la misma cuenta de Gmail).
+            _seen: set = set()
+            to_emails = [
+                e for e in to_emails
+                if e and e.strip() and not (e.strip().lower() in _seen or _seen.add(e.strip().lower()))
+            ]
+
             msg = MIMEMultipart("alternative")
             msg["Subject"] = f"🔔 Derivación: {patient_name} — {reason[:60]}"
             msg["From"] = self.smtp_sender
