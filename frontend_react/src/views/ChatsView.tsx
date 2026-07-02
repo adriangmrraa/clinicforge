@@ -4,7 +4,7 @@ import {
   MessageCircle, Send, Calendar, User, Activity,
   Pause, Play, AlertCircle, Clock, ChevronLeft,
   Search, XCircle, Bell, Volume2, VolumeX,
-  Instagram, Facebook, Lock, ChevronRight, Paperclip, LinkIcon, CalendarCheck, Users
+  Instagram, Facebook, Lock, ChevronRight, Paperclip, LinkIcon, CalendarCheck, Users, Star
 } from 'lucide-react';
 import api, { setTenantId } from '../api/axios';
 import * as chatsApi from '../api/chats';
@@ -45,6 +45,9 @@ interface ChatSession {
   last_derivhumano_at?: string;
   is_window_open?: boolean;
   last_user_message_time?: string;
+  agent_failed?: boolean;
+  last_agent_error_at?: string;
+  review_requested_at?: string | null;
 }
 
 interface ChatMessage {
@@ -141,6 +144,11 @@ export default function ChatsView() {
   const [sending, setSending] = useState(false);
   const [voiceRecording, setVoiceRecording] = useState(false);
   const [newMessage, setNewMessage] = useState('');
+  const [reviewSending, setReviewSending] = useState(false);
+  const reviewSendingRef = useRef(false); // guard sincrónico (el state no alcanza para doble click en el mismo tick)
+  const [reviewStats, setReviewStats] = useState<{ month_count: number; goal: number } | null>(null);
+  const [reviewedPhones, setReviewedPhones] = useState<Set<string>>(new Set());
+  const [showReviewConfirm, setShowReviewConfirm] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -733,6 +741,49 @@ export default function ChatsView() {
   // ACCIONES
   // ============================================
 
+  // Motor de reseñas: progreso del mes (pedidas vs objetivo) para el badge del header
+  useEffect(() => {
+    api.get('/admin/reviews/stats').then(({ data }) => setReviewStats(data)).catch(() => {});
+  }, []);
+
+  const handleRequestReview = async () => {
+    if (!selectedSession) return;
+    if (reviewSendingRef.current) return; // doble click en el mismo tick no dispara 2 POST
+    reviewSendingRef.current = true;
+    const phone = selectedSession.phone_number;
+    const nombre = selectedSession.patient_name || phone;
+    setReviewSending(true);
+    try {
+      const { data } = await api.post('/admin/chat/request-review', {
+        phone,
+        tenant_id: selectedSession.tenant_id,
+        patient_id: selectedSession.patient_id ?? null,
+      });
+      setReviewedPhones(prev => new Set(prev).add(phone));
+      if (data && typeof data.month_count === 'number') {
+        setReviewStats({ month_count: data.month_count, goal: data.goal || 0 });
+      }
+      setShowToast({
+        id: Date.now().toString(),
+        type: 'success',
+        title: '⭐ ' + t('chats.review_toast_sent_title'),
+        message: t('chats.review_toast_sent_message', { name: nombre }),
+      });
+      setTimeout(() => setShowToast(null), 4000);
+    } catch (err: any) {
+      setShowToast({
+        id: Date.now().toString(),
+        type: 'error',
+        title: '⚠️ ' + t('chats.review_toast_error_title'),
+        message: err?.response?.data?.detail || t('chats.review_error'),
+      });
+      setTimeout(() => setShowToast(null), 5000);
+    } finally {
+      setReviewSending(false);
+      reviewSendingRef.current = false;
+    }
+  };
+
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if ((!newMessage.trim() && selectedFiles.length === 0) || !selectedSession) return;
@@ -1190,6 +1241,18 @@ export default function ChatsView() {
         cardBorder: session.last_derivhumano_at ? 'border-l-4 border-orange-500' : '',
       };
     }
+    // BLINDAJE: el bot falló y todavía no lo tomó un humano → alerta ROJA
+    if (session.agent_failed) {
+      return {
+        badge: (
+          <span className="flex items-center gap-1 text-xs font-medium text-red-400">
+            <AlertCircle size={12} className="text-red-500" /> {t('chats.agent_failed')}
+          </span>
+        ),
+        avatarBg: 'bg-red-600',
+        cardBorder: 'border-l-4 border-red-600',
+      };
+    }
     return {
       badge: (
         <span className="flex items-center gap-1 text-xs text-green-600">
@@ -1272,8 +1335,15 @@ export default function ChatsView() {
       {/* ======================================== */}
       {showToast && (
         <div className="fixed top-4 right-4 z-50 animate-slide-in">
-          <div className="bg-orange-500 text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-3">
-            <Bell className="w-5 h-5" />
+          <div className={`text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 ${
+            showToast.type === 'success' ? 'bg-emerald-500'
+              : showToast.type === 'error' ? 'bg-red-500'
+              : showToast.type === 'info' ? 'bg-blue-500'
+              : 'bg-orange-500'
+          }`}>
+            {showToast.type === 'success' ? <Star className="w-5 h-5 fill-current" />
+              : showToast.type === 'error' ? <XCircle className="w-5 h-5" />
+              : <Bell className="w-5 h-5" />}
             <div>
               <p className="font-semibold">{showToast.title}</p>
               <p className="text-sm opacity-90">{showToast.message}</p>
@@ -1355,7 +1425,7 @@ export default function ChatsView() {
             mergedList.map(row => {
               if (row.type === 'ycloud') {
                 const session = row.session;
-                const { avatarBg } = getStatusConfig(session);
+                const { avatarBg, cardBorder } = getStatusConfig(session);
                 const platform = getPlatformConfig('whatsapp');
                 const isSelected = selectedSession?.phone_number === session.phone_number;
                 return (
@@ -1363,7 +1433,7 @@ export default function ChatsView() {
                     key={`ycloud-${session.phone_number}`}
                     onClick={() => { setSelectedSession(session); setSelectedChatwoot(null); }}
                     className={`px-4 py-3 border-b border-white/[0.06] cursor-pointer transition-all relative border-l-4
-                      ${isSelected ? `bg-white/[0.08] ${platform.borderColor}` : `hover:bg-white/[0.04] border-transparent`}
+                      ${isSelected ? `bg-white/[0.08] ${platform.borderColor}` : `hover:bg-white/[0.04] ${cardBorder || 'border-transparent'}`}
                     `}
                   >
                     <div className="flex items-center gap-3">
@@ -1388,6 +1458,11 @@ export default function ChatsView() {
                                 ) : (
                                   <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/20 shrink-0">
                                     {t('chats.badge_lead')}
+                                  </span>
+                                )}
+                                {session.agent_failed && (
+                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-red-500/15 text-red-400 border border-red-500/30 shrink-0 flex items-center gap-0.5">
+                                    <AlertCircle size={9} /> {t('chats.agent_failed')}
                                   </span>
                                 )}
                               </span>
@@ -1603,6 +1678,14 @@ export default function ChatsView() {
 
                 {/* Header Buttons */}
                 <div className="flex items-center gap-1 sm:gap-2">
+                  {reviewStats && reviewStats.goal > 0 && (
+                    <span
+                      className="hidden md:flex items-center gap-1 text-[11px] font-bold text-yellow-400/80 mr-1"
+                      title={t('chats.reviews_month_progress')}
+                    >
+                      <Star size={11} className="fill-current" /> {reviewStats.month_count}/{reviewStats.goal}
+                    </span>
+                  )}
                   {(selectedSession || selectedChatwoot) && (
                     <button
                       onClick={() => setShowMobileContext(!showMobileContext)}
@@ -1628,6 +1711,23 @@ export default function ChatsView() {
                       )}
                     </button>
                   )}
+                  {selectedSession && (
+                    <button
+                      onClick={() => setShowReviewConfirm(true)}
+                      disabled={reviewSending || selectedSession.is_window_open === false || reviewedPhones.has(selectedSession.phone_number) || !!selectedSession.review_requested_at}
+                      title={selectedSession.is_window_open === false ? t('chats.window_closed_warning') : t('chats.request_review')}
+                      className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold transition-all shadow-sm
+                      ${(selectedSession.is_window_open === false || reviewedPhones.has(selectedSession.phone_number) || !!selectedSession.review_requested_at)
+                          ? 'bg-white/[0.04] text-white/30 border border-white/[0.06] cursor-not-allowed'
+                          : 'bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20 border border-yellow-500/20'
+                        }`}
+                    >
+                      <Star size={14} className="fill-current" />
+                      <span className="hidden sm:inline">
+                        {(reviewedPhones.has(selectedSession.phone_number) || !!selectedSession.review_requested_at) ? t('chats.review_sent') : t('chats.request_review')}
+                      </span>
+                    </button>
+                  )}
                   {selectedChatwoot && (
                     <button
                       onClick={handleToggleChatwootLock}
@@ -1639,6 +1739,45 @@ export default function ChatsView() {
                   )}
                 </div>
               </div>
+
+              {/* Confirmación antes de mandar el pedido de reseña (evita envíos por error) */}
+              {showReviewConfirm && selectedSession && (
+                <div
+                  className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+                  onClick={() => setShowReviewConfirm(false)}
+                >
+                  <div
+                    className="bg-[#0d1117] border border-white/[0.08] rounded-xl w-full max-w-md p-6"
+                    onClick={e => e.stopPropagation()}
+                  >
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="p-2 rounded-lg bg-yellow-500/10 text-yellow-400">
+                        <Star size={20} className="fill-current" />
+                      </div>
+                      <h2 className="text-lg font-semibold text-white">{t('chats.review_confirm_title')}</h2>
+                    </div>
+                    <p className="text-sm text-white/80 mb-1">
+                      {t('chats.review_confirm_body', { name: selectedSession.patient_name || selectedSession.phone_number })}
+                    </p>
+                    <p className="text-xs text-white/40 mb-5">{t('chats.review_confirm_help')}</p>
+                    <div className="flex justify-end gap-2">
+                      <button
+                        onClick={() => setShowReviewConfirm(false)}
+                        className="px-4 py-2 rounded-lg text-sm text-white/60 hover:text-white hover:bg-white/[0.06]"
+                      >
+                        {t('chats.review_confirm_cancel')}
+                      </button>
+                      <button
+                        onClick={() => { setShowReviewConfirm(false); handleRequestReview(); }}
+                        disabled={reviewSending}
+                        className="flex items-center gap-2 bg-yellow-500 text-[#0a0e1a] px-4 py-2 rounded-lg text-sm font-medium hover:bg-yellow-400 disabled:opacity-50"
+                      >
+                        <Star size={14} className="fill-current" /> {t('chats.review_confirm_send')}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Alert Banner para derivhumano (YCloud & Chatwoot) */}
               {(selectedSession?.last_derivhumano_at || selectedChatwoot?.last_derivhumano_at) ? (

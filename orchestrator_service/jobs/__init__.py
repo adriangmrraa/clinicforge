@@ -62,4 +62,10 @@ try:
 except ImportError as e:
     logger.warning(f"⚠️ No se pudo importar job weekly_backup: {e}")
 
-__all__ = ['followups', 'lead_recovery', 'nova_morning', 'smart_alerts', 'expire_unpaid', 'playbook_executor']
+try:
+    from . import reviews_monthly
+    logger.info("✅ Job de cierre de reseñas importado correctamente")
+except ImportError as e:
+    logger.warning(f"⚠️ No se pudo importar job reviews_monthly: {e}")
+
+__all__ = ['followups', 'lead_recovery', 'nova_morning', 'smart_alerts', 'expire_unpaid', 'playbook_executor', 'reviews_monthly']

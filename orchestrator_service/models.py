@@ -183,6 +183,10 @@ class ChatConversation(Base):
     last_user_message_at = Column(DateTime(timezone=True))
     last_derivhumano_at = Column(DateTime(timezone=True))
     no_followup = Column(Boolean, nullable=False, server_default="false")
+    # Blindaje "esto no puede pasar": fallo del agente -> marca roja en Chats + alerta clinica.
+    # last_agent_error_at NULL = sin fallo / recuperado.
+    last_agent_error_at = Column(DateTime(timezone=True), nullable=True)
+    agent_error_reason = Column(Text, nullable=True)
     last_automation_message_at = Column(DateTime(timezone=True))
     recovery_touch_count = Column(Integer, nullable=False, server_default="0")
     last_recovery_at = Column(DateTime(timezone=True), nullable=True)
@@ -210,6 +214,30 @@ class ChatConversation(Base):
             unique=True,
         ),
         Index("idx_chat_conv_last_derivhumano", "last_derivhumano_at"),
+    )
+
+
+class ReviewRequest(Base):
+    """Motor de reseñas: un registro por cada pedido de reseña de Google que hace el
+    equipo desde el chat. Sirve para contar cuántas se pidieron por mes (objetivo)."""
+
+    __tablename__ = "review_requests"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    tenant_id = Column(
+        Integer, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    patient_id = Column(
+        Integer, ForeignKey("patients.id", ondelete="SET NULL"), nullable=True
+    )
+    phone = Column(Text, nullable=True)
+    requested_by = Column(Text, nullable=True)
+    requested_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        Index("ix_review_requests_tenant_at", "tenant_id", "requested_at"),
     )
 
 
@@ -265,6 +293,8 @@ class Tenant(Base):
     auto_send_review_link_after_followup = Column(
         Boolean, nullable=False, server_default="false"
     )
+    # Motor de reseñas: objetivo mensual de reseñas pedidas (0 = sin objetivo)
+    review_goal_monthly = Column(Integer, nullable=False, server_default="0")
 
     # Payment & financing configuration (migration 035)
     payment_methods = Column(JSONB, nullable=True)
@@ -350,6 +380,56 @@ class TenantInsuranceProvider(Base):
         ),
         Index("idx_tenant_insurance_providers_tenant", "tenant_id"),
         Index("idx_tenant_insurance_providers_tenant_active", "tenant_id", "is_active"),
+    )
+
+
+class BlockedPhoneNumber(Base):
+    """Lista de bloqueo: numeros que el agente (Paula) NO debe contestar, por clinica.
+    behavior=SILENCIO -> no responde nada (lo toma un humano).
+    behavior=MENSAJE  -> responde el message_template UNA vez y entra en enfriamiento
+                         (cooldown_hours) antes de poder volver a responder.
+    notify_email -> ademas avisa por mail al derivation_email del tenant (con su propio
+                    enfriamiento via last_notified_at)."""
+
+    __tablename__ = "blocked_phone_numbers"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    tenant_id = Column(
+        Integer, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    # Telefono NORMALIZADO (solo digitos) para matchear confiable.
+    phone_digits = Column(String(32), nullable=False)
+    # Telefono tal cual lo cargaron (para mostrar en la UI).
+    phone_display = Column(Text, nullable=True)
+    # A quien pertenece el numero (ej: "Laboratorio Central", "Dra. Gomez") para identificarlo en la UI.
+    contact_name = Column(Text, nullable=True)
+    label = Column(String(30), nullable=False)
+    behavior = Column(String(20), nullable=False)
+    message_template = Column(Text, nullable=True)
+    notify_email = Column(Boolean, nullable=False, server_default=text("false"))
+    cooldown_hours = Column(Integer, nullable=False, server_default=text("24"))
+    last_autoreply_at = Column(DateTime(timezone=True), nullable=True)
+    last_notified_at = Column(DateTime(timezone=True), nullable=True)
+    note = Column(Text, nullable=True)
+    is_active = Column(Boolean, nullable=False, server_default=text("true"))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "label IN ('profesional_clinica','inconveniente_ia','laboratorio','proveedor','otros','spam')",
+            name="ck_blocked_phone_numbers_label",
+        ),
+        CheckConstraint(
+            "behavior IN ('SILENCIO','MENSAJE')",
+            name="ck_blocked_phone_numbers_behavior",
+        ),
+        UniqueConstraint(
+            "tenant_id", "phone_digits", name="uq_blocked_phone_numbers_tenant_phone"
+        ),
+        Index("ix_blocked_phone_numbers_tenant_active", "tenant_id", "is_active"),
     )
 
 
@@ -578,6 +658,8 @@ class Patient(Base):
     human_handoff_requested = Column(Boolean, default=False)
     human_override_until = Column(DateTime(timezone=True))
     last_derivhumano_at = Column(DateTime(timezone=True))
+    # Motor de reseñas: cuándo se le pidió reseña (candado anti-repetir + estado del botón)
+    review_requested_at = Column(DateTime(timezone=True), nullable=True)
 
     # First-Touch Attribution (renamed from meta_ad_* in patch_020)
     first_touch_source = Column(String(50), server_default="ORGANIC")

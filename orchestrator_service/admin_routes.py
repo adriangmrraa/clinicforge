@@ -1286,6 +1286,12 @@ class ChatSendMessage(BaseModel):
     message: str
 
 
+class ReviewRequestIn(BaseModel):
+    phone: str
+    tenant_id: int
+    patient_id: Optional[int] = None
+
+
 class HumanInterventionToggle(BaseModel):
     phone: str
     tenant_id: int  # Clínica: override/silencio es por (tenant_id, phone), independiente por clínica
@@ -1691,6 +1697,8 @@ async def get_chat_sessions(
                         p.id as patient_id,
                         p.first_name || ' ' || COALESCE(p.last_name, '') as patient_name,
                         cc.linked_patient_id,
+                        cc.last_agent_error_at,
+                        p.review_requested_at,
                         linked_p.first_name || ' ' || COALESCE(linked_p.last_name, '') as linked_patient_name,
                         cm.content as last_message,
                         cm.created_at as last_message_time,
@@ -1756,7 +1764,9 @@ async def get_chat_sessions(
                         urgency.urgency_level,
                         cc.last_read_at,
                         cc.last_user_message_at as conv_last_user_msg_at,
-                        cc.id as conversation_id
+                        cc.id as conversation_id,
+                        cc.last_agent_error_at,
+                        p.review_requested_at
                     FROM patients p
                     LEFT JOIN chat_conversations cc ON cc.tenant_id = p.tenant_id AND cc.channel = 'whatsapp' AND replace(regexp_replace(cc.external_user_id, '\D', '', 'g'), '549', '54') = replace(regexp_replace(p.phone_number, '[^0-9]', '', 'g'), '549', '54')
                     LEFT JOIN patients linked_p ON linked_p.id = cc.linked_patient_id AND linked_p.tenant_id = p.tenant_id
@@ -1922,6 +1932,10 @@ async def get_chat_sessions(
                 if row["human_override_until"]
                 else None,
                 "urgency_level": row["urgency_level"],
+                "agent_failed": bool(row.get("last_agent_error_at")),
+                "review_requested_at": row["review_requested_at"].isoformat()
+                if row.get("review_requested_at")
+                else None,
                 "last_derivhumano_at": row["last_derivhumano_at"].isoformat()
                 if row["last_derivhumano_at"]
                 else None,
@@ -3285,6 +3299,284 @@ async def send_chat_message(
         raise HTTPException(status_code=500, detail="Error interno del servidor")
 
 
+@router.post("/chat/request-review", dependencies=[Depends(verify_admin_token)], tags=["Chat"])
+async def request_review(
+    payload: ReviewRequestIn,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    allowed_ids: List[int] = Depends(get_allowed_tenant_ids),
+):
+    """Motor de reseñas: manda al paciente el pedido de reseña de Google (mensaje + link),
+    reusando el envío manual y el chequeo de ventana 24h. Registra el pedido y avisa a
+    Telegram si se cumple el objetivo mensual."""
+    if payload.tenant_id not in allowed_ids:
+        raise HTTPException(status_code=403, detail="No tienes acceso a esta clínica.")
+
+    # 1) Link de reseña (de tenants.review_platforms, configurable en Ajustes)
+    trow = await db.pool.fetchrow(
+        "SELECT review_platforms, review_goal_monthly, clinic_name, country_code FROM tenants WHERE id = $1",
+        payload.tenant_id,
+    )
+    review_url = None
+    rp = trow.get("review_platforms") if trow else None
+    if isinstance(rp, str):
+        try:
+            rp = json.loads(rp)
+        except Exception:
+            rp = None
+    if isinstance(rp, dict):
+        rp = [rp]
+    if isinstance(rp, list):
+        for item in rp:
+            if isinstance(item, dict) and (item.get("url") or "").strip():
+                review_url = item["url"].strip()
+                break
+    if not review_url:
+        raise HTTPException(
+            status_code=422,
+            detail="No hay link de reseña configurado. Cargalo en Ajustes de la clínica (Reseñas).",
+        )
+
+    # 2) Normalizar teléfono + resolver paciente
+    try:
+        from main import normalize_phone_for_tenant
+
+        cc = (trow.get("country_code") if trow else None) or "AR"
+        payload.phone = normalize_phone_for_tenant(payload.phone, cc)
+    except Exception:
+        pass
+    prow = None
+    if payload.patient_id:
+        prow = await db.pool.fetchrow(
+            "SELECT id, first_name, review_requested_at FROM patients WHERE id = $1 AND tenant_id = $2",
+            payload.patient_id,
+            payload.tenant_id,
+        )
+    if not prow:
+        prow = await db.pool.fetchrow(
+            "SELECT id, first_name, review_requested_at FROM patients WHERE tenant_id = $1 AND phone_number = $2 ORDER BY id LIMIT 1",
+            payload.tenant_id,
+            payload.phone,
+        )
+    # Candado anti-repetición en el BACKEND (el de la UI es solo visual):
+    # si ya se le pidió reseña a este paciente, rechazar — evita dobles envíos
+    # por doble click, doble pestaña o requests concurrentes.
+    if prow and prow.get("review_requested_at"):
+        raise HTTPException(
+            status_code=409,
+            detail="Ya se le pidió una reseña a este paciente.",
+        )
+    if not prow:
+        # Contacto sin ficha de paciente: el candado vive en review_requests (por teléfono).
+        _already = await db.pool.fetchval(
+            "SELECT 1 FROM review_requests WHERE tenant_id = $1 AND phone = $2 LIMIT 1",
+            payload.tenant_id,
+            payload.phone,
+        )
+        if _already:
+            raise HTTPException(
+                status_code=409,
+                detail="Ya se le pidió una reseña a este contacto.",
+            )
+    nombre = ((prow.get("first_name") if prow else "") or "").strip()
+    saludo = f"¡Hola {nombre}!" if nombre else "¡Hola!"
+
+    # 3) Ventana 24h (mismo criterio que /chat/send)
+    last_user_msg = await db.pool.fetchval(
+        "SELECT created_at FROM chat_messages WHERE from_number = $1 AND role = 'user' AND tenant_id = $2 "
+        "ORDER BY created_at DESC LIMIT 1",
+        payload.phone,
+        payload.tenant_id,
+    )
+    if not last_user_msg:
+        raise HTTPException(
+            status_code=403, detail="No se puede enviar si el paciente nunca escribió."
+        )
+    try:
+        from services.tz_resolver import get_tenant_tz
+
+        _fallback_tz = await get_tenant_tz(payload.tenant_id)
+    except Exception:
+        _fallback_tz = ARG_TZ
+    now_localized = datetime.now(
+        last_user_msg.tzinfo if last_user_msg.tzinfo else _fallback_tz
+    )
+    if (now_localized - last_user_msg) > timedelta(hours=24):
+        raise HTTPException(
+            status_code=403,
+            detail="La ventana de 24hs de WhatsApp está cerrada. El paciente debe escribir primero.",
+        )
+
+    # 4) Armar el mensaje (marco altruista, personalizado)
+    message = (
+        f"{saludo} 😊 Fue un gusto atenderte.\n\n"
+        "Si te sentís cómodo/a, tu opinión nos ayuda un montón — y sobre todo a otras personas "
+        "que tienen dudas o miedo antes de dar el paso.\n\n"
+        f"Si querés dejarnos una reseña, es acá (te toma 1 minuto):\n{review_url}\n\n"
+        "¡Gracias de corazón! 🤍"
+    )
+
+    # 5) Enviar por el MISMO camino que usa el bot (ResponseSender → YCloud directo),
+    # NO por el WhatsApp Service del envío manual: ese falla en silencio si el
+    # servicio no está autorizado (visto en PRUEBAS: el panel mostraba el mensaje
+    # pero al paciente nunca le llegaba). ResponseSender además persiste el mensaje
+    # en chat_messages con el estado REAL de entrega (no hace falta append manual).
+    conv = await db.pool.fetchrow(
+        """
+        SELECT id, provider, channel, external_account_id, external_chatwoot_id, external_user_id
+        FROM chat_conversations
+        WHERE tenant_id = $1
+          AND RIGHT(REGEXP_REPLACE(external_user_id, '[^0-9]', '', 'g'), 10)
+              = RIGHT(REGEXP_REPLACE($2, '[^0-9]', '', 'g'), 10)
+        ORDER BY last_user_message_at DESC NULLS LAST
+        LIMIT 1
+        """,
+        payload.tenant_id,
+        payload.phone,
+    )
+    if not conv:
+        raise HTTPException(
+            status_code=404,
+            detail="No encontramos la conversación de chat de este contacto.",
+        )
+    from services.response_sender import ResponseSender
+
+    # Usar el identificador EXACTO de la conversación (mismo formato que usa el bot)
+    _send_to = conv.get("external_user_id") or payload.phone
+    try:
+        await ResponseSender.send_sequence(
+            tenant_id=payload.tenant_id,
+            external_user_id=_send_to,
+            conversation_id=str(conv["id"]),
+            provider=conv.get("provider") or "ycloud",
+            channel=conv.get("channel") or "whatsapp",
+            account_id=conv.get("external_account_id") or "",
+            cw_conv_id=conv.get("external_chatwoot_id") or "",
+            messages_text=message,
+        )
+    except Exception as _send_err:
+        raise HTTPException(
+            status_code=502, detail=f"No se pudo enviar el mensaje: {_send_err}"
+        )
+
+    # 5b) Verificar la ENTREGA real: ResponseSender guarda delivery_status por mensaje.
+    # Si WhatsApp rechazó el envío, avisamos al usuario y NO marcamos el pedido.
+    try:
+        _sent_row = await db.pool.fetchrow(
+            "SELECT platform_metadata FROM chat_messages "
+            "WHERE tenant_id = $1 AND conversation_id = $2 AND role = 'assistant' "
+            "ORDER BY id DESC LIMIT 1",
+            payload.tenant_id,
+            conv["id"],
+        )
+        _meta_raw = _sent_row.get("platform_metadata") if _sent_row else None
+        _meta = json.loads(_meta_raw) if isinstance(_meta_raw, str) else (_meta_raw or {})
+    except Exception as _verify_err:
+        logger.warning(f"review-request: no pude verificar la entrega: {_verify_err}")
+        _meta = {}
+    if (_meta or {}).get("delivery_status") == "failed":
+        raise HTTPException(
+            status_code=502,
+            detail="WhatsApp no aceptó el envío: el mensaje NO llegó al paciente. Revisá la conexión del número e intentá de nuevo.",
+        )
+
+    # 6) Registrar el pedido + marcar al paciente (best-effort, no bloqueante)
+    _pid = prow.get("id") if prow else None
+    try:
+        await db.pool.execute(
+            "INSERT INTO review_requests (tenant_id, patient_id, phone, requested_at) VALUES ($1, $2, $3, NOW())",
+            payload.tenant_id,
+            _pid,
+            payload.phone,
+        )
+        # Marcamos por patient_id (confiable: el mismo id que muestra la lista de chats).
+        # Solo caemos a match por telefono si no resolvimos el paciente.
+        if _pid is not None:
+            await db.pool.execute(
+                "UPDATE patients SET review_requested_at = NOW() WHERE id = $1 AND tenant_id = $2",
+                _pid,
+                payload.tenant_id,
+            )
+        else:
+            # Fallback por teléfono TOLERANTE a formatos (+549 vs 549 vs espacios):
+            # igualdad exacta fallaba si la ficha guardaba el número con otro formato.
+            await db.pool.execute(
+                "UPDATE patients SET review_requested_at = NOW() WHERE tenant_id = $1 "
+                "AND RIGHT(REGEXP_REPLACE(phone_number, '[^0-9]', '', 'g'), 10) = RIGHT(REGEXP_REPLACE($2, '[^0-9]', '', 'g'), 10)",
+                payload.tenant_id,
+                payload.phone,
+            )
+            logger.warning(
+                f"review-request: paciente no resuelto por id; marcado por telefono {payload.phone}"
+            )
+    except Exception as e:
+        logger.warning(f"review_request tracking failed (non-blocking): {e}")
+
+    # 7) Socket + envío por WhatsApp
+    if hasattr(request.app.state, "emit_appointment_event"):
+        await request.app.state.emit_appointment_event(
+            "NEW_MESSAGE",
+            {
+                "phone_number": payload.phone,
+                "tenant_id": payload.tenant_id,
+                "message": message,
+                "role": "assistant",
+            },
+        )
+    # (El envío ya se hizo y verificó en el paso 5 — vía ResponseSender, el mismo
+    # camino que usa el bot. Ya no se usa el WhatsApp Service del envío manual.)
+
+    # 8) Contar el mes + avisar a Telegram si se alcanzó el objetivo
+    month_count = 0
+    goal = int((trow.get("review_goal_monthly") if trow else 0) or 0)
+    try:
+        month_count = (
+            await db.pool.fetchval(
+                "SELECT COUNT(*) FROM review_requests "
+                "WHERE tenant_id = $1 AND requested_at >= date_trunc('month', NOW())",
+                payload.tenant_id,
+            )
+            or 0
+        )
+        if goal > 0 and month_count == goal:
+            import html as _html
+            from services.telegram_notifier import send_proactive_message
+
+            _cn = _html.escape((trow.get("clinic_name") if trow else "") or "la clínica")
+            await send_proactive_message(
+                payload.tenant_id,
+                f"🎉 <b>¡Objetivo de reseñas cumplido!</b>\n\nSe pidieron <b>{month_count}</b> "
+                f"reseñas este mes (objetivo {goal}). ¡Felicitaciones al equipo de {_cn}! 🦷",
+            )
+    except Exception as e:
+        logger.warning(f"review milestone notify failed (non-blocking): {e}")
+
+    return {
+        "status": "sent",
+        "month_count": int(month_count),
+        "goal": goal,
+    }
+
+
+@router.get("/reviews/stats", dependencies=[Depends(verify_admin_token)], tags=["Chat"])
+async def reviews_stats(tenant_id: int = Depends(get_resolved_tenant_id)):
+    """Progreso del mes: reseñas pedidas vs el objetivo mensual (para la barra en el chat)."""
+    row = await db.pool.fetchrow(
+        "SELECT COALESCE(review_goal_monthly, 0) AS goal FROM tenants WHERE id = $1",
+        tenant_id,
+    )
+    goal = int(row["goal"]) if row else 0
+    month_count = (
+        await db.pool.fetchval(
+            "SELECT COUNT(*) FROM review_requests "
+            "WHERE tenant_id = $1 AND requested_at >= date_trunc('month', NOW())",
+            tenant_id,
+        )
+        or 0
+    )
+    return {"month_count": int(month_count), "goal": goal}
+
+
 # ==================== ENDPOINTS DASHBOARD ====================
 
 
@@ -4157,6 +4449,14 @@ async def update_tenant(
     if "auto_send_review_link_after_followup" in data:
         params.append(bool(data.get("auto_send_review_link_after_followup")))
         updates.append(f"auto_send_review_link_after_followup = ${len(params)}")
+
+    if "review_goal_monthly" in data:
+        try:
+            _goal = int(data.get("review_goal_monthly") or 0)
+        except (TypeError, ValueError):
+            _goal = 0
+        params.append(max(0, _goal))
+        updates.append(f"review_goal_monthly = ${len(params)}")
 
     if not updates:
         return {"status": "updated"}
@@ -10646,6 +10946,186 @@ async def reorder_insurance_providers(
             tenant_id,
         )
     return {"status": "reordered", "count": len(body.order)}
+
+
+# ==================== LISTA DE BLOQUEO ====================
+# Numeros que el agente (Paula) NO debe contestar. El motor esta en
+# services/buffer_task.check_blocked_contact. Todo aislado por tenant_id (Regla de Oro).
+
+VALID_BLOCK_LABELS = (
+    "profesional_clinica",
+    "inconveniente_ia",
+    "laboratorio",
+    "proveedor",
+    "otros",
+    "spam",
+)
+VALID_BLOCK_BEHAVIORS = ("SILENCIO", "MENSAJE")
+
+
+class BlockedContactIn(BaseModel):
+    phone: str
+    label: str
+    behavior: str
+    contact_name: Optional[str] = None
+    message_template: Optional[str] = None
+    notify_email: bool = False
+    cooldown_hours: int = 24
+    note: Optional[str] = None
+    is_active: bool = True
+
+
+def _validate_blocked_contact(data: "BlockedContactIn") -> str:
+    """Valida y devuelve el telefono normalizado (solo digitos)."""
+    if data.label not in VALID_BLOCK_LABELS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Etiqueta invalida. Validas: {', '.join(VALID_BLOCK_LABELS)}",
+        )
+    if data.behavior not in VALID_BLOCK_BEHAVIORS:
+        raise HTTPException(status_code=422, detail="Comportamiento invalido (SILENCIO o MENSAJE)")
+    if data.behavior == "MENSAJE" and not (data.message_template or "").strip():
+        raise HTTPException(
+            status_code=422, detail="Si el comportamiento es MENSAJE, hace falta el texto del mensaje"
+        )
+    if data.cooldown_hours is not None and not (1 <= int(data.cooldown_hours) <= 720):
+        raise HTTPException(
+            status_code=422, detail="cooldown_hours debe estar entre 1 y 720 (horas)"
+        )
+    import re as _re
+
+    digits = _re.sub(r"\D", "", data.phone or "")
+    if len(digits) < 8:
+        raise HTTPException(status_code=422, detail="Telefono invalido")
+    return digits
+
+
+@router.get(
+    "/blocked-contacts",
+    dependencies=[Depends(verify_admin_token)],
+    tags=["Lista de bloqueo"],
+    summary="Listar numeros de la lista de bloqueo",
+)
+async def list_blocked_contacts(tenant_id: int = Depends(get_resolved_tenant_id)):
+    rows = await db.pool.fetch(
+        """
+        SELECT id, phone_digits, phone_display, contact_name, label, behavior, message_template,
+               notify_email, cooldown_hours, last_autoreply_at, last_notified_at, note,
+               is_active, created_at, updated_at
+        FROM blocked_phone_numbers
+        WHERE tenant_id = $1
+        ORDER BY created_at DESC
+        """,
+        tenant_id,
+    )
+    return [dict(r) for r in rows]
+
+
+@router.post(
+    "/blocked-contacts",
+    dependencies=[Depends(verify_admin_token)],
+    tags=["Lista de bloqueo"],
+    summary="Agregar un numero a la lista de bloqueo",
+)
+async def create_blocked_contact(
+    data: BlockedContactIn, tenant_id: int = Depends(get_resolved_tenant_id)
+):
+    digits = _validate_blocked_contact(data)
+    # Duplicado con el MISMO criterio que el matcher de bloqueo (sufijo de 10 dígitos):
+    # evita cargar "+54 9 299 123 4567" y "299 123 4567" como dos filas del mismo número.
+    existing = await db.pool.fetchval(
+        "SELECT id FROM blocked_phone_numbers WHERE tenant_id = $1 AND RIGHT(phone_digits, 10) = RIGHT($2, 10)",
+        tenant_id,
+        digits,
+    )
+    if existing:
+        raise HTTPException(status_code=409, detail="Ese numero ya esta en la lista de bloqueo")
+    row = await db.pool.fetchrow(
+        """
+        INSERT INTO blocked_phone_numbers
+            (tenant_id, phone_digits, phone_display, contact_name, label, behavior, message_template,
+             notify_email, cooldown_hours, note, is_active, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW())
+        RETURNING id
+        """,
+        tenant_id,
+        digits,
+        data.phone.strip(),
+        (data.contact_name or None),
+        data.label,
+        data.behavior,
+        (data.message_template or None),
+        data.notify_email,
+        data.cooldown_hours,
+        (data.note or None),
+        data.is_active,
+    )
+    return {"status": "created", "id": row["id"]}
+
+
+@router.put(
+    "/blocked-contacts/{contact_id}",
+    dependencies=[Depends(verify_admin_token)],
+    tags=["Lista de bloqueo"],
+    summary="Editar un numero de la lista de bloqueo",
+)
+async def update_blocked_contact(
+    contact_id: int,
+    data: BlockedContactIn,
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    digits = _validate_blocked_contact(data)
+    dup = await db.pool.fetchval(
+        "SELECT id FROM blocked_phone_numbers WHERE tenant_id = $1 AND RIGHT(phone_digits, 10) = RIGHT($2, 10) AND id <> $3",
+        tenant_id,
+        digits,
+        contact_id,
+    )
+    if dup:
+        raise HTTPException(status_code=409, detail="Otro registro ya usa ese numero")
+    result = await db.pool.execute(
+        """
+        UPDATE blocked_phone_numbers SET
+            phone_digits = $1, phone_display = $2, contact_name = $3, label = $4, behavior = $5,
+            message_template = $6, notify_email = $7, cooldown_hours = $8,
+            note = $9, is_active = $10, updated_at = NOW()
+        WHERE id = $11 AND tenant_id = $12
+        """,
+        digits,
+        data.phone.strip(),
+        (data.contact_name or None),
+        data.label,
+        data.behavior,
+        (data.message_template or None),
+        data.notify_email,
+        data.cooldown_hours,
+        (data.note or None),
+        data.is_active,
+        contact_id,
+        tenant_id,
+    )
+    if result == "UPDATE 0":
+        raise HTTPException(status_code=404, detail="Numero no encontrado")
+    return {"status": "updated", "id": contact_id}
+
+
+@router.delete(
+    "/blocked-contacts/{contact_id}",
+    dependencies=[Depends(verify_admin_token)],
+    tags=["Lista de bloqueo"],
+    summary="Sacar un numero de la lista (desbloquear)",
+)
+async def delete_blocked_contact(
+    contact_id: int, tenant_id: int = Depends(get_resolved_tenant_id)
+):
+    result = await db.pool.execute(
+        "DELETE FROM blocked_phone_numbers WHERE id = $1 AND tenant_id = $2",
+        contact_id,
+        tenant_id,
+    )
+    if result == "DELETE 0":
+        raise HTTPException(status_code=404, detail="Numero no encontrado")
+    return {"status": "deleted", "id": contact_id}
 
 
 # ==================== REGLAS DE DERIVACIÓN ====================

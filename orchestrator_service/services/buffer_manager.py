@@ -285,6 +285,19 @@ class BufferManager:
                 "tenant_id": tenant_id,
                 "correlation_id": correlation_id
             })
+            # BLINDAJE: si el fallo ocurrió ANTES/FUERA del manejo interno de
+            # process_buffer_task, el paciente quedaría en silencio SIN marca roja
+            # ni aviso. Best-effort: marcar la conversación + email a la clínica.
+            try:
+                _conv_id = (business_info or {}).get("conversation_id")
+                if _conv_id:
+                    from services.buffer_task import _flag_agent_failure_and_alert
+                    await _flag_agent_failure_and_alert(
+                        db_pool, tenant_id, _conv_id, external_user_id, None,
+                        f"buffer_manager: {str(e)[:200]}",
+                    )
+            except Exception:
+                pass
         finally:
             # Cleanup seguro del lock
             await redis_client.delete(lock_key)
