@@ -8721,7 +8721,10 @@ async def create_appointment_manual(
         )
         if not patient_exists:
             raise HTTPException(status_code=400, detail="Paciente no encontrado")
-        # 4. Crear turno (source='manual')
+        # 4. Crear turno (source='manual'). Nace 'scheduled' (NO 'confirmed'):
+        #    el turno pasa a 'confirmed' SOLO cuando el paciente confirma el recordatorio de 24h.
+        #    Antes nacía 'confirmed' y la agenda mostraba turnos confirmados sin que el paciente
+        #    confirmara nada (84% de los confirmados eran manuales, sin confirmación real).
         new_id = str(uuid.uuid4())
         duration = apt.duration_minutes if apt.duration_minutes is not None else 30
         await db.pool.execute(
@@ -8729,7 +8732,7 @@ async def create_appointment_manual(
             INSERT INTO appointments (
                 id, tenant_id, patient_id, professional_id, appointment_datetime,
                 duration_minutes, appointment_type, status, urgency_level, source, notes, created_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'confirmed', 'normal', 'manual', $8, NOW())
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'scheduled', 'normal', 'manual', $8, NOW())
         """,
             new_id,
             tenant_id,
@@ -8760,7 +8763,7 @@ async def create_appointment_manual(
                     else str(apt.appointment_datetime),
                     "duration_minutes": duration,
                     "appointment_type": apt.appointment_type,
-                    "status": "confirmed",
+                    "status": "scheduled",
                     "source": "manual",
                     "notes": apt.notes,
                 },
