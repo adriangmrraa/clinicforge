@@ -53,6 +53,14 @@ SEVERITY_COLORS = {"high": "#f87171", "medium": "#fbbf24", "low": "#9ca3af"}
 
 async def case_collector_loop(pool):
     """Loop diario: espera hasta la hora objetivo (ART), corre el colector, repite."""
+    # Mail de MUESTRA (datos ficticios): valida SMTP + formato sin esperar un caso real.
+    if os.getenv("CASE_COLLECTOR_TEST_EMAIL") in ("1", "true", "True"):
+        await asyncio.sleep(20)
+        try:
+            await _send_test_report()
+        except Exception as e:
+            logger.error(f"case_collector_test_email_error: {e}")
+
     if os.getenv("CASE_COLLECTOR_RUN_ON_START") in ("1", "true", "True"):
         await asyncio.sleep(30)
         try:
@@ -255,11 +263,49 @@ async def _fetch_snippet(conn, tenant_id, conversation_id, limit: int = 6) -> st
 # ---------------------------------------------------------------------------
 
 
-async def _send_report(new_by_clinic, total_new):
+async def _send_test_report():
+    """Mail de MUESTRA con casos ficticios (para validar SMTP + formato en pruebas)."""
+    sample = {
+        "Clínica de PRUEBA (mail de ejemplo)": [
+            {
+                "category": "agent_error",
+                "severity": "high",
+                "name": "Paciente Ejemplo",
+                "phone": "+5490000000000",
+                "reason": "El asistente tuvo un error técnico y no pudo responder.",
+                "snippet": "PACIENTE: hola, tengo un dolor fuerte\nPAULA: (sin respuesta por un error)",
+            },
+            {
+                "category": "derivation",
+                "severity": "medium",
+                "name": "Otro Paciente",
+                "phone": "+5490000000001",
+                "reason": "El bot derivó la conversación a un humano.",
+                "snippet": "PACIENTE: ¿llegó mi autorización?\nPAULA: Dejame que lo vea con el equipo y te confirmo.",
+            },
+            {
+                "category": "loop",
+                "severity": "medium",
+                "name": "Paciente Repetido",
+                "phone": "+5490000000002",
+                "reason": "El asistente repitió el mismo mensaje 4 veces.",
+                "snippet": "PAULA: ¿Para qué día querés el turno?\nPACIENTE: cualquiera\nPAULA: ¿Para qué día querés el turno?",
+            },
+        ]
+    }
+    total = sum(len(v) for v in sample.values())
+    await _send_report(
+        sample, total, subject="🧪 [PRUEBA] Colector de casos — mail de ejemplo"
+    )
+    logger.info("case_collector: mail de MUESTRA enviado (CASE_COLLECTOR_TEST_EMAIL).")
+
+
+async def _send_report(new_by_clinic, total_new, subject=None):
     from email_service import EmailService
 
     today = datetime.now(ARG_TZ).strftime("%d/%m/%Y")
-    subject = f"🔎 Casos a revisar ({total_new}) — {today}"
+    if subject is None:
+        subject = f"🔎 Casos a revisar ({total_new}) — {today}"
     html = _build_html(new_by_clinic, total_new, today)
     ok = await asyncio.to_thread(
         EmailService().send_html, REPORT_EMAIL, subject, html
