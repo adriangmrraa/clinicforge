@@ -13092,6 +13092,19 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"nova_daily_analysis_start_failed: {e}")
 
+    # Iniciar colector de casos a revisar (job diario interno, NO visible a la clínica)
+    try:
+        from jobs.case_collector import case_collector_loop
+
+        t = asyncio.create_task(
+            case_collector_loop(db.pool),
+            name="case-collector",
+        )
+        _bg_tasks.append(t)
+        logger.info("case_collector_started")
+    except Exception as e:
+        logger.error(f"case_collector_start_failed: {e}")
+
     # RAG: Sync ALL embeddings for all tenants (FAQs, insurance, derivation, instructions)
     async def _rag_sync_with_logging():
         try:
