@@ -1,5 +1,5 @@
 import React from 'react';
-import { CheckCircle, Clock, AlertTriangle, CloudOff, User, HelpCircle, Bot, Mic, PenLine } from 'lucide-react';
+import { CheckCircle, Clock, AlertTriangle, CloudOff, User, HelpCircle } from 'lucide-react';
 import type { EventContentArg } from '@fullcalendar/core';
 import { useTranslation } from '../context/LanguageContext';
 
@@ -71,22 +71,12 @@ const STATUS_STYLES: Record<string, { bg: string; border: string; text: string; 
     }
 };
 
-// Source of the appointment (who created it). The card fill is by STATUS; this small
-// badge shows the FUENTE so the secretary can tell her own turnos (Manual, resaltado en
-// teal) apart from el bot (IA/azul) y Nova, sin pisar los colores de estado.
-const SOURCE_META: Record<string, { icon: React.ElementType; label: string; cls: string; showLabel: boolean }> = {
-    manual: { icon: PenLine, label: 'Manual', cls: 'bg-teal-500/25 text-teal-200 border border-teal-400/40', showLabel: true },
-    ai:     { icon: Bot,     label: 'IA',     cls: 'bg-white/[0.06] text-white/45', showLabel: false },
-    nova:   { icon: Mic,     label: 'Nova',   cls: 'bg-white/[0.06] text-white/45', showLabel: false },
-};
-
 export const AppointmentCard: React.FC<EventContentArg> = (eventInfo) => {
     const { t } = useTranslation();
     const props = eventInfo.event.extendedProps as ExtendedProps;
     const { eventType, status, appointment_type, professional_name, urgency_level, source } = props;
     const isGCal = eventType === 'gcalendar_block';
-    const srcMeta = SOURCE_META[(source as string) || 'ai'] || SOURCE_META.ai;
-    const SrcIcon = srcMeta.icon;
+    const isManual = source === 'manual'; // puntito teal para distinguir los turnos cargados a mano
 
     // --- GCal Block Rendering ---
     if (isGCal) {
@@ -126,7 +116,7 @@ export const AppointmentCard: React.FC<EventContentArg> = (eventInfo) => {
                 <span className={`text-[10px] md:text-xs font-semibold truncate ${styles.text}`}>
                     {eventInfo.event.title?.split(' - ')[0] || 'Sin nombre'}
                 </span>
-                {source === 'manual' && <PenLine size={9} className="text-teal-300 shrink-0 ml-auto" />}
+                {source === 'manual' && <div className="w-1.5 h-1.5 rounded-full bg-teal-400 shrink-0 ml-auto" title="Manual" />}
             </div>
         );
     }
@@ -142,12 +132,10 @@ export const AppointmentCard: React.FC<EventContentArg> = (eventInfo) => {
             {/* Top: Time & Status Icon + Payment Dot */}
             <div className="flex justify-between items-start mb-0.5">
                 <div className="flex items-center gap-1 min-w-0">
+                    {/* Puntito teal = turno cargado a mano (Manual) */}
+                    {isManual && <div className="w-2 h-2 rounded-full bg-teal-400 shrink-0" title="Cargado a mano (Manual)" />}
                     <span className={`text-[11px] font-mono ${styles.text}`}>
                         {eventInfo.timeText}
-                    </span>
-                    {/* Fuente del turno (Manual resaltado en teal) */}
-                    <span className={`inline-flex items-center gap-0.5 px-1 py-px rounded text-[8px] font-bold leading-none shrink-0 ${srcMeta.cls}`} title={`Cargado por: ${srcMeta.label}`}>
-                        <SrcIcon size={8} />{srcMeta.showLabel ? srcMeta.label : ''}
                     </span>
                 </div>
                 <div className="flex items-center gap-1">
