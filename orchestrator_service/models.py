@@ -2168,3 +2168,59 @@ class AgentTurnLog(Base):
         Index("idx_atl_tenant_phone", "tenant_id", "phone_number"),
         Index("idx_atl_turn", "turn_id"),
     )
+
+
+# =============================================================================
+# COLECTOR DE CASOS A REVISAR (migracion 071)
+# =============================================================================
+
+
+class CaseToReview(Base):
+    """Conversacion donde el bot fallo o quedo trabado, detectada por el job
+    colector (jobs/case_collector.py) para revisar y mejorar el prompt.
+
+    NO se muestra en el panel de la clinica (el cliente no lo ve): un job diario
+    la detecta por senales deterministas y manda un resumen por mail al equipo.
+    """
+
+    __tablename__ = "cases_to_review"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    tenant_id = Column(
+        Integer, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    conversation_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("chat_conversations.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    phone_number = Column(Text, nullable=True)
+    patient_name = Column(Text, nullable=True)
+    category = Column(String(40), nullable=False)  # agent_error | derivation | loop | ...
+    reason = Column(Text, nullable=True)
+    snippet = Column(Text, nullable=True)
+    severity = Column(String(10), nullable=False, server_default="medium")
+    status = Column(String(15), nullable=False, server_default="pending")
+    incident_date = Column(Date, nullable=False, server_default=text("CURRENT_DATE"))
+    detected_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "severity IN ('high','medium','low')",
+            name="ck_cases_to_review_severity",
+        ),
+        CheckConstraint(
+            "status IN ('pending','reviewed','dismissed')",
+            name="ck_cases_to_review_status",
+        ),
+        Index(
+            "uq_cases_to_review_dedup",
+            "tenant_id",
+            "conversation_id",
+            "category",
+            "incident_date",
+            unique=True,
+        ),
+        Index("ix_cases_to_review_tenant_status", "tenant_id", "status"),
+    )
