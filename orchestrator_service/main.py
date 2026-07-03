@@ -105,9 +105,9 @@ ERROR_CATEGORY_SYSTEM_ERROR = "SYSTEM_ERROR"
 # v8.2 — Booking error protocol: every book_appointment failure returns [BOOK_ERROR:CODE]
 # v8.3 — Extended with category tuples (code -> (message, category))
 BOOKING_ERROR_CODES = {
-    "UNAVAILABLE": ("Ese horario ya no está disponible", ERROR_CATEGORY_RECOVERABLE),
+    "UNAVAILABLE": ("Ese horario se ocupó recién; ofrecele al paciente otros horarios cercanos (NO derivar)", ERROR_CATEGORY_RECOVERABLE),
     "EXPIRED": ("La reserva temporal venció", ERROR_CATEGORY_RECOVERABLE),
-    "CHAIRS_FULL": ("No hay más turnos para ese tratamiento hoy", ERROR_CATEGORY_RECOVERABLE),
+    "CHAIRS_FULL": ("A esa hora ya se completó la agenda; ofrecele horarios cercanos (NO derivar)", ERROR_CATEGORY_RECOVERABLE),
     "DUPLICATE": ("Ya tenés un turno para ese día y horario", ERROR_CATEGORY_BUSINESS_RULE),
     "PAST": ("No se puede reservar en el pasado", ERROR_CATEGORY_INPUT_ERROR),
     "HOLIDAY": ("Ese día es feriado", ERROR_CATEGORY_RECOVERABLE),
@@ -3440,7 +3440,7 @@ async def check_availability(
             min_time=min_time,
             max_time=max_time,
             preferred_days=preferred_days,
-            prefer_nearest=(search_mode in ("open", "exact") and not preferred_days),
+            prefer_nearest=(search_mode != "month"),
         )
 
         if options:
