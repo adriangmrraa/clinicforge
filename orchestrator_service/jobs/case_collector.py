@@ -53,8 +53,21 @@ SEVERITY_COLORS = {"high": "#f87171", "medium": "#fbbf24", "low": "#9ca3af"}
 
 async def case_collector_loop(pool):
     """Loop diario: espera hasta la hora objetivo (ART), corre el colector, repite."""
+    # Diagnóstico de arranque: dice en UNA línea si el mail puede salir (SMTP configurado)
+    # y a qué casilla va, para no tener que bucear en logs cuando "no llega el mail".
+    _smtp_ok = bool(os.getenv("SMTP_HOST")) and bool(os.getenv("SMTP_USER"))
+    logger.info(
+        "case_collector: destino=%s | SMTP %s"
+        % (
+            REPORT_EMAIL,
+            "CONFIGURADO ✅"
+            if _smtp_ok
+            else "FALTA ❌ — agregá SMTP_HOST/SMTP_USER/SMTP_PASS/SMTP_SENDER al servicio orchestrator",
+        )
+    )
+
     # Mail de MUESTRA (datos ficticios): valida SMTP + formato sin esperar un caso real.
-    if os.getenv("CASE_COLLECTOR_TEST_EMAIL") in ("1", "true", "True"):
+    if os.getenv("CASE_COLLECTOR_TEST_EMAIL") in ("1", "true", "True", "TRUE"):
         await asyncio.sleep(20)
         try:
             await _send_test_report()
