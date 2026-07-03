@@ -6084,7 +6084,7 @@ async def cancel_appointment(date_query: str):
             SELECT a.id, a.google_calendar_event_id, a.billing_amount, a.payment_status,
                    a.appointment_datetime, a.professional_id, tt.name as treatment_name
             FROM appointments a
-            LEFT JOIN treatment_types tt ON a.appointment_type = tt.code
+            LEFT JOIN treatment_types tt ON a.appointment_type = tt.code AND tt.tenant_id = a.tenant_id
             WHERE a.patient_id = $1 AND a.tenant_id = $2 AND DATE(a.appointment_datetime) = $3
             AND a.status IN ('scheduled', 'confirmed')
             LIMIT 1

@@ -1505,7 +1505,7 @@ async def process_buffer_task(
                 SELECT a.appointment_datetime, tt.name as treatment_name, 
                        prof.first_name as professional_name
                 FROM appointments a
-                LEFT JOIN treatment_types tt ON a.appointment_type = tt.code
+                LEFT JOIN treatment_types tt ON a.appointment_type = tt.code AND tt.tenant_id = a.tenant_id
                 LEFT JOIN professionals prof ON a.professional_id = prof.id
                 WHERE a.tenant_id = $1 AND a.patient_id = $2 
                 AND a.appointment_datetime >= NOW()
@@ -1586,7 +1586,7 @@ async def process_buffer_task(
                 SELECT a.appointment_datetime, tt.name as treatment_name,
                        prof.first_name as professional_name, a.status
                 FROM appointments a
-                LEFT JOIN treatment_types tt ON a.appointment_type = tt.code
+                LEFT JOIN treatment_types tt ON a.appointment_type = tt.code AND tt.tenant_id = a.tenant_id
                 LEFT JOIN professionals prof ON a.professional_id = prof.id
                 WHERE a.tenant_id = $1 AND a.patient_id = $2
                 AND a.appointment_datetime < NOW()
@@ -1748,7 +1748,7 @@ async def process_buffer_task(
                         """
                         SELECT a.appointment_datetime, tt.name as treatment_name, prof.first_name as professional_name
                         FROM appointments a
-                        LEFT JOIN treatment_types tt ON a.appointment_type = tt.code
+                        LEFT JOIN treatment_types tt ON a.appointment_type = tt.code AND tt.tenant_id = a.tenant_id
                         LEFT JOIN professionals prof ON a.professional_id = prof.id
                         WHERE a.tenant_id = $1 AND a.patient_id = $2 AND a.appointment_datetime >= NOW() AND a.status IN ('scheduled', 'confirmed')
                         ORDER BY a.appointment_datetime ASC LIMIT 1
@@ -1880,7 +1880,7 @@ async def process_buffer_task(
                             """SELECT a.appointment_datetime, tt.name as treatment_name,
                                       prof.first_name as professional_name
                                FROM appointments a
-                               LEFT JOIN treatment_types tt ON a.appointment_type = tt.code
+                               LEFT JOIN treatment_types tt ON a.appointment_type = tt.code AND tt.tenant_id = a.tenant_id
                                LEFT JOIN professionals prof ON a.professional_id = prof.id
                                WHERE a.tenant_id = $1 AND a.patient_id = $2
                                AND a.appointment_datetime >= NOW()
@@ -1904,7 +1904,7 @@ async def process_buffer_task(
                             """SELECT a.appointment_datetime, tt.name as treatment_name,
                                       prof.first_name as professional_name, a.status
                                FROM appointments a
-                               LEFT JOIN treatment_types tt ON a.appointment_type = tt.code
+                               LEFT JOIN treatment_types tt ON a.appointment_type = tt.code AND tt.tenant_id = a.tenant_id
                                LEFT JOIN professionals prof ON a.professional_id = prof.id
                                WHERE a.tenant_id = $1 AND a.patient_id = $2
                                AND a.appointment_datetime < NOW()
