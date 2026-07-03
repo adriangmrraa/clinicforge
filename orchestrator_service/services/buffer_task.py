@@ -3824,9 +3824,11 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                                     state_retry_count += 1
 
                                     # Retry with stronger nudge
-                                    nudge_input = f"{user_input}\n\n[SISTEMA: IMPORTANTE - El paciente YA tiene opciones de turnos ofrecidas. "
-                                    f"Si el paciente quiere SELECCIONAR un turno, usa 'confirm_slot', NO 'check_availability'. "
-                                    f"Ve a 'confirm_slot' directamente.]"
+                                    nudge_input = (
+                                        f"{user_input}\n\n[SISTEMA: IMPORTANTE - El paciente YA tiene opciones de turnos ofrecidas. "
+                                        "Si el paciente quiere SELECCIONAR un turno, usa 'confirm_slot', NO 'check_availability'. "
+                                        "Ve a 'confirm_slot' directamente.]"
+                                    )
 
                                     if _get_cb:
                                         with _get_cb() as cb3:
