@@ -74,8 +74,9 @@ const STATUS_STYLES: Record<string, { bg: string; border: string; text: string; 
 export const AppointmentCard: React.FC<EventContentArg> = (eventInfo) => {
     const { t } = useTranslation();
     const props = eventInfo.event.extendedProps as ExtendedProps;
-    const { eventType, status, appointment_type, professional_name, urgency_level } = props;
+    const { eventType, status, appointment_type, professional_name, urgency_level, source } = props;
     const isGCal = eventType === 'gcalendar_block';
+    const isManual = source === 'manual'; // puntito teal para distinguir los turnos cargados a mano
 
     // --- GCal Block Rendering ---
     if (isGCal) {
@@ -115,6 +116,7 @@ export const AppointmentCard: React.FC<EventContentArg> = (eventInfo) => {
                 <span className={`text-[10px] md:text-xs font-semibold truncate ${styles.text}`}>
                     {eventInfo.event.title?.split(' - ')[0] || 'Sin nombre'}
                 </span>
+                {source === 'manual' && <div className="w-1.5 h-1.5 rounded-full bg-teal-400 shrink-0 ml-auto" title="Manual" />}
             </div>
         );
     }
@@ -129,9 +131,13 @@ export const AppointmentCard: React.FC<EventContentArg> = (eventInfo) => {
     `}>
             {/* Top: Time & Status Icon + Payment Dot */}
             <div className="flex justify-between items-start mb-0.5">
-                <span className={`text-[11px] font-mono ${styles.text}`}>
-                    {eventInfo.timeText}
-                </span>
+                <div className="flex items-center gap-1 min-w-0">
+                    {/* Puntito teal = turno cargado a mano (Manual) */}
+                    {isManual && <div className="w-2 h-2 rounded-full bg-teal-400 shrink-0" title="Cargado a mano (Manual)" />}
+                    <span className={`text-[11px] font-mono ${styles.text}`}>
+                        {eventInfo.timeText}
+                    </span>
+                </div>
                 <div className="flex items-center gap-1">
                     {/* Payment status dot */}
                     {props.payment_status === 'paid' && <div className="w-2 h-2 rounded-full bg-emerald-400" title="Pagado" />}
