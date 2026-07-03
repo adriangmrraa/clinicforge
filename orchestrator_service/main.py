@@ -1269,6 +1269,8 @@ async def _get_slots_for_extra_day(
     prefetched_gcal_blocks: Optional[dict] = None,
     min_time: Optional[str] = None,
     max_time: Optional[str] = None,
+    forced_prof_id: Optional[int] = None,
+    derivation_filter_prof_id: Optional[int] = None,
 ) -> List[str]:
     """Obtiene slots libres para un día extra (para completar opciones multi-día). Versión simplificada.
 
@@ -1347,6 +1349,26 @@ async def _get_slots_for_extra_day(
                 ]
                 if not active_professionals:
                     return []
+
+    # Aplicar la MISMA restriccion de profesional que el dia-semilla (seed) del
+    # search principal (ver check_availability ~2548-2553): asi el OFFER multi-dia
+    # ofrece slots del EXACTO profesional que luego usa book_appointment, evitando
+    # el pisado de profesionales. Solo se aplica cuando el caller pasa el ID
+    # (default None = no-op, comportamiento identico al historico). No se toca si
+    # hay clean_name (pedido explicito ya resuelto por el filtro SQL de arriba).
+    if not clean_name and active_professionals:
+        if forced_prof_id:
+            active_professionals = [
+                p for p in active_professionals if p["id"] == forced_prof_id
+            ]
+            if not active_professionals:
+                return []
+        elif derivation_filter_prof_id:
+            active_professionals = [
+                p for p in active_professionals if p["id"] == derivation_filter_prof_id
+            ]
+            if not active_professionals:
+                return []
 
     # Construir busy_map — use pre-fetched data when available to avoid N+1 queries
     prof_ids = [p["id"] for p in active_professionals]
@@ -1610,6 +1632,8 @@ async def pick_representative_slots(
     max_time: Optional[str] = None,
     preferred_days: Optional[str] = None,
     prefer_nearest: bool = False,
+    forced_prof_id: Optional[int] = None,
+    derivation_filter_prof_id: Optional[int] = None,
 ) -> tuple:
     """
     Selecciona hasta max_options slots representativos.
@@ -1771,6 +1795,8 @@ async def pick_representative_slots(
                 prefetched_gcal_blocks=_prefetched_blocks,
                 min_time=min_time,
                 max_time=max_time,
+                forced_prof_id=forced_prof_id,
+                derivation_filter_prof_id=derivation_filter_prof_id,
             )
         except Exception as e:
             logger.warning(f"Error getting range day slots for {extra_date}: {e}")
@@ -1861,6 +1887,8 @@ async def pick_representative_slots(
                     prefetched_gcal_blocks=_prefetched_blocks,
                     min_time=min_time,
                     max_time=max_time,
+                    forced_prof_id=forced_prof_id,
+                    derivation_filter_prof_id=derivation_filter_prof_id,
                 )
             except Exception as e:
                 logger.warning(f"Error getting extra day slots for {extra_date}: {e}")
@@ -2567,6 +2595,9 @@ async def check_availability(
                        WHERE p.is_active = true AND p.tenant_id = $1
                        AND (p.user_id IS NULL OR (u.status = 'active' AND u.role IN ('professional', 'ceo')))"""
             active_professionals = await db.pool.fetch(query, *params)
+            # El prof forzado no era bookeable (inactivo/sin fila) → la oferta multi-dia
+            # tambien debe abrirse: reseteamos forced_prof_id para que offer == seed.
+            forced_prof_id = None
         if not active_professionals:
             return "❌ No hay profesionales activos en esta sede para consultar disponibilidad. Por favor contactá a la clínica."
 
@@ -3441,6 +3472,8 @@ async def check_availability(
             max_time=max_time,
             preferred_days=preferred_days,
             prefer_nearest=(search_mode != "month"),
+            forced_prof_id=forced_prof_id,
+            derivation_filter_prof_id=derivation_filter_prof_id,
         )
 
         if options:
