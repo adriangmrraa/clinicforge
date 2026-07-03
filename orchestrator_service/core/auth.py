@@ -1,6 +1,7 @@
 import os
 import uuid
 import hashlib
+import hmac
 import logging
 from typing import Optional, List, Dict, Any, Tuple
 from fastapi import Header, HTTPException, Depends, Request, status
@@ -41,7 +42,8 @@ async def verify_admin_token(
     2. Validar X-Admin-Token (Autorización Estática de Infraestructura)
     """
     # Capa 1: Infraestructura (Strict en Producción)
-    if x_admin_token != ADMIN_TOKEN:
+    # Comparación en tiempo constante (evita canal lateral de timing sobre el token maestro).
+    if not x_admin_token or not hmac.compare_digest(x_admin_token, ADMIN_TOKEN):
         logger.warning(
             f"❌ 401: X-Admin-Token mismatch or missing. IP: {request.client.host if request.client else 'unknown'}"
         )
