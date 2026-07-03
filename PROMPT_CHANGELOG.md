@@ -67,7 +67,7 @@ Sirve para responder *"desde qué cambio empezó a fallar"* y poder **volver a u
 
 | Fecha | Commit | Archivo / Sección | Qué cambió | Por qué | Revertir |
 |---|---|---|---|---|---|
-| 2026-06-28 | `cfebe9c` | nova_prompt.py · DICTADO CLÍNICO | Forzar `crear_nota_clinica` al dictar y confirmar con detalle | El dictado respondía "listo" sin guardar | `git revert cfebe9c` |
+| 2026-07-03 | `8748d18` | main.py · GESTIÓN PREVIA + USO DE CONTEXTO + ancla de foco | Derivar DIRECTO (llamar derivhumano ANTES de escribir, prohibido ofrecer/preguntar); capturar el "dale" como consentimiento; NO listar turnos si el paciente preguntó por otra cosa; ancla de foco al final | Caso Jorge: ante "¿llegó mi autorización?" ofrecía en vez de derivar y pivoteaba a listar turnos. Verificado OK en pruebas (caso Lucas). Prod-equivalente de `fe2d805` (pruebas) | `git revert 8748d18` |
 | 2026-06-29 | `0c09584` | main.py · COBERTURA + F4 + COSEGURO | Verificar OS antes de afirmar cobertura; decir coseguro real; "no atendida → particular/reintegro" | Afirmaba cobertura falsa (Integral Salud) | `git revert 0c09584` |
 | 2026-06-29 | `df0263c` / `8a18657` | nova_prompt.py + nova_tools.py · DISPONIBILIDAD | Disponibilidad por rango (no inventar días/horarios) | Inventaba horarios genéricos en rango | `git revert 8a18657` |
 | 2026-06-29 | `edb11d6` | vision_service.py + chat_webhooks.py · IMÁGENES | Preservar `original_url` para que la visión guarde la descripción de la foto | El bot quedaba ciego a las fotos (match fallaba) | `git revert edb11d6` |
