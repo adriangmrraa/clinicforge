@@ -2133,7 +2133,7 @@ async def check_availability(
     exclude_dates: (Opcional) Fechas a excluir, ej: "2024-05-15, 2024-05-16"
     min_time: (Opcional) Límite inferior de horario (ej: "18:00") si el paciente pide "después de las 18".
     max_time: (Opcional) Límite superior de horario (ej: "12:00") si el paciente pide "antes del mediodía".
-    preferred_days: (Opcional) Días de la semana preferidos (ej: "lunes,miercoles"). No bloquea otros días, solo prioriza.
+    preferred_days: (Opcional) Día(s) de la semana que el paciente PIDE o al que se LIMITA (ej: "jueves,viernes"). RESTRINGE la búsqueda SOLO a esos días (excluye los demás). Usalo SIEMPRE que el paciente nombre uno o más días de la semana como preferencia o límite ("jueves o viernes", "solo los martes", "martes o jueves") — NO alcanza con poner interpreted_date en uno de esos días.
     insurance_provider: (Opcional) Obra social, prepaga o plan del paciente (ej: "Osde", "Swiss Medical", "Particular").
     La tool devuelve 2 opciones concretas de horario con sede. Presentá las opciones al paciente tal cual las recibís.
     """
@@ -12202,9 +12202,10 @@ PASO 4: CONSULTAR DISPONIBILIDAD — Llamá 'check_availability' con treatment_n
 
   ABIERTAS (search_mode="open"):
   - "lo antes posible" / "cuando puedan" → interpreted_date="{tomorrow_iso}"
-  - "cualquier martes o jueves por la tarde" → interpreted_date=próximo martes, time_preference="tarde"
+  - "cualquier martes o jueves por la tarde" → interpreted_date=próximo martes, preferred_days="martes,jueves", time_preference="tarde"
   - "un día de semana, no importa cuál" → interpreted_date="{tomorrow_iso}"
-  - "un día que no sea viernes" → interpreted_date="{tomorrow_iso}"
+  - "un día que no sea viernes" → interpreted_date="{tomorrow_iso}", exclude_days="viernes"
+  - "jueves o viernes" / "martes o jueves nada más" → interpreted_date=próximo día pedido, preferred_days con TODOS los días pedidos (ej. "jueves,viernes"), search_mode="week"
   - "me da igual cuándo, que sea de mañana" → interpreted_date="{tomorrow_iso}", time_preference="mañana"
   - "cuando haya lugar, no me apuro" → interpreted_date="{tomorrow_iso}"
 
@@ -12226,6 +12227,7 @@ PASO 4: CONSULTAR DISPONIBILIDAD — Llamá 'check_availability' con treatment_n
   REGLA: date_query SIEMPRE debe incluir el mes. Si el paciente lo mencionó antes, AGREGARLO.
   REGLA INQUEBRANTABLE: interpreted_date SIEMPRE fecha FUTURA respecto a {current_time}. NUNCA una fecha pasada.
   • DÍA DE SEMANA SOLO (sin mes), ej. "miércoles", "el jueves", "miércoles misma hora" (típico al reprogramar): interpreted_date = el PRÓXIMO día de esa semana pedido contando desde hoy. Verificá que el weekday de esa fecha COINCIDA con el día pedido. Ej: si hoy es lunes y el paciente dice "miércoles", el próximo miércoles real (no un miércoles pasado, no otro día). Si te da una fecha cuyo día de la semana NO es el que pidió, recalculá.
+  • VARIOS DÍAS DE SEMANA o DÍA COMO LÍMITE (ej. "jueves o viernes", "martes o jueves", "solo puedo los viernes", "cualquiera menos el lunes"): pasá `preferred_days` con TODOS los días que quiere (ej. preferred_days="jueves,viernes") — o `exclude_days` con los que rechaza — en ESTA búsqueda y en TODAS las siguientes. NO alcanza con poner interpreted_date en uno de esos días: search_mode busca toda la semana e IGNORA el día pedido. ⛔ PROHIBIDO ofrecer un día que el paciente NO pidió (si pidió jueves/viernes, NUNCA le ofrezcas martes/miércoles). Si alguno de los días pedidos no se atiende (no hay agenda), ofrecé el/los OTRO(S) día(s) que pidió; si ninguno se atiende, decíselo y proponé el día hábil más cercano.
   REGLA DE PRESENTACIÓN DE OPCIONES (OBLIGATORIA):
   • La tool devuelve EXACTAMENTE 2 opciones numeradas con emojis (1️⃣ 2️⃣). Presentá el resultado TAL CUAL lo recibís, sin reformatear ni agregar texto extra.
   • SIEMPRE mostrá las 2 opciones al paciente. NUNCA muestres solo 1 opción si la tool devolvió 2. (EXCEPCIÓN: si son los MISMOS slots que YA mostraste y el paciente pidió otra cosa — antes/más cercano/otra franja — aplican las reglas de honestidad de abajo: no re-presentarlos como nuevos.)
