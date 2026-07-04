@@ -7422,8 +7422,10 @@ async def save_scheduling_constraint(
       -> constraint_type="min_time", value="17:00"
     - "despues de las 12 no puedo", "solo hasta las 11 hs"
       -> constraint_type="max_time", value="12:00"
+    - "solo puedo los lunes y viernes", "unicamente los martes", "solo los sabados"
+      (dias a los que el paciente SE LIMITA / SOLO puede esos) -> constraint_type="preferred_days", value="lunes,viernes"
     - "los lunes no", "los viernes no puedo", "los fines de semana no"
-      -> constraint_type="exclude_days", value="lunes" (comma-sep: "lunes,viernes")
+      (dias que el paciente RECHAZA / NO puede) -> constraint_type="exclude_days", value="lunes" (comma-sep: "lunes,viernes")
     - "ese dia no tengo", "el 28/07 no puedo"
       -> constraint_type="exclude_dates", value="2026-07-28"
 
@@ -7446,6 +7448,8 @@ async def save_scheduling_constraint(
             kwargs["min_time"] = value.strip()
         elif ct == "max_time":
             kwargs["max_time"] = value.strip()
+        elif ct == "preferred_days":
+            kwargs["preferred_days"] = [d.strip().lower() for d in value.split(",") if d.strip()]
         elif ct == "exclude_days":
             kwargs["exclude_days"] = [d.strip().lower() for d in value.split(",") if d.strip()]
         elif ct == "exclude_dates":
@@ -7453,7 +7457,7 @@ async def save_scheduling_constraint(
         else:
             return (
                 f"constraint_type '{constraint_type}' not recognized. "
-                "Use: time_preference, min_time, max_time, exclude_days, exclude_dates"
+                "Use: time_preference, min_time, max_time, preferred_days, exclude_days, exclude_dates"
             )
 
         await _ssc(tid, phone, **kwargs)
@@ -7480,8 +7484,10 @@ async def save_scheduling_constraint(
       -> constraint_type="min_time", value="17:00"
     - "despues de las 12 no puedo", "solo hasta las 11 hs"
       -> constraint_type="max_time", value="12:00"
+    - "solo puedo los lunes y viernes", "unicamente los martes", "solo los sabados"
+      (dias a los que el paciente SE LIMITA / SOLO puede esos) -> constraint_type="preferred_days", value="lunes,viernes"
     - "los lunes no", "los viernes no puedo", "los fines de semana no"
-      -> constraint_type="exclude_days", value="lunes" (comma-sep: "lunes,viernes")
+      (dias que el paciente RECHAZA / NO puede) -> constraint_type="exclude_days", value="lunes" (comma-sep: "lunes,viernes")
     - "ese dia no tengo", "el 28/07 no puedo"
       -> constraint_type="exclude_dates", value="2026-07-28"
 
@@ -7504,6 +7510,8 @@ async def save_scheduling_constraint(
             kwargs["min_time"] = value.strip()
         elif ct == "max_time":
             kwargs["max_time"] = value.strip()
+        elif ct == "preferred_days":
+            kwargs["preferred_days"] = [d.strip().lower() for d in value.split(",") if d.strip()]
         elif ct == "exclude_days":
             kwargs["exclude_days"] = [d.strip().lower() for d in value.split(",") if d.strip()]
         elif ct == "exclude_dates":
@@ -7511,7 +7519,7 @@ async def save_scheduling_constraint(
         else:
             return (
                 f"constraint_type '{constraint_type}' not recognized. "
-                "Use: time_preference, min_time, max_time, exclude_days, exclude_dates"
+                "Use: time_preference, min_time, max_time, preferred_days, exclude_days, exclude_dates"
             )
 
         await _ssc(tid, phone, **kwargs)
@@ -12227,7 +12235,7 @@ PASO 4: CONSULTAR DISPONIBILIDAD — Llamá 'check_availability' con treatment_n
   REGLA: date_query SIEMPRE debe incluir el mes. Si el paciente lo mencionó antes, AGREGARLO.
   REGLA INQUEBRANTABLE: interpreted_date SIEMPRE fecha FUTURA respecto a {current_time}. NUNCA una fecha pasada.
   • DÍA DE SEMANA SOLO (sin mes), ej. "miércoles", "el jueves", "miércoles misma hora" (típico al reprogramar): interpreted_date = el PRÓXIMO día de esa semana pedido contando desde hoy. Verificá que el weekday de esa fecha COINCIDA con el día pedido. Ej: si hoy es lunes y el paciente dice "miércoles", el próximo miércoles real (no un miércoles pasado, no otro día). Si te da una fecha cuyo día de la semana NO es el que pidió, recalculá.
-  • VARIOS DÍAS DE SEMANA o DÍA COMO LÍMITE (ej. "jueves o viernes", "martes o jueves", "solo puedo los viernes", "cualquiera menos el lunes"): pasá `preferred_days` con TODOS los días que quiere (ej. preferred_days="jueves,viernes") — o `exclude_days` con los que rechaza — en ESTA búsqueda y en TODAS las siguientes. NO alcanza con poner interpreted_date en uno de esos días: search_mode busca toda la semana e IGNORA el día pedido. ⛔ PROHIBIDO ofrecer un día que el paciente NO pidió (si pidió jueves/viernes, NUNCA le ofrezcas martes/miércoles). Si alguno de los días pedidos SÍ tiene agenda, ofrecé el/los OTRO(S) día(s) que pidió. Si NINGUNO de los días pedidos tiene agenda: 1) volvé a llamar check_availability SIN filtro de día (search_mode="open", sin preferred_days) para descubrir qué días se atiende realmente ese tratamiento; 2) explicale breve qué días se atiende y ofrecele las opciones más cercanas de ESOS días. Ej: "Ese tratamiento lo atendemos los martes, miércoles y viernes. Tengo únicamente estas opciones: 1️⃣... 2️⃣...". ⛔ NUNCA cambies de profesional para cubrir un día que no atiende: el profesional lo define el tratamiento y es interno. ✅ ÚNICA SALVEDAD — SOLO para CONSULTA GENERAL de evaluación (jamás ortodoncia, cirugía ni tratamientos específicos): si los únicos días pedidos son días en que Elizabeth/Eli NO atiende (lunes o jueves) pero Laura SÍ, ANTES de explicar los días volvé a llamar check_availability con professional_name='Laura' y preferred_days en esos mismos días; si Laura tiene agenda, ofrecé esas opciones (sin nombrarla, solo día/hora/sede). Solo si Laura tampoco atiende esos días caé al paso 2 (explicar días).
+  • VARIOS DÍAS DE SEMANA o DÍA COMO LÍMITE (ej. "jueves o viernes", "martes o jueves", "solo puedo los viernes", "cualquiera menos el lunes"): pasá `preferred_days` con TODOS los días que quiere (ej. preferred_days="jueves,viernes") — o `exclude_days` con los que rechaza — en ESTA búsqueda y en TODAS las siguientes. ⚠️ CLAVE — no confundas: "SOLO puedo / ÚNICAMENTE los lunes y viernes" = esos son los ÚNICOS días → `preferred_days="lunes,viernes"` (y si usás save_scheduling_constraint, constraint_type="preferred_days"). "NO puedo los lunes" / "menos el lunes" = `exclude_days`. NUNCA cargues como exclude_days los días que el paciente SÍ quiere. NO alcanza con poner interpreted_date en uno de esos días: search_mode busca toda la semana e IGNORA el día pedido. ⛔ PROHIBIDO ofrecer un día que el paciente NO pidió (si pidió jueves/viernes, NUNCA le ofrezcas martes/miércoles). Si alguno de los días pedidos SÍ tiene agenda, ofrecé el/los OTRO(S) día(s) que pidió. Si NINGUNO de los días pedidos tiene agenda: 1) volvé a llamar check_availability SIN filtro de día (search_mode="open", sin preferred_days) para descubrir qué días se atiende realmente ese tratamiento; 2) explicale breve qué días se atiende y ofrecele las opciones más cercanas de ESOS días. Ej: "Ese tratamiento lo atendemos los martes, miércoles y viernes. Tengo únicamente estas opciones: 1️⃣... 2️⃣...". ⛔ NUNCA cambies de profesional para cubrir un día que no atiende: el profesional lo define el tratamiento y es interno. ✅ ÚNICA SALVEDAD — SOLO para CONSULTA GENERAL de evaluación (jamás ortodoncia, cirugía ni tratamientos específicos): si los únicos días pedidos son días en que Elizabeth/Eli NO atiende (lunes o jueves) pero Laura SÍ, ANTES de explicar los días volvé a llamar check_availability con professional_name='Laura' y preferred_days en esos mismos días; si Laura tiene agenda, ofrecé esas opciones (sin nombrarla, solo día/hora/sede). Solo si Laura tampoco atiende esos días caé al paso 2 (explicar días).
   REGLA DE PRESENTACIÓN DE OPCIONES (OBLIGATORIA):
   • La tool devuelve EXACTAMENTE 2 opciones numeradas con emojis (1️⃣ 2️⃣). Presentá el resultado TAL CUAL lo recibís, sin reformatear ni agregar texto extra.
   • SIEMPRE mostrá las 2 opciones al paciente. NUNCA muestres solo 1 opción si la tool devolvió 2. (EXCEPCIÓN: si son los MISMOS slots que YA mostraste y el paciente pidió otra cosa — antes/más cercano/otra franja — aplican las reglas de honestidad de abajo: no re-presentarlos como nuevos.)

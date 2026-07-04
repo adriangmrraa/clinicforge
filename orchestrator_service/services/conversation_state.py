@@ -602,6 +602,7 @@ async def save_scheduling_constraints(
     max_time: Optional[str] = None,
     exclude_days: Optional[List[str]] = None,
     exclude_dates: Optional[List[str]] = None,
+    preferred_days: Optional[List[str]] = None,
 ) -> None:
     """
     Persiste restricciones horarias del paciente en el estado de conversación.
@@ -624,6 +625,13 @@ async def save_scheduling_constraints(
             existing["min_time"] = min_time
         if max_time is not None:
             existing["max_time"] = max_time
+        if preferred_days:
+            current_pref = existing.get("preferred_days", [])
+            existing["preferred_days"] = list(set(current_pref) | set(d.lower() for d in preferred_days))
+            # preferred_days (dias UNICOS que el paciente puede) y exclude_days son
+            # opuestos: si ahora declara dias unicos, limpiamos cualquier exclude_days
+            # previo (recupera del bug de inversion "solo puedo X" -> excluia X).
+            existing.pop("exclude_days", None)
         if exclude_days:
             current_days = existing.get("exclude_days", [])
             existing["exclude_days"] = list(set(current_days) | set(d.lower() for d in exclude_days))

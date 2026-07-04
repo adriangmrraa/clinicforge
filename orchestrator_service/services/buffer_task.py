@@ -2386,6 +2386,7 @@ async def process_buffer_task(
                         _tp = _sched_constraints.get("time_preference")
                         _mt = _sched_constraints.get("min_time")
                         _mxt = _sched_constraints.get("max_time")
+                        _prefd2 = _sched_constraints.get("preferred_days") or []
                         _exd2 = _sched_constraints.get("exclude_days") or []
                         _exdt2 = _sched_constraints.get("exclude_dates") or []
                         if _tp:
@@ -2394,6 +2395,8 @@ async def process_buffer_task(
                             _sc_lines.append(f"  - Hora minima: {_mt} - PROHIBIDO ofrecer slots antes de {_mt}.")
                         if _mxt:
                             _sc_lines.append(f"  - Hora maxima: {_mxt} - PROHIBIDO ofrecer slots despues de {_mxt}.")
+                        if _prefd2:
+                            _sc_lines.append(f"  - Dias UNICOS que el paciente puede: {', '.join(_prefd2)} - el paciente SOLO puede esos dias. Pasa preferred_days con esos dias en check_availability (NO uses exclude_days para esto).")
                         if _exd2:
                             _sc_lines.append(f"  - Dias excluidos: {', '.join(_exd2)} - NO ofrecer turnos esos dias.")
                         if _exdt2:
