@@ -5207,7 +5207,34 @@ async def book_appointment(
                         _sena_expires_at,
                     )
         except asyncpg.UniqueViolationError as _uniq_err:
-            # Database-level double-booking protection triggered (race condition won by another booking)
+            # Database-level double-booking protection triggered.
+            # IDEMPOTENCIA (bug "se ocupó recién" tras agendar OK): si el turno que colisiona
+            # pertenece al MISMO paciente en el MISMO horario, NO es que "otro lo tomó" — es que
+            # el agente reintentó agendar algo que YA quedó confirmado (ej: el paciente dijo
+            # "gracias" y el LLM volvió a llamar book_appointment). Devolvemos confirmación, NO error.
+            # Esto rompe la cascada UNAVAILABLE -> EXPIRED -> derivación que veía el paciente.
+            _dup_owner = None
+            try:
+                _dup_owner = await db.pool.fetchval(
+                    "SELECT patient_id FROM appointments WHERE tenant_id = $1 AND professional_id = $2 AND appointment_datetime = $3 AND status != 'cancelled' ORDER BY created_at DESC LIMIT 1",
+                    tenant_id, target_prof["id"], apt_datetime,
+                )
+            except Exception as _dup_err:
+                logger.warning(f"📅 BOOK idempotency lookup failed (non-blocking): {_dup_err}")
+            if _dup_owner is not None and _dup_owner == patient_id:
+                logger.info(
+                    f"✅ book_appointment IDEMPOTENTE: el turno ya existía para patient_id={patient_id} prof={target_prof['id']} datetime={apt_datetime} — confirmando (no es 'se ocupó')"
+                )
+                try:
+                    from services.conversation_state import set_state as _set_state_idem
+                    await _set_state_idem(tenant_id, chat_phone, "BOOKED")
+                except Exception:
+                    pass
+                return (
+                    f"✅ Ese turno ya está confirmado para el paciente, no hace falta agendarlo de nuevo 😊 "
+                    f"Quedó el {apt_datetime.strftime('%d/%m')} a las {apt_datetime.strftime('%H:%M')}."
+                )
+            # Caso genuino: otro paciente ganó la carrera por ese horario.
             logger.warning(
                 f"🔒 UNIQUE constraint blocked double-booking: prof={target_prof['id']} datetime={apt_datetime} err={_uniq_err}"
             )
@@ -8056,8 +8083,12 @@ async def confirm_slot(
                 logger.info(f"🔒 Soft lock created: {lock_key} for {phone} ({SLOT_LOCK_TTL_SECONDS}s)")
                 # Extend slot_offer TTL to stay in sync with the new lock
                 _offer_key = f"slot_offer:{tenant_id}:{phone}"
-                await r.expire(_offer_key, SLOT_LOCK_TTL_SECONDS)
-                logger.info("slot_offer TTL refreshed: %s (%ds)", _offer_key, SLOT_LOCK_TTL_SECONDS)
+                # FIX "se venció la reserva": mantener la oferta al menos 30 min. Antes se acortaba
+                # al TTL del lock (10 min), y si el paciente tardaba en dar nombre/DNI la reserva
+                # vencía aunque el turno siguiera libre.
+                _offer_ttl = max(SLOT_LOCK_TTL_SECONDS, 1800)
+                await r.expire(_offer_key, _offer_ttl)
+                logger.info("slot_offer TTL refreshed: %s (%ds)", _offer_key, _offer_ttl)
         except Exception as e:
             logger.warning(f"Redis soft lock failed (non-blocking): {e}")
             # R3 — Redis-down fallback: log warning, let book_appointment's DB conflict check handle it
