@@ -47,3 +47,22 @@ Estructura: `agents/` — supervisor (ruteo regex→6 agentes + LLM fallback) + 
 - Esperando el workflow de condensación SoloEngine (wh0cuhdud) para aplicar Fase 1.
 - ⚠️ NOTA RED: el `git push` a PRUEBAS se está colgando (los reads/ls-remote andan, la subida no). Todo está **commiteado local** (feat=4f7b054: fix Multi abea817 + docs). Push reintentándose en background (bqe30ps2k). PRUEBAS remoto quedó en 897657e hasta que el push pase. Recuperable.
 - Commits locales pendientes de push a PRUEBAS: abea817 (fix Multi reception), 4f7b054 (docs sesión).
+
+## ⚠️ BLOQUEO DE PUSH — ACCIÓN REQUERIDA DE CARLOS
+El `git push` a PRUEBAS falla con `/dev/tty: No such device` = git pide **credenciales interactivas** y este entorno autónomo no puede ingresarlas. El token que funcionó al inicio de la noche **expiró**. Los reads (fetch/ls-remote) andan; solo la SUBIDA necesita re-auth.
+**TODO ESTÁ COMMITEADO LOCAL Y A SALVO** en feat/blindaje-agente = `eaf7c7e`. Para desbloquear:
+```
+git push origin feat/blindaje-agente:PRUEBAS
+```
+(un push tuyo re-autentica y sube los 3 commits: abea817 + 4f7b054 + eaf7c7e). Después, PRUEBAS deploya solo.
+
+## CIERRE — qué quedó hecho (todo local, listo para push)
+- **Fase 0 (Golden set):** ✅ scratch/GOLDEN_SET_CONVERSACIONES.md (G1-G13).
+- **Fase 1 (Condensación Solo):** ✅ paso seguro aplicado (viñeta redundante, eaf7c7e). El grueso (unificar los 2 flujos de reprogramación, ~2.100 tokens) quedó VERIFICADO y listo en scratch/PLAN_CONDENSACION_SOLO.md — se aplica CON testeo en vivo del caso G7 (flujo sensible, recién regresado; los verificadores exigen orden de aplicación + fix de specific_time). NO lo apliqué a ciegas.
+- **Fase 4 (Multi parcial):** ✅ Recepción usa la frase de orientación configurada (abea817). El resto de la paridad Multi (dirección directa, encuadre, iniciativa en Booking) queda documentado como pendiente.
+- **Fases 2/3/5:** análisis listo; ejecución pospuesta (ver recomendación abajo) — no tiene sentido acumular cambios sin poder deployar/testear.
+
+## RECOMENDACIÓN SOLO vs MULTI (para tu decisión)
+- **Quedarnos con SoloEngine AHORA.** Está probado, tiene TODOS los fixes de la noche, y con la condensación + caché queda liviano. Es la opción de menor riesgo y mayor madurez.
+- **El MultiAgente es el camino de evolución** (modular, determinista, más barato por turno) pero NO está listo para producción: le faltan los fixes de prompt (solo le puse la frase de orientación), está poco testeado, y confiarle prod requiere una tanda de testing en vivo. Recomendación: mantenerlo como opción, invertir en él DESPUÉS de estabilizar el Solo.
+- **La palanca de costo más grande NO es la condensación (~8%): es el CACHÉ** (b4d1b8a, ~50% del input, ya en pruebas). Prioridad: verificar el caché en pruebas y promoverlo.
