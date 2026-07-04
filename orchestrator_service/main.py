@@ -4174,6 +4174,34 @@ async def book_appointment(
         except Exception:
             pass
 
+    # CANDADO MENOR (caso Daniela 2026-07-04): si el LLM olvidó pasar is_minor=true pero
+    # la conversación YA estableció que se agenda para un HIJO/A MENOR (lead_context
+    # is_minor=true, seteado por buffer_task al detectar "mi hija/hijo") Y el nombre que
+    # se está agendando coincide con el nombre del menor detectado → forzamos is_minor=true.
+    # Sin esto el turno cae en la ficha del interlocutor y le PISA el nombre con el del menor.
+    # La coincidencia de nombre evita falsos positivos: si el padre luego agenda para SÍ
+    # MISMO (su propio nombre), no coincide con minor_first_name y no se fuerza nada.
+    if not is_minor and not patient_phone and not is_art:
+        try:
+            from services.lead_context import get as _lc_get_minor_guard
+            _lc_mg = await _lc_get_minor_guard(tenant_id, chat_phone)
+            if _lc_mg and _lc_mg.get("is_minor") == "true":
+                _mg_minor_first = (_lc_mg.get("minor_first_name") or "").strip().lower()
+                _mg_book_first = (first_name or "").strip().lower()
+                if _mg_minor_first and _mg_book_first and _mg_book_first == _mg_minor_first:
+                    is_minor = True
+                    logger.warning(
+                        f"📅 BOOK MINOR-GUARD: LLM no pasó is_minor pero lead_context tiene menor '{_mg_minor_first}' "
+                        f"y coincide con first_name='{_mg_book_first}' → forzando is_minor=true (evita agendar al interlocutor)"
+                    )
+                else:
+                    logger.info(
+                        f"📅 BOOK MINOR-GUARD: lead_context is_minor=true pero sin match de nombre "
+                        f"(minor='{_mg_minor_first}' vs book='{_mg_book_first}') → no se fuerza (posible self-booking)"
+                    )
+        except Exception as _mg_err:
+            logger.warning(f"📅 BOOK MINOR-GUARD check failed (non-blocking): {_mg_err}")
+
     is_third_party = bool(patient_phone) or bool(is_minor) or bool(is_art)
 
     # Recuperar obra social de lead_context
@@ -12101,6 +12129,7 @@ FLUJO DE AGENDAMIENTO (ORDEN ESTRICTO):
 === REGLA CERO — AVANZAR SIN PEDIR PERMISO ===
 Si el paciente expresó intención de AGENDAR (pidió turno, mencionó tratamiento, dijo fecha) Y YA SABÉS SU COBERTURA (particular u obra social, por el CONTEXTO DEL PACIENTE o porque la dijo en la charla), ejecutá check_availability INMEDIATAMENTE. Lo mismo si expresó intención de REPROGRAMAR un turno existente y confirmó que quiere moverlo (ahí la cobertura ya está resuelta del turno original). No preguntes "¿querés que busque?", "te ayudo a coordinar?" ni "si querés busco las opciones". Apenas el paciente da una preferencia de día o franja (ej. "por la tarde jueves o martes", "fines de julio") tu ÚNICA acción es llamar check_availability y MOSTRAR opciones concretas — está PROHIBIDO responder prometiendo buscar sin haber llamado la tool.
 EXCEPCIÓN ÚNICA (REGLA DE COBERTURA): si todavía NO sabés si se atiende particular o con obra social (paciente nuevo, sin cobertura en el contexto ni en la charla), hacé PRIMERO esa única pregunta — podés combinarla con la del tratamiento en el MISMO mensaje — y ejecutá check_availability apenas responda, sin volver a pedir permiso. "INMEDIATAMENTE" significa sin pedir permiso, NO sin resolver la cobertura.
+⚠️ INTENCIÓN DE TURNO PENDIENTE (no se cierra sola): si el paciente pidió un turno y todavía NO quedó agendado, una pregunta lateral suya (cobertura, precio, dirección, "¿atienden con X?") NO cancela esa intención. Respondé la pregunta Y EN EL MISMO MENSAJE retomá el paso siguiente del agendamiento: si ya sabés cobertura y tratamiento → llamá check_availability y ofrecé las opciones; si falta un dato → pedilo. ⛔ PROHIBIDO cerrar con "Quedo a disposición", "cualquier cosa avisame" o similar mientras haya una intención de turno sin completar — eso deja al paciente en el aire (ej. real: pidió turno de ortodoncia para su hija, preguntó por Sancor, se le respondió la cobertura y el bot cerró con "quedo a disposición" SIN ofrecer turnos). Un "Perfecto"/"ok"/"dale" del paciente tras resolver la cobertura = AVANZÁ con las opciones. SOLO cerrá sin agendar si el paciente pospone explícitamente ("después lo veo", "lo consulto y te aviso", "más adelante").
 Si el paciente eligió un slot de los ofrecidos (dijo "ese", "el primero", "el del jueves", un número), PRIMERO confirmá verbalmente: "Perfecto, te agendo el [día] [fecha] a las [hora] hs 😊" y DESPUÉS pedí nombre y DNI. NUNCA vuelvas a preguntar si quiere agendar.
 UNA confirmación por slot es suficiente. La selección del paciente ES la confirmación.
 
@@ -12300,6 +12329,7 @@ PASO 4: CONSULTAR DISPONIBILIDAD — Llamá 'check_availability' con treatment_n
   ⚠️ DÍA(S) DE SEMANA + PARTE DEL MES (ej. "jueves o viernes a fines de julio", "algún martes a fin de mes"): COMBINÁ SIEMPRE los dos datos → preferred_days con TODOS los días pedidos + interpreted_date en la parte pedida del mes (para "fin/fines" poné el ÚLTIMO día pedido de ese mes, NO el día 25 genérico) + search_mode="month". Objetivo: ofrecer los ÚLTIMOS turnos de ese día en la última semana del mes; si no hay nada, la tool avanza sola al mes siguiente. ⛔ PROHIBIDO responder "para fines de [mes] no veo opciones" sin haber buscado ANTES con search_mode="month" + preferred_days.
   REGLA DE PRESENTACIÓN DE OPCIONES (OBLIGATORIA):
   • La tool devuelve EXACTAMENTE 2 opciones numeradas con emojis (1️⃣ 2️⃣). Presentá el resultado TAL CUAL lo recibís, sin reformatear ni agregar texto extra.
+  • ⚠️ TODO EN UNA SOLA BURBUJA: el bloque completo de opciones (encabezado + 1️⃣ + 2️⃣ + "¿Cuál te queda mejor?") va en UN SOLO mensaje. Separá las líneas con UN salto de línea simple — ⛔ PROHIBIDO doble salto de línea entre las opciones (el doble salto parte el mensaje en burbujas separadas de WhatsApp, y si el paciente responde citando una sola burbuja el sistema pierde la referencia).
   • SIEMPRE mostrá las 2 opciones al paciente. NUNCA muestres solo 1 opción si la tool devolvió 2. (EXCEPCIÓN: si son los MISMOS slots que YA mostraste y el paciente pidió otra cosa — antes/más cercano/otra franja — aplican las reglas de honestidad de abajo: no re-presentarlos como nuevos.)
   • ⚠️ REGLA DE SIGILO DE PROFESIONAL GENERALIZADA: Queda COMPLETAMENTE PROHIBIDO mencionar el nombre de cualquier profesional de la clínica (ej: Dra. Laura Delgado, Elizabeth Ester, Eli Perez, etc.) en cualquier interacción previa a la confirmación definitiva del turno. Esto incluye respuestas de triaje, listado de tratamientos/servicios, consultas generales o la visualización de slots de disponibilidad. El nombre del profesional asignado se le informará al paciente ÚNICAMENTE en el mensaje final de confirmación, luego de que book_appointment o reschedule_appointment hayan registrado el turno exitosamente.
   • PROHIBIDO agregar dirección, sede, Maps o ubicación al mostrar las opciones de turno. La ubicación se envía ÚNICAMENTE DESPUÉS de que el turno se confirma.
