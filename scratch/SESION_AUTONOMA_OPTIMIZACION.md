@@ -45,3 +45,5 @@ Estructura: `agents/` — supervisor (ruteo regex→6 agentes + LLM fallback) + 
 - **Fase 4 (parcial) — Multi:** fix `abea817` → ReceptionAgent ahora usa la frase de orientación configurada (bloque ## CLÍNICA = system_prompt_template) en vez del saludo hardcodeado. py_compile OK. Commiteado a feat (sin push aún, batcheo con condensación).
 - **Fase 0 — Golden set:** creado `scratch/GOLDEN_SET_CONVERSACIONES.md` (G1–G13, la red de pruebas). Es lo que hubiera atrapado la regresión de reprogramación. Falta automatizarlo (colector de casos).
 - Esperando el workflow de condensación SoloEngine (wh0cuhdud) para aplicar Fase 1.
+- ⚠️ NOTA RED: el `git push` a PRUEBAS se está colgando (los reads/ls-remote andan, la subida no). Todo está **commiteado local** (feat=4f7b054: fix Multi abea817 + docs). Push reintentándose en background (bqe30ps2k). PRUEBAS remoto quedó en 897657e hasta que el push pase. Recuperable.
+- Commits locales pendientes de push a PRUEBAS: abea817 (fix Multi reception), 4f7b054 (docs sesión).
