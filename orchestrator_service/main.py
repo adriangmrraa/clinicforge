@@ -4244,15 +4244,49 @@ async def book_appointment(
             )
             if _ctx_minor_row:
                 guardian_phone_value = _ctx_minor_row["phone_number"]
-        minor_count = (
-            await db.pool.fetchval(
-                "SELECT COUNT(*) FROM patients WHERE tenant_id = $1 AND REGEXP_REPLACE(COALESCE(guardian_phone, ''), '[^0-9]', '', 'g') = REGEXP_REPLACE(COALESCE($2, ''), '[^0-9]', '', 'g')",
+        # IDEMPOTENCIA MENOR (caso "venció/se ocupó" al agendar para un hijo/3ero):
+        # Si YA existe un menor de este mismo guardian con el MISMO nombre (o DNI), REUSÁ ese
+        # registro en vez de crear -M2/-M3. Sin esto, cada re-llamada a book_appointment (ej. el
+        # "gracias" del cierre) incrementaba el contador -> creaba un menor DUPLICADO con un
+        # patient_id nuevo que NO matcheaba el turno ya creado -> cascada UNAVAILABLE/EXPIRED.
+        _existing_minor = None
+        try:
+            _dni_clean_minor = re.sub(r"\D", "", str(dni).strip()) if dni else ""
+            _first_clean_minor = (first_name or "").strip().lower()
+            _existing_minor = await db.pool.fetchrow(
+                """
+                SELECT phone_number FROM patients
+                WHERE tenant_id = $1
+                  AND REGEXP_REPLACE(COALESCE(guardian_phone,''),'[^0-9]','','g') = REGEXP_REPLACE(COALESCE($2,''),'[^0-9]','','g')
+                  AND (
+                        ($3 <> '' AND REGEXP_REPLACE(COALESCE(dni,''),'[^0-9]','','g') = $3)
+                     OR ($4 <> '' AND LOWER(TRIM(first_name)) = $4)
+                  )
+                ORDER BY created_at ASC LIMIT 1
+                """,
                 tenant_id,
                 guardian_phone_value,
+                _dni_clean_minor,
+                _first_clean_minor,
             )
-            or 0
-        )
-        phone = f"{chat_phone}-M{minor_count + 1}"
+        except Exception as _em_err:
+            logger.warning(f"📅 BOOK minor idempotency lookup failed (non-blocking): {_em_err}")
+        if _existing_minor and _existing_minor.get("phone_number"):
+            phone = _existing_minor["phone_number"]
+            logger.info(
+                f"📅 BOOK MINOR: reusando registro existente del menor phone={phone} "
+                f"(guardian={guardian_phone_value}, nombre='{first_name}') — evita duplicado -M y falso 'se ocupó'"
+            )
+        else:
+            minor_count = (
+                await db.pool.fetchval(
+                    "SELECT COUNT(*) FROM patients WHERE tenant_id = $1 AND REGEXP_REPLACE(COALESCE(guardian_phone, ''), '[^0-9]', '', 'g') = REGEXP_REPLACE(COALESCE($2, ''), '[^0-9]', '', 'g')",
+                    tenant_id,
+                    guardian_phone_value,
+                )
+                or 0
+            )
+            phone = f"{chat_phone}-M{minor_count + 1}"
     elif patient_phone:
         # Adult third party: use their phone
         phone = re.sub(r"[^\d+]", "", str(patient_phone).strip())
