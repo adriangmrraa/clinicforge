@@ -160,6 +160,10 @@ async def _get_candidates(pool, tenant_id: int, touch_number: int, delay_minutes
               AND c.last_user_message_at <= $3
               AND c.last_user_message_at >= $4
               AND (c.human_override_until IS NULL OR c.human_override_until < $2)
+              -- Guard de actividad reciente: no pisar una charla en curso ni una recien atendida a mano.
+              -- last_message_at se bumpea en CADA mensaje (incl. salientes del bot / accion manual),
+              -- asi que si hubo actividad en los ultimos 30 min NO disparamos el re-enganche.
+              AND (c.last_message_at IS NULL OR c.last_message_at <= $2 - INTERVAL '30 minutes')
               AND $2 <= c.last_user_message_at + INTERVAL '23 hours 30 minutes'
               AND NOT EXISTS (
                   SELECT 1 FROM appointments a
@@ -203,6 +207,10 @@ async def _get_candidates(pool, tenant_id: int, touch_number: int, delay_minutes
               AND c.last_recovery_at IS NOT NULL
               AND c.last_recovery_at <= $3
               AND (c.human_override_until IS NULL OR c.human_override_until < $2)
+              -- Guard de actividad reciente: no pisar una charla en curso ni una recien atendida a mano.
+              -- last_message_at se bumpea en CADA mensaje (incl. salientes del bot / accion manual),
+              -- asi que si hubo actividad en los ultimos 30 min NO disparamos el re-enganche.
+              AND (c.last_message_at IS NULL OR c.last_message_at <= $2 - INTERVAL '30 minutes')
               AND $2 <= c.last_user_message_at + INTERVAL '23 hours 30 minutes'
               AND NOT EXISTS (
                   SELECT 1 FROM appointments a

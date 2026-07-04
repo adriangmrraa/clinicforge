@@ -9,6 +9,7 @@ import {
 import api, { setTenantId } from '../api/axios';
 import * as chatsApi from '../api/chats';
 import { useTranslation } from '../context/LanguageContext';
+import { showAlert } from '../components/Dialogs';
 import { getSocket } from '../services/socket';
 import type { Socket } from 'socket.io-client';
 import type { ChatSummaryItem, ChatApiMessage } from '../types/chat';
@@ -836,6 +837,22 @@ export default function ChatsView() {
       });
     } catch (error) {
       console.error('Error sending message:', error);
+      // No dejar el fallo invisible: mostrar el motivo real al staff (ventana 24h,
+      // paciente nunca escribió, error interno). Antes solo iba a la consola.
+      const _err = error as any;
+      const _detail = _err?.response?.data?.detail;
+      const _status = _err?.response?.status;
+      setShowToast({
+        id: Date.now().toString(),
+        type: 'error',
+        title: '⚠️ No se pudo enviar',
+        message:
+          _detail ||
+          (_status === 403
+            ? 'La ventana de 24h de WhatsApp expiró (el paciente debe escribir primero) o nunca escribió.'
+            : 'No se pudo enviar el mensaje. Reintentá en un momento.'),
+      });
+      setTimeout(() => setShowToast(null), 6000);
     } finally {
       setSending(false);
     }
@@ -894,7 +911,7 @@ export default function ChatsView() {
       // Socket event will confirm the state later, but UI is already updated.
     } catch (error) {
       console.error('❌ Error toggling Chatwoot lock:', error);
-      alert(`Error updating Manual Mode: ${JSON.stringify(error)}`); // Temporary alert for debugging
+      showAlert(`Error updating Manual Mode: ${JSON.stringify(error)}`, { variant: 'error' }); // Temporary alert for debugging
       // Rollback on error
       const rollbackFn = (c: ChatSummaryItem) => c.id === selectedChatwoot.id
         ? { ...c, is_locked: !activate }
