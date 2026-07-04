@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { FileText, Calendar, TrendingUp, DollarSign, Percent, Download, Loader2, AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useTranslation } from '../context/LanguageContext';
+import { showAlert } from '../components/Dialogs';
 import api from '../api/axios';
 import GlassCard from '../components/GlassCard';
 import LiquidationStatusBadge from '../components/finance/LiquidationStatusBadge';
@@ -104,7 +105,7 @@ export default function ProfessionalLiquidationsView() {
       window.URL.revokeObjectURL(url);
     } catch (err: any) {
       console.error('Error downloading PDF:', err);
-      alert(err.response?.data?.detail || 'Error al descargar PDF');
+      showAlert(err.response?.data?.detail || 'Error al descargar PDF', { variant: 'error' });
     } finally {
       setPdfLoading(null);
     }

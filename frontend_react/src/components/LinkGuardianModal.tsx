@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { X, Search, User, Link as LinkIcon, FileText } from 'lucide-react';
 import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
+import { showAlert } from './Dialogs';
 
 interface Patient {
   id: number;
@@ -63,7 +64,7 @@ export default function LinkGuardianModal({
 
   const handleLink = async () => {
     if (!selectedPatient) {
-      alert('Selecciona un paciente primero');
+      showAlert('Selecciona un paciente primero', { variant: 'error' });
       return;
     }
     setLinking(true);
@@ -90,7 +91,7 @@ export default function LinkGuardianModal({
     } catch (e: any) {
       const errMsg = e?.response?.data?.detail || e?.message || 'Error al vincular';
       console.error('Link error:', e?.response?.data || e);
-      alert(errMsg);
+      showAlert(errMsg, { variant: 'error' });
     } finally {
       setLinking(false);
     }

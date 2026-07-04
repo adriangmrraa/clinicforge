@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from '../context/LanguageContext';
+import { confirmDialog } from './Dialogs';
 import {
   FileText, Plus, Download, Mail, Trash2, Edit,
   RefreshCw, Loader2, X, ChevronLeft, AlertTriangle,
@@ -245,7 +246,7 @@ export default function DigitalRecordsTab({ patientId, patientEmail, refreshKey 
 
   const handleSendWhatsApp = async (record: DigitalRecord) => {
     if (!record) return;
-    if (!confirm(`¿Enviar "${record.title}" por WhatsApp al paciente?`)) return;
+    if (!(await confirmDialog(`¿Enviar "${record.title}" por WhatsApp al paciente?`))) return;
     setWhatsappSending(true);
     setWhatsappStatus(null);
     try {
@@ -264,7 +265,7 @@ export default function DigitalRecordsTab({ patientId, patientEmail, refreshKey 
   };
 
   const handleDelete = async (recordId: string) => {
-    if (!confirm(t('digitalRecords.deleteConfirm'))) return;
+    if (!(await confirmDialog(t('digitalRecords.deleteConfirm'), { danger: true }))) return;
     try {
       await api.delete(`/admin/patients/${patientId}/digital-records/${recordId}`);
       setRecords(prev => prev.filter(r => r.id !== recordId));

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from '../../context/LanguageContext';
+import { confirmDialog } from '../Dialogs';
 import { Facebook, Instagram, MessageCircle, Check, Loader2, AlertTriangle, Trash2, RefreshCw } from 'lucide-react';
 import { useFacebookSdk } from '../../hooks/useFacebookSdk';
 import api from '../../api/axios';
@@ -102,7 +103,7 @@ const MetaConnectionTab: React.FC = () => {
     };
 
     const handleDisconnect = async () => {
-        if (!confirm('Estas seguro? Se eliminaran todas las credenciales, conversaciones y mensajes de Meta Direct para esta clinica.')) {
+        if (!(await confirmDialog('Estas seguro? Se eliminaran todas las credenciales, conversaciones y mensajes de Meta Direct para esta clinica.', { danger: true }))) {
             return;
         }
         setDisconnecting(true);

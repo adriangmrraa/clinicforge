@@ -4,6 +4,7 @@ import api from '../../api/axios';
 import { getCurrentTenantId } from '../../api/axios';
 import { BACKEND_URL } from '../../api/axios';
 import type { ChatApiMessage } from '../../types/chat';
+import { showAlert } from '../Dialogs';
 
 interface ChatMessage {
     id: number | string;
@@ -50,10 +51,10 @@ export const MessageMedia = ({ attachments, message }: { attachments: any[], mes
                 conversation_id: message.conversation_id,
                 external_user_id: message.from_number
             });
-            alert("Transcripción solicitada.");
+            showAlert("Transcripción solicitada.", { variant: 'success' });
         } catch (error) {
             console.error("Error transcribing again:", error);
-            alert("Error al solicitar transcripción.");
+            showAlert("Error al solicitar transcripción.", { variant: 'error' });
         }
     };
 

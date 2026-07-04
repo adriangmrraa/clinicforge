@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Settings, BarChart3, Zap, ZapOff, Play, Clock, Send, Trash2 } from 'lucide-react';
 import { useTranslation } from '../../context/LanguageContext';
+import { confirmDialog } from '../Dialogs';
 import api from '../../api/axios';
 
 interface PlaybookCardProps {
@@ -55,7 +56,7 @@ export default function PlaybookCard({ playbook, onConfigure, onToggle, onStats,
   const [reminderResult, setReminderResult] = useState<string | null>(null);
 
   const handleSendRemindersNow = async () => {
-    if (!confirm('Enviar recordatorios de turnos de mañana ahora?')) return;
+    if (!(await confirmDialog('Enviar recordatorios de turnos de mañana ahora?'))) return;
     setSendingReminders(true);
     setReminderResult(null);
     try {

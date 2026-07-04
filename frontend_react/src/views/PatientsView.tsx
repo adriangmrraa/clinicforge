@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Search, Plus, Edit, Trash2, X, FileText, Brain, Calendar, User, Clock, Stethoscope, Mail, Phone, Upload, CheckCircle, AlertTriangle, XCircle, UserCheck, AlertCircle } from 'lucide-react';
 import api, { setTenantId } from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
+import { confirmDialog, showAlert } from '../components/Dialogs';
 import { useAuth } from '../context/AuthContext';
 import PageHeader from '../components/PageHeader';
 import GlassCard, { CARD_IMAGES } from '../components/GlassCard';
@@ -275,10 +276,10 @@ export default function PatientsView() {
             notes: t('patients.initial_appointment_notes'),
             check_collisions: true
           });
-          alert(t('alerts.patient_and_appointment_ok'));
+          showAlert(t('alerts.patient_and_appointment_ok'), { variant: 'success' });
         } catch (aptError) {
           console.error("Error creating appointment:", aptError);
-          alert(t('alerts.patient_ok_appointment_fail'));
+          showAlert(t('alerts.patient_ok_appointment_fail'), { variant: 'error' });
         }
       } else if (!editingPatient) {
         // Just verify creation
@@ -290,18 +291,18 @@ export default function PatientsView() {
       console.error('Error saving patient:', error);
       const detail = error?.response?.data?.detail;
       const msg = typeof detail === 'string' ? detail : Array.isArray(detail) ? detail.map((x: any) => x?.msg || x).join(', ') : t('alerts.error_save_patient');
-      alert(msg || t('alerts.error_save_patient'));
+      showAlert(msg || t('alerts.error_save_patient'), { variant: 'error' });
     }
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm(t('alerts.confirm_delete_patient'))) return;
+    if (!(await confirmDialog(t('alerts.confirm_delete_patient'), { danger: true }))) return;
     try {
       await api.delete(`/admin/patients/${id}`);
       fetchPatients();
     } catch (error) {
       console.error('Error deleting patient:', error);
-      alert(t('alerts.error_delete_patient'));
+      showAlert(t('alerts.error_delete_patient'), { variant: 'error' });
     }
   };
 
@@ -374,7 +375,7 @@ export default function PatientsView() {
   const handleImportFileSelect = (file: File) => {
     const ext = file.name.split('.').pop()?.toLowerCase();
     if (ext !== 'csv' && ext !== 'xlsx') {
-      alert(t('patients.import_invalid_format'));
+      showAlert(t('patients.import_invalid_format'), { variant: 'error' });
       return;
     }
     setImportFile(file);
@@ -400,7 +401,7 @@ export default function PatientsView() {
       setImportPreview(res.data);
       setImportStep('preview');
     } catch (err: any) {
-      alert(err.response?.data?.detail || t('patients.import_error'));
+      showAlert(err.response?.data?.detail || t('patients.import_error'), { variant: 'error' });
     } finally {
       setImportLoading(false);
     }
@@ -418,7 +419,7 @@ export default function PatientsView() {
       setImportStep('result');
       fetchPatients();
     } catch (err: any) {
-      alert(err.response?.data?.detail || t('patients.import_error'));
+      showAlert(err.response?.data?.detail || t('patients.import_error'), { variant: 'error' });
     } finally {
       setImportLoading(false);
     }

@@ -19,6 +19,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { useTranslation } from '../../context/LanguageContext';
+import { confirmDialog } from '../Dialogs';
 import api from '../../api/axios';
 import GlassCard from '../GlassCard';
 import LiquidationStatusBadge from './LiquidationStatusBadge';
@@ -222,7 +223,7 @@ export default function LiquidationManager({ periodStart, periodEnd, formatCurre
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm("¿Estás seguro de que deseas eliminar esta liquidación?")) return;
+    if (!(await confirmDialog("¿Estás seguro de que deseas eliminar esta liquidación?", { danger: true }))) return;
     setUpdating(id);
     try {
       await api.delete(`/admin/liquidations/${id}`);

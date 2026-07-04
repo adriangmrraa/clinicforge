@@ -3,6 +3,7 @@ import { Megaphone, RefreshCw, ExternalLink, Globe, BarChart3 } from 'lucide-rea
 import api from '../api/axios';
 import PageHeader from '../components/PageHeader';
 import { useTranslation } from '../context/LanguageContext';
+import { showAlert } from '../components/Dialogs';
 import MarketingPerformanceCard from '../components/MarketingPerformanceCard';
 import MetaConnectionWizard from '../components/integrations/MetaConnectionWizard';
 import GoogleConnectionWizard from '../components/integrations/GoogleConnectionWizard';
@@ -57,7 +58,7 @@ export default function MarketingHubView() {
                 'google_token_exchange_failed': t('marketing_google.errors.token_exchange_failed'),
                 'google_auth_error': t('marketing_google.errors.init_failed')
             };
-            alert(errorMessages[error] || `${t('common.error')}: ${error}`);
+            showAlert(errorMessages[error] || `${t('common.error')}: ${error}`, { variant: 'error' });
             const newParams = new URLSearchParams(searchParams);
             newParams.delete('error');
             setSearchParams(newParams);
@@ -158,7 +159,7 @@ export default function MarketingHubView() {
             }
         } catch (error) {
             console.error("Error initiating Meta OAuth:", error);
-            alert(t('marketing.errors.init_failed'));
+            showAlert(t('marketing.errors.init_failed'), { variant: 'error' });
         }
     };
 
@@ -173,7 +174,7 @@ export default function MarketingHubView() {
             }
         } catch (error: any) {
             console.error("Error initiating Google OAuth:", error);
-            alert(error.response?.data?.detail || error.message || t('common.error'));
+            showAlert(error.response?.data?.detail || error.message || t('common.error'), { variant: 'error' });
         }
     };
 
@@ -181,15 +182,15 @@ export default function MarketingHubView() {
         try {
             const result = await GoogleAdsApi.syncData();
             if (result.success) {
-                alert(t('marketing_google.sync.success'));
+                showAlert(t('marketing_google.sync.success'), { variant: 'success' });
                 await loadGoogleStats();
                 await loadCombinedStats();
             } else {
-                alert(`${t('marketing_google.sync.error')}: ${result.message}`);
+                showAlert(`${t('marketing_google.sync.error')}: ${result.message}`, { variant: 'error' });
             }
         } catch (error) {
             console.error("Error syncing Google data:", error);
-            alert(t('marketing_google.sync.error'));
+            showAlert(t('marketing_google.sync.error'), { variant: 'error' });
         }
     };
 

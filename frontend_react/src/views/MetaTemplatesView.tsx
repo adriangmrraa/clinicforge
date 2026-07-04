@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
+import { confirmDialog, showAlert } from '../components/Dialogs';
 import PageHeader from '../components/PageHeader';
 
 // ─── Mobile Hook ──────────────────────────────────────────────────────────────
@@ -673,9 +674,9 @@ export default function MetaTemplatesView() {
   };
 
   const handleDeleteRule = async (rule: AutomationRule) => {
-    if (!confirm(t('meta_templates.rules.confirm_delete', { name: rule.name }))) return;
+    if (!(await confirmDialog(t('meta_templates.rules.confirm_delete', { name: rule.name }), { danger: true }))) return;
     try { await api.delete(`/admin/automations/rules/${rule.id}`); await loadRules(); }
-    catch (e: any) { alert(e?.response?.data?.detail ?? t('meta_templates.rules.error_deleting')); }
+    catch (e: any) { showAlert(e?.response?.data?.detail ?? t('meta_templates.rules.error_deleting'), { variant: 'error' }); }
   };
 
   const systemRules = rules.filter(r => r.is_system);

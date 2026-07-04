@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Send, Eye, EyeOff, Copy, Check, Trash2, ChevronDown, ChevronUp, Loader2, Plus, X, Building2 } from 'lucide-react';
 import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
+import { confirmDialog } from './Dialogs';
 
 interface Tenant {
     id: number;
@@ -185,7 +186,7 @@ const TelegramConfigTab: React.FC = () => {
     };
 
     const handleDisconnect = async () => {
-        if (!confirm(t('telegram.disconnect') + '?')) return;
+        if (!(await confirmDialog(t('telegram.disconnect') + '?', { danger: true }))) return;
         setDisconnectingBot(true);
         try {
             await api.delete('/admin/telegram/config', tenantHeaders());
@@ -234,7 +235,7 @@ const TelegramConfigTab: React.FC = () => {
     };
 
     const handleDeleteUser = async (id: number) => {
-        if (!confirm(t('telegram.confirm_delete'))) return;
+        if (!(await confirmDialog(t('telegram.confirm_delete'), { danger: true }))) return;
         setDeletingId(id);
         try {
             await api.delete(`/admin/telegram/authorized-users/${id}`, tenantHeaders());

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Clock, AlertCircle, CheckCircle, Save, X, Zap, Shield, Heart, Activity, Stethoscope, Edit2, Upload, Trash2, Image as ImageIcon, Users, FileText, CheckCircle2, Plus, Info, Search, Files, MessageSquare, Send } from 'lucide-react';
 import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
+import { confirmDialog, showAlert } from '../components/Dialogs';
 import { useAuth } from '../context/AuthContext';
 import PageHeader from '../components/PageHeader';
 import GlassCard, { CARD_IMAGES } from '../components/GlassCard';
@@ -382,7 +383,7 @@ const TreatmentImagesList = ({ code }: { code: string }) => {
       await fetchImages();
     } catch (e) {
       console.error(e);
-      alert(t('treatments.error_upload_image'));
+      showAlert(t('treatments.error_upload_image'), { variant: 'error' });
     } finally {
       setUploading(false);
       e.target.value = '';
@@ -390,13 +391,13 @@ const TreatmentImagesList = ({ code }: { code: string }) => {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm(t('treatments.confirm_delete_image'))) return;
+    if (!(await confirmDialog(t('treatments.confirm_delete_image'), { danger: true }))) return;
     try {
       await api.delete(`/admin/treatment-types/${code}/images/${id}`);
       await fetchImages();
     } catch (e) {
       console.error(e);
-      alert(t('treatments.error_delete_image'));
+      showAlert(t('treatments.error_delete_image'), { variant: 'error' });
     }
   };
 
@@ -684,7 +685,7 @@ export default function TreatmentsView() {
         await fetchTreatments();
       } catch (error: any) {
         console.error('Error saving instructions:', error);
-        alert(error.response?.data?.detail || t('alerts.error_save_treatment'));
+        showAlert(error.response?.data?.detail || t('alerts.error_save_treatment'), { variant: 'error' });
       } finally {
         setSaving(false);
       }
@@ -853,7 +854,7 @@ export default function TreatmentsView() {
 
   const handleCreate = async (confirmUnusual = false) => {
     if (!newForm.code || !newForm.name) {
-      alert(t('alerts.code_name_required'));
+      showAlert(t('alerts.code_name_required'), { variant: 'error' });
       return;
     }
 
@@ -885,14 +886,14 @@ export default function TreatmentsView() {
         return;
       }
       console.error('Error creating treatment:', error);
-      alert(error.response?.data?.detail || t('alerts.error_create_treatment'));
+      showAlert(error.response?.data?.detail || t('alerts.error_create_treatment'), { variant: 'error' });
     } finally {
       setSaving(false);
     }
   };
 
   const handleDelete = async (code: string) => {
-    if (!confirm(t('alerts.confirm_delete_treatment').replace('{{code}}', code))) return;
+    if (!(await confirmDialog(t('alerts.confirm_delete_treatment').replace('{{code}}', code), { danger: true }))) return;
 
     try {
       setSaving(true);
@@ -900,7 +901,7 @@ export default function TreatmentsView() {
       await fetchTreatments();
     } catch (error) {
       console.error('Error deleting treatment:', error);
-      alert(t('alerts.error_delete_treatment'));
+      showAlert(t('alerts.error_delete_treatment'), { variant: 'error' });
     } finally {
       setSaving(false);
     }

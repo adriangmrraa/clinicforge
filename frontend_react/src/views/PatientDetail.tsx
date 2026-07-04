@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
+import { showAlert } from '../components/Dialogs';
 import { useAuth } from '../context/AuthContext';
 import Odontogram from '../components/Odontogram';
 import { ODONTOGRAM_STATES } from '../constants/odontogramStates';
@@ -327,7 +328,7 @@ export default function PatientDetail() {
       });
     } catch (error) {
       console.error('Error saving clinical record:', error);
-      alert(t('alerts.error_save_record'));
+      showAlert(t('alerts.error_save_record'), { variant: 'error' });
     }
   };
 

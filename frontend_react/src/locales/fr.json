@@ -1,4 +1,10 @@
 {
+  "dialogs": {
+    "confirm": "Confirmer",
+    "cancel": "Annuler",
+    "ok": "OK",
+    "close": "Fermer"
+  },
   "nav": {
     "dashboard": "Tableau de bord",
     "agenda": "Agenda",

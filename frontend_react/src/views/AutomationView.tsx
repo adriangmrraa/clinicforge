@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Zap, Layout, Clock, MessageSquare, Plus } from 'lucide-react';
 import { useTranslation } from '../context/LanguageContext';
+import { confirmDialog, showAlert } from '../components/Dialogs';
 import api from '../api/axios';
 import PlaybookCard from '../components/playbooks/PlaybookCard';
 import PlaybookConfigModal from '../components/playbooks/PlaybookConfigModal';
@@ -187,13 +188,13 @@ export default function AutomationView() {
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm('¿Eliminar esta regla de automatización? Se borrarán todos sus pasos y ejecuciones.')) return;
+    if (!(await confirmDialog('¿Eliminar esta regla de automatización? Se borrarán todos sus pasos y ejecuciones.', { danger: true }))) return;
     try {
       await api.delete(`/admin/playbooks/${id}`);
       await loadPlaybooks();
     } catch (e: any) {
       const msg = e?.response?.data?.detail || 'Error al eliminar la regla';
-      alert(msg);
+      showAlert(msg, { variant: 'error' });
     }
   };
 

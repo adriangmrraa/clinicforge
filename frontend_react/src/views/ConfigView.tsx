@@ -2,6 +2,7 @@ import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { Settings, Globe, Loader2, CheckCircle2, Copy, Trash2, Edit2, Zap, MessageCircle, Key, User, Plus, Info, Database, AlertTriangle, Clock, MessageSquare, AlertCircle, Facebook, Image, Upload, Stethoscope, Send } from 'lucide-react';
 import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
+import { confirmDialog, showAlert } from '../components/Dialogs';
 import PageHeader from '../components/PageHeader';
 import { useAuth } from '../context/AuthContext';
 import { Modal } from '../components/Modal';
@@ -386,12 +387,12 @@ export default function ConfigView() {
             loadCredentials();
             showSuccess(t('config.credential_saved'));
         } catch (e: any) {
-            alert(t('config.error_prefix') + e.message);
+            showAlert(t('config.error_prefix') + e.message, { variant: 'error' });
         }
     };
 
     const handleCleanMedia = async (days: number) => {
-        if (!confirm(t('config.confirm_clean_media', { days }))) return;
+        if (!(await confirmDialog(t('config.confirm_clean_media', { days }), { danger: true }))) return;
         setSaving(true);
         try {
             const { data } = await api.post('/admin/maintenance/clean-media', { days });
@@ -404,13 +405,13 @@ export default function ConfigView() {
     };
 
     const handleDeleteCredential = async (id: number) => {
-        if (!confirm(t('config.confirm_delete_credential'))) return;
+        if (!(await confirmDialog(t('config.confirm_delete_credential'), { danger: true }))) return;
         try {
             await api.delete(`/admin/credentials/${id}`);
             loadCredentials();
             showSuccess(t('config.credential_deleted'));
         } catch (e: any) {
-            alert(t('config.error_prefix') + e.message);
+            showAlert(t('config.error_prefix') + e.message, { variant: 'error' });
         }
     };
 

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Building2, Plus, Edit, Trash2, Phone, Loader2, AlertCircle, CheckCircle2, Calendar, CalendarX, Clock, MapPin, HelpCircle, ChevronDown, ChevronUp, X, DollarSign, Shield, ShieldAlert, GitMerge, ToggleLeft, ToggleRight, Info, Search, Check, Pencil } from 'lucide-react';
 import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
+import { confirmDialog, showAlert } from '../components/Dialogs';
 import PageHeader from '../components/PageHeader';
 import GlassCard, { CARD_IMAGES } from '../components/GlassCard';
 
@@ -849,7 +850,7 @@ export default function ClinicsView() {
     };
 
     const handleDelete = async (id: number) => {
-        if (!window.confirm(t('alerts.confirm_delete_clinic'))) return;
+        if (!(await confirmDialog(t('alerts.confirm_delete_clinic'), { danger: true }))) return;
         try {
             await api.delete(`/admin/tenants/${id}`);
             fetchClinicas();
@@ -977,7 +978,7 @@ export default function ClinicsView() {
     };
 
     const handleFaqDelete = async (faqId: number) => {
-        if (!window.confirm(t('clinics.faq_confirm_delete'))) return;
+        if (!(await confirmDialog(t('clinics.faq_confirm_delete'), { danger: true }))) return;
         try {
             await api.delete(`/admin/faqs/${faqId}`);
             if (faqClinicId) await fetchFaqs(faqClinicId);
@@ -1061,14 +1062,14 @@ export default function ClinicsView() {
             await fetchInsurance();
         } catch (err: any) {
             const detail = err?.response?.data?.detail;
-            if (detail) alert(detail);
+            if (detail) showAlert(detail, { variant: 'error' });
             console.error('Error guardando obra social:', err);
         }
         finally { setInsuranceSaving(false); }
     };
 
     const handleInsuranceDelete = async (id: number, name: string) => {
-        if (!window.confirm(t('settings.insurance.deleteConfirm').replace('{name}', name))) return;
+        if (!(await confirmDialog(t('settings.insurance.deleteConfirm').replace('{name}', name), { danger: true }))) return;
         const th = { headers: { 'X-Tenant-ID': String(selectedClinicId) } };
         try {
             await api.delete(`/admin/insurance-providers/${id}`, th);
@@ -1150,7 +1151,7 @@ export default function ClinicsView() {
             const prompt = opForm.rule_type === 'custom'
                 ? (opForm.config.free_text || opForm.prompt_injection || '')
                 : buildPromptFromConfig(opForm.rule_type, opForm.config, opForm.rule_name);
-            if (!prompt.trim()) { alert('La instrucción del agente no puede estar vacía'); setOpSaving(false); return; }
+            if (!prompt.trim()) { showAlert('La instrucción del agente no puede estar vacía', { variant: 'error' }); setOpSaving(false); return; }
             // Map internal type to DB rule_type
             const dbType = ['temporary_restriction', 'special_hours', 'mandatory_message'].includes(opForm.rule_type) ? 'temporary'
                 : ['schedule_limit', 'pricing_rule'].includes(opForm.rule_type) ? 'scheduling'
@@ -1171,11 +1172,11 @@ export default function ClinicsView() {
             else await api.post('/admin/operational-rules', body, th);
             setOpModalOpen(false);
             fetchOpRules();
-        } catch (err: any) { alert(err.response?.data?.detail || 'Error'); }
+        } catch (err: any) { showAlert(err.response?.data?.detail || 'Error', { variant: 'error' }); }
         finally { setOpSaving(false); }
     };
     const deleteOpRule = async (id: number) => {
-        if (!confirm(t('common.confirm_delete'))) return;
+        if (!(await confirmDialog(t('common.confirm_delete'), { danger: true }))) return;
         try {
             await api.delete(`/admin/operational-rules/${id}`, { headers: { 'X-Tenant-ID': String(selectedClinicId) } });
             fetchOpRules();
@@ -1231,14 +1232,14 @@ export default function ClinicsView() {
             await fetchDerivation();
         } catch (err: any) {
             const detail = err?.response?.data?.detail;
-            if (detail) alert(detail);
+            if (detail) showAlert(detail, { variant: 'error' });
             console.error('Error guardando regla:', err);
         }
         finally { setDerivationSaving(false); }
     };
 
     const handleDerivationDelete = async (id: number) => {
-        if (!window.confirm(t('alerts.confirm_delete_clinic'))) return;
+        if (!(await confirmDialog(t('alerts.confirm_delete_clinic'), { danger: true }))) return;
         const th = { headers: { 'X-Tenant-ID': String(selectedClinicId) } };
         try {
             await api.delete(`/admin/derivation-rules/${id}`, th);

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from '../context/LanguageContext';
+import { confirmDialog } from './Dialogs';
 import {
   Plus, Trash2, Loader2, Receipt, X, RefreshCw,
   Banknote, ArrowRightLeft, CreditCard, Check, AlertCircle,
@@ -821,7 +822,7 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
 
   const handleDeletePlan = async () => {
     if (!planDetail) return;
-    if (!window.confirm("¿Estás seguro de que deseas eliminar este presupuesto?")) return;
+    if (!(await confirmDialog("¿Estás seguro de que deseas eliminar este presupuesto?", { danger: true }))) return;
     try {
       await api.delete(`/admin/treatment-plans/${planDetail.id}`);
       setSuccess("Presupuesto eliminado correctamente.");

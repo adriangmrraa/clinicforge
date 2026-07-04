@@ -17,6 +17,7 @@ import { getSocket } from '../services/socket';
 import type { Socket } from 'socket.io-client';
 import { useAuth } from '../context/AuthContext';
 import { useTranslation } from '../context/LanguageContext';
+import { confirmDialog, showAlert } from '../components/Dialogs';
 
 // ==================== TYPE DEFINITIONS ====================
 export interface Appointment {
@@ -657,7 +658,7 @@ export default function AgendaView() {
     // Prevenir agendamiento en fechas/horas pasadas
     const now = new Date();
     if (info.date < now) {
-      alert('⚠️ ' + t('agenda.alert_past_date'));
+      showAlert('⚠️ ' + t('agenda.alert_past_date'), { variant: 'error' });
       return;
     }
 
@@ -785,7 +786,7 @@ export default function AgendaView() {
     
     // Check if it's a Google Calendar block
     if (eventType === 'gcalendar_block') {
-      alert(`${t('agenda.google_block')}:\n\n${info.event.title}\n${new Date(info.event.start).toLocaleString(language)} - ${new Date(info.event.end).toLocaleString(language)}`);
+      showAlert(`${t('agenda.google_block')}:\n\n${info.event.title}\n${new Date(info.event.start).toLocaleString(language)} - ${new Date(info.event.end).toLocaleString(language)}`);
       return;
     }
 
@@ -836,7 +837,7 @@ export default function AgendaView() {
     } catch (err) {
       info.revert();
       console.error('Drag save error:', err);
-      alert(t('agenda.drag_save_error'));
+      showAlert(t('agenda.drag_save_error'), { variant: 'error' });
     }
   };
 
@@ -874,7 +875,7 @@ export default function AgendaView() {
     } catch (err) {
       info.revert();
       console.error('Resize save error:', err);
-      alert(t('agenda.drag_save_error'));
+      showAlert(t('agenda.drag_save_error'), { variant: 'error' });
     }
   };
 
@@ -910,14 +911,14 @@ export default function AgendaView() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm(t('agenda.confirm_delete'))) return;
+    if (!(await confirmDialog(t('agenda.confirm_delete'), { danger: true }))) return;
     try {
       // Borrado físico (Protocolo Platinum: limpieza total de agenda)
       await api.delete(`/admin/appointments/${id}`);
       await fetchData();
       setShowModal(false);
     } catch (error) {
-      alert(t('agenda.alert_cancel_error'));
+      showAlert(t('agenda.alert_cancel_error'), { variant: 'error' });
     }
   };
 

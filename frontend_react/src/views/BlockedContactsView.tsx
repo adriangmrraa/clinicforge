@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Ban, Plus, Edit2, Trash2, Save, X, Mail, BellOff, MessageCircle } from 'lucide-react';
 import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
+import { confirmDialog } from '../components/Dialogs';
 
 interface BlockedContact {
   id: number;
@@ -143,7 +144,7 @@ export default function BlockedContactsView() {
   };
 
   const remove = async (it: BlockedContact) => {
-    if (!window.confirm(t('blocked.confirmDelete'))) return;
+    if (!(await confirmDialog(t('blocked.confirmDelete'), { danger: true }))) return;
     try {
       await api.delete(`/admin/blocked-contacts/${it.id}`);
       await load();

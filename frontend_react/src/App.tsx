@@ -4,6 +4,7 @@ import { Layout } from './components/Layout';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { LanguageProvider } from './context/LanguageContext';
 import ProtectedRoute from './components/ProtectedRoute';
+import { DialogHost } from './components/Dialogs';
 
 const DashboardView = lazy(() => import('./views/DashboardView'));
 const AgendaView = lazy(() => import('./views/AgendaView'));
@@ -145,6 +146,7 @@ function App() {
             } />
           </Routes>
           </Suspense>
+          <DialogHost />
         </LanguageProvider>
       </AuthProvider>
     </Router>

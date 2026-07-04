@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { FileText, ExternalLink, RefreshCw, Loader2, Zap, Database } from 'lucide-react';
 import { useTranslation } from '../../context/LanguageContext';
+import { showAlert } from '../Dialogs';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../api/axios';
 import LiquidationSummary from './LiquidationSummary';
@@ -173,14 +174,14 @@ const LiquidationTab: React.FC<LiquidationTabProps> = ({
       let msg = '';
       if (generated_count > 0) msg += `${generated_count} ${t('liquidation.new_generated')}`;
       if (skipped_count > 0) msg += (msg ? '. ' : '') + `${skipped_count} ${t('liquidation.already_exists')}`;
-      alert(msg || t('liquidation.generated_success'));
+      showAlert(msg || t('liquidation.generated_success'), { variant: 'success' });
       // Refresh persistent data if in that mode
       if (dataSource === 'persistent') {
         fetchPersistentData();
       }
     } catch (err: any) {
       console.error('Error generating liquidations:', err);
-      alert(err.response?.data?.detail || 'Error al generar liquidaciones');
+      showAlert(err.response?.data?.detail || 'Error al generar liquidaciones', { variant: 'error' });
     } finally {
       setGenerating(false);
     }

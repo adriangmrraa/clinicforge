@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from '../context/LanguageContext';
+import { confirmDialog } from './Dialogs';
 import { Upload, FileText, Image, File, Trash2, Download, Eye, X, Activity, DollarSign } from 'lucide-react';
 import api from '../api/axios';
 
@@ -167,7 +168,7 @@ export default function DocumentGallery({ patientId, readOnly = false }: Documen
   };
 
   const handleDelete = async (docId: number) => {
-    if (readOnly || !confirm(t('document_gallery.delete_confirm'))) return;
+    if (readOnly || !(await confirmDialog(t('document_gallery.delete_confirm'), { danger: true }))) return;
 
     setDeletingId(docId);
     try {

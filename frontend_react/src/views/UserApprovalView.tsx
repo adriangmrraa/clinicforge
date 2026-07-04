@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
+import { confirmDialog, showAlert } from '../components/Dialogs';
 import {
     UserCheck, UserX, Clock, ShieldCheck, Mail,
     AlertTriangle, User, Users, Lock, Unlock, X, Building2, Stethoscope, BarChart3, MessageSquare, Plus, Phone, Save, Settings, ChevronDown, ChevronUp, Edit, Activity, Trash2
@@ -156,20 +157,20 @@ const UserApprovalView: React.FC = () => {
                 u.id === userId ? { ...u, status: action } : u
             ));
         } catch (err: any) {
-            alert(t('alerts.error_process'));
+            showAlert(t('alerts.error_process'), { variant: 'error' });
         }
     };
 
     const handleDelete = async (userId: string, userEmail: string) => {
-        if (!confirm(`¿Estás seguro de eliminar al usuario ${userEmail}? Esta acción no se puede deshacer.`)) {
+        if (!(await confirmDialog(`¿Estás seguro de eliminar al usuario ${userEmail}? Esta acción no se puede deshacer.`, { danger: true }))) {
             return;
         }
         try {
             await api.delete(`/admin/users/${userId}`);
             setUsers(prev => prev.filter(u => u.id !== userId));
-            alert('Usuario eliminado correctamente');
+            showAlert('Usuario eliminado correctamente', { variant: 'success' });
         } catch (err: any) {
-            alert(err.response?.data?.detail || t('alerts.error_process'));
+            showAlert(err.response?.data?.detail || t('alerts.error_process'), { variant: 'error' });
         }
     };
 
@@ -257,7 +258,7 @@ const UserApprovalView: React.FC = () => {
             });
             setExpandedEditDays([]);
         } catch {
-            alert(t('alerts.error_load_pro'));
+            showAlert(t('alerts.error_load_pro'), { variant: 'error' });
         }
     };
 
@@ -352,7 +353,7 @@ const UserApprovalView: React.FC = () => {
                 setProfessionalRows(res.data || []);
             }
         } catch (err: any) {
-            alert(err?.response?.data?.detail || t('alerts.error_save'));
+            showAlert(err?.response?.data?.detail || t('alerts.error_save'), { variant: 'error' });
         } finally {
             setEditFormSubmitting(false);
         }
@@ -363,7 +364,7 @@ const UserApprovalView: React.FC = () => {
         if (!selectedStaff) return;
         const tenant_id = linkFormData.tenant_id ?? clinics[0]?.id;
         if (!tenant_id) {
-            alert(t('alerts.select_sede'));
+            showAlert(t('alerts.select_sede'), { variant: 'error' });
             return;
         }
         setLinkFormSubmitting(true);
@@ -384,7 +385,7 @@ const UserApprovalView: React.FC = () => {
             setLinkFormData({ tenant_id: null, phone: '', specialty: '', license_number: '' });
         } catch (err: any) {
             const msg = err?.response?.data?.detail || err?.message || t('alerts.error_link_sede');
-            alert(msg);
+            showAlert(msg, { variant: 'error' });
         } finally {
             setLinkFormSubmitting(false);
         }
