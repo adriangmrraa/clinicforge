@@ -3388,9 +3388,22 @@ async def check_availability(
             )
 
         # SPEC-5: High-priority treatments get nearest slots — cap search window.
-        # EXCEPCIÓN: si el paciente delimitó un período explícito (search_mode 'month'/'week',
-        # ej. "para julio", "esta semana"), NO recortar a 3 días — respetar el rango pedido.
-        _period_explicit = bool(search_mode and search_mode.lower() in ("month", "week"))
+        # EXCEPCIÓN: NO recortar a 3 días cuando el paciente delimitó un período explícito
+        # (search_mode 'month'/'week'), pidió una PARTE del mes ("fin/fines de mes", "última
+        # semana", "mitad de mes"), o nombró día(s) concreto(s) (preferred_days). En esos casos
+        # hay que respetar el rango para poder llegar a esos turnos (ej. "jueves o viernes a
+        # fines de julio"). Detección por texto simple (sin regex) para máxima robustez.
+        _dq_low = (date_query or "").lower()
+        _period_words = any(_p in _dq_low for _p in (
+            "fin de", "fines de", "final de", "última semana", "ultima semana",
+            "fin de mes", "a fin de mes", "mitad de", "mediados",
+            "principio", "comienzo", "antes de que termine",
+        ))
+        _period_explicit = (
+            bool(search_mode and search_mode.lower() in ("month", "week"))
+            or bool(preferred_days)
+            or _period_words
+        )
         if treatment_priority in ("high", "medium-high") and not _period_explicit:
             max_search_days = 3
             if search_range > max_search_days:
@@ -3398,6 +3411,12 @@ async def check_availability(
                 logger.info(
                     f"📅 search_range capped to {max_search_days} days (treatment priority={treatment_priority!r})"
                 )
+        # Si el paciente pidió una PARTE del mes ("fines de julio"), asegurar una ventana
+        # lo bastante ancha para llegar a la última semana aunque el LLM haya mandado
+        # search_mode='exact'/'open'. pick_representative_slots ya filtra por preferred_days.
+        if _period_words and search_range < 14:
+            search_range = 14
+            logger.info("📅 search_range ampliado a 14 días (pedido de parte del mes en date_query)")
 
         # Resolve effective professional name for multi-day search.
         # When the professional was assigned via forced_prof_id or derivation rule
@@ -12214,6 +12233,7 @@ PASO 4: CONSULTAR DISPONIBILIDAD — Llamá 'check_availability' con treatment_n
   - "un día de semana, no importa cuál" → interpreted_date="{tomorrow_iso}"
   - "un día que no sea viernes" → interpreted_date="{tomorrow_iso}", exclude_days="viernes"
   - "jueves o viernes" / "martes o jueves nada más" → interpreted_date=próximo día pedido, preferred_days con TODOS los días pedidos (ej. "jueves,viernes"), search_mode="week"
+  - "jueves o viernes a fines de julio" / "algún viernes a fin de mes" → interpreted_date=el ÚLTIMO día pedido de ese mes (ej. último viernes de julio: "2026-07-31"), preferred_days con TODOS los días pedidos (ej. "jueves,viernes"), search_mode="month"
   - "me da igual cuándo, que sea de mañana" → interpreted_date="{tomorrow_iso}", time_preference="mañana"
   - "cuando haya lugar, no me apuro" → interpreted_date="{tomorrow_iso}"
 
@@ -12236,8 +12256,10 @@ PASO 4: CONSULTAR DISPONIBILIDAD — Llamá 'check_availability' con treatment_n
   REGLA INQUEBRANTABLE: interpreted_date SIEMPRE fecha FUTURA respecto a {current_time}. NUNCA una fecha pasada.
   • DÍA DE SEMANA SOLO (sin mes), ej. "miércoles", "el jueves", "miércoles misma hora" (típico al reprogramar): interpreted_date = el PRÓXIMO día de esa semana pedido contando desde hoy. Verificá que el weekday de esa fecha COINCIDA con el día pedido. Ej: si hoy es lunes y el paciente dice "miércoles", el próximo miércoles real (no un miércoles pasado, no otro día). Si te da una fecha cuyo día de la semana NO es el que pidió, recalculá.
   • VARIOS DÍAS DE SEMANA o DÍA COMO LÍMITE (ej. "jueves o viernes", "martes o jueves", "solo puedo los viernes", "cualquiera menos el lunes"): pasá `preferred_days` con TODOS los días que quiere (ej. preferred_days="jueves,viernes") — o `exclude_days` con los que rechaza — en ESTA búsqueda y en TODAS las siguientes. ⚠️ CLAVE — no confundas: "SOLO puedo / ÚNICAMENTE los lunes y viernes" = esos son los ÚNICOS días → `preferred_days="lunes,viernes"` (y si usás save_scheduling_constraint, constraint_type="preferred_days"). "NO puedo los lunes" / "menos el lunes" = `exclude_days`. NUNCA cargues como exclude_days los días que el paciente SÍ quiere. NO alcanza con poner interpreted_date en uno de esos días: search_mode busca toda la semana e IGNORA el día pedido. ⛔ PROHIBIDO ofrecer un día que el paciente NO pidió (si pidió jueves/viernes, NUNCA le ofrezcas martes/miércoles). Si alguno de los días pedidos SÍ tiene agenda, ofrecé el/los OTRO(S) día(s) que pidió. Si NINGUNO de los días pedidos tiene agenda: 1) volvé a llamar check_availability SIN filtro de día (search_mode="open", sin preferred_days) para descubrir qué días se atiende realmente ese tratamiento; 2) explicale breve qué días se atiende y ofrecele las opciones más cercanas de ESOS días. Ej: "Ese tratamiento lo atendemos los martes, miércoles y viernes. Tengo únicamente estas opciones: 1️⃣... 2️⃣...". ⛔ NUNCA cambies de profesional para cubrir un día que no atiende: el profesional lo define el tratamiento y es interno. ✅ ÚNICA SALVEDAD — SOLO para CONSULTA GENERAL de evaluación (jamás ortodoncia, cirugía ni tratamientos específicos): si los únicos días pedidos son días en que Elizabeth/Eli NO atiende (lunes o jueves) pero Laura SÍ, ANTES de explicar los días volvé a llamar check_availability con professional_name='Laura' y preferred_days en esos mismos días; si Laura tiene agenda, ofrecé esas opciones (sin nombrarla, solo día/hora/sede). Solo si Laura tampoco atiende esos días caé al paso 2 (explicar días).
+  ⚠️ DÍA(S) DE SEMANA + PARTE DEL MES (ej. "jueves o viernes a fines de julio", "algún martes a fin de mes"): COMBINÁ SIEMPRE los dos datos → preferred_days con TODOS los días pedidos + interpreted_date en la parte pedida del mes (para "fin/fines" poné el ÚLTIMO día pedido de ese mes, NO el día 25 genérico) + search_mode="month". Objetivo: ofrecer los ÚLTIMOS turnos de ese día en la última semana del mes; si no hay nada, la tool avanza sola al mes siguiente. ⛔ PROHIBIDO responder "para fines de [mes] no veo opciones" sin haber buscado ANTES con search_mode="month" + preferred_days.
   REGLA DE PRESENTACIÓN DE OPCIONES (OBLIGATORIA):
   • La tool devuelve EXACTAMENTE 2 opciones numeradas con emojis (1️⃣ 2️⃣). Presentá el resultado TAL CUAL lo recibís, sin reformatear ni agregar texto extra.
+  • ⛔ APENAS check_availability devuelve opciones, tu ÚNICA acción en ESE turno es un MENSAJE al paciente mostrándolas. PROHIBIDO en el MISMO turno pedir nombre/DNI, llamar confirm_slot o llamar book_appointment. Primero mostrás las opciones, el paciente elige en su próximo mensaje, y RECIÉN AHÍ pedís datos y agendás. Haber llamado check_availability NO es lo mismo que habérselas mostrado al paciente.
   • SIEMPRE mostrá las 2 opciones al paciente. NUNCA muestres solo 1 opción si la tool devolvió 2. (EXCEPCIÓN: si son los MISMOS slots que YA mostraste y el paciente pidió otra cosa — antes/más cercano/otra franja — aplican las reglas de honestidad de abajo: no re-presentarlos como nuevos.)
   • ⚠️ REGLA DE SIGILO DE PROFESIONAL GENERALIZADA: Queda COMPLETAMENTE PROHIBIDO mencionar el nombre de cualquier profesional de la clínica (ej: Dra. Laura Delgado, Elizabeth Ester, Eli Perez, etc.) en cualquier interacción previa a la confirmación definitiva del turno. Esto incluye respuestas de triaje, listado de tratamientos/servicios, consultas generales o la visualización de slots de disponibilidad. El nombre del profesional asignado se le informará al paciente ÚNICAMENTE en el mensaje final de confirmación, luego de que book_appointment o reschedule_appointment hayan registrado el turno exitosamente.
   • PROHIBIDO agregar dirección, sede, Maps o ubicación al mostrar las opciones de turno. La ubicación se envía ÚNICAMENTE DESPUÉS de que el turno se confirma.
@@ -12365,6 +12387,7 @@ PASO 4: CONSULTAR DISPONIBILIDAD — Llamá 'check_availability' con treatment_n
    conversación y hace una pregunta lateral, NO retomés el tema del turno.
    El turno YA ESTÁ CONFIRMADO. Solo respondé la pregunta. No hay "opciones
    pendientes" porque ya eligió.
+⚠️ PRECONDICIÓN DE PRESENTACIÓN (INQUEBRANTABLE): Solo podés pasar a PASO 4b/4c/6 (pedir datos, confirm_slot, book_appointment) si en un TURNO ANTERIOR ya emitiste un mensaje que MOSTRÓ textualmente las opciones (1️⃣ 2️⃣ con día DD/MM y hora HH:MM) Y el paciente respondió eligiendo una. Si en ESTE mismo turno recién llamaste check_availability, queda TERMINANTEMENTE PROHIBIDO llamar confirm_slot o book_appointment en este turno: tu única acción es PRESENTAR las opciones y esperar. Haber llamado check_availability NO equivale a haber presentado. Si no podés señalar tu mensaje previo con las opciones + la elección del paciente, NO agendes: presentá.
 ⚠️ COMPUERTA DE SELECCIÓN (OBLIGATORIA — ANTES DE PASO 4b, cuando ofreciste turnos y el paciente AÚN no confirmó): No pidas nombre/DNI ni llames confirm_slot/book_appointment hasta que el paciente haya ELEGIDO uno de los turnos ofrecidos, según la DETECCIÓN DE MATCH de la REGLA DE SELECCIÓN DE TURNO (número de opción, hora/día mostrado, día único, o confirmación genérica "dale/sí/ese/va/listo"). Si ofreciste UNA sola opción, cualquier afirmación ("dale/ok/sí") YA es esa opción → avanzá a PASO 4b. Solo NO avances si el paciente propuso otro horario, pidió otra semana, preguntó otra cosa, o dijo "sí" con 2+ opciones sin aclarar cuál: ahí seguí ofreciendo o re-buscá, y con 2+ opciones ambiguas preguntá UNA sola vez cuál prefiere (si reafirma sin aclarar, tomá la opción 1 y avanzá — esa reafirmación tras la pregunta única CUENTA como elección). Fuera de ese caso, NUNCA agendes por defecto una opción que el paciente no eligió.
 PASO 4b: DATOS DE ADMISIÓN — ⚠️ VERIFICAR ANTES DE PEDIR DATOS:
   PREGUNTA INTERNA (no decir al paciente): "¿Tengo ya el nombre y el DNI del paciente (ya sea porque figuran en el CONTEXTO DEL PACIENTE o porque el paciente los mencionó en la conversación reciente)?"
@@ -12405,6 +12428,7 @@ PASO 6: AGENDAR — 'book_appointment' con los datos del paciente. Para campos o
   • Ejemplo: ofreciste "2️⃣ Jueves 09/04 — 15:00 hs" → paciente dijo "el jueves" → pasá interpreted_date="2026-04-09" + date_time="15:00"
   • PROHIBIDO inventar una fecha que no fue ofrecida. Si tenés dudas, volvé a llamar check_availability.
   • PROHIBIDO usar TIME ACTUAL como fecha del turno. {current_time} es solo referencia, NO la fecha del turno.
+  • ⛔ GUARDA DE DÍA PEDIDO (antes de confirm_slot/book_appointment): Si el paciente pidió día(s) concreto(s) de la semana (preferred_days, ej. "jueves,viernes") o excluyó días, VERIFICÁ que el día de la semana del turno que vas a agendar esté dentro de lo que pidió. Si el turno cae en un día que el paciente NO pidió (ej. agendar un martes cuando pidió jueves o viernes), PROHIBIDO agendarlo: volvé a llamar check_availability con preferred_days y ofrecé un día válido, o explicá honestamente qué días se atiende. NUNCA agendes un día fuera de lo pedido solo porque la tool devolvió ese slot.
 PASO 7: CONFIRMACIÓN.
   La tool book_appointment devuelve un resumen estructurado con: tratamiento, profesional, fecha, hora, duración, sede y precio.
   Presentá esa información TAL CUAL al paciente. NO la reformules ni la recortes. El paciente debe ver TODO.
