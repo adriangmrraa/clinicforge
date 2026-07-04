@@ -48,13 +48,8 @@ Estructura: `agents/` — supervisor (ruteo regex→6 agentes + LLM fallback) + 
 - ⚠️ NOTA RED: el `git push` a PRUEBAS se está colgando (los reads/ls-remote andan, la subida no). Todo está **commiteado local** (feat=4f7b054: fix Multi abea817 + docs). Push reintentándose en background (bqe30ps2k). PRUEBAS remoto quedó en 897657e hasta que el push pase. Recuperable.
 - Commits locales pendientes de push a PRUEBAS: abea817 (fix Multi reception), 4f7b054 (docs sesión).
 
-## ⚠️ BLOQUEO DE PUSH — ACCIÓN REQUERIDA DE CARLOS
-El `git push` a PRUEBAS falla con `/dev/tty: No such device` = git pide **credenciales interactivas** y este entorno autónomo no puede ingresarlas. El token que funcionó al inicio de la noche **expiró**. Los reads (fetch/ls-remote) andan; solo la SUBIDA necesita re-auth.
-**TODO ESTÁ COMMITEADO LOCAL Y A SALVO** en feat/blindaje-agente = `eaf7c7e`. Para desbloquear:
-```
-git push origin feat/blindaje-agente:PRUEBAS
-```
-(un push tuyo re-autentica y sube los 3 commits: abea817 + 4f7b054 + eaf7c7e). Después, PRUEBAS deploya solo.
+## PUSH — RESUELTO ✅
+Hubo ~15 min de red intermitente a GitHub (DNS "Could not resolve host" + a veces prompt de credenciales `/dev/tty`). La red volvió y el push ENTRÓ: **PRUEBAS = `c071293`** (subidos abea817 + 4f7b054 + eaf7c7e + c071293). Deploya solo. (Nota para el futuro: si el push se cuelga, suele ser red intermitente — reintentar; los commits quedan a salvo local mientras tanto.)
 
 ## CIERRE — qué quedó hecho (todo local, listo para push)
 - **Fase 0 (Golden set):** ✅ scratch/GOLDEN_SET_CONVERSACIONES.md (G1-G13).
