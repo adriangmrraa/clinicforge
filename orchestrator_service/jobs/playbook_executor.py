@@ -620,7 +620,8 @@ REGLAS:
 4. Máximo 3 líneas
 5. NO uses emojis excesivos (máximo 1-2)
 6. NO menciones que sos un bot o IA
-{f'7. INSTRUCCIONES ADICIONALES: {custom_instructions}' if custom_instructions else ''}
+7. ⛔ NO inventes horarios, días ni fechas de turno concretos: NO tenés la agenda real en este mensaje. NUNCA ofrezcas horas puntuales ("el lunes a las 08:00", "el martes a la misma hora") ni digas "tenemos disponibilidad el [día] a las [hora]". En vez de eso, invitá al paciente a retomar y coordinar según SU preferencia (ej. "si querés lo retomamos y buscamos el día que mejor te venga 😊").
+{f'8. INSTRUCCIONES ADICIONALES: {custom_instructions}' if custom_instructions else ''}
 
 Respondé SOLO con el mensaje a enviar, o "NO_ENVIAR" si no corresponde."""
 
