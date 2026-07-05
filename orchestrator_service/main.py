@@ -1505,8 +1505,23 @@ async def _get_slots_for_extra_day(
         tenant_day_cfg.get("slots", []) if tenant_day_cfg.get("enabled") else []
     )
     if tenant_day_slots:
-        day_start = min(s["start"] for s in tenant_day_slots)
-        day_end = max(s["end"] for s in tenant_day_slots)
+        # Ventana = UNIÓN tenant (=Laura) + profesionales activos (misma lógica que el día base):
+        # el extra (ej. Elizabeth los viernes 10-15) atiende FUERA de la ventana del tenant (18-19),
+        # así que sin la unión no se ofrecía tampoco en la búsqueda multi-día.
+        _window_slots = list(tenant_day_slots)
+        for _wp in active_professionals:
+            _wp_wh = _wp.get("working_hours")
+            if isinstance(_wp_wh, str):
+                try:
+                    _wp_wh = json.loads(_wp_wh) if _wp_wh else {}
+                except Exception:
+                    _wp_wh = {}
+            if isinstance(_wp_wh, dict):
+                _wp_day = _wp_wh.get(day_name_en, {}) or {}
+                if _wp_day.get("enabled") and _wp_day.get("slots"):
+                    _window_slots.extend(_wp_day.get("slots", []) or [])
+        day_start = min(s["start"] for s in _window_slots)
+        day_end = max(s["end"] for s in _window_slots)
         if len(tenant_day_slots) > 1:
             sorted_slots = sorted(tenant_day_slots, key=lambda s: s["start"])
             for i in range(len(sorted_slots) - 1):
@@ -3217,10 +3232,28 @@ async def check_availability(
             tenant_day_slots = (
                 tenant_day_cfg.get("slots", []) if tenant_day_cfg.get("enabled") else []
             )
-            if tenant_day_slots:
-                # Usar el rango más amplio de los slots del tenant para este día
-                day_start = min(s["start"] for s in tenant_day_slots)
-                day_end = max(s["end"] for s in tenant_day_slots)
+            # Ventana del día = UNIÓN del horario del tenant (=Laura, la clínica) Y de TODOS los
+            # profesionales activos ese día. La clínica y Laura son la misma entidad; los demás
+            # profesionales son "extra" y pueden atender FUERA de la ventana del tenant (ej.
+            # Elizabeth los viernes 10-15 vs tenant/Laura 18-19). Sin esta unión el extra quedaba
+            # afuera de la ventana y NUNCA se ofrecía. Cada profesional YA tiene marcadas sus horas
+            # no-laborales arriba (recorre 8-20), así que ampliar la ventana NO ofrece slots que
+            # el profesional no trabaje — solo permite generar los candidatos de su propio horario.
+            _window_slots = list(tenant_day_slots)
+            for _wp in active_professionals:
+                _wp_wh = _wp.get("working_hours")
+                if isinstance(_wp_wh, str):
+                    try:
+                        _wp_wh = json.loads(_wp_wh) if _wp_wh else {}
+                    except Exception:
+                        _wp_wh = {}
+                if isinstance(_wp_wh, dict):
+                    _wp_day = _wp_wh.get(day_name_en, {}) or {}
+                    if _wp_day.get("enabled") and _wp_day.get("slots"):
+                        _window_slots.extend(_wp_day.get("slots", []) or [])
+            if _window_slots:
+                day_start = min(s["start"] for s in _window_slots)
+                day_end = max(s["end"] for s in _window_slots)
             # Marcar huecos entre slots del tenant como ocupados para todos los profesionales
             if len(tenant_day_slots) > 1:
                 sorted_slots = sorted(tenant_day_slots, key=lambda s: s["start"])
