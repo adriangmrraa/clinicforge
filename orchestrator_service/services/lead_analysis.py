@@ -183,19 +183,17 @@ async def analyze_conversation(pool, tenant_id: int, phone: str, messages: list)
 _TOUCH_PROMPTS = {
     1: """\
 Generá un mensaje de seguimiento cálido para un lead de clínica dental.
-Contexto: {lead_name} consultó por {servicio} y no agendó.
-{availability_line}
+Contexto: {lead_name} consultó por {servicio} y no agendó, y no volvió a responder.
 Clínica: {clinic_name}
 
 Reglas:
 - Máximo 300 caracteres
 - Tuteo/voseo rioplatense
 - Mencioná el servicio si lo hay
-- Si hay disponibilidad, ofrecé el turno concreto
-- Si no hay, preguntá si quiere que busques para la semana que viene
+- ⛔ NO inventes ni ofrezcas horarios, días ni fechas concretas (NO tenés la agenda real acá). NUNCA digas "tenemos disponibilidad el [día] a las [hora]" ni una hora puntual. En vez de eso invitá a retomar y coordinar según SU preferencia (ej. "si querés lo retomamos y buscamos el día que mejor te venga 😊").
 - Soná como una asistente real, no como un bot
 - No uses emojis excesivos (máximo 1-2)
-- Objetivo: que agende\
+- Objetivo: que responda y quiera coordinar el turno\
 """,
     2: """\
 Generá un segundo mensaje de seguimiento breve y con un toque de humor.
