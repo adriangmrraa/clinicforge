@@ -5459,44 +5459,71 @@ async def book_appointment(
         dia_nombre = dias[apt_datetime.weekday()]
         patient_label = f"{first_name or ''} {last_name or ''}".strip() or "Paciente"
 
-        # Resolver sede del día del turno
+        # Resolver sede del día del turno.
+        # CADENA (multi-sede): profesional[día] → tenant[día] → tenant.address (default).
+        # BUG histórico corregido: antes leía SOLO el tenant[día] → un turno con Elizabeth
+        # (Salta 147) un miércoles mostraba "Córdoba 431" (la sede del tenant ese día, donde
+        # atiende Laura), ignorando la dirección propia del profesional.
         booking_sede = ""
         try:
-            t_row = await db.pool.fetchrow(
-                "SELECT working_hours, address FROM tenants WHERE id = $1", tenant_id
-            )
-            if t_row:
-                b_wh = t_row["working_hours"]
-                if isinstance(b_wh, str):
+            _days_en = [
+                "monday", "tuesday", "wednesday", "thursday",
+                "friday", "saturday", "sunday",
+            ]
+            _day_key = _days_en[apt_datetime.weekday()]
+
+            def _parse_wh(_raw):
+                if isinstance(_raw, str):
                     try:
-                        b_wh = json.loads(b_wh)
-                    except:
-                        b_wh = {}
-                if isinstance(b_wh, dict):
-                    days_en = [
-                        "monday",
-                        "tuesday",
-                        "wednesday",
-                        "thursday",
-                        "friday",
-                        "saturday",
-                        "sunday",
-                    ]
-                    b_day_cfg = b_wh.get(days_en[apt_datetime.weekday()], {})
-                    if b_day_cfg.get("location"):
-                        booking_sede = f"\nSede: {b_day_cfg['location']}"
-                        if b_day_cfg.get("address"):
-                            booking_sede += f" — {b_day_cfg['address']}"
-                        if b_day_cfg.get("maps_url"):
-                            booking_sede += f"\nMaps: {b_day_cfg['maps_url']}"
-                    elif t_row.get("address"):
-                        booking_sede = f"\nDirección: {t_row['address']}"
-                        t_maps = await db.pool.fetchval(
-                            "SELECT google_maps_url FROM tenants WHERE id = $1",
-                            tenant_id,
-                        )
-                        if t_maps:
-                            booking_sede += f"\nMaps: {t_maps}"
+                        return json.loads(_raw)
+                    except Exception:
+                        return {}
+                return _raw if isinstance(_raw, dict) else {}
+
+            # 1) config del PROFESIONAL para ese día (prioridad)
+            _prof_day_cfg = {}
+            try:
+                _pwh_row = await db.pool.fetchrow(
+                    "SELECT working_hours FROM professionals WHERE id = $1 AND tenant_id = $2",
+                    target_prof["id"], tenant_id,
+                )
+                if _pwh_row:
+                    _prof_day_cfg = _parse_wh(_pwh_row["working_hours"]).get(_day_key, {}) or {}
+            except Exception:
+                _prof_day_cfg = {}
+
+            # 2) tenant como fallback (día → dirección default)
+            t_row = await db.pool.fetchrow(
+                "SELECT working_hours, address, google_maps_url FROM tenants WHERE id = $1",
+                tenant_id,
+            )
+            _tenant_day_cfg = (
+                _parse_wh(t_row["working_hours"]).get(_day_key, {}) or {}
+            ) if t_row else {}
+
+            # elegir la primera fuente con datos (el profesional gana sobre el tenant)
+            _sede_cfg = None
+            if _prof_day_cfg.get("location") or _prof_day_cfg.get("address"):
+                _sede_cfg = _prof_day_cfg
+            elif _tenant_day_cfg.get("location") or _tenant_day_cfg.get("address"):
+                _sede_cfg = _tenant_day_cfg
+
+            if _sede_cfg:
+                _loc = _sede_cfg.get("location") or ""
+                _addr = _sede_cfg.get("address") or ""
+                _maps = _sede_cfg.get("maps_url") or ""
+                if _loc:
+                    booking_sede = f"\nSede: {_loc}"
+                    if _addr:
+                        booking_sede += f" — {_addr}"
+                elif _addr:
+                    booking_sede = f"\nDirección: {_addr}"
+                if _maps:
+                    booking_sede += f"\nMaps: {_maps}"
+            elif t_row and t_row.get("address"):
+                booking_sede = f"\nDirección: {t_row['address']}"
+                if t_row.get("google_maps_url"):
+                    booking_sede += f"\nMaps: {t_row['google_maps_url']}"
         except Exception:
             pass
         # Generate anamnesis URL for the patient (not the interlocutor)
