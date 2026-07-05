@@ -3536,18 +3536,11 @@ async def check_availability(
 
             for i, opt in enumerate(options):
                 line = f"{emoji_nums[i]}  {opt['date_display']} — {opt['time']} hs"
-                # Only show sede label (not full address/Maps) if multi-sede, to distinguish locations
-                if is_multi_sede and opt.get("sede"):
-                    # Extract just the sede name (e.g. "Sede: Cordoba"), no address or Maps
-                    sede_raw = (
-                        opt["sede"]
-                        .split("Dirección:")[0]
-                        .split("Maps:")[0]
-                        .strip()
-                        .rstrip(".")
-                    )
-                    if sede_raw:
-                        line += f" ({sede_raw})"
+                # ⛔ NO mostrar la sede en las opciones ("(Sede: Cordoba)"): queda mal, confunde,
+                # y además salía MAL porque usaba la sede del TENANT de ese día, no la del
+                # profesional (ej. Eli el miércoles mostraba Córdoba en vez de Salta). La sede
+                # REAL (del profesional) se muestra SOLO en la confirmación post-booking. La info
+                # de sede queda guardada internamente abajo ([INTERNAL_SEDE]) para book_appointment.
                 lines.append(line)
 
             # Debt info
