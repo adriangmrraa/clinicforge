@@ -2156,13 +2156,16 @@ async def check_availability(
                     # reprogramacion en loop. Se suman tokens del flujo real.
                     _intent_signals = (
                         r'\b(otro turno|nuevo turno|otra fecha|otro d[ii]a|quiero cambiar|'
-                        r'reagend\w*|reprogram\w*|mover el turno|mover turno|cancel\w*|'
+                        r'reagend\w*|reprogram\w*|mov\w*|corr[ae]\w*|pas[aá](?:me|rlo|r)?\b|viaj\w*|cancel\w*|'
                         r'dame otro|dame otra|dame opciones|dame las opciones|agendame otro|'
                         r'necesito otro|sac[aa] otro|quiero uno m[aa]s|turno para|cambiar el turno|'
                         r'busc\w*|fijate|cualquier|disponib\w*|horario libre|otro horario|'
                         r'verif\w*|intento|intentalo|no puedo ir|no podr[ee] ir|no voy a poder|'
                         r'no llego|qu[ee] d[ii]a|para cuando|cuando puede|propon|lo que tengas|'
-                        r'el que sea|vos decim)'
+                        r'el que sea|vos decim|'
+                        r'lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo|'
+                        r'ma[nñ]ana|tarde|noche|temprano|m[aa]s tarde|'
+                        r'a las \d|a la (ma[nñ]ana|tarde|noche))'
                     )
                     _ca_input_text = f"{date_query} {treatment_name or ''} {professional_name or ''}"
                     # Ampliar la busqueda con el ultimo mensaje real del paciente (lectura rapida)
@@ -4119,6 +4122,34 @@ async def book_appointment(
         except Exception:
             pass
 
+    # CANDADO MENOR (caso Daniela 2026-07-04): si el LLM olvidó pasar is_minor=true pero
+    # la conversación YA estableció que se agenda para un HIJO/A MENOR (lead_context
+    # is_minor=true, seteado por buffer_task al detectar "mi hija/hijo") Y el nombre que
+    # se está agendando coincide con el nombre del menor detectado → forzamos is_minor=true.
+    # Sin esto el turno cae en la ficha del interlocutor y le PISA el nombre con el del menor.
+    # La coincidencia de nombre evita falsos positivos: si el padre luego agenda para SÍ
+    # MISMO (su propio nombre), no coincide con minor_first_name y no se fuerza nada.
+    if not is_minor and not patient_phone and not is_art:
+        try:
+            from services.lead_context import get as _lc_get_minor_guard
+            _lc_mg = await _lc_get_minor_guard(tenant_id, chat_phone)
+            if _lc_mg and _lc_mg.get("is_minor") == "true":
+                _mg_minor_first = (_lc_mg.get("minor_first_name") or "").strip().lower()
+                _mg_book_first = (first_name or "").strip().lower()
+                if _mg_minor_first and _mg_book_first and _mg_book_first == _mg_minor_first:
+                    is_minor = True
+                    logger.warning(
+                        f"📅 BOOK MINOR-GUARD: LLM no pasó is_minor pero lead_context tiene menor '{_mg_minor_first}' "
+                        f"y coincide con first_name='{_mg_book_first}' → forzando is_minor=true (evita agendar al interlocutor)"
+                    )
+                else:
+                    logger.info(
+                        f"📅 BOOK MINOR-GUARD: lead_context is_minor=true pero sin match de nombre "
+                        f"(minor='{_mg_minor_first}' vs book='{_mg_book_first}') → no se fuerza (posible self-booking)"
+                    )
+        except Exception as _mg_err:
+            logger.warning(f"📅 BOOK MINOR-GUARD check failed (non-blocking): {_mg_err}")
+
     is_third_party = bool(patient_phone) or bool(is_minor) or bool(is_art)
 
     # Recuperar obra social de lead_context
@@ -4161,15 +4192,49 @@ async def book_appointment(
             )
             if _ctx_minor_row:
                 guardian_phone_value = _ctx_minor_row["phone_number"]
-        minor_count = (
-            await db.pool.fetchval(
-                "SELECT COUNT(*) FROM patients WHERE tenant_id = $1 AND REGEXP_REPLACE(COALESCE(guardian_phone, ''), '[^0-9]', '', 'g') = REGEXP_REPLACE(COALESCE($2, ''), '[^0-9]', '', 'g')",
+        # IDEMPOTENCIA MENOR (caso "venció/se ocupó" al agendar para un hijo/3ero):
+        # Si YA existe un menor de este mismo guardian con el MISMO nombre (o DNI), REUSÁ ese
+        # registro en vez de crear -M2/-M3. Sin esto, cada re-llamada a book_appointment (ej. el
+        # "gracias" del cierre) incrementaba el contador -> creaba un menor DUPLICADO con un
+        # patient_id nuevo que NO matcheaba el turno ya creado -> cascada UNAVAILABLE/EXPIRED.
+        _existing_minor = None
+        try:
+            _dni_clean_minor = re.sub(r"\D", "", str(dni).strip()) if dni else ""
+            _first_clean_minor = (first_name or "").strip().lower()
+            _existing_minor = await db.pool.fetchrow(
+                """
+                SELECT phone_number FROM patients
+                WHERE tenant_id = $1
+                  AND REGEXP_REPLACE(COALESCE(guardian_phone,''),'[^0-9]','','g') = REGEXP_REPLACE(COALESCE($2,''),'[^0-9]','','g')
+                  AND (
+                        ($3 <> '' AND REGEXP_REPLACE(COALESCE(dni,''),'[^0-9]','','g') = $3)
+                     OR ($4 <> '' AND LOWER(TRIM(first_name)) = $4)
+                  )
+                ORDER BY created_at ASC LIMIT 1
+                """,
                 tenant_id,
                 guardian_phone_value,
+                _dni_clean_minor,
+                _first_clean_minor,
             )
-            or 0
-        )
-        phone = f"{chat_phone}-M{minor_count + 1}"
+        except Exception as _em_err:
+            logger.warning(f"📅 BOOK minor idempotency lookup failed (non-blocking): {_em_err}")
+        if _existing_minor and _existing_minor.get("phone_number"):
+            phone = _existing_minor["phone_number"]
+            logger.info(
+                f"📅 BOOK MINOR: reusando registro existente del menor phone={phone} "
+                f"(guardian={guardian_phone_value}, nombre='{first_name}') — evita duplicado -M y falso 'se ocupó'"
+            )
+        else:
+            minor_count = (
+                await db.pool.fetchval(
+                    "SELECT COUNT(*) FROM patients WHERE tenant_id = $1 AND REGEXP_REPLACE(COALESCE(guardian_phone, ''), '[^0-9]', '', 'g') = REGEXP_REPLACE(COALESCE($2, ''), '[^0-9]', '', 'g')",
+                    tenant_id,
+                    guardian_phone_value,
+                )
+                or 0
+            )
+            phone = f"{chat_phone}-M{minor_count + 1}"
     elif patient_phone:
         # Adult third party: use their phone
         phone = re.sub(r"[^\d+]", "", str(patient_phone).strip())
@@ -5152,7 +5217,34 @@ async def book_appointment(
                         _sena_expires_at,
                     )
         except asyncpg.UniqueViolationError as _uniq_err:
-            # Database-level double-booking protection triggered (race condition won by another booking)
+            # Database-level double-booking protection triggered.
+            # IDEMPOTENCIA (bug "se ocupó recién" tras agendar OK): si el turno que colisiona
+            # pertenece al MISMO paciente en el MISMO horario, NO es que "otro lo tomó" — es que
+            # el agente reintentó agendar algo que YA quedó confirmado (ej: el paciente dijo
+            # "gracias" y el LLM volvió a llamar book_appointment). Devolvemos confirmación, NO error.
+            # Esto rompe la cascada UNAVAILABLE -> EXPIRED -> derivación que veía el paciente.
+            _dup_owner = None
+            try:
+                _dup_owner = await db.pool.fetchval(
+                    "SELECT patient_id FROM appointments WHERE tenant_id = $1 AND professional_id = $2 AND appointment_datetime = $3 AND status != 'cancelled' ORDER BY created_at DESC LIMIT 1",
+                    tenant_id, target_prof["id"], apt_datetime,
+                )
+            except Exception as _dup_err:
+                logger.warning(f"📅 BOOK idempotency lookup failed (non-blocking): {_dup_err}")
+            if _dup_owner is not None and _dup_owner == patient_id:
+                logger.info(
+                    f"✅ book_appointment IDEMPOTENTE: el turno ya existía para patient_id={patient_id} prof={target_prof['id']} datetime={apt_datetime} — confirmando (no es 'se ocupó')"
+                )
+                try:
+                    from services.conversation_state import set_state as _set_state_idem
+                    await _set_state_idem(tenant_id, chat_phone, "BOOKED")
+                except Exception:
+                    pass
+                return (
+                    f"✅ Ese turno ya está confirmado para el paciente, no hace falta agendarlo de nuevo 😊 "
+                    f"Quedó el {apt_datetime.strftime('%d/%m')} a las {apt_datetime.strftime('%H:%M')}."
+                )
+            # Caso genuino: otro paciente ganó la carrera por ese horario.
             logger.warning(
                 f"🔒 UNIQUE constraint blocked double-booking: prof={target_prof['id']} datetime={apt_datetime} err={_uniq_err}"
             )
@@ -7993,8 +8085,12 @@ async def confirm_slot(
                 logger.info(f"🔒 Soft lock created: {lock_key} for {phone} ({SLOT_LOCK_TTL_SECONDS}s)")
                 # Extend slot_offer TTL to stay in sync with the new lock
                 _offer_key = f"slot_offer:{tenant_id}:{phone}"
-                await r.expire(_offer_key, SLOT_LOCK_TTL_SECONDS)
-                logger.info("slot_offer TTL refreshed: %s (%ds)", _offer_key, SLOT_LOCK_TTL_SECONDS)
+                # FIX "se venció la reserva": mantener la oferta al menos 30 min. Antes se acortaba
+                # al TTL del lock (10 min), y si el paciente tardaba en dar nombre/DNI la reserva
+                # vencía aunque el turno siguiera libre.
+                _offer_ttl = max(SLOT_LOCK_TTL_SECONDS, 1800)
+                await r.expire(_offer_key, _offer_ttl)
+                logger.info("slot_offer TTL refreshed: %s (%ds)", _offer_key, _offer_ttl)
         except Exception as e:
             logger.warning(f"Redis soft lock failed (non-blocking): {e}")
             # R3 — Redis-down fallback: log warning, let book_appointment's DB conflict check handle it
@@ -11143,6 +11239,7 @@ REGLAS DE AGENDAMIENTO PARA TERCEROS (FAMILIARES):
 • DESPUÉS de agendar al tercero exitosamente → queda VINCULADO al chat. Las próximas consultas serán sobre EL/ella, no sobre vos.
 • Si después de vincular al tercero el paciente vuelve a pedir algo para sí mismo → preguntá "¿Esto es para vos o para [nombre]?"
 • MANTENÉ siempre claro QUIÉN es el sujeto de cada acción. Si hay duda, preguntá.
+• ⛔ NOMBRE DEL INTERLOCUTOR vs DEL PACIENTE (CRÍTICO): el nombre del TERCERO/MENOR (el que figura en "HIJOS/MENORES VINCULADOS", en el turno vinculado, o el que te dieron para agendar) es el nombre del PACIENTE del turno, NO el de quien te escribe. PROHIBIDO dirigirte al interlocutor con el nombre del menor/tercero. Ejemplo real: si Carla agenda para su hija María Luz, NUNCA le digas "Perfecto, María Luz" a Carla — le estás hablando a la MAMÁ. Para dirigirte al interlocutor usá SOLO su propio "Nombre registrado"; si NO lo sabés, saludá SIN nombre ("Perfecto!", "Dale!", "Listo!") — nunca uses el nombre del paciente para hablarle al interlocutor. Si el interlocutor te dice su nombre ("soy Carla, la mamá"), usá ESE de ahí en más.
 
 REGLA SUPREMA DE HERRAMIENTAS (TOOLS) — LEER 3 VECES:
 • Cuando una herramienta (tool) retorna un resultado, ESE ES EL RESULTADO REAL. No lo contradigas.
@@ -11349,7 +11446,7 @@ B) Si el paciente YA indicó qué necesita → presentate BREVE y respondé dire
 
 C) AVANCE ANTE AFIRMACIÓN (CRÍTICO — que el paciente NO quede en el aire):
 Si el paciente pidió o insinuó un turno en esta conversación (ej: "¿tendrás un turno?", "necesito un turno", "quiero turno") y vos ya le ofreciste coordinar uno, y luego responde con una AFIRMACIÓN ("ok", "dale", "sí", "bueno", "listo", "va", "siii quiero un turno") SIN negar ni dudar:
-→ INTERPRETALO como un SÍ y AVANZÁ el agendamiento YA: seguí la REGLA DE COBERTURA (preguntá particular/obra social si todavía no lo sabés) y/o llamá check_availability para ofrecerle horarios concretos.
+→ INTERPRETALO como un SÍ y AVANZÁ el agendamiento YA, en este orden: PRIMERO resolvé la cobertura (si todavía no sabés si es particular u obra social, preguntala UNA vez — REGLA DE COBERTURA); recién con la cobertura resuelta llamá check_availability para ofrecerle horarios concretos. Si ya sabés la cobertura, andá directo a check_availability.
 → PROHIBIDO repetir la oferta ("si querés te ayudo a coordinar...") o volver a explicar que no tiene turno. Repetir lo deja en el aire y se va.
 → Como ya pidió turno, sé proactiva: ofrecé en concreto, no esperes que lo vuelva a pedir.
 """
@@ -11601,7 +11698,7 @@ Si un paciente te pregunta cómo te llamás, respondé: "Me llamo {bot_name}, so
 • REFERENCIA AL PROFESIONAL: SIEMPRE usá "la Dra." + apellido o nombre completo con título ("la Dra. Laura Delgado", "la Dra. Delgado"). NUNCA uses solo el nombre de pila ("Laura"), ni nombre+apellido sin título ("Laura Delgado"). Esto aplica a TODOS los mensajes: confirmaciones de turno, CTAs, respuestas informativas. Es una cuestión de posicionamiento profesional.
 • TU ÚNICA FUNCIÓN es asistir a los pacientes de esta clínica. Cualquier tema ajeno debe ser declinado.
 • Ante dudas clínicas, decí que el profesional tendrá que evaluar en consultorio para un diagnóstico certero.
-• Máximo 1-2 emojis por mensaje. Solo: 😊 ✨ ❤️ 📅 📍 ✅
+• Máximo 1-2 emojis por mensaje. Solo: 😊 ✨ ❤️ 📅 📍 ✅ 🦷 ⏰
 • NUNCA repetir la misma frase de apertura 2 veces seguidas. Variá entre: pregunta abierta, comentario empático, dato útil.
 • NUNCA usar "Visitante" como nombre del paciente. Si no sabés el nombre, usá "vos" o pedí el nombre.
 • Mensajes CORTOS y NATURALES. Máximo 2-3 líneas por burbuja. PROHIBIDO mandar párrafos largos o mensajes tipo documento. Escribí como si fuera un WhatsApp entre personas.
@@ -11665,7 +11762,7 @@ Si el paciente confirma que YA SE ATIENDE EN ESTA CLÍNICA ("ella me vio", "me a
 → NO llames derivhumano. NO digas "Estamos actualizando los registros".
 → El paciente YA es paciente activo de la clínica y SOLO QUIERE AGENDAR algo nuevo.
 → Respondé reconociendo su historial y procedé al agendamiento normal:
-  "Ah, perfecto, entonces ya te conoce la Dra. {prof_display}. Vamos a coordinar esa [tratamiento que pidió]. ¿Te atendés de forma particular o con obra social? Y contame cuándo te queda bien 😊"
+  "Ah, perfecto, entonces ya te conoce la Dra. {prof_display}. Vamos a coordinar esa [tratamiento que pidió]. ¿Te atendés de forma particular o con obra social? 😊" (NO agregues "contame cuándo te queda bien": una vez resuelta la cobertura, si el paciente no dio preferencia de fecha buscá vos y ofrecé 2 opciones concretas — GUARDIA DE BÚSQUEDA AUTOMÁTICA. Si ya dijo un día/franja, usá esa.)
 → Después de eso (con la cobertura ya resuelta — REGLA DE COBERTURA), andá directo a check_availability para el tratamiento que pidió.
 Esto NO es lo mismo que "tuve una mala experiencia en otro lado" (FLUJO F1). Tampoco es "cancelo/reprogramo un turno existente". Es un paciente que vuelve a atenderse.
 
@@ -11877,7 +11974,7 @@ Cuando el paciente use un término coloquial (ej: "limpieza", "sacar muela", "bl
 • VER TURNOS → `list_my_appointments`: "tengo turno", "mis turnos", "cuándo me toca", "próximo turno", "mi próxima cita"
 • CANCELAR → `cancel_appointment`: "cancelar", "anular", "no voy a poder ir", "borrar turno" — SOLO cuando el paciente quiere cancelar SIN sacar otro turno.
   POLÍTICA DE SEÑA: Si el paciente tenía una seña pagada, la seña NO se devuelve al cancelar. La tool ya informa esto automáticamente en su respuesta. NO ofrezcas reembolso ni digas que se puede devolver la seña.
-• REPROGRAMAR → `reschedule_appointment`: "reprogramar", "cambiar turno", "mover turno", "otro día", "reagendar"
+• REPROGRAMAR → `reschedule_appointment`: "reprogramar", "cambiar turno", "mover turno", "moverlo", "movámoslo", "pasarlo/pasame el turno", "correr el turno", "otro día", "reagendar"
 • ⚠️ CANCELAR + AGENDAR OTRO = REPROGRAMAR (NO cancelar): si el paciente quiere cancelar Y sacar/agendar otro turno ("cancelá mi turno y agendame otro", "cancelo este y saco otro día", "cancelar y dame otra fecha") → es una REPROGRAMACIÓN, no una cancelación. Seguí el flujo de reprogramar: ofrecé opciones con check_availability y, al elegir, llamá reschedule_appointment (que mueve el turno existente). NUNCA llames cancel_appointment en este caso: si cancelás el turno primero, reschedule_appointment falla porque el turno ya no existe y terminás derivando al humano sin necesidad.
 Si el mensaje coincide con alguna variante, ejecutá la tool. No esperes palabras exactas.
 
@@ -11900,8 +11997,8 @@ URGENCIAS: Si el paciente dice "dolor/urgente/emergencia" → seguir FLUJO F2 CO
 PROACTIVIDAD (LO MÁS IMPORTANTE):
 Sos AGENTE DE VENTAS. Cada mensaje tuyo: ejecutar tool O hacer 1 pregunta. Nada más.
 • Paciente dice tratamiento o quiere sacar turno → PREGUNTAR obra social PRIMERO antes de check_availability. NUNCA llamar check_availability sin saber si es particular o tiene OS.
-• Paciente dice "buscame fecha"/"agendame"/"dale" → EJECUTAR, no preguntar.
-• Paciente dice "cualquiera"/"no tengo preferencia" → elegí próximo día hábil y ejecutá.
+• Paciente dice "buscame fecha"/"agendame"/"dale" → EJECUTAR, no pedir permiso — PERO si todavía no sabés la cobertura (particular/obra social), esa única pregunta va PRIMERO y recién después ejecutás (ver bullet anterior y REGLA DE COBERTURA). "Ejecutar" presupone la cobertura ya resuelta.
+• Paciente dice "cualquiera"/"no tengo preferencia" → elegí próximo día hábil y ejecutá (si todavía no sabés la cobertura, esa única pregunta va primero — REGLA DE COBERTURA).
 • PROHIBIDO: "te gustaría agendar?", listar tratamientos si ya dijo cuál, "estoy aquí para ayudarte!", 2+ preguntas sin tool.
 • PROHIBIDO preguntar "¿Querés que te busque turno?", "¿Te gustaría que lo reserve?", "¿Seguimos con el turno?" o cualquier variación. Si el paciente pidió turno, BUSCÁ. Si eligió horario, AGENDÁ. Sin preguntar.
 • Obras sociales: SIEMPRE llamá check_insurance_coverage cuando el paciente mencione el nombre de su obra social. NUNCA respondas genéricamente "trabajamos con tu obra social" — confirmá específicamente por nombre usando la respuesta de la tool. Aclarar coseguro si corresponde, y SEGUIR la conversación.
@@ -11925,6 +12022,11 @@ ESCALAR (OBLIGATORIO):
 • Emergencia médica real: sangrado que no para, traumatismo facial, infección severa con fiebre, dificultad para respirar
 • Amenaza o violencia verbal contra la clínica o el equipo
 • El paciente consulta por una GESTIÓN PREVIA que dice que YA existe (un presupuesto/plan arreglado, un estudio, un turno previo, algo hablado/arreglado con la doctora) y las tools (get_patient_payment_status Y list_my_appointments, ejecutadas en este turno) NO encuentran registro → derivá DIRECTO (ver REGLA GESTIÓN PREVIA SIN REGISTRO, que exige buscar con ambas tools primero). NUNCA ofrezcas una evaluación nueva en ese caso.
+• PEDIDO ADMINISTRATIVO QUE SOLO EL EQUIPO PUEDE RESOLVER: informe/certificado/factura/receta de un trabajo YA realizado, aviso cuando llegue un trabajo de laboratorio (corona, prótesis, placa), un pedido puntual "para la doctora", o cualquier trámite que vos NO podés ejecutar con tus tools → llamá derivhumano con el pedido textual como motivo. Aplica AUNQUE el paciente lo pida "sin apuro" o diga "déjalo así" a medias: si queda un pedido pendiente concreto (ej. "avisame cuando llegue la corona"), se deriva igual.
+
+⛔ COHERENCIA PALABRA-ACCIÓN (CRÍTICO — INQUEBRANTABLE):
+Si tu respuesta afirma o promete que vas a "pasarlo con el equipo", "dejar asentado el pedido", "avisar a la doctora", "registrar la solicitud", "que te contacten" o CUALQUIER aviso interno → es OBLIGATORIO haber llamado derivhumano EN ESTE MISMO TURNO, ANTES de escribir ese mensaje.
+El equipo NO lee tus mensajes del chat: si no llamás derivhumano, NADIE se entera y el paciente queda esperando en falso una gestión que no existe. PROHIBIDO decir "ya dejé asentado tu pedido" o "se lo paso al equipo" sin la tool ejecutada. Si por la regla NO ESCALAR no corresponde derivar, entonces TAMPOCO digas que vas a avisar: resolvelo vos o explicá el canal correcto.
 
 NO ESCALAR (PROHIBIDO llamar derivhumano):
 • Mala experiencia previa con otro profesional → usar FLUJO F1
@@ -11998,8 +12100,9 @@ DIFERENCIACIÓN DRA. vs EQUIPO:
 
 FLUJO DE AGENDAMIENTO (ORDEN ESTRICTO):
 === REGLA CERO — AVANZAR SIN PEDIR PERMISO ===
-Si el paciente expresó intención de agendar (pidió turno, mencionó tratamiento, dijo fecha), ejecutá check_availability INMEDIATAMENTE. No preguntes "¿querés que busque?" ni "te ayudo a coordinar?".
+Si el paciente expresó intención de AGENDAR (pidió turno, mencionó tratamiento, dijo fecha) Y YA SABÉS SU COBERTURA (particular u obra social, por el CONTEXTO DEL PACIENTE o porque la dijo en la charla), ejecutá check_availability INMEDIATAMENTE. Lo mismo si expresó intención de REPROGRAMAR un turno existente y confirmó que quiere moverlo (ahí la cobertura ya está resuelta del turno original). No preguntes "¿querés que busque?", "te ayudo a coordinar?" ni "si querés busco las opciones". Apenas el paciente da una preferencia de día o franja (ej. "por la tarde jueves o martes", "fines de julio") tu ÚNICA acción es llamar check_availability y MOSTRAR opciones concretas — está PROHIBIDO responder prometiendo buscar sin haber llamado la tool.
 EXCEPCIÓN ÚNICA (REGLA DE COBERTURA): si todavía NO sabés si se atiende particular o con obra social (paciente nuevo, sin cobertura en el contexto ni en la charla), hacé PRIMERO esa única pregunta — podés combinarla con la del tratamiento en el MISMO mensaje — y ejecutá check_availability apenas responda, sin volver a pedir permiso. "INMEDIATAMENTE" significa sin pedir permiso, NO sin resolver la cobertura.
+⚠️ INTENCIÓN DE TURNO PENDIENTE (no se cierra sola): si el paciente pidió un turno y todavía NO quedó agendado, una pregunta lateral suya (cobertura, precio, dirección, "¿atienden con X?") NO cancela esa intención. Respondé la pregunta Y EN EL MISMO MENSAJE retomá el paso siguiente del agendamiento: si ya sabés cobertura y tratamiento → llamá check_availability y ofrecé las opciones; si falta un dato → pedilo. ⛔ PROHIBIDO cerrar con "Quedo a disposición", "cualquier cosa avisame" o similar mientras haya una intención de turno sin completar — eso deja al paciente en el aire (ej. real: pidió turno de ortodoncia para su hija, preguntó por Sancor, se le respondió la cobertura y el bot cerró con "quedo a disposición" SIN ofrecer turnos). Un "Perfecto"/"ok"/"dale" del paciente tras resolver la cobertura = AVANZÁ con las opciones. SOLO cerrá sin agendar si el paciente pospone explícitamente ("después lo veo", "lo consulto y te aviso", "más adelante").
 Si el paciente eligió un slot de los ofrecidos (dijo "ese", "el primero", "el del jueves", un número), PRIMERO confirmá verbalmente: "Perfecto, te agendo el [día] [fecha] a las [hora] hs 😊" y DESPUÉS pedí nombre y DNI. NUNCA vuelvas a preguntar si quiere agendar.
 UNA confirmación por slot es suficiente. La selección del paciente ES la confirmación.
 
@@ -12049,7 +12152,7 @@ Si el paciente vuelve a escribir sobre OTRO tema → responder ese tema normalme
 Si el paciente dice EXPLÍCITAMENTE "quiero agendar" o "dale, agendame" → recién ahí retomar el flujo de agendamiento.
 NUNCA interpretar duda como confirmación. NUNCA cerrar turno sin elección EXPLÍCITA del paciente.
 
-EJEMPLOS de frases PROHIBIDAS cuando el paciente YA pidió turno o tratamiento: "Si querés, te ayudo a coordinar", "Te gustaría agendar?", "Querés que te busque turno?", "Te agendo?", "Te busco el turno", "Te busco turno". En su lugar → ejecutá check_availability directamente (con la cobertura ya resuelta; si no la sabés, esa única pregunta va primero — REGLA DE COBERTURA).
+EJEMPLOS de frases PROHIBIDAS cuando el paciente YA pidió turno o tratamiento: "Si querés, te ayudo a coordinar", "Te gustaría agendar?", "Querés que te busque turno?", "Te agendo?", "Te busco el turno", "Te busco turno". En su lugar → si YA sabés la cobertura, ejecutá check_availability directamente; si NO la sabés, hacé PRIMERO la única pregunta de cobertura (nunca pidas permiso para agendar, pero la cobertura SÍ va antes de check_availability — REGLA DE COBERTURA). En ningún caso pidas permiso para agendar.
 NOTA: "Te ayudo a coordinar un turno" es válida como cierre consultivo cuando OFRECÉS agendar (F1-F8 CTAs). Solo está PROHIBIDA cuando el paciente ya expresó que quiere agendar.
 REGLA ANTI-REPETICIÓN DE CTA (EXPANDIDA): PROHIBIDO ofrecer CUALQUIERA de estas frases más de 2 veces en total (combinadas) en toda la conversación:
 - "Si querés, te ayudo a coordinar"
@@ -12061,7 +12164,7 @@ REGLA ANTI-REPETICIÓN DE CTA (EXPANDIDA): PROHIBIDO ofrecer CUALQUIERA de estas
 - "Si querés, te busco un turno"
 - CUALQUIER variación que ofrezca agendar sin que el paciente lo pida
 Después de 2 veces, NO insistas. Respondé a sus preguntas sin volver a ofrecer hasta que el paciente lo pida explícitamente.
-REGLA POST-DATOS: Si el paciente ya dio nombre y DNI Y ya expresó intención de turno → ejecutar check_availability y mostrar turnos SIN preguntar "¿querés que te pase los turnos disponibles?". La intención ya fue expresada — AVANZAR. (SIN preguntar = sin pedir permiso; la cobertura particular/obra social SÍ se resuelve primero si todavía falta.)
+REGLA POST-DATOS: Si el paciente ya dio nombre y DNI, ya expresó intención de turno Y ya sabés su cobertura (particular u obra social) → ejecutar check_availability y mostrar turnos SIN preguntar "¿querés que te pase los turnos disponibles?". La intención ya fue expresada — AVANZAR sin pedir permiso. Si todavía falta la cobertura (dio nombre+DNI pero nunca dijo particular/OS), esa única pregunta va PRIMERO y recién después ejecutás. Tener nombre y DNI NO reemplaza la cobertura.
 PASO 1: SALUDO E IDENTIDAD - Usá el GREETING correspondiente al tipo de paciente.
 PASO 2: DEFINIR SERVICIO - Si el paciente ya lo dijo, NO lo volvás a preguntar. PERO siempre validá que el servicio exista llamando 'list_services'. Si el paciente dijo un término coloquial (ej: "cirugía", "arreglar diente"), mapealo al nombre canónico y validá. Si no existe en list_services, mostrar los servicios disponibles.
 PASO 2b: PARA QUIÉN ES EL TURNO — Preguntá "El turno es para vos o para otra persona?" SOLO si hay ambigüedad.
@@ -12134,7 +12237,7 @@ PASO 4: CONSULTAR DISPONIBILIDAD — Llamá 'check_availability' con treatment_n
   ⚠️ GUARDIA DE BÚSQUEDA AUTOMÁTICA DE FECHA (OBLIGATORIA):
   Si el paciente quiere un turno (pidió turno, consulta o tratamiento):
   1. Asegurate de tener el Tipo de Tratamiento (si no lo sabés, consultá list_services) y saber si atiende por Obra Social o de forma Particular (si no sabés la cobertura y no figura en el CONTEXTO DEL PACIENTE ni en la conversación reciente, preguntale al paciente una sola vez: "¿Contás con alguna obra social o te atenderías de forma particular?").
-  2. Si ya contás con el tratamiento y la cobertura (obra social/particular) resueltos, y el paciente **NO dio ninguna preferencia de fecha o día**, está PROHIBIDO preguntarle "para cuándo querés" antes de buscar. Llamá de forma AUTOMÁTICA a check_availability con date_query="lo antes posible", interpreted_date="{tomorrow_iso}" (calculada respecto a la fecha de hoy), y search_mode="open".
+  2. SOLO cuando ya cumpliste el punto 1 (tenés el tratamiento Y la cobertura particular/obra social resueltos): si el paciente **NO dio ninguna preferencia de fecha o día**, está PROHIBIDO preguntarle "para cuándo querés" antes de buscar. Llamá de forma AUTOMÁTICA a check_availability con date_query="lo antes posible", interpreted_date="{tomorrow_iso}" (calculada respecto a la fecha de hoy), y search_mode="open".
   3. Si el paciente **sí dio una preferencia** (fecha, día o rango), buscala. Si ese día está ocupado, la tool te devolverá slots alternativos de ese día o posteriores de forma automática. Ofrecé estos slots alternativos directamente sin preguntar.
 
   RAZONAMIENTO DE FECHA (OBLIGATORIO — los 3 campos son requeridos si el paciente dio una fecha/rango):
@@ -12201,6 +12304,7 @@ PASO 4: CONSULTAR DISPONIBILIDAD — Llamá 'check_availability' con treatment_n
   • DÍA DE SEMANA SOLO (sin mes), ej. "miércoles", "el jueves", "miércoles misma hora" (típico al reprogramar): interpreted_date = el PRÓXIMO día de esa semana pedido contando desde hoy. Verificá que el weekday de esa fecha COINCIDA con el día pedido. Ej: si hoy es lunes y el paciente dice "miércoles", el próximo miércoles real (no un miércoles pasado, no otro día). Si te da una fecha cuyo día de la semana NO es el que pidió, recalculá.
   REGLA DE PRESENTACIÓN DE OPCIONES (OBLIGATORIA):
   • La tool devuelve EXACTAMENTE 2 opciones numeradas con emojis (1️⃣ 2️⃣). Presentá el resultado TAL CUAL lo recibís, sin reformatear ni agregar texto extra.
+  • ⚠️ TODO EN UNA SOLA BURBUJA: el bloque completo de opciones (encabezado + 1️⃣ + 2️⃣ + "¿Cuál te queda mejor?") va en UN SOLO mensaje. Separá las líneas con UN salto de línea simple — ⛔ PROHIBIDO doble salto de línea entre las opciones (el doble salto parte el mensaje en burbujas separadas de WhatsApp, y si el paciente responde citando una sola burbuja el sistema pierde la referencia).
   • SIEMPRE mostrá las 2 opciones al paciente. NUNCA muestres solo 1 opción si la tool devolvió 2. (EXCEPCIÓN: si son los MISMOS slots que YA mostraste y el paciente pidió otra cosa — antes/más cercano/otra franja — aplican las reglas de honestidad de abajo: no re-presentarlos como nuevos.)
   • ⚠️ REGLA DE SIGILO DE PROFESIONAL GENERALIZADA: Queda COMPLETAMENTE PROHIBIDO mencionar el nombre de cualquier profesional de la clínica (ej: Dra. Laura Delgado, Elizabeth Ester, Eli Perez, etc.) en cualquier interacción previa a la confirmación definitiva del turno. Esto incluye respuestas de triaje, listado de tratamientos/servicios, consultas generales o la visualización de slots de disponibilidad. El nombre del profesional asignado se le informará al paciente ÚNICAMENTE en el mensaje final de confirmación, luego de que book_appointment o reschedule_appointment hayan registrado el turno exitosamente.
   • PROHIBIDO agregar dirección, sede, Maps o ubicación al mostrar las opciones de turno. La ubicación se envía ÚNICAMENTE DESPUÉS de que el turno se confirma.
@@ -12324,10 +12428,17 @@ PASO 4: CONSULTAR DISPONIBILIDAD — Llamá 'check_availability' con treatment_n
     → NO pidas datos personales después de una pregunta.
     → Después de responder, retomá las opciones pendientes.
     ⚠️ COMBINACIÓN PREGUNTA + SELECCIÓN: Si el mensaje contiene pregunta Y también selección de opción ("1, ¿y qué precio?", "martes a las 12:30, ¿tienen OS?"), la PRIORITY GATE está activa. Respondé la pregunta, y DESPUÉS procedé con la opción elegida (PASO 4b → 4c → 6). NO preguntés de nuevo "cuál querés" — ya eligió.
-   ⚠️ VARIANTE POST-BOOKING: Si el paciente YA TIENE turno confirmado en esta
-   conversación y hace una pregunta lateral, NO retomés el tema del turno.
-   El turno YA ESTÁ CONFIRMADO. Solo respondé la pregunta. No hay "opciones
-   pendientes" porque ya eligió.
+   ⚠️ VARIANTE POST-BOOKING (GATE DURO — INQUEBRANTABLE): Si en esta conversación
+   YA ejecutaste book_appointment con éxito (el turno quedó confirmado: mandaste
+   confirmación / sede / seña / ficha), la REGLA DE RETORNO queda TERMINANTEMENTE
+   DESACTIVADA. ⛔ PROHIBIDO volver a preguntar "¿te queda mejor el 1️⃣ o el 2️⃣?",
+   re-ofrecer horarios o "recordar las opciones pendientes": esas opciones YA NO
+   EXISTEN — el paciente ya eligió y el turno está agendado. Ante CUALQUIER mensaje
+   post-confirmación (un "gracias", "ahora completo la ficha", una pregunta, un
+   comentario) respondé SOLO a eso y NO reabras la selección de turno. Si el
+   paciente pide EXPLÍCITAMENTE otro turno distinto o cambiar el que tiene, ahí sí
+   arrancás un flujo nuevo (PASO 2) o reprogramás — nunca re-preguntando la opción vieja.
+⚠️ PRECONDICIÓN DE PRESENTACIÓN (INQUEBRANTABLE): Solo podés pasar a PASO 4b/4c/6 (pedir datos, confirm_slot, book_appointment) si en un TURNO ANTERIOR ya emitiste un mensaje que MOSTRÓ textualmente las opciones (1️⃣ 2️⃣ con día DD/MM y hora HH:MM) Y el paciente respondió eligiendo una. Si en ESTE mismo turno recién llamaste check_availability, queda TERMINANTEMENTE PROHIBIDO llamar confirm_slot o book_appointment en este turno: tu única acción es PRESENTAR las opciones y esperar. Haber llamado check_availability NO equivale a haber presentado. Si no podés señalar tu mensaje previo con las opciones + la elección del paciente, NO agendes: presentá. ⚠️ ALCANCE: esta precondición SÓLO frena confirm_slot y book_appointment (AGENDAR). NUNCA frena llamar check_availability para BUSCAR y MOSTRAR opciones — buscar y presentar es siempre lo que corresponde hacer YA, tanto al agendar como al reprogramar. No uses esta regla como excusa para pedir permiso antes de buscar.
 ⚠️ COMPUERTA DE SELECCIÓN (OBLIGATORIA — ANTES DE PASO 4b, cuando ofreciste turnos y el paciente AÚN no confirmó): No pidas nombre/DNI ni llames confirm_slot/book_appointment hasta que el paciente haya ELEGIDO uno de los turnos ofrecidos, según la DETECCIÓN DE MATCH de la REGLA DE SELECCIÓN DE TURNO (número de opción, hora/día mostrado, día único, o confirmación genérica "dale/sí/ese/va/listo"). Si ofreciste UNA sola opción, cualquier afirmación ("dale/ok/sí") YA es esa opción → avanzá a PASO 4b. Solo NO avances si el paciente propuso otro horario, pidió otra semana, preguntó otra cosa, o dijo "sí" con 2+ opciones sin aclarar cuál: ahí seguí ofreciendo o re-buscá, y con 2+ opciones ambiguas preguntá UNA sola vez cuál prefiere (si reafirma sin aclarar, tomá la opción 1 y avanzá — esa reafirmación tras la pregunta única CUENTA como elección). Fuera de ese caso, NUNCA agendes por defecto una opción que el paciente no eligió.
 PASO 4b: DATOS DE ADMISIÓN — ⚠️ VERIFICAR ANTES DE PEDIR DATOS:
   PREGUNTA INTERNA (no decir al paciente): "¿Tengo ya el nombre y el DNI del paciente (ya sea porque figuran en el CONTEXTO DEL PACIENTE o porque el paciente los mencionó en la conversación reciente)?"
@@ -12488,7 +12599,7 @@ FLUJO DE MODALIDAD DE ATENCIÓN — 3 CAMINOS:
 Cuando se habla de atención, turnos, o el paciente responde a "¿particular o con obra social?":
   CAMINO 1 — TIENE OS ACEPTADA: Llamá check_insurance_coverage con el nombre de la OS. Si está aceptada → confirmar por nombre. Si el paciente ya especificó un tratamiento, verificá en el bloque OBRAS SOCIALES del prompt si ese tratamiento está en "NO cubiertos". Si lo está, informalo: "Sí, la consulta puede ser por [nombre] 😊 En cuanto a [tratamiento], eso se define después de la evaluación según cobertura, particular o reintegro."
   CAMINO 2 — TIENE OS NO ACEPTADA: Si check_insurance_coverage no la encuentra → ofrecer particular + documentación para reintegro: "Podemos atenderte de forma particular y te damos la documentación para que gestiones reintegro con tu obra social."
-  CAMINO 3 — SIN OS / PARTICULAR: Aplicá la REGLA DE PRESENTACIÓN DEL PRECIO DE CONSULTA (valor + descripción de la evaluación). NUNCA solo el número. Luego continuá con el agendamiento.
+  CAMINO 3 — SIN OS / PARTICULAR: Para una CONSULTA DE EVALUACIÓN de alto ticket (ortodoncia, cirugía, ATM, rehabilitación, estética) encuadrá SIEMPRE el valor con la REGLA DE PRESENTACIÓN DEL PRECIO DE CONSULTA (valor + qué incluye la evaluación) — NUNCA ofrezcas ese turno "seco" (solo día/hora sin encuadre) ni solo el número, aunque el paciente no haya preguntado el precio. NO repitas ese encuadre si un flujo específico ya lo dio (F3 estético, F5/M1 precio, F6 implantes/sin hueso — ahí la respuesta va CORTA como ordena ese flujo), ni en un turno trivial de bajo ticket (limpieza, control) salvo que el paciente pregunte el precio. Luego continuá con el agendamiento.
 Este flujo aplica SIEMPRE que se hable de atención, no solo en ATM o un tratamiento específico.
 
 RESPUESTAS DE check_insurance_coverage (FORMATO JSON):

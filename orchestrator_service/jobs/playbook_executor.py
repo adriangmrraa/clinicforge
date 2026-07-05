@@ -620,7 +620,8 @@ REGLAS:
 4. Máximo 3 líneas
 5. NO uses emojis excesivos (máximo 1-2)
 6. NO menciones que sos un bot o IA
-{f'7. INSTRUCCIONES ADICIONALES: {custom_instructions}' if custom_instructions else ''}
+7. ⛔ NO inventes horarios, días ni fechas de turno concretos: NO tenés la agenda real en este mensaje. NUNCA ofrezcas horas puntuales ("el lunes a las 08:00", "el martes a la misma hora") ni digas "tenemos disponibilidad el [día] a las [hora]". En vez de eso, invitá al paciente a retomar y coordinar según SU preferencia (ej. "si querés lo retomamos y buscamos el día que mejor te venga 😊").
+{f'8. INSTRUCCIONES ADICIONALES: {custom_instructions}' if custom_instructions else ''}
 
 Respondé SOLO con el mensaje a enviar, o "NO_ENVIAR" si no corresponde."""
 
@@ -1424,8 +1425,19 @@ async def check_leads_without_booking():
                         AND cm.created_at > NOW() - INTERVAL '24 hours'
                   )
                   AND NOT EXISTS (
+                      -- Turno por TELEFONO, no por patient_id: si hay registros de paciente
+                      -- duplicados (mismo telefono), igual detectamos el turno ya agendado.
                       SELECT 1 FROM appointments a
-                      WHERE a.patient_id = p.id AND a.tenant_id = $1
+                      JOIN patients p2 ON p2.id = a.patient_id
+                      WHERE p2.phone_number = p.phone_number AND a.tenant_id = $1
+                  )
+                  AND NOT EXISTS (
+                      -- Guard de actividad reciente / Modo Manual: no pisar una charla en curso
+                      -- ni una recien atendida a mano (evita el re-enganche sin sentido).
+                      SELECT 1 FROM chat_conversations cc2
+                      WHERE cc2.tenant_id = $1 AND cc2.external_user_id = p.phone_number
+                        AND (cc2.last_message_at > NOW() - INTERVAL '30 minutes'
+                             OR (cc2.human_override_until IS NOT NULL AND cc2.human_override_until > NOW()))
                   )
                   AND NOT EXISTS (
                       SELECT 1 FROM automation_executions ae
