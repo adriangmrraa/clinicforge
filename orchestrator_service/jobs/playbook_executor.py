@@ -1427,9 +1427,16 @@ async def check_leads_without_booking():
                   AND NOT EXISTS (
                       -- Turno por TELEFONO, no por patient_id: si hay registros de paciente
                       -- duplicados (mismo telefono), igual detectamos el turno ya agendado.
+                      -- Incluye turnos de MENORES/terceros: el paciente -M1 tiene
+                      -- guardian_phone = el telefono del padre (que es el lead) -> el turno del
+                      -- hijo tambien cuenta como "ya agendo" y NO se dispara la reactivacion.
                       SELECT 1 FROM appointments a
                       JOIN patients p2 ON p2.id = a.patient_id
-                      WHERE p2.phone_number = p.phone_number AND a.tenant_id = $1
+                      WHERE (
+                              REGEXP_REPLACE(p2.phone_number, '[^0-9]', '', 'g') = REGEXP_REPLACE(p.phone_number, '[^0-9]', '', 'g')
+                           OR REGEXP_REPLACE(COALESCE(p2.guardian_phone, ''), '[^0-9]', '', 'g') = REGEXP_REPLACE(p.phone_number, '[^0-9]', '', 'g')
+                            )
+                        AND a.tenant_id = $1
                   )
                   AND NOT EXISTS (
                       -- Guard de actividad reciente / Modo Manual: no pisar una charla en curso

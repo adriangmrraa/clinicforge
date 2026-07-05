@@ -166,9 +166,14 @@ async def _get_candidates(pool, tenant_id: int, touch_number: int, delay_minutes
               AND (c.last_message_at IS NULL OR c.last_message_at <= $2 - INTERVAL '30 minutes')
               AND $2 <= c.last_user_message_at + INTERVAL '23 hours 30 minutes'
               AND NOT EXISTS (
+                  -- Incluye turnos de MENORES/terceros: el -M1 tiene guardian_phone = el
+                  -- telefono del lead, asi que un turno del hijo tambien frena el re-enganche.
                   SELECT 1 FROM appointments a
                   JOIN patients p ON p.id = a.patient_id
-                  WHERE p.phone_number = c.external_user_id
+                  WHERE (
+                          REGEXP_REPLACE(p.phone_number, '[^0-9]', '', 'g') = REGEXP_REPLACE(c.external_user_id, '[^0-9]', '', 'g')
+                       OR REGEXP_REPLACE(COALESCE(p.guardian_phone, ''), '[^0-9]', '', 'g') = REGEXP_REPLACE(c.external_user_id, '[^0-9]', '', 'g')
+                        )
                     AND a.tenant_id = c.tenant_id
                     AND a.appointment_datetime > $2
               )
@@ -213,9 +218,14 @@ async def _get_candidates(pool, tenant_id: int, touch_number: int, delay_minutes
               AND (c.last_message_at IS NULL OR c.last_message_at <= $2 - INTERVAL '30 minutes')
               AND $2 <= c.last_user_message_at + INTERVAL '23 hours 30 minutes'
               AND NOT EXISTS (
+                  -- Incluye turnos de MENORES/terceros: el -M1 tiene guardian_phone = el
+                  -- telefono del lead, asi que un turno del hijo tambien frena el re-enganche.
                   SELECT 1 FROM appointments a
                   JOIN patients p ON p.id = a.patient_id
-                  WHERE p.phone_number = c.external_user_id
+                  WHERE (
+                          REGEXP_REPLACE(p.phone_number, '[^0-9]', '', 'g') = REGEXP_REPLACE(c.external_user_id, '[^0-9]', '', 'g')
+                       OR REGEXP_REPLACE(COALESCE(p.guardian_phone, ''), '[^0-9]', '', 'g') = REGEXP_REPLACE(c.external_user_id, '[^0-9]', '', 'g')
+                        )
                     AND a.tenant_id = c.tenant_id
                     AND a.appointment_datetime > $2
               )
@@ -294,7 +304,11 @@ async def _process_candidate(pool, cand: Dict, touch_number: int, rule: Dict, no
     has_appt = await pool.fetchval("""
         SELECT 1 FROM appointments a
         JOIN patients p ON p.id = a.patient_id
-        WHERE p.phone_number = $1 AND a.tenant_id = $2 AND a.appointment_datetime > $3
+        WHERE (
+                REGEXP_REPLACE(p.phone_number, '[^0-9]', '', 'g') = REGEXP_REPLACE($1, '[^0-9]', '', 'g')
+             OR REGEXP_REPLACE(COALESCE(p.guardian_phone, ''), '[^0-9]', '', 'g') = REGEXP_REPLACE($1, '[^0-9]', '', 'g')
+              )
+          AND a.tenant_id = $2 AND a.appointment_datetime > $3
         LIMIT 1
     """, phone, tenant_id, now_utc)
     if has_appt:

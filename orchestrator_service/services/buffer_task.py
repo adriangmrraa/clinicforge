@@ -3763,6 +3763,36 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                     except Exception as _err_post_err:
                         logger.debug(f"Error post-processing skipped: {_err_post_err}")
 
+                # 🛡️ SAFETY-NET post-booking (bug "¿1️⃣ o 2️⃣?" en loop): el prompt PROHÍBE
+                # re-preguntar la opción tras confirmar el turno, pero el modelo copia el ejemplo
+                # igual. Si el estado YA es post-booking y NO hay una presentación nueva de horarios
+                # (sin fecha DD/MM), borramos las líneas que re-ofrecen elegir entre opciones viejas.
+                # Determinista: no depende de que el LLM obedezca la regla.
+                if response_text:
+                    try:
+                        _pb_state = str(locals().get("prev_state_str", "") or "").upper()
+                        if _pb_state in ("BOOKED", "PAYMENT_PENDING", "SLOT_LOCKED"):
+                            import re as _re_sn
+                            _has_fresh_slots = bool(_re_sn.search(r"\d{1,2}/\d{2}", response_text))
+                            if not _has_fresh_slots:
+                                _kept_lines = [
+                                    _ln for _ln in response_text.split("\n")
+                                    if not _re_sn.search(
+                                        r"(te\s+queda\s+mejor|cu[aá]l\s+(?:prefer[ií]s|eleg[ií]s|te\s+queda))",
+                                        _ln,
+                                        _re_sn.IGNORECASE,
+                                    )
+                                ]
+                                _new_txt = "\n".join(_kept_lines).strip()
+                                if _new_txt != response_text:
+                                    logger.info(
+                                        "🛡️ SAFETY-NET post-booking: re-oferta de opciones viejas eliminada (estado=%s)",
+                                        _pb_state,
+                                    )
+                                    response_text = _new_txt
+                    except Exception as _sn_err:
+                        logger.debug(f"safety-net re-oferta post-booking skipped: {_sn_err}")
+
                 # Bug #9: Extract intermediate_steps to know if a tool was actually called
                 intermediate_steps = response.get("intermediate_steps", [])
                 tool_was_called = len(intermediate_steps) > 0
