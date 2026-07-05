@@ -5301,17 +5301,40 @@ async def book_appointment(
             # el agente reintentó agendar algo que YA quedó confirmado (ej: el paciente dijo
             # "gracias" y el LLM volvió a llamar book_appointment). Devolvemos confirmación, NO error.
             # Esto rompe la cascada UNAVAILABLE -> EXPIRED -> derivación que veía el paciente.
-            _dup_owner = None
+            # El turno que colisiona: traemos también guardian_phone y phone_number del paciente
+            # dueño, para reconocer los turnos de MENORES/terceros de ESTE interlocutor (el -M{N}
+            # tiene guardian_phone = teléfono del padre). Si el re-intento crea un -M2 con id nuevo,
+            # la comparación por patient_id fallaba y salía "se ocupó" — ahora también matchea por
+            # guardian/teléfono del interlocutor.
+            _dup_row = None
             try:
-                _dup_owner = await db.pool.fetchval(
-                    "SELECT patient_id FROM appointments WHERE tenant_id = $1 AND professional_id = $2 AND appointment_datetime = $3 AND status != 'cancelled' ORDER BY created_at DESC LIMIT 1",
+                _dup_row = await db.pool.fetchrow(
+                    "SELECT a.patient_id, p.guardian_phone, p.phone_number "
+                    "FROM appointments a JOIN patients p ON p.id = a.patient_id AND p.tenant_id = a.tenant_id "
+                    "WHERE a.tenant_id = $1 AND a.professional_id = $2 AND a.appointment_datetime = $3 "
+                    "AND a.status != 'cancelled' ORDER BY a.created_at DESC LIMIT 1",
                     tenant_id, target_prof["id"], apt_datetime,
                 )
             except Exception as _dup_err:
                 logger.warning(f"📅 BOOK idempotency lookup failed (non-blocking): {_dup_err}")
-            if _dup_owner is not None and _dup_owner == patient_id:
+
+            def _idem_digits(_s):
+                return re.sub(r"[^0-9]", "", str(_s or ""))
+
+            _chat_digits = _idem_digits(chat_phone)
+            _is_idempotent = False
+            if _dup_row is not None:
+                if _dup_row["patient_id"] == patient_id:
+                    _is_idempotent = True  # mismo paciente exacto
+                elif _chat_digits and _idem_digits(_dup_row.get("guardian_phone")) == _chat_digits:
+                    _is_idempotent = True  # turno de un MENOR/tercero de ESTE interlocutor
+                elif _chat_digits and _idem_digits(_dup_row.get("phone_number")) == _chat_digits:
+                    _is_idempotent = True  # turno del propio interlocutor
+            if _is_idempotent:
                 logger.info(
-                    f"✅ book_appointment IDEMPOTENTE: el turno ya existía para patient_id={patient_id} prof={target_prof['id']} datetime={apt_datetime} — confirmando (no es 'se ocupó')"
+                    f"✅ book_appointment IDEMPOTENTE: el turno ya existía para este interlocutor "
+                    f"(dueño patient_id={_dup_row['patient_id']}, guardian/tel coincide) prof={target_prof['id']} "
+                    f"datetime={apt_datetime} — confirmando (no es 'se ocupó')"
                 )
                 try:
                     from services.conversation_state import set_state as _set_state_idem
@@ -5319,7 +5342,7 @@ async def book_appointment(
                 except Exception:
                     pass
                 return (
-                    f"✅ Ese turno ya está confirmado para el paciente, no hace falta agendarlo de nuevo 😊 "
+                    f"✅ Ese turno ya está confirmado, no hace falta agendarlo de nuevo 😊 "
                     f"Quedó el {apt_datetime.strftime('%d/%m')} a las {apt_datetime.strftime('%H:%M')}."
                 )
             # Caso genuino: otro paciente ganó la carrera por ese horario.
