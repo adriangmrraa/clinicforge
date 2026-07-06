@@ -4041,6 +4041,30 @@ async def book_appointment(
     tenant_id = current_tenant_id.get()
     logger.info(f"📊 BOOKING_FLOW | book_appointment ENTRY | tenant={tenant_id} phone={chat_phone} slot_index={slot_index} interpreted_date={interpreted_date!r} date_time={date_time!r} name={first_name!r} {last_name!r} dni={dni!r} treatment={treatment_reason!r}")
 
+    # 🛡️ GUARD DE NOMBRE (caso Melany/prod): el LLM a veces interpreta una respuesta de
+    # cobertura/afirmación ("particular", "buenísimo, particular", "dale") como si fuera el
+    # nombre del paciente y agenda con un nombre basura ("Buenisimo particular"). Si el
+    # first_name/last_name que llega es una de esas palabras (no un nombre real), rechazamos el
+    # agendado y pedimos el nombre de verdad. Determinista: no depende de que el LLM obedezca.
+    _NON_NAME_WORDS = {
+        "particular", "obra social", "obrasocial", "coseguro", "buenisimo", "buenísimo",
+        "dale", "genial", "perfecto", "listo", "hola", "buenas", "gracias", "ok", "okay",
+        "si", "sí", "sisi", "sii", "va", "bueno", "consulta", "turno", "evaluacion", "evaluación",
+    }
+    _fn_check = (first_name or "").strip().lower()
+    _ln_check = (last_name or "").strip().lower()
+    _fn_first_token = _fn_check.split()[0] if _fn_check else ""
+    if (_fn_first_token and _fn_first_token in _NON_NAME_WORDS) or (_ln_check and _ln_check in _NON_NAME_WORDS):
+        logger.warning(
+            f"📅 BOOK NAME-GUARD: nombre sospechoso first_name={first_name!r} last_name={last_name!r} "
+            f"— parece una respuesta de cobertura/afirmación, no un nombre. Rechazando el agendado."
+        )
+        return (
+            "❌ Todavía no tengo el nombre real del paciente (parece que interpreté mal un mensaje anterior). "
+            "Pedile amablemente su NOMBRE Y APELLIDO antes de agendar — NO uses lo que dijo sobre cobertura "
+            "('particular', 'obra social') ni una afirmación ('dale', 'buenísimo') como si fuera el nombre."
+        )
+
     # Patient context: if linked or resolved, use existing patient record
     _ctx_patient_id = get_patient_id_by_context()
     if _ctx_patient_id:
@@ -12521,6 +12545,7 @@ PASO 4b: DATOS DE ADMISIÓN — ⚠️ VERIFICAR ANTES DE PEDIR DATOS:
   PREGUNTA INTERNA (no decir al paciente): "¿Tengo ya el nombre y el DNI del paciente (ya sea porque figuran en el CONTEXTO DEL PACIENTE o porque el paciente los mencionó en la conversación reciente)?"
   → SI ya tenés ambos datos (o el paciente ya los dio en este mensaje o el anterior) → SALTEAR ESTE PASO COMPLETO. Ir directo a PASO 4c. Queda ESTRICTAMENTE PROHIBIDO volver a pedirlos.
   → SI falta alguno → Pedir DE A UN DATO POR MENSAJE: a) nombre y apellido (primero), b) DNI (una vez que dé el nombre). NUNCA pedir teléfono (ya lo tenés del WhatsApp).
+  ⛔ QUÉ NO ES UN NOMBRE (CRÍTICO — leer con atención): una respuesta de cobertura ("particular", "obra social", el nombre de una obra social), una afirmación ("dale", "sí", "buenísimo", "genial", "perfecto", "listo"), un saludo o cualquier palabra que NO sea claramente un nombre+apellido de PERSONA **NO cuenta** como "tener el nombre". Ejemplo real que salió mal: el paciente dijo "Buenísimo, particular" → eso NO es su nombre, seguís SIN nombre. Antes de agendar, si NO tenés un nombre+apellido REAL (dado explícitamente por el paciente, o en "Nombre registrado" del CONTEXTO), PEDILO: "¿Me pasás tu nombre y apellido?". PROHIBIDO pasar a book_appointment un first_name/last_name inferido de una respuesta que no era un nombre.
   IMPORTANTE: Si el turno es para un TERCERO o MENOR, los datos son del PACIENTE (tercero/menor), NO del interlocutor.
   PROHIBIDO pedir nombre o DNI si ya aparecen en el CONTEXTO DEL PACIENTE o ya fueron provistos en la conversación. Esto es CRÍTICO para la experiencia del usuario.
 
