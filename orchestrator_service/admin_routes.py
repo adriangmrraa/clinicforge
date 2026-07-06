@@ -7135,15 +7135,34 @@ async def update_patient(
     """Actualizar datos de un paciente. Aislado por tenant_id (Regla de Oro).
     Normaliza el teléfono según el país de la clínica antes de guardar."""
     try:
-        # Normalizar teléfono según país del tenant
+        # Normalizar teléfono según país del tenant.
+        # SEGURIDAD: el teléfono SOLO se toca si viene uno REAL y DISTINTO al actual.
+        # - Nunca re-normalizar menores (-M) ni ART (se corromperían al perder el sufijo).
+        # - Un placeholder SIN-TEL sí puede reemplazarse por un teléfono real.
+        # - Si el teléfono no cambió, se conserva tal cual (evita romper el vínculo del chat).
         raw_phone = (p.phone_number or "").strip()
-        if raw_phone:
+        _current_phone = await db.pool.fetchval(
+            "SELECT phone_number FROM patients WHERE id = $1 AND tenant_id = $2", id, tenant_id
+        )
+
+        def _is_derived(ph):
+            return bool(ph) and any(m in ph.upper() for m in ("-M", "-ART"))
+
+        def _is_special(ph):
+            return _is_derived(ph) or (bool(ph) and "SIN-TEL" in ph.upper())
+
+        if (
+            raw_phone
+            and raw_phone != (_current_phone or "")
+            and not _is_special(raw_phone)
+            and not _is_derived(_current_phone or "")
+        ):
             tenant_row = await db.pool.fetchrow("SELECT country_code FROM tenants WHERE id = $1", tenant_id)
             tenant_country = tenant_row["country_code"] if tenant_row else "AR"
             from main import normalize_phone_for_tenant
             normalized_phone = normalize_phone_for_tenant(raw_phone, tenant_country)
         else:
-            normalized_phone = None
+            normalized_phone = None  # COALESCE mantiene el teléfono actual sin tocarlo
 
         result = await db.pool.execute(
             """
@@ -7163,7 +7182,7 @@ async def update_patient(
         """,
             p.first_name,
             p.last_name,
-            normalized_phone if raw_phone else p.phone_number,
+            normalized_phone,
             p.email,
             p.dni,
             p.insurance,
