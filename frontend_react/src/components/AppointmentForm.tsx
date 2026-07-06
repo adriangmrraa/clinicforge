@@ -386,22 +386,28 @@ export default function AppointmentForm({
 
         setLoading(true);
         try {
-            // 1. Guardar datos del paciente editados (set COMPLETO para NO pisar campos).
-            //    Se hace ANTES del turno: si falla, no se guarda el turno y queda el error visible.
+            // 1. Guardar datos del paciente editados (el backend usa COALESCE, así que un
+            //    campo vacío NO borra el dato). Si el guardado del paciente falla, abortamos
+            //    con un error claro y NO seguimos al turno (evita estado inconsistente).
             if (patientDataDirty && formData.patient_id) {
-                await api.put(`/admin/patients/${formData.patient_id}`, {
-                    first_name: patientData.first_name.trim() || 'Sin nombre',
-                    last_name: patientData.last_name.trim(),
-                    phone_number: patientData.phone_number.trim(),
-                    email: patientData.email.trim() || null,
-                    dni: patientData.dni.trim() || null,
-                    insurance: patientData.insurance_provider.trim() || null,
-                    insurance_number: patientData.insurance_id.trim() || null,
-                    city: patientData.city.trim() || null,
-                    birth_date: patientData.birth_date || null,
-                    notes: patientData.notes || null,
-                });
-                setPatientDataDirty(false);
+                try {
+                    await api.put(`/admin/patients/${formData.patient_id}`, {
+                        first_name: patientData.first_name.trim() || 'Sin nombre',
+                        last_name: patientData.last_name.trim(),
+                        phone_number: patientData.phone_number.trim(),
+                        email: patientData.email.trim() || null,
+                        dni: patientData.dni.trim() || null,
+                        insurance: patientData.insurance_provider.trim() || null,
+                        insurance_number: patientData.insurance_id.trim() || null,
+                        city: patientData.city.trim() || null,
+                        birth_date: patientData.birth_date || null,
+                        notes: patientData.notes || null,
+                    });
+                    setPatientDataDirty(false);
+                } catch (pErr: any) {
+                    setError('No se pudieron guardar los datos del paciente: ' + (pErr?.response?.data?.detail || pErr?.message || 'error'));
+                    return; // el finally resetea loading; no continuamos a guardar el turno
+                }
             }
             // Send datetime as ISO so backend parses correctly (datetime-local gives local YYYY-MM-DDThh:mm)
             const payload = {
