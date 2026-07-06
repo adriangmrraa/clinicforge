@@ -2459,14 +2459,28 @@ Después de 2 veces, NO insistas. Respondé a sus preguntas sin volver a ofrecer
             tenant_config = {}
         min_apt_date = tenant_config.get("min_appointment_date")
         if min_apt_date:
+            # Humanizar la fecha para el MENSAJE al paciente (evita mostrar "2026-07-13").
+            # Se conserva el formato técnico {min_apt_date} solo para el razonamiento de fechas.
+            _min_apt_human = str(min_apt_date)
+            try:
+                from datetime import datetime as _dt_h
+
+                _mad_d = _dt_h.strptime(str(min_apt_date).strip()[:10], "%Y-%m-%d").date()
+                _dias_es = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
+                _meses_es = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
+                             "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
+                _min_apt_human = f"{_dias_es[_mad_d.weekday()]} {_mad_d.day} de {_meses_es[_mad_d.month - 1]}"
+            except Exception:
+                pass
             system_prompt += f"""
 
 # 📅 FECHA MÍNIMA PARA TURNOS
-Por temas de reorganización de la agenda, los turnos se están dando a partir del {min_apt_date}.
-Si el paciente pide un turno para ANTES de esa fecha, decile:
-"Por temas de reorganización de la agenda, los turnos se están dando a partir del {min_apt_date}. ¿Te parece bien o preferís otra fecha?"
+Por temas de reorganización de la agenda, los turnos se están dando a partir del {_min_apt_human}.
+⛔ Cuando se lo comuniques al paciente, escribí la fecha SIEMPRE en formato natural ("{_min_apt_human}"), NUNCA en formato técnico tipo {min_apt_date}.
+Si el paciente pide un turno para ANTES de esa fecha (compará internamente contra {min_apt_date}), decile:
+"Por temas de reorganización de la agenda, los turnos se están dando a partir del {_min_apt_human}. ¿Te parece bien o preferís otra fecha?"
 
-Si el paciente pide un turno para {min_apt_date} o después, continuar normalmente.
+Si el paciente pide un turno para el {_min_apt_human} ({min_apt_date}) o después, continuar normalmente.
 
 Recordá que cada obra social puede tener días de espera adicionales configurados. Combiná la fecha mínima con los días de espera de la OS para determinar la fecha más temprana disponible.
 """
