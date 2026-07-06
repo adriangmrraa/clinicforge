@@ -174,7 +174,15 @@ async def main() -> int:
                 answer = ""
                 print(f"\n[{c.get('id')}] ERROR llamando al modelo: {e}")
 
-            verdict = await judge_case(client, args.judge_model, c, answer)
+            # [SILENCIO] = el agente decidió no responder (anti-loop de cortesía).
+            # No lo mandamos al juez: lo evaluamos según lo que el caso espera.
+            if (answer or "").strip().upper().startswith("[SILENCIO]"):
+                if c.get("espera_silencio"):
+                    verdict = {"pasa": True, "criterios": [{"criterio": "silencio esperado ante un simple agradecimiento", "pasa": True, "razon": "el bot se quedó en silencio ([SILENCIO]) — correcto"}], "error": None}
+                else:
+                    verdict = {"pasa": False, "criterios": [{"criterio": "no debía quedarse en silencio", "pasa": False, "razon": "el bot devolvió [SILENCIO] cuando debía responder"}], "error": None}
+            else:
+                verdict = await judge_case(client, args.judge_model, c, answer)
             results.append((c, verdict, answer))
 
             mark = "PASA " if verdict["pasa"] else "FALLA"

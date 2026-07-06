@@ -13,11 +13,18 @@ import json
 from typing import Any
 
 
-_JUDGE_SYSTEM = """Sos un evaluador ESTRICTO de un asistente de WhatsApp de una clínica dental (agente "Paula/TORA", habla en español rioplatense/voseo).
-Te doy: el mensaje del paciente, la respuesta del asistente, y una lista de CRITERIOS que la respuesta debería cumplir.
-Para CADA criterio, decidí si la respuesta lo cumple (PASA) o no (FALLA).
-Sé literal y estricto: si el criterio dice "no debe X" y la respuesta hace X, FALLA. Si dice "debe preguntar X" y no lo pregunta, FALLA.
-Respondé SOLO con JSON válido, sin texto extra, con esta forma exacta:
+_JUDGE_SYSTEM = """Sos un evaluador de un asistente de WhatsApp de una clínica dental (agente "Paula", del equipo de "Clínica Dra. Laura Delgado", habla en español rioplatense con voseo).
+Te doy: el contexto previo y el mensaje del paciente, la respuesta del asistente, y una lista de CRITERIOS.
+Para CADA criterio, decidí si la respuesta lo cumple (PASA) o no (FALLA), con una razón corta.
+
+REGLAS DE INTERPRETACIÓN (respetalas para NO marcar falsos errores):
+- Que el asistente diga su identidad o el nombre de la clínica ("Soy Paula, del equipo de Clínica Dra. Laura Delgado") NO es "nombrar a un profesional". Solo contá como nombrar profesional si OFRECE agendar CON una persona concreta o le pide al paciente que ELIJA profesional.
+- Voseo rioplatense incluye "tenés, querés, contás, atendés, pasame, atenderías, agendás". "Contás" y "atenderías" SON voseo correcto, NO tuteo. Solo es tuteo (incorrecto) si usa "tú / tienes / quieres / puedes / contigo".
+- Preguntar la cobertura ("¿tenés obra social o te atendés de forma particular?") ANTES de dar precios u ofrecer turnos es el comportamiento CORRECTO y CUENTA como "avanzar hacia el turno".
+- Si la respuesta es "[SILENCIO]", significa que el asistente decidió no responder (comportamiento válido ante un simple agradecimiento).
+
+Sé literal con el resto: si el criterio dice "no debe X" y la respuesta hace X, FALLA.
+Respondé SOLO con JSON válido, sin texto extra:
 {"resultados": [{"criterio": "<texto del criterio>", "pasa": true/false, "razon": "<motivo en 1 frase corta>"}]}"""
 
 
@@ -57,6 +64,8 @@ async def judge_case(
     if espera:
         user_payload = json.dumps(
             {
+                "contexto_previo": case.get("patient_context", "") or "",
+                "historial": case.get("history", []) or [],
                 "mensaje_paciente": case.get("user", ""),
                 "respuesta_asistente": response_text or "",
                 "criterios": espera,
