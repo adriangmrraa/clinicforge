@@ -384,6 +384,14 @@ export default function AppointmentForm({
             return;
         }
 
+        // Confirmación al modificar datos del paciente (evita cambios por accidente)
+        if (patientDataDirty && formData.patient_id) {
+            const _nom = `${patientData.first_name} ${patientData.last_name}`.trim() || 'este paciente';
+            if (!(await confirmDialog(`Vas a modificar los datos de ${_nom}. Se actualizarán en su ficha del paciente. ¿Confirmás?`))) {
+                return;
+            }
+        }
+
         setLoading(true);
         try {
             // 1. Guardar datos del paciente editados (el backend usa COALESCE, así que un
