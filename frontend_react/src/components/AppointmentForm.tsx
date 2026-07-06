@@ -79,6 +79,17 @@ export default function AppointmentForm({
     const [billingSaving, setBillingSaving] = useState(false);
     const [billingSuccess, setBillingSuccess] = useState<string | null>(null);
 
+    // Datos del paciente editables desde el turno (impacta en la ficha del paciente).
+    // Se cargan COMPLETOS y se reenvían completos al guardar para NO pisar campos.
+    const [patientData, setPatientData] = useState({
+        first_name: '', last_name: '', dni: '', phone_number: '',
+        email: '', insurance_provider: '', insurance_id: '',
+        birth_date: '', city: '', notes: '',
+    });
+    const [patientDataDirty, setPatientDataDirty] = useState(false);
+    const [patientDataLoading, setPatientDataLoading] = useState(false);
+    const pdInput = "w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white text-sm focus:bg-white/[0.06] focus:border-blue-500 focus:ring-0 transition-all placeholder-white/30";
+
     // Fetch treatment types
     // Close patient dropdown on outside click
     useEffect(() => {
@@ -119,6 +130,43 @@ export default function AppointmentForm({
         };
         fetchTreatmentTypes();
     }, []);
+
+    // Cargar la ficha completa del paciente al abrir/cambiar (para editar sin pisar campos)
+    useEffect(() => {
+        if (!isOpen || !formData.patient_id) {
+            setPatientData({ first_name: '', last_name: '', dni: '', phone_number: '', email: '', insurance_provider: '', insurance_id: '', birth_date: '', city: '', notes: '' });
+            setPatientDataDirty(false);
+            return;
+        }
+        let cancelled = false;
+        setPatientDataLoading(true);
+        api.get(`/admin/patients/${formData.patient_id}`)
+            .then(res => {
+                if (cancelled) return;
+                const d = res.data || {};
+                setPatientData({
+                    first_name: d.first_name || '',
+                    last_name: d.last_name || '',
+                    dni: d.dni || '',
+                    phone_number: d.phone_number || '',
+                    email: d.email || '',
+                    insurance_provider: d.insurance_provider || d.obra_social || '',
+                    insurance_id: d.insurance_id || d.obra_social_number || '',
+                    birth_date: d.birth_date ? String(d.birth_date).slice(0, 10) : '',
+                    city: d.city || '',
+                    notes: d.notes || '',
+                });
+                setPatientDataDirty(false);
+            })
+            .catch(() => { /* no bloqueante: si falla la carga, no se editan datos */ })
+            .finally(() => { if (!cancelled) setPatientDataLoading(false); });
+        return () => { cancelled = true; };
+    }, [isOpen, formData.patient_id]);
+
+    const handlePatientChange = (field: string, value: string) => {
+        setPatientData(prev => ({ ...prev, [field]: value }));
+        setPatientDataDirty(true);
+    };
 
     // Format date for datetime-local input: local YYYY-MM-DDTHH:mm (avoid UTC display bug)
     const toLocalDatetimeInput = (isoOrDate: string | Date): string => {
@@ -338,6 +386,23 @@ export default function AppointmentForm({
 
         setLoading(true);
         try {
+            // 1. Guardar datos del paciente editados (set COMPLETO para NO pisar campos).
+            //    Se hace ANTES del turno: si falla, no se guarda el turno y queda el error visible.
+            if (patientDataDirty && formData.patient_id) {
+                await api.put(`/admin/patients/${formData.patient_id}`, {
+                    first_name: patientData.first_name.trim() || 'Sin nombre',
+                    last_name: patientData.last_name.trim(),
+                    phone_number: patientData.phone_number.trim(),
+                    email: patientData.email.trim() || null,
+                    dni: patientData.dni.trim() || null,
+                    insurance: patientData.insurance_provider.trim() || null,
+                    insurance_number: patientData.insurance_id.trim() || null,
+                    city: patientData.city.trim() || null,
+                    birth_date: patientData.birth_date || null,
+                    notes: patientData.notes || null,
+                });
+                setPatientDataDirty(false);
+            }
             // Send datetime as ISO so backend parses correctly (datetime-local gives local YYYY-MM-DDThh:mm)
             const payload = {
                 ...formData,
@@ -543,6 +608,28 @@ export default function AppointmentForm({
                                     )}
                                 </div>
                             </div>
+
+                            {/* --- DATOS DEL PACIENTE (editable, impacta en la ficha) --- */}
+                            {formData.patient_id && (
+                                <div className="space-y-2 rounded-lg border border-white/[0.08] bg-white/[0.02] p-3">
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-xs font-semibold text-white/40 uppercase tracking-wider">Datos del paciente</label>
+                                        {patientDataLoading && <span className="text-[11px] text-white/30">cargando…</span>}
+                                    </div>
+                                    <p className="text-[11px] text-white/30 -mt-1">Se guardan con el turno y se reflejan en la ficha del paciente.</p>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <input placeholder="Nombre" value={patientData.first_name} onChange={e => handlePatientChange('first_name', e.target.value)} className={pdInput} />
+                                        <input placeholder="Apellido" value={patientData.last_name} onChange={e => handlePatientChange('last_name', e.target.value)} className={pdInput} />
+                                        <input placeholder="DNI" value={patientData.dni} onChange={e => handlePatientChange('dni', e.target.value)} className={pdInput} />
+                                        <input type="date" title="Fecha de nacimiento" value={patientData.birth_date} onChange={e => handlePatientChange('birth_date', e.target.value)} className={pdInput} />
+                                        <input placeholder="Teléfono" value={patientData.phone_number} onChange={e => handlePatientChange('phone_number', e.target.value)} className={pdInput} />
+                                        <input placeholder="Email" value={patientData.email} onChange={e => handlePatientChange('email', e.target.value)} className={pdInput} />
+                                        <input placeholder="Obra social" value={patientData.insurance_provider} onChange={e => handlePatientChange('insurance_provider', e.target.value)} className={pdInput} />
+                                        <input placeholder="N° de afiliado" value={patientData.insurance_id} onChange={e => handlePatientChange('insurance_id', e.target.value)} className={pdInput} />
+                                        <input placeholder="Ciudad" value={patientData.city} onChange={e => handlePatientChange('city', e.target.value)} className={`${pdInput} col-span-2`} />
+                                    </div>
+                                </div>
+                            )}
 
                             <div className="space-y-1.5">
                                 <label className="text-xs font-semibold text-white/40 uppercase tracking-wider">{t('agenda.professional')}</label>
