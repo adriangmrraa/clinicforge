@@ -66,6 +66,34 @@ def _split_sections(prompt: str):
     return sections
 
 
+# Clasificación en familias para el rollup: (nombre, regex sobre título, regex sobre cuerpo).
+# Se evalúan en orden; la primera que matchea gana. 'body' ayuda cuando el título
+# de una OS (ej "APSOT (prepaga):") no delata que es cobertura.
+_BUCKETS = [
+    ("Obras sociales / cobertura", re.compile(r"OBRA|COBERTURA|COSEGURO|PREPAGA|AFILIAD", re.I),
+     re.compile(r"cubierto|coseguro|preautoriza|carencia|obra social", re.I)),
+    ("Flujos F1–F10", re.compile(r"\bF\d+|FLUJO|CAMINO\s+\d", re.I), None),
+    ("Pasos / M0–M6", re.compile(r"\bPASO\s+\d|\bM\d\b|SECUENCIA", re.I), None),
+    ("Identidad / tono", re.compile(r"IDENTIDAD|TONO|PERSONALIDAD|VOSEO", re.I), None),
+    ("Reglas primordiales", re.compile(r"REGLA|PROHIBID|OBLIGATOR|GATE|CRÍTIC", re.I), None),
+    ("Urgencia / triage", re.compile(r"URGENCIA|TRIAGE|DOLOR|EMERGENC", re.I), None),
+    ("Ortodoncia / cirugía / implante", re.compile(r"ORTODONCIA|CIRUG|IMPLANTE|PRÓTESIS|PROTESIS", re.I), None),
+    ("FAQs / conocimiento", re.compile(r"\bFAQ|PREGUNTAS FRECUENTES|CONOCIMIENTO", re.I), None),
+    ("Pagos / seña / facturación", re.compile(r"PAGO|SEÑA|SENA|COMPROBANTE|TRANSFER|FACTURA|BANC", re.I), None),
+    ("Adjuntos / multimedia", re.compile(r"ADJUNTO|IMAGEN|MULTIMEDIA|VISUAL|DOCUMENTO", re.I), None),
+    ("Agenda / disponibilidad", re.compile(r"AGENDA|DISPONIBIL|TURNO|HORARIO|SEDE|FECHA", re.I), None),
+]
+
+
+def _bucket(title: str, body: str) -> str:
+    for name, tre, bre in _BUCKETS:
+        if tre.search(title):
+            return name
+        if bre and bre.search(body):
+            return name
+    return "· Otros"
+
+
 async def main() -> int:
     ap = argparse.ArgumentParser(description="Desglose de tokens del prompt")
     ap.add_argument("--tenant", type=int, default=int(os.getenv("EVAL_TENANT_ID", "1")))
@@ -90,10 +118,27 @@ async def main() -> int:
     secs = _split_sections(prompt)
     rows = sorted(((t, _count(enc, body)) for t, body in secs), key=lambda r: -r[1])
 
+    # Rollup por familia: agrupa las 300+ secciones en ~12 buckets para ver
+    # qué familia pesa más (las 17 OS repartidas suman mucho aunque cada una sea chica).
+    buckets: dict[str, list] = {}
+    for title, body in secs:
+        b = _bucket(title, body)
+        buckets.setdefault(b, [0, 0])
+        buckets[b][0] += _count(enc, body)
+        buckets[b][1] += 1
+    bucket_rows = sorted(buckets.items(), key=lambda r: -r[1][0])
+
     print("=" * 72)
     print(f"DESGLOSE DE TOKENS DEL PROMPT — tenant {args.tenant} — estado {args.status}")
     print(f"TOTAL: {total:,} tokens  ({'tiktoken' if enc else 'estimado ~char/4'})  |  {len(secs)} secciones")
     print("=" * 72)
+    print("ROLLUP POR FAMILIA (dónde está la grasa):")
+    print(f"{'TOKENS':>8}  {'%':>5}  {'SECC':>4}  FAMILIA")
+    for name, (tk, cnt) in bucket_rows:
+        pct = (tk / total * 100) if total else 0
+        print(f"{tk:>8,}  {pct:4.1f}%  {cnt:>4}  {name}")
+    print("=" * 72)
+    print(f"TOP {args.top} SECCIONES INDIVIDUALES:")
     print(f"{'TOKENS':>8}  {'%':>5}  SECCIÓN")
     for t, n in rows[: args.top]:
         pct = (n / total * 100) if total else 0
