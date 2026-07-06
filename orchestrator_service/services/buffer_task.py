@@ -2688,7 +2688,7 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                 f"👁️ Inyectando contexto visual: {len(vision_context_str)} chars"
             )
             user_input += (
-                f"\n\nCONTEXTO VISUAL (Imágenes recientes):{vision_context_str}"
+                f"\n\n[CONTEXTO VISUAL — USO INTERNO, NO RELATAR NI DIAGNOSTICAR AL PACIENTE]:{vision_context_str}"
             )
 
         if audio_context_str:
@@ -3575,9 +3575,10 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                         else:
                             media_context += (
                                 "Responde confirmando que recibiste el archivo y que ya lo guardaste en su ficha médica para que la Dra. lo vea. "
-                                "Si en el CONTEXTO VISUAL hay una descripción de la imagen (ej. una foto clínica de un diente o de la boca), "
-                                "comentá brevemente y con prudencia lo que se observa y sugerí que lo ideal es evaluarlo en consulta. "
-                                "NO diagnostiques con certeza ni derives a un humano SOLO por la foto. Usa un tono amable y profesional."
+                                "⛔ PROHIBIDO describir, comentar, interpretar o diagnosticar el contenido de la imagen o radiografía: "
+                                "NO digas qué se observa ni menciones dientes, implantes, mucosa, encía, hueso, caries, lesiones, etc. "
+                                "El CONTEXTO VISUAL es SOLO para tu registro interno, NUNCA para relatárselo al paciente. "
+                                "Limitate a confirmar la recepción y a decir que la doctora lo evalúa en la consulta. Tono amable y profesional."
                             )
             else:
                 # Contact is NOT a patient
@@ -3597,7 +3598,8 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                     media_context += (
                         "NOTA: Este contacto AUN NO tiene ficha de paciente registrada. "
                         "NO digas que guardaste el archivo en su ficha porque no existe. "
-                        "Si hay CONTEXTO VISUAL disponible, usalo para responder sobre la imagen. "
+                        "⛔ PROHIBIDO describir, interpretar o diagnosticar el contenido de la imagen o radiografía: "
+                        "solo confirmá que la recibiste y que la doctora la evalúa en la consulta. "
                         "Si el contacto necesita agendar un turno, pedile sus datos (nombre, telefono, DNI) primero."
                     )
 
