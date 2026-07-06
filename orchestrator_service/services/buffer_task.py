@@ -1580,6 +1580,41 @@ async def process_buffer_task(
                 except Exception:
                     pass
 
+            # 3a-bis. TURNO EN CURSO / de hoy recién empezado (caso Thiago): el query de
+            # "próximo turno" usa >= NOW() y excluye un turno que ya arrancó hoy. Si el
+            # paciente tiene un turno que empezó en las últimas ~2 hs (está en la clínica o
+            # recién atendido), avisamos al agente para que NO le ofrezca un turno nuevo y
+            # reconozca que lo que manda (estudios/imágenes/comprobantes) va a ESE turno.
+            try:
+                cur_apt = await pool.fetchrow(
+                    """
+                    SELECT a.appointment_datetime, tt.name as treatment_name
+                    FROM appointments a
+                    LEFT JOIN treatment_types tt ON a.appointment_type = tt.code AND tt.tenant_id = a.tenant_id
+                    WHERE a.tenant_id = $1 AND a.patient_id = $2
+                      AND a.status IN ('scheduled', 'confirmed')
+                      AND a.appointment_datetime < NOW()
+                      AND a.appointment_datetime >= NOW() - INTERVAL '2 hours'
+                    ORDER BY a.appointment_datetime DESC
+                    LIMIT 1
+                    """,
+                    tenant_id,
+                    p_id,
+                )
+                if cur_apt:
+                    _cdt = cur_apt["appointment_datetime"]
+                    if hasattr(_cdt, "astimezone"):
+                        from main import get_active_tz as _gat_cur
+
+                        _cdt = _cdt.astimezone(_gat_cur())
+                    identity_lines.append(
+                        f"• ⚠️ TURNO EN CURSO HOY: el paciente tiene su turno de {cur_apt['treatment_name'] or 'Consulta'} HOY a las {_cdt.strftime('%H:%M')} (está en la clínica o recién atendido). "
+                        "⛔ NO le ofrezcas ni le busques un turno nuevo ni inicies agendamiento (salvo que lo pida EXPLÍCITAMENTE). "
+                        "Si manda estudios, imágenes o comprobantes, reconocé de forma cálida y BREVE que quedan asociados a su turno de hoy y que la doctora los evalúa en esa consulta."
+                    )
+            except Exception:
+                pass
+
             # 3b. Fetch LAST completed appointment (for post-treatment follow-up)
             last_apt = await pool.fetchrow(
                 """
