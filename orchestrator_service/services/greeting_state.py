@@ -5,7 +5,9 @@ Tracks whether a patient has already been greeted in the current session
 to avoid repeating the institutional greeting on every message.
 
 Redis key: greet:{tenant_id}:{phone_number}
-TTL: 14400 seconds (4 hours)
+TTL: 604800 seconds (7 days) — FIX #7 caso Stella: con 4h, un paciente conocido que
+volvía al día siguiente recibía de nuevo el pitch institucional de "lead nuevo"
+ignorando su pregunta. Con 7 días no se re-presenta dentro de la semana.
 Fallback: if Redis is unavailable, has_greeted returns False (conservative — greet again)
 """
 
