@@ -182,7 +182,7 @@ export default function AppointmentForm({
     useEffect(() => {
         if (isOpen) {
             setFormData({
-                patient_id: initialData.patient_id?.toString() || '',
+                patient_id: (initialData.patient_id && Number(initialData.patient_id) !== 0) ? initialData.patient_id.toString() : '',
                 professional_id: initialData.professional_id?.toString() || (professionals.length > 0 ? professionals[0].id.toString() : ''),
                 appointment_datetime: initialData.appointment_datetime ? toLocalDatetimeInput(initialData.appointment_datetime) : '',
                 appointment_type: initialData.appointment_type || 'checkup',
