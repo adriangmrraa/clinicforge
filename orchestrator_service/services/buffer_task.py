@@ -2611,9 +2611,31 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
         except Exception as vision_wait_err:
             logger.warning(f"⚠️ Error checking pending vision: {vision_wait_err}")
 
-        # --- EXTRACT CONTEXT BEFORE DEDUPLICATION (VISION FIX) ---
-        for msg in db_history_dicts:
-            extract_multimodal(msg.get("content_attributes"))
+        # --- EXTRACT MULTIMODAL CONTEXT — SOLO MEDIA RECIENTE (interacción actual) ---
+        # FIX staleness (caso Stella, 2026-07): antes se recorría TODO el historial de
+        # 40 mensajes SIN cota temporal y se pegaban transcripciones de audio /
+        # descripciones de imágenes de DÍAS ATRÁS al user_input actual, rotuladas como
+        # "recientes". Ante un simple "Buenos días" el LLM leía la urgencia narrada ayer
+        # como si fuera de hoy y derivaba con un motivo viejo antes de que el paciente
+        # dijera nada. Ahora solo se extrae media de los últimos 30 min de ESTA
+        # conversación (la interacción en curso). Los adjuntos viejos siguen guardados en
+        # la ficha (patient_documents) y accesibles vía get_patient_clinical_history.
+        try:
+            _recent_media_rows = await pool.fetch(
+                """
+                SELECT content_attributes FROM chat_messages
+                WHERE conversation_id = $1 AND tenant_id = $2
+                  AND content_attributes IS NOT NULL
+                  AND created_at > NOW() - INTERVAL '30 minutes'
+                ORDER BY created_at ASC
+                """,
+                conversation_id,
+                tenant_id,
+            )
+            for _row in _recent_media_rows:
+                extract_multimodal(_row["content_attributes"])
+        except Exception as _mm_err:
+            logger.warning(f"⚠️ Error extrayendo multimodal reciente: {_mm_err}")
 
         # Deduplication: If the last message in DB matches the first in Buffer, remove it from history
         if db_history_dicts and messages:
@@ -2696,7 +2718,7 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                 f"🎙️ Inyectando contexto de audio: {len(audio_context_str)} chars"
             )
             user_input += (
-                f"\n\nCONTEXTO DE AUDIO (Transcripciones recientes):{audio_context_str}"
+                f"\n\nCONTEXTO DE AUDIO (Transcripciones del turno actual):{audio_context_str}"
             )
 
         # --- Bug #4 Phase C: Input-side state guard ---
