@@ -36,6 +36,6 @@ async def mark_greeted(tenant_id: int, phone_number: str) -> None:
         if r is None:
             return
         key = f"greet:{tenant_id}:{phone_number}"
-        await r.setex(key, 14400, "1")  # TTL 4 hours
+        await r.setex(key, 604800, "1")  # TTL 7 días (FIX #7: antes 4h → paciente conocido re-saludado al otro día)
     except Exception:
         pass  # Silent failure — next message will just greet again
