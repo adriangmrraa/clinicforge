@@ -7,6 +7,7 @@ import logging
 import json
 import os
 import re
+import unicodedata
 from typing import List, Optional
 
 from db import get_pool
@@ -107,6 +108,55 @@ def compute_social_context(channel_type: str, tenant_row: dict) -> dict:
         "facebook_page_id": tenant_row.get("facebook_page_id") if is_social else None,
         "whatsapp_link": whatsapp_link if is_social else None,
     }
+
+
+def _strip_accents(s: str) -> str:
+    return "".join(
+        c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn"
+    )
+
+
+# Palabras con las que un paciente CONFIRMA su asistencia al responder un recordatorio.
+_REMINDER_CONFIRM_WORDS = {
+    "ok", "oka", "okey", "okay", "oki", "oki doki", "dale", "listo", "confirmo",
+    "confirmado", "confirmada", "confirmar", "confirmada la asistencia", "perfecto",
+    "de una", "va", "vale", "buenisimo", "buenisima", "genial", "barbaro", "barbara",
+    "joya", "asi es", "correcto", "exacto", "tal cual", "claro", "obvio", "de acuerdo",
+    "deacuerdo", "si", "sip", "sii", "siii", "sisi", "sep", "simon", "afirmativo",
+    "asistire", "ahi estoy", "ahi voy", "voy", "ahi estare", "estare", "me quedo",
+    "asisto", "presente", "cuenten conmigo", "ok gracias", "listo gracias",
+    "esta bien", "todo bien", "confirmado gracias", "ahi estaremos", "confirmamos",
+}
+
+
+def _classify_reminder_reply(msg: str) -> str:
+    """Devuelve 'confirm' o 'none' para la respuesta a un recordatorio de turno.
+
+    Determinista: normaliza acentos, ignora signos, compara contra la lista.
+    Solo 'confirm' — la cancelación NO se auto-ejecuta (es ambigua y destructiva:
+    la maneja el flujo conversacional).
+    """
+    if not msg:
+        return "none"
+    raw = msg.strip()
+    # Respuestas de 1 token: emojis / número de confirmación
+    if raw in ("👍", "👍🏻", "👍🏼", "✅", "🙌", "1", "1️⃣"):
+        return "confirm"
+    t = _strip_accents(raw.lower())
+    t = re.sub(r"[!¡.,;:\"'()]+", "", t).strip()
+    if not t:
+        return "none"
+    # 'no...' => NO es confirmación (lo maneja el LLM conversacionalmente)
+    if re.match(r"^no(\b|$)", t):
+        return "none"
+    # Solo mensajes cortos (<= 6 palabras) para no confirmar por accidente dentro
+    # de una frase larga.
+    if len(t.split()) <= 6:
+        for w in _REMINDER_CONFIRM_WORDS:
+            wn = _strip_accents(w)
+            if t == wn or re.search(r"(^|\b)" + re.escape(wn) + r"(\b|$)", t):
+                return "confirm"
+    return "none"
 
 
 def _detect_selection_intent(msg: str) -> bool:
@@ -2957,6 +3007,48 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                             logger.info(
                                 f"📊 BOOKING_FLOW | FAILED_SLOTS injected into STATE_HINT: {len(_state_failed_slots)} slots"
                             )
+
+                    # --- INTERCEPT DETERMINISTICO: confirmación de recordatorio ---
+                    # Si el paciente responde con una palabra de confirmación (ok, dale,
+                    # listo, sí...) y tiene un turno futuro con recordatorio enviado hace
+                    # <=48h, cambiamos el estado a 'confirmed' directo. Antes el LLM decía
+                    # "quedó confirmada tu asistencia" pero nunca ejecutaba la acción, así
+                    # que appointments.status seguía sin cambiar. No corre en flujos de
+                    # agendamiento activo (OFFERED_SLOTS/SLOT_LOCKED) para no pisarlos.
+                    if prev_state_str not in ("OFFERED_SLOTS", "SLOT_LOCKED") and _classify_reminder_reply(user_msg) == "confirm":
+                        try:
+                            _apt = await pool.fetchrow(
+                                """
+                                SELECT a.id, a.appointment_datetime, a.status
+                                  FROM appointments a
+                                  JOIN patients p ON a.patient_id = p.id AND p.tenant_id = a.tenant_id
+                                 WHERE a.tenant_id = $1
+                                   AND REGEXP_REPLACE(p.phone_number, '[^0-9]', '', 'g') = REGEXP_REPLACE($2, '[^0-9]', '', 'g')
+                                   AND a.appointment_datetime > NOW()
+                                   AND a.reminder_sent = true
+                                   AND a.reminder_sent_at IS NOT NULL
+                                   AND a.reminder_sent_at >= NOW() - INTERVAL '48 hours'
+                                   AND a.status IN ('scheduled', 'pending')
+                                 ORDER BY a.appointment_datetime ASC
+                                 LIMIT 1
+                                """,
+                                tenant_id, phone,
+                            )
+                            if _apt:
+                                await pool.execute(
+                                    "UPDATE appointments SET status = 'confirmed', updated_at = NOW() WHERE id = $1 AND tenant_id = $2",
+                                    _apt["id"], tenant_id,
+                                )
+                                logger.info(
+                                    f"✅ REMINDER_CONFIRM: turno {_apt['id']} confirmado por palabra ({user_msg[:30]!r}) para phone={phone}"
+                                )
+                                state_hint += (
+                                    "\n\n[CONFIRMACIÓN DE TURNO — USO INTERNO]: El paciente confirmó su asistencia y su turno YA quedó CONFIRMADO en el sistema. "
+                                    "Respondé cálido y breve confirmando (ej: \"¡Perfecto! Quedó confirmada tu asistencia 😊 ¡Te esperamos!\"). "
+                                    "NO ofrezcas nuevos turnos ni pidas más datos."
+                                )
+                        except Exception as _rc_err:
+                            logger.warning(f"[REMINDER_CONFIRM] error: {_rc_err}")
             except Exception as state_err:
                 logger.warning(f"[STATE_GUARD] Failed to get state: {state_err}")
 
@@ -4324,11 +4416,25 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
             logger.warning(f"agent-failure flag/alert failed (non-blocking): {_flag_err}")
         response_text = ""
 
-    # AG-12: nunca enviar el placeholder interno "[Sin respuesta]" al paciente.
-    # Si el motor no generó texto, queda vacío y el guard de abajo omite el envío.
+    # AG-12 + FIX mudo-datos-media: nunca enviar el placeholder interno "[Sin respuesta]".
+    # Si el motor no generó texto PERO el paciente mandó foto/estudio y/o un bulk de
+    # datos, NO lo dejamos mudo: mandamos un acuse corto y ofrecemos continuar. (Caso
+    # María Sol: mandó todos sus datos + foto y el bot no respondió nada.)
     if response_text and response_text.strip() == "[Sin respuesta]":
-        logger.warning("🔇 Suppressing placeholder '[Sin respuesta]' — not sending to patient")
-        response_text = ""
+        _vis = locals().get("vision_context_str", "") or ""
+        _aud = locals().get("audio_context_str", "") or ""
+        _turn_had_payload = bool(_vis) or bool(_aud) or (len(" ".join(messages).strip()) > 60)
+        if _turn_had_payload:
+            logger.warning(
+                "🔇 '[Sin respuesta]' con payload (media/datos) — enviando acuse fallback en vez de quedar mudo"
+            )
+            response_text = (
+                "¡Gracias! Ya me llegó todo 😊 Te ayudo a coordinar el turno: "
+                "¿qué día y horario te quedan más cómodos?"
+            )
+        else:
+            logger.warning("🔇 Suppressing placeholder '[Sin respuesta]' — not sending to patient")
+            response_text = ""
 
     # ANTI-LOOP DE CORTESÍA: el prompt instruye responder exactamente [SILENCIO]
     # cuando el paciente solo agradece/se despide tras un cierre ya hecho
