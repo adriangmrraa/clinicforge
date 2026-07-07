@@ -7082,11 +7082,15 @@ async def derivhumano(reason: str):
                 "status": apt_row["status"] or "—",
             }
 
-        # 4. Chat history (last 15 messages for full context)
+        # 4. Chat history (últimos 15 msgs de las últimas 48h — FIX #3 caso Stella:
+        # antes SIN cota temporal mezclaba audios de días atrás + instrucciones post-op
+        # + el mensaje de hoy en el mail de derivación. Se acota a la interacción reciente.)
         history = await db.pool.fetch(
             """
             SELECT role, content, created_at FROM chat_messages
-            WHERE from_number = $1 AND tenant_id = $2 ORDER BY created_at DESC LIMIT 15
+            WHERE from_number = $1 AND tenant_id = $2
+              AND created_at > NOW() - INTERVAL '48 hours'
+            ORDER BY created_at DESC LIMIT 15
         """,
             phone,
             tenant_id,
@@ -14267,12 +14271,19 @@ async def chat_endpoint(
                         "reason": "human_intervention_active",
                     }
                 else:
-                    # Override expirado, limpiar flags
+                    # Override expirado, limpiar flags + urgencia stale (FIX #2 caso Stella):
+                    # urgency_level/urgency_reason los escribe triage_urgency y nunca se
+                    # limpiaban → contaminaban el mail de una derivación posterior con el
+                    # motivo VIEJO. Al expirar el override (el caso ya no está activo) se
+                    # resetean; si el paciente vuelve a estar urgente, triage_urgency los
+                    # re-setea con el motivo nuevo.
                     await db.pool.execute(
                         """
                         UPDATE patients
                         SET human_handoff_requested = FALSE,
-                            human_override_until = NULL
+                            human_override_until = NULL,
+                            urgency_level = NULL,
+                            urgency_reason = NULL
                         WHERE tenant_id = $1 AND phone_number = $2
                     """,
                         tenant_id,
