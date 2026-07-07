@@ -2012,7 +2012,14 @@ async def process_buffer_task(
             "Sábado",
             "Domingo",
         ]
-        current_time_str = f"{dias[now.weekday()]} {now.strftime('%d/%m/%Y %H:%M')}"
+        # Hora redondeada a la hora en punto (%H:00) a propósito: current_time se inyecta
+        # a mitad del system prompt y, con minutos, cambiaba en CADA mensaje → rompía el
+        # caché de prompt de OpenAI de ahí hacia abajo (~890 líneas recalculadas por
+        # mensaje). Redondeado a la hora, el valor es estable durante toda la conversación
+        # (la TTL del caché es de minutos) → el bloque estático se cachea. El bot conserva
+        # la noción horaria (p. ej. "¿están abiertos ahora?"); solo pierde el minuto exacto,
+        # que no usa para nada. Optimización de tokens (FASE 2).
+        current_time_str = f"{dias[now.weekday()]} {now.strftime('%d/%m/%Y %H:00')}"
 
         # RAG: Unified semantic search across FAQs, insurance, derivation, instructions
         rag_faqs_section = ""
