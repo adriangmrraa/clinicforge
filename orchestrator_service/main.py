@@ -2776,14 +2776,9 @@ async def check_availability(
         if _prov and _prov.lower() in ("particular", "ninguna", "no", "sin obra social"):
             _prov = None
         if _prov:
-            tip_row = await db.pool.fetchrow(
-                """SELECT provider_name, scheduling_mode, scheduling_delay_days
-                   FROM tenant_insurance_providers
-                   WHERE tenant_id = $1 AND is_active = true
-                     AND (provider_name ILIKE '%' || $2 || '%' OR $2 ILIKE '%' || provider_name || '%')
-                   ORDER BY LENGTH(provider_name) DESC LIMIT 1""",
-                tenant_id, _prov,
-            )
+            # Escalera compartida (exacto → alias → trigram → bidireccional):
+            # idéntica a check_insurance_coverage y a los guards de reserva.
+            tip_row = await _match_insurance_provider_row(tenant_id, _prov)
             if tip_row:
                 _mode = tip_row.get("scheduling_mode") or "immediate"
                 _delay = tip_row.get("scheduling_delay_days") or 0
@@ -4089,6 +4084,62 @@ async def create_patient(
         return f"❌ Error al crear el paciente: {e}"
 
 
+async def _match_insurance_provider_row(tenant_id: int, raw_name: str):
+    """Resuelve la fila (provider_name, scheduling_mode, scheduling_delay_days) de
+    tenant_insurance_providers para un nombre "sucio" (texto del LLM, ficha o Redis).
+    ESCALERA IDÉNTICA a check_insurance_coverage, compartida por el semáforo de
+    check_availability y los guards de book/reschedule, para que los tres puntos
+    coincidan SIEMPRE en qué obra social es:
+      (1) exacto case-insensitive — evita que "OSDE" caiga en "OSDEPYM";
+      (2) alias ISSN/Instituto (sigla vs nombre largo, no matchean por trigram);
+      (3) similitud trigram, solo si es inequívoca;
+      (4) ILIKE bidireccional ("OSDE 210" en ficha ↔ "OSDE" en panel), solo si es
+          inequívoco. Ambiguo → None: mejor NO aplicar restricción que aplicar la
+          de OTRA obra social.
+    """
+    _q = (raw_name or "").strip()
+    if not _q:
+        return None
+    _cols = "provider_name, scheduling_mode, scheduling_delay_days"
+    try:
+        row = await db.pool.fetchrow(
+            f"SELECT {_cols} FROM tenant_insurance_providers WHERE tenant_id = $1 AND LOWER(provider_name) = LOWER($2) AND is_active = true",
+            tenant_id, _q,
+        )
+        if row:
+            return row
+        _ql = _q.lower()
+        if "issn" in _ql or "instituto" in _ql:
+            _alias = await db.pool.fetch(
+                f"SELECT {_cols} FROM tenant_insurance_providers WHERE tenant_id = $1 AND is_active = true AND (provider_name ILIKE '%issn%' OR provider_name ILIKE '%instituto%')",
+                tenant_id,
+            )
+            if len(_alias) == 1:
+                return _alias[0]
+        try:
+            _tri = await db.pool.fetch(
+                f"SELECT {_cols} FROM tenant_insurance_providers WHERE tenant_id = $1 AND is_active = true AND provider_name % $2 ORDER BY similarity(provider_name, $2) DESC LIMIT 2",
+                tenant_id, _q,
+            )
+            if len(_tri) == 1:
+                return _tri[0]
+        except Exception:
+            pass  # pg_trgm no disponible → seguir con ILIKE
+        _like = await db.pool.fetch(
+            f"SELECT {_cols} FROM tenant_insurance_providers WHERE tenant_id = $1 AND is_active = true AND (provider_name ILIKE '%' || $2 || '%' OR $2 ILIKE '%' || provider_name || '%') LIMIT 3",
+            tenant_id, _q,
+        )
+        if len(_like) == 1:
+            return _like[0]
+        if len(_like) > 1:
+            logger.warning(
+                f"insurance match ambiguo para '{_q}' (tenant {tenant_id}): {[r['provider_name'] for r in _like]} — sin restricción"
+            )
+    except Exception as _mi_err:
+        logger.debug(f"insurance provider match (non-fatal): {_mi_err}")
+    return None
+
+
 async def _insurance_min_booking_date(tenant_id: int, phone=None, patient_id=None):
     """(min_date, provider_name) si la cobertura vigente del paciente tiene plazo
     'delayed' (scheduling_delay_days > 0). Espeja el SEMÁFORO de check_availability
@@ -4121,15 +4172,9 @@ async def _insurance_min_booking_date(tenant_id: int, phone=None, patient_id=Non
                 pass
         if not prov or str(prov).strip().lower() in ("particular", "ninguna", "no", "sin obra social"):
             return None
-        # Match bidireccional (cubre "OSDE 210" en la ficha vs "OSDE" en el panel y viceversa)
-        tip = await db.pool.fetchrow(
-            """SELECT provider_name, scheduling_mode, scheduling_delay_days
-               FROM tenant_insurance_providers
-               WHERE tenant_id = $1 AND is_active = true
-                 AND (provider_name ILIKE '%' || $2 || '%' OR $2 ILIKE '%' || provider_name || '%')
-               ORDER BY LENGTH(provider_name) DESC LIMIT 1""",
-            tenant_id, str(prov).strip(),
-        )
+        # Escalera de matching compartida (exacto → alias → trigram → bidireccional),
+        # idéntica al semáforo de check_availability y a check_insurance_coverage.
+        tip = await _match_insurance_provider_row(tenant_id, str(prov).strip())
         if tip and (tip["scheduling_mode"] or "immediate") == "delayed" and (tip["scheduling_delay_days"] or 0) > 0:
             return (
                 get_now_arg().date() + timedelta(days=int(tip["scheduling_delay_days"])),
