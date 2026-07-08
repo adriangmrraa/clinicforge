@@ -107,7 +107,10 @@ async def main() -> int:
     ap.add_argument("--categoria", default=None, help="Filtrar por categoría")
     ap.add_argument("--case", default=None, help="Correr un solo caso por id")
     ap.add_argument("--cases-file", default=str(Path(__file__).parent / "cases.jsonl"))
-    ap.add_argument("--temperature", type=float, default=0.3)
+    # temperature=0 para ESPEJAR PRODUCCIÓN (main.py crea el LLM con temperature=0):
+    # con 0.3 el banco tenía varianza artificial que prod NO tiene — casos que
+    # pasaban/fallaban al azar entre corridas con el MISMO prompt (flip-flops).
+    ap.add_argument("--temperature", type=float, default=0.0)
     ap.add_argument("--show-response", action="store_true", help="Imprimir la respuesta completa")
     ap.add_argument("--show-prompt", action="store_true", help="Volcar el system prompt y salir")
     args = ap.parse_args()
