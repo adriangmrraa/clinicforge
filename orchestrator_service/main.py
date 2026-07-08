@@ -8985,6 +8985,24 @@ async def verify_payment_receipt(
             dia_nombre = dias[apt_dt_arg.weekday()]
             fecha = apt_dt_arg.strftime(f"{dia_nombre} %d/%m a las %H:%M")
 
+            # Mensaje según el MOMENTO (caso Ale 2026-07-08): si el turno YA empezó o
+            # pasó (el paciente pagó después de atenderse), "queda CONFIRMADO. Te
+            # esperamos!" es un sinsentido — se registra el pago de la consulta ya
+            # realizada, sin prometer un turno futuro.
+            _now_ref = (
+                datetime.now(apt_dt_arg.tzinfo) if apt_dt_arg.tzinfo else datetime.now()
+            )
+            if apt_dt_arg <= _now_ref:
+                _verified_msg = (
+                    f"✅ ¡Comprobante verificado! Quedó registrado el pago de tu {treatment_display} "
+                    f"del {fecha}. ¡Muchas gracias! 😊"
+                )
+            else:
+                _verified_msg = (
+                    f"✅ Comprobante verificado correctamente! Tu turno de {treatment_display} el {fecha} "
+                    f"con {apt['prof_name'] or 'el profesional'} queda CONFIRMADO. Te esperamos! 😊"
+                )
+
             overpaid_msg = ""
             if amount_overpaid > 0:
                 overpaid_str = f"${int(amount_overpaid):,}".replace(",", ".")
@@ -9039,7 +9057,7 @@ async def verify_payment_receipt(
                         f"[conversation_state] set_state in verify_payment_receipt failed (non-blocking): {state_err}"
                     )
 
-                return f"✅ Comprobante verificado correctamente! Tu turno de {treatment_display} el {fecha} con {apt['prof_name'] or 'el profesional'} queda CONFIRMADO. Te esperamos! 😊{overpaid_msg}"
+                return f"{_verified_msg}{overpaid_msg}"
 
             # No email - return flag for agent to request it
             logger.info(
@@ -9057,7 +9075,7 @@ async def verify_payment_receipt(
                 )
 
             return {
-                "message": f"✅ Comprobante verificado correctamente! Tu turno de {treatment_display} el {fecha} con {apt['prof_name'] or 'el profesional'} queda CONFIRMADO. Te esperamos! 😊{overpaid_msg}",
+                "message": f"{_verified_msg}{overpaid_msg}",
                 "email_required": True,
                 "summary": f"Pago verificado. Seña de ${amount_str or '0'} confirmada. Turno: {treatment_display} el {fecha}.",
             }
@@ -11817,7 +11835,7 @@ Si un paciente te pregunta cómo te llamás, respondé: "Me llamo {bot_name}, so
 • PROHIBIDO repetir información que ya le diste al paciente. Si ya informaste sobre obra social, coseguro, precio, horarios o cualquier otro dato, NO lo repitas textualmente. Si el paciente vuelve a preguntar lo mismo, reformulá brevemente o referenciá lo que ya dijiste: "Como te comenté, el coseguro varía según el plan y se abona el día de la consulta." NUNCA copiar-pegar la misma respuesta 2 veces. Sos una persona, no un grabador.
 • ANTI-ECO: NUNCA repitas la frase del paciente como si fuera tuya. Si dice "ya estamos afuera", PROHIBIDO responder "Ya estamos afuera, perfecto" (¡vos no estás afuera!) — respondé a la situación, no espejes sus palabras: "¡Perfecto! Pasá y avisá en recepción 😊". Aplica a todo: no arranques tus respuestas re-enunciando lo que el paciente acaba de decir.
 • LLEGADA A LA CLÍNICA: si el paciente avisa que YA LLEGÓ ("estamos afuera", "estamos abajo", "ya llegué", "estoy en la puerta") y tiene turno HOY o en curso: dale UNA indicación concreta y cálida para entrar (ej: "¡Perfecto! Subí y avisá en recepción que llegaste 😊" — con piso/consultorio si figura la sede en el contexto). NO ofrezcas turnos, NO pidas datos, NO lo hagas esperar una llamada. Si mencionó una llamada perdida, tranquilizalo: entrar y avisar en recepción alcanza.
-• CIERRE DE CORTESÍA (ANTI-LOOP DE GRACIAS): Si el paciente responde SOLO con cortesía ("gracias", "muchas gracias", "gracias por comprender", "ok", "genial", "estamos comunicados", "igualmente", "saludos", un emoji) y NO hay pregunta pendiente, pago en curso ni flujo activo: cerrá UNA sola vez, corto y cálido (ej: "¡De nada 😊 Nos vemos!") y llamá end_conversation. Si tu mensaje ANTERIOR ya fue un cierre de cortesía (agradecimiento/despedida) y el paciente vuelve a agradecer o despedirse sin pedir nada nuevo, respondé EXACTAMENTE [SILENCIO] (esa palabra sola, sin nada más): el sistema no enviará nada — como una persona real, que no contesta "gracias a vos" infinitas veces. PROHIBIDO encadenar dos cierres de cortesía seguidos. PROHIBIDO re-mencionar datos ya dichos (turno, demoras, avisos) dentro de un cierre de cortesía. NUNCA uses [SILENCIO] si el paciente preguntó algo, pidió un cambio, dio un dato nuevo o volvió a saludar ("hola"/"buenas" reabren la conversación). OJO: "ok"/"dale"/"genial" inmediatamente después de una pregunta tuya o de opciones de turno = RESPUESTA a esa pregunta (elección), NUNCA cortesía.
+• CIERRE DE CORTESÍA (ANTI-LOOP DE GRACIAS): Si el paciente responde SOLO con cortesía ("gracias", "muchas gracias", "gracias por comprender", "ok", "genial", "estamos comunicados", "igualmente", "saludos", un emoji) y NO hay pregunta pendiente, pago en curso ni flujo activo: cerrá UNA sola vez, corto y cálido, dejando la puerta abierta (ej: "¡De nada! 😊 Cualquier cosa que necesites, escribime por acá. ¡Que estés muy bien!") — NUNCA un seco "De nada, nos vemos" — y llamá end_conversation. Si tu mensaje ANTERIOR ya fue un cierre de cortesía (agradecimiento/despedida) y el paciente vuelve a agradecer o despedirse sin pedir nada nuevo, respondé EXACTAMENTE [SILENCIO] (esa palabra sola, sin nada más): el sistema no enviará nada — como una persona real, que no contesta "gracias a vos" infinitas veces. PROHIBIDO encadenar dos cierres de cortesía seguidos. PROHIBIDO re-mencionar datos ya dichos (turno, demoras, avisos) dentro de un cierre de cortesía. NUNCA uses [SILENCIO] si el paciente preguntó algo, pidió un cambio, dio un dato nuevo o volvió a saludar ("hola"/"buenas" reabren la conversación). OJO: "ok"/"dale"/"genial" inmediatamente después de una pregunta tuya o de opciones de turno = RESPUESTA a esa pregunta (elección), NUNCA cortesía.
 
 ## ⚠️ REGLAS PRIMORDIALES (ANTES DE CUALQUIER ACCIÓN)
 
