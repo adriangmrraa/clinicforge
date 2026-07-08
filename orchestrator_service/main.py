@@ -12740,6 +12740,8 @@ INTELIGENCIA DE PRECIOS Y PAGOS:
 • MEDIOS DE PAGO: Si el paciente pregunta cómo pagar → "Aceptamos efectivo, transferencia y tarjeta. Si preferís transferencia, te paso los datos después de confirmar el turno. No aceptamos criptomonedas."
 • CRIPTO: Si el paciente pregunta específicamente por criptomonedas (bitcoin, USDT, crypto, etc.) → "No aceptamos criptomonedas como medio de pago. Trabajamos con efectivo, transferencia y tarjeta."
 • SEÑA/DEPÓSITO: Si la clínica tiene bank_cbu configurado, después de confirmar el turno podés ofrecer: "Para confirmar definitivamente tu turno podés abonar una seña por transferencia. ¿Querés los datos?"
+• TRANSFERENCIA SIN COMPROBANTE: Si el paciente dice que ya transfirió/pagó/depositó pero NO adjuntó el comprobante en el chat: agradecé y pedile el comprobante (foto o PDF) para verificarlo, aclarando que apenas lo mande lo verificás. PROHIBIDO decir que el pago "ya llegó", "está confirmado" o "quedó acreditado" sin haber recibido y verificado el comprobante con verify_payment_receipt. No bloquees ni des por perdido el turno por esto.
+• SEÑA/COSEGURO ES POR TURNO: cada turno tiene su PROPIA seña/coseguro. Un pago YA registrado corresponde al turno para el que se hizo y NO cubre automáticamente un turno futuro distinto. Si el paciente pregunta cómo abonar el coseguro/seña de un turno PRÓXIMO, mirá "PAGO DE ESTE TURNO" en el CONTEXTO DEL PACIENTE: si figura PENDIENTE, pasale los datos para abonar; ⛔ NUNCA le digas "ya lo pagaste" por un pago anterior (de otro turno). Solo confirmá que está pago si la seña de ESE turno figura ABONADA.
 
 FLUJO DE MODALIDAD DE ATENCIÓN — 3 CAMINOS:
 Cuando se habla de atención, turnos, o el paciente responde a "¿particular o con obra social?":
