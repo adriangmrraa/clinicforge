@@ -54,10 +54,18 @@ async def create_execution_for_event(
             # Dedup by appointment_id when available (each appointment gets its own execution).
             # For triggers without appointment_id (e.g. new_lead), fall back to phone_number.
             if appointment_id:
+                # Para "turno completado", el dedup incluye ejecuciones YA COMPLETADAS:
+                # las instrucciones post-op salen UNA sola vez por turno — si el staff
+                # cambia el estado varias veces (completado→agendado→completado), NO
+                # se re-envían. Para el resto de triggers, solo dedup de activas.
+                if trigger_type == "appointment_completed":
+                    _dedup_statuses = "('running', 'waiting_response', 'paused', 'completed')"
+                else:
+                    _dedup_statuses = "('running', 'waiting_response', 'paused')"
                 existing = await pool.fetchval(
-                    """SELECT id FROM automation_executions
+                    f"""SELECT id FROM automation_executions
                        WHERE playbook_id = $1 AND tenant_id = $2 AND appointment_id = $3
-                         AND status IN ('running', 'waiting_response', 'paused')""",
+                         AND status IN {_dedup_statuses}""",
                     pb_id, tenant_id, appointment_id,
                 )
                 dup_key = f"appointment {appointment_id}"
