@@ -1622,6 +1622,15 @@ async def process_buffer_task(
                 identity_lines.append(
                     f"• ÚLTIMO TURNO: {last_apt['treatment_name'] or 'Consulta'} con Dr/a. {last_apt['professional_name']} el {ldt_str} (hace {days_since} días). Estado: {last_apt['status']}."
                 )
+                if days_since == 0:
+                    # Caso Ale (2026-07-08): pagó/mandó cosas DESPUÉS de atenderse y el
+                    # bot le respondió "queda confirmado, te esperamos" / "la revisará
+                    # en la consulta" como si el turno fuera futuro.
+                    identity_lines.append(
+                        "• ⚠️ EL TURNO DE HOY YA OCURRIÓ (arriba figura como ÚLTIMO TURNO): si el paciente manda ahora un comprobante, estudios o imágenes, corresponden a esa consulta YA REALIZADA. "
+                        "Reconocé el pago/archivo de la consulta de HOY ('quedó registrado el pago de tu consulta de hoy ✅' / 'quedó guardado en tu ficha'). "
+                        "⛔ PROHIBIDO decir 'te esperamos', 'tu turno queda confirmado' o 'la Dra. lo revisará en la consulta' como si la consulta fuera futura."
+                    )
                 if days_since <= 7:
                     identity_lines.append(
                         f"• SEGUIMIENTO POST-TRATAMIENTO: El paciente tuvo un turno hace {days_since} días. Si escribe, preguntale cómo se siente después del tratamiento."
