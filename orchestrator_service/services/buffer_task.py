@@ -4172,6 +4172,38 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                 "",
             ).strip()
 
+        # --- NET DETERMINISTA: sinsentido "no trabajamos ... con particular" (Lucas 2026-07-03) ---
+        # Las plantillas F4/M1 y check_insurance_coverage ("No trabajamos de forma directa / directamente
+        # con [OS], la consulta sería de forma particular. Igual te damos el comprobante...") son EXCLUSIVAS
+        # para una OBRA SOCIAL REAL not_found/rejected. Si el LLM las dispara con la palabra literal
+        # "particular" en el slot [OS], produce un sinsentido autocontradictorio. Este net borra SOLO ese
+        # caso (token literal "particular" en el slot); nunca la línea legítima con un nombre de OS real
+        # (CIMO/OSDIPP/OSDE/etc.), porque el match ANCLA en "con particular". También arrastra la cláusula
+        # colgante del reintegro (no aplica a un paciente 100% particular). Cubre "de forma/de manera
+        # directa" y "directamente", y frases terminadas en punto, salto de línea o emoji (Paula manda en burbujas).
+        if response_text and "trabajamos" in response_text.lower():
+            _nonsense_pattern = re.compile(
+                r"\bno\s+trabajamos\s+(?:(?:de\s+forma|de\s+manera)\s+directa|directamente)\s+con\s+"
+                r"(?:el\s+|la\s+|lo\s+)?particular\b"       # slot [OS] == token literal "particular" -> sinsentido
+                r"[^.!?\n]*?(?:[.!?\n]+|\U0001F60A|$)"       # fin de la oracion (punto, salto o emoji)
+                r"(?:\s*igual\s+te\s+damos\s+el\s+comprobante[^.!?\n]*?reintegro[^.!?\n]*?(?:[.!?\n]+|\U0001F60A|$))?",
+                re.IGNORECASE,
+            )
+            _cleaned = _nonsense_pattern.sub("", response_text)
+            if _cleaned != response_text:
+                # Colapsar espacios/saltos que deja la oracion borrada y limpiar sangrias de burbuja.
+                _cleaned = re.sub(r"[ \t]{2,}", " ", _cleaned)
+                _cleaned = re.sub(r"(^|\n)[ \t]+", r"\1", _cleaned)
+                _cleaned = re.sub(r"\n{3,}", "\n\n", _cleaned)
+                _cleaned = _cleaned.strip()
+                logger.warning(
+                    "🩹 NET particular-nonsense: se removio la linea F4/coseguro mal disparada "
+                    "con slot='particular' (sinsentido). Antes=%r Despues=%r",
+                    response_text[:300],
+                    _cleaned[:300],
+                )
+                response_text = _cleaned
+
         # --- DATE VALIDATOR (Bug #1) ---
         # Validate dates in response against canonical dates from tool outputs
         # Fixes DD↔MM swap issue in LLM response text
