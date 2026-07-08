@@ -109,6 +109,25 @@ async def _process_execution(pool, execution: dict, now: datetime):
                 tomorrow, exec_id,
             )
             logger.info(f"📬 Execution {exec_id} deferred to tomorrow (daily cap reached)")
+        elif reason == "before_appointment":
+            # Diferir hasta que el turno realmente haya ocurrido (+30 min de margen)
+            try:
+                _apt_dt = await pool.fetchval(
+                    "SELECT appointment_datetime FROM appointments WHERE id = $1",
+                    execution.get("appointment_id"),
+                )
+                if _apt_dt is not None:
+                    _apt_utc = _apt_dt if _apt_dt.tzinfo else _apt_dt.replace(tzinfo=timezone.utc)
+                    defer_to = _apt_utc + timedelta(minutes=30)
+                else:
+                    defer_to = now + timedelta(minutes=30)
+            except Exception:
+                defer_to = now + timedelta(minutes=30)
+            await pool.execute(
+                "UPDATE automation_executions SET next_step_at = $1, updated_at = NOW() WHERE id = $2",
+                defer_to, exec_id,
+            )
+            logger.info(f"⏳ Execution {exec_id} deferred to {defer_to} (el turno aún no ocurrió — guard before_appointment)")
         elif reason in ("abort_booking", "abort_human", "abort_optout"):
             await _complete_execution(pool, exec_id, "aborted", pause_reason=reason)
         else:
@@ -208,8 +227,13 @@ async def _preflight_check(pool, execution: dict, step: dict, now: datetime):
         if has_future:
             return (False, "abort_booking")
 
-    # 4. Abort: human override active
-    if execution.get("abort_on_human"):
+    # 4. Abort: human override active.
+    # GUARDA (caso Julio): antes esto solo corría si el playbook tenía
+    # abort_on_human=true configurado — con el flag apagado, las automatizaciones
+    # le escribían al paciente EN MEDIO de una atención humana (Modo Manual).
+    # Ahora el default es respetar el Modo Manual; solo un abort_on_human=False
+    # EXPLÍCITO lo desactiva.
+    if execution.get("abort_on_human") is not False:
         override = await pool.fetchval(
             """SELECT human_override_until FROM chat_conversations
                WHERE tenant_id = $1 AND external_user_id = $2
@@ -219,6 +243,23 @@ async def _preflight_check(pool, execution: dict, step: dict, now: datetime):
         )
         if override:
             return (False, "abort_human")
+
+    # 5. GUARDA de tiempo (caso Julio/Delfina): un playbook de "turno completado"
+    # NUNCA ejecuta antes de la hora real del turno. Si el staff marca
+    # "completado" antes de tiempo (pasó: 21 min antes), se difiere en vez de
+    # mandar instrucciones post-op de un tratamiento que aún no ocurrió.
+    if execution.get("trigger_type") == "appointment_completed" and execution.get("appointment_id"):
+        try:
+            _apt_dt = await pool.fetchval(
+                "SELECT appointment_datetime FROM appointments WHERE id = $1 AND tenant_id = $2",
+                execution["appointment_id"], tenant_id,
+            )
+            if _apt_dt is not None:
+                _apt_utc = _apt_dt if _apt_dt.tzinfo else _apt_dt.replace(tzinfo=timezone.utc)
+                if _apt_utc > now:
+                    return (False, "before_appointment")
+        except Exception as _apt_err:
+            logger.warning(f"[preflight] before_appointment check failed: {_apt_err}")
 
     return (True, None)
 
