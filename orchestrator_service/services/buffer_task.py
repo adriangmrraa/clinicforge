@@ -1675,7 +1675,7 @@ async def process_buffer_task(
                     identity_lines.append(
                         f"• ⚠️ TURNO EN CURSO HOY: el paciente tiene su turno de {cur_apt['treatment_name'] or 'Consulta'} HOY a las {_cdt.strftime('%H:%M')} (está en la clínica o recién atendido). "
                         "⛔ NO le ofrezcas ni le busques un turno nuevo ni inicies agendamiento (salvo que lo pida EXPLÍCITAMENTE). "
-                        "Si manda estudios, imágenes o comprobantes, reconocé de forma cálida y BREVE que quedan asociados a su turno de hoy y que la doctora los evalúa en esa consulta."
+                        "Si manda —o te avisa que va a mandar— estudios, imágenes o comprobantes, decile que los mande por acá y reconocé de forma cálida y BREVE que quedan asociados a su turno de HOY y que quien los evalúa en esa consulta es la doctora (no vos)."
                     )
             except Exception:
                 pass
