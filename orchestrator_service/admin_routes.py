@@ -9601,6 +9601,20 @@ async def delete_appointment(
             except Exception as ge:
                 logger.error(f"Error borrando de GCal: {ge}")
 
+        # Cancelar ejecuciones de playbooks pendientes disparadas por ESTE turno
+        # (caso logs 2026-07-08: crear+borrar un turno a mano dejaba viva la
+        # ejecución de recuperación y le escribía al paciente horas después).
+        try:
+            await db.pool.execute(
+                """UPDATE automation_executions
+                   SET status = 'cancelled', pause_reason = 'appointment_deleted', updated_at = NOW()
+                   WHERE tenant_id = $1 AND appointment_id = $2
+                     AND status IN ('running', 'waiting_response', 'paused')""",
+                tenant_id, id,
+            )
+        except Exception as _pb_err:
+            logger.warning(f"cancel pending playbook executions failed (non-blocking): {_pb_err}")
+
         # Audit log (TIER 3 cap.3 Phase B) — MUST run BEFORE the DELETE so the FK to
         # appointments(id) still resolves at INSERT time. After the DELETE, the FK
         # constraint ON DELETE SET NULL will null out appointment_id in the audit row,
