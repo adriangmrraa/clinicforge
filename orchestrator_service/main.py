@@ -105,9 +105,9 @@ ERROR_CATEGORY_SYSTEM_ERROR = "SYSTEM_ERROR"
 # v8.2 — Booking error protocol: every book_appointment failure returns [BOOK_ERROR:CODE]
 # v8.3 — Extended with category tuples (code -> (message, category))
 BOOKING_ERROR_CODES = {
-    "UNAVAILABLE": ("Ese horario ya no está disponible", ERROR_CATEGORY_RECOVERABLE),
+    "UNAVAILABLE": ("Ese horario se ocupó recién; ofrecele al paciente otros horarios cercanos (NO derivar)", ERROR_CATEGORY_RECOVERABLE),
     "EXPIRED": ("La reserva temporal venció", ERROR_CATEGORY_RECOVERABLE),
-    "CHAIRS_FULL": ("No hay más turnos para ese tratamiento hoy", ERROR_CATEGORY_RECOVERABLE),
+    "CHAIRS_FULL": ("A esa hora ya se completó la agenda; ofrecele horarios cercanos (NO derivar)", ERROR_CATEGORY_RECOVERABLE),
     "DUPLICATE": ("Ya tenés un turno para ese día y horario", ERROR_CATEGORY_BUSINESS_RULE),
     "PAST": ("No se puede reservar en el pasado", ERROR_CATEGORY_INPUT_ERROR),
     "HOLIDAY": ("Ese día es feriado", ERROR_CATEGORY_RECOVERABLE),
@@ -1269,6 +1269,8 @@ async def _get_slots_for_extra_day(
     prefetched_gcal_blocks: Optional[dict] = None,
     min_time: Optional[str] = None,
     max_time: Optional[str] = None,
+    forced_prof_id: Optional[int] = None,
+    derivation_filter_prof_id: Optional[int] = None,
 ) -> List[str]:
     """Obtiene slots libres para un día extra (para completar opciones multi-día). Versión simplificada.
 
@@ -1347,6 +1349,26 @@ async def _get_slots_for_extra_day(
                 ]
                 if not active_professionals:
                     return []
+
+    # Aplicar la MISMA restriccion de profesional que el dia-semilla (seed) del
+    # search principal (ver check_availability ~2548-2553): asi el OFFER multi-dia
+    # ofrece slots del EXACTO profesional que luego usa book_appointment, evitando
+    # el pisado de profesionales. Solo se aplica cuando el caller pasa el ID
+    # (default None = no-op, comportamiento identico al historico). No se toca si
+    # hay clean_name (pedido explicito ya resuelto por el filtro SQL de arriba).
+    if not clean_name and active_professionals:
+        if forced_prof_id:
+            active_professionals = [
+                p for p in active_professionals if p["id"] == forced_prof_id
+            ]
+            if not active_professionals:
+                return []
+        elif derivation_filter_prof_id:
+            active_professionals = [
+                p for p in active_professionals if p["id"] == derivation_filter_prof_id
+            ]
+            if not active_professionals:
+                return []
 
     # Construir busy_map — use pre-fetched data when available to avoid N+1 queries
     prof_ids = [p["id"] for p in active_professionals]
@@ -1625,6 +1647,8 @@ async def pick_representative_slots(
     max_time: Optional[str] = None,
     preferred_days: Optional[str] = None,
     prefer_nearest: bool = False,
+    forced_prof_id: Optional[int] = None,
+    derivation_filter_prof_id: Optional[int] = None,
 ) -> tuple:
     """
     Selecciona hasta max_options slots representativos.
@@ -1786,6 +1810,8 @@ async def pick_representative_slots(
                 prefetched_gcal_blocks=_prefetched_blocks,
                 min_time=min_time,
                 max_time=max_time,
+                forced_prof_id=forced_prof_id,
+                derivation_filter_prof_id=derivation_filter_prof_id,
             )
         except Exception as e:
             logger.warning(f"Error getting range day slots for {extra_date}: {e}")
@@ -1876,6 +1902,8 @@ async def pick_representative_slots(
                     prefetched_gcal_blocks=_prefetched_blocks,
                     min_time=min_time,
                     max_time=max_time,
+                    forced_prof_id=forced_prof_id,
+                    derivation_filter_prof_id=derivation_filter_prof_id,
                 )
             except Exception as e:
                 logger.warning(f"Error getting extra day slots for {extra_date}: {e}")
@@ -2120,7 +2148,7 @@ async def check_availability(
     exclude_dates: (Opcional) Fechas a excluir, ej: "2024-05-15, 2024-05-16"
     min_time: (Opcional) Límite inferior de horario (ej: "18:00") si el paciente pide "después de las 18".
     max_time: (Opcional) Límite superior de horario (ej: "12:00") si el paciente pide "antes del mediodía".
-    preferred_days: (Opcional) Días de la semana preferidos (ej: "lunes,miercoles"). No bloquea otros días, solo prioriza.
+    preferred_days: (Opcional) Día(s) de la semana que el paciente PIDE o al que se LIMITA (ej: "jueves,viernes"). RESTRINGE la búsqueda SOLO a esos días (excluye los demás). Usalo SIEMPRE que el paciente nombre uno o más días de la semana como preferencia o límite ("jueves o viernes", "solo los martes", "martes o jueves") — NO alcanza con poner interpreted_date en uno de esos días.
     insurance_provider: (Opcional) Obra social, prepaga o plan del paciente (ej: "Osde", "Swiss Medical", "Particular").
     La tool devuelve 2 opciones concretas de horario con sede. Presentá las opciones al paciente tal cual las recibís.
     """
@@ -2585,6 +2613,9 @@ async def check_availability(
                        WHERE p.is_active = true AND p.tenant_id = $1
                        AND (p.user_id IS NULL OR (u.status = 'active' AND u.role IN ('professional', 'ceo')))"""
             active_professionals = await db.pool.fetch(query, *params)
+            # El prof forzado no era bookeable (inactivo/sin fila) → la oferta multi-dia
+            # tambien debe abrirse: reseteamos forced_prof_id para que offer == seed.
+            forced_prof_id = None
         if not active_professionals:
             return "❌ No hay profesionales activos en esta sede para consultar disponibilidad. Por favor contactá a la clínica."
 
@@ -3393,9 +3424,22 @@ async def check_availability(
             )
 
         # SPEC-5: High-priority treatments get nearest slots — cap search window.
-        # EXCEPCIÓN: si el paciente delimitó un período explícito (search_mode 'month'/'week',
-        # ej. "para julio", "esta semana"), NO recortar a 3 días — respetar el rango pedido.
-        _period_explicit = bool(search_mode and search_mode.lower() in ("month", "week"))
+        # EXCEPCIÓN: NO recortar a 3 días cuando el paciente delimitó un período explícito
+        # (search_mode 'month'/'week'), pidió una PARTE del mes ("fin/fines de mes", "última
+        # semana", "mitad de mes"), o nombró día(s) concreto(s) (preferred_days). En esos casos
+        # hay que respetar el rango para poder llegar a esos turnos (ej. "jueves o viernes a
+        # fines de julio"). Detección por texto simple (sin regex) para máxima robustez.
+        _dq_low = (date_query or "").lower()
+        _period_words = any(_p in _dq_low for _p in (
+            "fin de", "fines de", "final de", "última semana", "ultima semana",
+            "fin de mes", "a fin de mes", "mitad de", "mediados",
+            "principio", "comienzo", "antes de que termine",
+        ))
+        _period_explicit = (
+            bool(search_mode and search_mode.lower() in ("month", "week"))
+            or bool(preferred_days)
+            or _period_words
+        )
         if treatment_priority in ("high", "medium-high") and not _period_explicit:
             max_search_days = 3
             if search_range > max_search_days:
@@ -3403,6 +3447,12 @@ async def check_availability(
                 logger.info(
                     f"📅 search_range capped to {max_search_days} days (treatment priority={treatment_priority!r})"
                 )
+        # Si el paciente pidió una PARTE del mes ("fines de julio"), asegurar una ventana
+        # lo bastante ancha para llegar a la última semana aunque el LLM haya mandado
+        # search_mode='exact'/'open'. pick_representative_slots ya filtra por preferred_days.
+        if _period_words and search_range < 14:
+            search_range = 14
+            logger.info("📅 search_range ampliado a 14 días (pedido de parte del mes en date_query)")
 
         # Resolve effective professional name for multi-day search.
         # When the professional was assigned via forced_prof_id or derivation rule
@@ -3476,7 +3526,9 @@ async def check_availability(
             min_time=min_time,
             max_time=max_time,
             preferred_days=preferred_days,
-            prefer_nearest=(search_mode in ("open", "exact") and not preferred_days),
+            prefer_nearest=(search_mode != "month"),
+            forced_prof_id=forced_prof_id,
+            derivation_filter_prof_id=derivation_filter_prof_id,
         )
 
         if options:
@@ -6278,7 +6330,7 @@ async def cancel_appointment(date_query: str):
             SELECT a.id, a.google_calendar_event_id, a.billing_amount, a.payment_status,
                    a.appointment_datetime, a.professional_id, tt.name as treatment_name
             FROM appointments a
-            LEFT JOIN treatment_types tt ON a.appointment_type = tt.code
+            LEFT JOIN treatment_types tt ON a.appointment_type = tt.code AND tt.tenant_id = a.tenant_id
             WHERE a.patient_id = $1 AND a.tenant_id = $2 AND DATE(a.appointment_datetime) = $3
             AND a.status IN ('scheduled', 'confirmed')
             LIMIT 1
@@ -7587,8 +7639,10 @@ async def save_scheduling_constraint(
       -> constraint_type="min_time", value="17:00"
     - "despues de las 12 no puedo", "solo hasta las 11 hs"
       -> constraint_type="max_time", value="12:00"
+    - "solo puedo los lunes y viernes", "unicamente los martes", "solo los sabados"
+      (dias a los que el paciente SE LIMITA / SOLO puede esos) -> constraint_type="preferred_days", value="lunes,viernes"
     - "los lunes no", "los viernes no puedo", "los fines de semana no"
-      -> constraint_type="exclude_days", value="lunes" (comma-sep: "lunes,viernes")
+      (dias que el paciente RECHAZA / NO puede) -> constraint_type="exclude_days", value="lunes" (comma-sep: "lunes,viernes")
     - "ese dia no tengo", "el 28/07 no puedo"
       -> constraint_type="exclude_dates", value="2026-07-28"
 
@@ -7611,6 +7665,8 @@ async def save_scheduling_constraint(
             kwargs["min_time"] = value.strip()
         elif ct == "max_time":
             kwargs["max_time"] = value.strip()
+        elif ct == "preferred_days":
+            kwargs["preferred_days"] = [d.strip().lower() for d in value.split(",") if d.strip()]
         elif ct == "exclude_days":
             kwargs["exclude_days"] = [d.strip().lower() for d in value.split(",") if d.strip()]
         elif ct == "exclude_dates":
@@ -7618,7 +7674,7 @@ async def save_scheduling_constraint(
         else:
             return (
                 f"constraint_type '{constraint_type}' not recognized. "
-                "Use: time_preference, min_time, max_time, exclude_days, exclude_dates"
+                "Use: time_preference, min_time, max_time, preferred_days, exclude_days, exclude_dates"
             )
 
         await _ssc(tid, phone, **kwargs)
@@ -7645,8 +7701,10 @@ async def save_scheduling_constraint(
       -> constraint_type="min_time", value="17:00"
     - "despues de las 12 no puedo", "solo hasta las 11 hs"
       -> constraint_type="max_time", value="12:00"
+    - "solo puedo los lunes y viernes", "unicamente los martes", "solo los sabados"
+      (dias a los que el paciente SE LIMITA / SOLO puede esos) -> constraint_type="preferred_days", value="lunes,viernes"
     - "los lunes no", "los viernes no puedo", "los fines de semana no"
-      -> constraint_type="exclude_days", value="lunes" (comma-sep: "lunes,viernes")
+      (dias que el paciente RECHAZA / NO puede) -> constraint_type="exclude_days", value="lunes" (comma-sep: "lunes,viernes")
     - "ese dia no tengo", "el 28/07 no puedo"
       -> constraint_type="exclude_dates", value="2026-07-28"
 
@@ -7669,6 +7727,8 @@ async def save_scheduling_constraint(
             kwargs["min_time"] = value.strip()
         elif ct == "max_time":
             kwargs["max_time"] = value.strip()
+        elif ct == "preferred_days":
+            kwargs["preferred_days"] = [d.strip().lower() for d in value.split(",") if d.strip()]
         elif ct == "exclude_days":
             kwargs["exclude_days"] = [d.strip().lower() for d in value.split(",") if d.strip()]
         elif ct == "exclude_dates":
@@ -7676,7 +7736,7 @@ async def save_scheduling_constraint(
         else:
             return (
                 f"constraint_type '{constraint_type}' not recognized. "
-                "Use: time_preference, min_time, max_time, exclude_days, exclude_dates"
+                "Use: time_preference, min_time, max_time, preferred_days, exclude_days, exclude_dates"
             )
 
         await _ssc(tid, phone, **kwargs)
@@ -11452,7 +11512,7 @@ Si el paciente pregunta si la consulta se descuenta del tratamiento: "La consult
     holidays_section = ""
     if upcoming_holidays:
         hol_lines = []
-        for h in upcoming_holidays[:10]:
+        for h in upcoming_holidays[:5]:
             ch = h.get("custom_hours")
             prof_name = h.get("professional_name")
             scope = h.get("scope", "global")
@@ -11495,7 +11555,7 @@ OJO: si el mensaje trae un saludo Y ADEMÁS un pedido concreto (ej: "hola, quier
 
 B) Si el paciente YA mencionó qué necesita (quiere turno, pregunta precio, menciona tratamiento, habla de un familiar, envía audio con contenido, etc.) → presentate BREVE y respondé a lo que pidió:
 "Hola 😊 Soy {bot_name}, del equipo de {clinic_name}. [Respondé directamente a lo que el paciente dijo/pidió]"
-NO uses la presentación completa ni el pitch genérico. Sé resolutiva. Si quiere consulta/turno o pregunta un precio, seguí la REGLA DE COBERTURA: si el paciente YA indicó su cobertura (nombró una obra social o dijo que es particular, en este primer mensaje o antes), NO se la vuelvas a preguntar — usala directamente. SOLO si NO la sabés, después de presentarte preguntá UNA sola vez "¿Contás con alguna obra social o te atenderías de forma particular?" ANTES de dar cualquier precio u ofrecer turnos. NUNCA asumas "particular" por tu cuenta ni digas "no trabajamos con particular": si el paciente es/dijo particular → informá el valor particular (F5); si nombra una obra social → verificala con check_insurance_coverage. (Si hay dolor/urgencia aplicá F2: contené primero y la cobertura va integrada en M3, no antes.)
+NO uses la presentación completa de 3 burbujas. Sé resolutiva. ⚠️ DISTINGUÍ: si pide un turno SIN nombrar un tratamiento específico (ej. "necesito sacar un turno", "quiero un turno"), tu respuesta ES la frase de orientación configurada de la clínica, TAL CUAL: "{greeting_specialty}" — ⛔ PROHIBIDO reformularla o inventar otra pregunta ("¿qué necesitás ver?", "¿qué necesitás?" quedan PROHIBIDAS). Si en cambio YA nombró un tratamiento específico o pregunta un precio, seguí la REGLA DE COBERTURA: si el paciente YA indicó su cobertura (nombró una obra social o dijo que es particular, en este primer mensaje o antes), NO se la vuelvas a preguntar — usala directamente. SOLO si NO la sabés, después de presentarte preguntá UNA sola vez "¿Contás con alguna obra social o te atenderías de forma particular?" ANTES de dar cualquier precio u ofrecer turnos. NUNCA asumas "particular" por tu cuenta ni digas "no trabajamos con particular": si el paciente es/dijo particular → informá el valor particular (F5); si nombra una obra social → verificala con check_insurance_coverage. (Si hay dolor/urgencia aplicá F2: contené primero y la cobertura va integrada en M3, no antes.)
 """
     elif patient_status == "patient_no_appointment":
         greeting_rule = f"""
@@ -11512,6 +11572,7 @@ IMPORTANTE: NO agregar "¿Necesitás agendar un turno?" ni preguntas extra si el
 
 B) Si el paciente YA indicó qué necesita → presentate BREVE y respondé directamente:
 "Hola 😊 Soy {bot_name}. [Respondé a lo que el paciente pidió]"
+⚠️ Si pide un turno SIN nombrar un tratamiento específico ("necesito un turno", "quiero sacar un turno"), tu respuesta ES la frase de orientación configurada de la clínica, TAL CUAL: "{greeting_specialty}" — ⛔ PROHIBIDO inventar otra ("¿qué necesitás ver?").
 
 C) AVANCE ANTE AFIRMACIÓN (CRÍTICO — que el paciente NO quede en el aire):
 Si el paciente pidió o insinuó un turno en esta conversación (ej: "¿tendrás un turno?", "necesito un turno", "quiero turno") y vos ya le ofreciste coordinar uno, y luego responde con una AFIRMACIÓN ("ok", "dale", "sí", "bueno", "listo", "va", "siii quiero un turno") SIN negar ni dudar:
@@ -11749,8 +11810,7 @@ Para tratamientos NO listados arriba (limpieza, blanqueamiento, consulta general
     day_after_iso = (_now + timedelta(days=2)).date().isoformat()
     next_week_iso = (_now + timedelta(days=7)).date().isoformat()
 
-    _base_prompt = f"""REGLA DE IDIOMA (OBLIGATORIA): {lang_rule}{extra_context}
-{greeting_rule}
+    _base_prompt = f"""REGLA DE IDIOMA (OBLIGATORIA): {lang_rule}
 IDENTIDAD Y TONO:
 Sos {bot_name}, del equipo de {clinic_name}.
 Si un paciente te pregunta cómo te llamás, respondé: "Me llamo {bot_name}, soy del equipo de {clinic_name}."
@@ -11775,7 +11835,7 @@ Si un paciente te pregunta cómo te llamás, respondé: "Me llamo {bot_name}, so
 • PROHIBIDO repetir información que ya le diste al paciente. Si ya informaste sobre obra social, coseguro, precio, horarios o cualquier otro dato, NO lo repitas textualmente. Si el paciente vuelve a preguntar lo mismo, reformulá brevemente o referenciá lo que ya dijiste: "Como te comenté, el coseguro varía según el plan y se abona el día de la consulta." NUNCA copiar-pegar la misma respuesta 2 veces. Sos una persona, no un grabador.
 • ANTI-ECO: NUNCA repitas la frase del paciente como si fuera tuya. Si dice "ya estamos afuera", PROHIBIDO responder "Ya estamos afuera, perfecto" (¡vos no estás afuera!) — respondé a la situación, no espejes sus palabras: "¡Perfecto! Pasá y avisá en recepción 😊". Aplica a todo: no arranques tus respuestas re-enunciando lo que el paciente acaba de decir.
 • LLEGADA A LA CLÍNICA: si el paciente avisa que YA LLEGÓ ("estamos afuera", "estamos abajo", "ya llegué", "estoy en la puerta") y tiene turno HOY o en curso: dale UNA indicación concreta y cálida para entrar (ej: "¡Perfecto! Subí y avisá en recepción que llegaste 😊" — con piso/consultorio si figura la sede en el contexto). NO ofrezcas turnos, NO pidas datos, NO lo hagas esperar una llamada. Si mencionó una llamada perdida, tranquilizalo: entrar y avisar en recepción alcanza.
-• CIERRE DE CORTESÍA (ANTI-LOOP DE GRACIAS): Si el paciente responde SOLO con cortesía ("gracias", "muchas gracias", "gracias por comprender", "ok", "genial", "estamos comunicados", "igualmente", "saludos", un emoji) y NO hay pregunta pendiente, pago en curso ni flujo activo: cerrá UNA sola vez, corto y cálido (ej: "¡De nada 😊 Nos vemos!") y llamá end_conversation. Si tu mensaje ANTERIOR ya fue un cierre de cortesía (agradecimiento/despedida) y el paciente vuelve a agradecer o despedirse sin pedir nada nuevo, respondé EXACTAMENTE [SILENCIO] (esa palabra sola, sin nada más): el sistema no enviará nada — como una persona real, que no contesta "gracias a vos" infinitas veces. PROHIBIDO encadenar dos cierres de cortesía seguidos. PROHIBIDO re-mencionar datos ya dichos (turno, demoras, avisos) dentro de un cierre de cortesía. NUNCA uses [SILENCIO] si el paciente preguntó algo, pidió un cambio, dio un dato nuevo o volvió a saludar ("hola"/"buenas" reabren la conversación). OJO: "ok"/"dale"/"genial" inmediatamente después de una pregunta tuya o de opciones de turno = RESPUESTA a esa pregunta (elección), NUNCA cortesía.
+• CIERRE DE CORTESÍA (ANTI-LOOP DE GRACIAS): Si el paciente responde SOLO con cortesía ("gracias", "muchas gracias", "gracias por comprender", "ok", "genial", "estamos comunicados", "igualmente", "saludos", un emoji) y NO hay pregunta pendiente, pago en curso ni flujo activo: cerrá UNA sola vez, corto y cálido, dejando la puerta abierta (ej: "¡De nada! 😊 Cualquier cosa que necesites, escribime por acá. ¡Que estés muy bien!") — NUNCA un seco "De nada, nos vemos" — y llamá end_conversation. Si tu mensaje ANTERIOR ya fue un cierre de cortesía (agradecimiento/despedida) y el paciente vuelve a agradecer o despedirse sin pedir nada nuevo, respondé EXACTAMENTE [SILENCIO] (esa palabra sola, sin nada más): el sistema no enviará nada — como una persona real, que no contesta "gracias a vos" infinitas veces. PROHIBIDO encadenar dos cierres de cortesía seguidos. PROHIBIDO re-mencionar datos ya dichos (turno, demoras, avisos) dentro de un cierre de cortesía. NUNCA uses [SILENCIO] si el paciente preguntó algo, pidió un cambio, dio un dato nuevo o volvió a saludar ("hola"/"buenas" reabren la conversación). OJO: "ok"/"dale"/"genial" inmediatamente después de una pregunta tuya o de opciones de turno = RESPUESTA a esa pregunta (elección), NUNCA cortesía.
 
 ## ⚠️ REGLAS PRIMORDIALES (ANTES DE CUALQUIER ACCIÓN)
 
@@ -12288,18 +12348,12 @@ PASO 2c: MODALIDAD DE ATENCIÓN — Preguntá "¿Te atendés de forma particular
     • NUNCA pidas teléfono del trabajador ni email. No es necesario.
     • PROHIBIDO tratar este flujo como un turno normal — siempre validar que quien llama es la empresa/ART.
   REGLA DE NOMBRE (CRÍTICO): NUNCA cambies el nombre de la conversación/paciente del interlocutor cuando el turno es para un tercero, menor o ART. El nombre de la conversación se mantiene como viene de WhatsApp/Instagram/Facebook.
-PASO 3: PROFESIONAL ASIGNADO — Prioridad (primera que coincida):
-
-  1. ¿El paciente tiene "PROFESIONAL ASIGNADO" en su contexto?
-     → Si el tratamiento es el MISMO para el que fue asignado → Usá ESE profesional. Punto.
-     → Si el tratamiento es DISTINTO → NO asumas que aplica. Pasá al paso 3 para determinar el profesional correcto para este nuevo tratamiento.
-  2. ¿Hay regla de derivación que coincida? → Si dice "equipo" → "nuestro equipo" sin nombres individuales. Si dice profesional → nombrá solo ese.
-  3. ¿El tratamiento tiene profesionales designados (vía list_services/get_service_details)?
-     → Si no hay regla de derivación: usá esos profesionales. Si tiene 1 → nombrá solo ese. Si varios → ofrecé opciones.
-  4. Fallback → sin filtro.
-
-  ANTI-CESIÓN: Si el paciente insiste con un profesional que NO está en ninguna de las fuentes arriba para ese tratamiento:
-  → "Ese tratamiento lo realiza [correcto]. ¿Te agendo?" NO cedas.
+PASO 3: PROFESIONAL — ES INTERNO. El sistema (check_availability / book_appointment) elige AUTOMÁTICAMENTE el profesional correcto según el tratamiento y el contexto del paciente (paciente asignado, regla de derivación, profesionales designados del tratamiento). NO es tu tarea elegirlo, nombrarlo ni comunicárselo al paciente.
+  ⛔ PROHIBIDO: nombrar al profesional por iniciativa propia (NUNCA "te agendo con Elizabeth/Eli" ni "con la Dra. X"), preguntar "¿con qué profesional?" / "¿con Laura o con Eli?", u ofrecer opciones de profesional. El paciente NO conoce a los profesionales y NO elige. Si necesitás referirte al conjunto, decí "el equipo"; en general hablá del turno (día/hora/sede) SIN nombrar profesional.
+  ✅ ÚNICA excepción — lo nombra el PROPIO paciente ("quiero con Laura", "un turno con Eli"): ahí SÍ respetás ese profesional y lo pasás en professional_name a check_availability.
+  → NO pases professional_name salvo que el paciente haya nombrado un profesional. El ruteo interno (asignado / derivación) lo hace el sistema solo.
+  ✅ EXCEPCIÓN INTERNA — SOLO CONSULTA GENERAL de evaluación (jamás ortodoncia, cirugía ni otro tratamiento específico): si el paciente solo puede un día en que Elizabeth/Eli NO atiende (lunes o jueves) pero Laura SÍ, pasá internamente professional_name='Laura' a check_availability y a book_appointment para agendar ESE día. Es un ruteo interno: NO le digas el nombre al paciente, ofrecé solo día/hora/sede como siempre.
+  ANTI-CESIÓN: Si el paciente insiste con un profesional que NO hace ese tratamiento → "Ese tratamiento lo realiza nuestro equipo. ¿Te agendo?" (sin nombrar a otro profesional). NO cedas.
 PASO 3b: PACIENTE CON TURNO EXISTENTE — Si el paciente YA TIENE un turno agendado (aparece "PRÓXIMO TURNO" en su contexto) y pide OTRO turno:
   • Reconocé el turno existente: "Ya tenés turno el [día] a las [hora] para [tratamiento]."
   • REAGENDAMIENTO (DLD-88): Si el paciente pide REAGENDAR/CAMBIAR/MOVER el turno:
@@ -12369,9 +12423,11 @@ PASO 4: CONSULTAR DISPONIBILIDAD — Llamá 'check_availability' con treatment_n
 
   ABIERTAS (search_mode="open"):
   - "lo antes posible" / "cuando puedan" → interpreted_date="{tomorrow_iso}"
-  - "cualquier martes o jueves por la tarde" → interpreted_date=próximo martes, time_preference="tarde"
+  - "cualquier martes o jueves por la tarde" → interpreted_date=próximo martes, preferred_days="martes,jueves", time_preference="tarde"
   - "un día de semana, no importa cuál" → interpreted_date="{tomorrow_iso}"
-  - "un día que no sea viernes" → interpreted_date="{tomorrow_iso}"
+  - "un día que no sea viernes" → interpreted_date="{tomorrow_iso}", exclude_days="viernes"
+  - "jueves o viernes" / "martes o jueves nada más" → interpreted_date=próximo día pedido, preferred_days con TODOS los días pedidos (ej. "jueves,viernes"), search_mode="week"
+  - "jueves o viernes a fines de julio" / "algún viernes a fin de mes" → interpreted_date=el ÚLTIMO día pedido de ese mes (ej. último viernes de julio: "2026-07-31"), preferred_days con TODOS los días pedidos (ej. "jueves,viernes"), search_mode="month"
   - "me da igual cuándo, que sea de mañana" → interpreted_date="{tomorrow_iso}", time_preference="mañana"
   - "cuando haya lugar, no me apuro" → interpreted_date="{tomorrow_iso}"
 
@@ -12393,6 +12449,8 @@ PASO 4: CONSULTAR DISPONIBILIDAD — Llamá 'check_availability' con treatment_n
   REGLA: date_query SIEMPRE debe incluir el mes. Si el paciente lo mencionó antes, AGREGARLO.
   REGLA INQUEBRANTABLE: interpreted_date SIEMPRE fecha FUTURA respecto a {current_time}. NUNCA una fecha pasada.
   • DÍA DE SEMANA SOLO (sin mes), ej. "miércoles", "el jueves", "miércoles misma hora" (típico al reprogramar): interpreted_date = el PRÓXIMO día de esa semana pedido contando desde hoy. Verificá que el weekday de esa fecha COINCIDA con el día pedido. Ej: si hoy es lunes y el paciente dice "miércoles", el próximo miércoles real (no un miércoles pasado, no otro día). Si te da una fecha cuyo día de la semana NO es el que pidió, recalculá.
+  • VARIOS DÍAS DE SEMANA o DÍA COMO LÍMITE (ej. "jueves o viernes", "martes o jueves", "solo puedo los viernes", "cualquiera menos el lunes"): pasá `preferred_days` con TODOS los días que quiere (ej. preferred_days="jueves,viernes") — o `exclude_days` con los que rechaza — en ESTA búsqueda y en TODAS las siguientes. ⚠️ CLAVE — no confundas: "SOLO puedo / ÚNICAMENTE los lunes y viernes" = esos son los ÚNICOS días → `preferred_days="lunes,viernes"` (y si usás save_scheduling_constraint, constraint_type="preferred_days"). "NO puedo los lunes" / "menos el lunes" = `exclude_days`. NUNCA cargues como exclude_days los días que el paciente SÍ quiere. NO alcanza con poner interpreted_date en uno de esos días: search_mode busca toda la semana e IGNORA el día pedido. ⛔ PROHIBIDO ofrecer un día que el paciente NO pidió (si pidió jueves/viernes, NUNCA le ofrezcas martes/miércoles). Si alguno de los días pedidos SÍ tiene agenda, ofrecé el/los OTRO(S) día(s) que pidió. Si NINGUNO de los días pedidos tiene agenda: 1) volvé a llamar check_availability SIN filtro de día (search_mode="open", sin preferred_days) para descubrir qué días se atiende realmente ese tratamiento; 2) explicale breve qué días se atiende y ofrecele las opciones más cercanas de ESOS días. Ej: "Ese tratamiento lo atendemos los martes, miércoles y viernes. Tengo únicamente estas opciones: 1️⃣... 2️⃣...". ⛔ NUNCA cambies de profesional para cubrir un día que no atiende: el profesional lo define el tratamiento y es interno. ✅ ÚNICA SALVEDAD — SOLO para CONSULTA GENERAL de evaluación (jamás ortodoncia, cirugía ni tratamientos específicos): si los únicos días pedidos son días en que Elizabeth/Eli NO atiende (lunes o jueves) pero Laura SÍ, ANTES de explicar los días volvé a llamar check_availability con professional_name='Laura' y preferred_days en esos mismos días; si Laura tiene agenda, ofrecé esas opciones (sin nombrarla, solo día/hora/sede). Solo si Laura tampoco atiende esos días caé al paso 2 (explicar días).
+  ⚠️ DÍA(S) DE SEMANA + PARTE DEL MES (ej. "jueves o viernes a fines de julio", "algún martes a fin de mes"): COMBINÁ SIEMPRE los dos datos → preferred_days con TODOS los días pedidos + interpreted_date en la parte pedida del mes (para "fin/fines" poné el ÚLTIMO día pedido de ese mes, NO el día 25 genérico) + search_mode="month". Objetivo: ofrecer los ÚLTIMOS turnos de ese día en la última semana del mes; si no hay nada, la tool avanza sola al mes siguiente. ⛔ PROHIBIDO responder "para fines de [mes] no veo opciones" sin haber buscado ANTES con search_mode="month" + preferred_days.
   REGLA DE PRESENTACIÓN DE OPCIONES (OBLIGATORIA):
   • La tool devuelve EXACTAMENTE 2 opciones numeradas con emojis (1️⃣ 2️⃣). Presentá el resultado TAL CUAL lo recibís, sin reformatear ni agregar texto extra.
   • ⚠️ TODO EN UNA SOLA BURBUJA: el bloque completo de opciones (encabezado + 1️⃣ + 2️⃣ + "¿Cuál te queda mejor?") va en UN SOLO mensaje. Separá las líneas con UN salto de línea simple — ⛔ PROHIBIDO doble salto de línea entre las opciones (el doble salto parte el mensaje en burbujas separadas de WhatsApp, y si el paciente responde citando una sola burbuja el sistema pierde la referencia).
@@ -12571,6 +12629,7 @@ PASO 6: AGENDAR — 'book_appointment' con los datos del paciente. Para campos o
   • Ejemplo: ofreciste "2️⃣ Jueves 09/04 — 15:00 hs" → paciente dijo "el jueves" → pasá interpreted_date="2026-04-09" + date_time="15:00"
   • PROHIBIDO inventar una fecha que no fue ofrecida. Si tenés dudas, volvé a llamar check_availability.
   • PROHIBIDO usar TIME ACTUAL como fecha del turno. {current_time} es solo referencia, NO la fecha del turno.
+  • ⛔ GUARDA DE DÍA PEDIDO (antes de confirm_slot/book_appointment): Si el paciente pidió día(s) concreto(s) de la semana (preferred_days, ej. "jueves,viernes") o excluyó días, VERIFICÁ que el día de la semana del turno que vas a agendar esté dentro de lo que pidió. Si el turno cae en un día que el paciente NO pidió (ej. agendar un martes cuando pidió jueves o viernes), PROHIBIDO agendarlo: volvé a llamar check_availability con preferred_days y ofrecé un día válido, o explicá honestamente qué días se atiende. NUNCA agendes un día fuera de lo pedido solo porque la tool devolvió ese slot.
 PASO 7: CONFIRMACIÓN.
   La tool book_appointment devuelve un resumen estructurado con: tratamiento, profesional, fecha, hora, duración, sede y precio.
   Presentá esa información TAL CUAL al paciente. NO la reformules ni la recortes. El paciente debe ver TODO.
@@ -12609,7 +12668,7 @@ Cuando YA CONFIRMASTE un turno con book_appointment en esta conversación:
 === SECUENCIA POST-BOOKING (5 BLOQUES — CORTOS Y NATURALES) ===
 Después de que book_appointment confirme el turno, respondé con estos bloques separados por doble salto de línea. Cada bloque = 1-2 líneas máximo. Que suene como WhatsApp, no como formulario.
 
-BLOQUE 1 — CONFIRMACIÓN: "Listo, quedó tu evaluación con [profesional] el [día] [fecha] a las [hora] 😊 [sede + link maps]"
+BLOQUE 1 — CONFIRMACIÓN: "Listo, quedó tu evaluación con [profesional] el [día] [fecha] a las [hora] 😊 [sede + link maps]". La sede (calle + ciudad) y el link de Maps que devolvió book_appointment van SIEMPRE EN ESTE mismo mensaje, ya resueltos para el día del turno. ⛔ PROHIBIDO ofrecer la dirección para más tarde ("si querés te paso la dirección", "te la mando según el día", "después te paso la ubicación"): dala directo acá. Una breve línea con la calle alcanza.
 BLOQUE 2 — EMAIL (si falta): "Pasame tu email y te mando la confirmación por escrito."  Si el paciente da su email → seguí la INSTRUCCIÓN POST-BOOKING EMAIL debajo. Si ya tiene email → OMITIR.
 BLOQUE 3 — SEÑA (si aplica): "Podés adelantar una seña de $[monto] por transferencia: [Alias/CBU/Titular]. No es obligatorio."  Si no hay [INTERNAL_SEÑA_DATA] → OMITIR.
 BLOQUE 4 — ANAMNESIS (si falta): "Te paso la ficha médica para completar antes de venir: [URL]"  Para menor/tercero adaptar. URL LIMPIA sin markdown. Si ya completó → OMITIR.
@@ -12976,9 +13035,20 @@ CONTACTO NO DESEADO: Si el paciente dice que no le interesa, que ya tiene dentis
 Usá solo las tools proporcionadas. En general terminá con una pregunta o frase que invite a seguir la charla — PERO si el paciente APLAZA o pide tiempo (ej: "me fijo", "lo pienso", "después veo", "te confirmo", "ahí te aviso", "me lo pienso"), cerrá con UN SOLO mensaje cálido y breve ("Dale, tomate el tiempo que necesites 😊 Cuando quieras me avisás") y ⛔ NO mandes otro mensaje volviendo a preguntar cuál turno elige ni lo presiones. Dejalo tranquilo; que vuelva cuando pueda.
 """
 
-    # ⚡ ANCLA DE FOCO: lo ÚLTIMO que lee el modelo (posición de máxima recencia) → re-ancla
-    # que responda lo que preguntó el paciente y no pivotee a los turnos. Solo re-cita reglas
-    # ya existentes (GESTIÓN PREVIA SIN REGISTRO), no inventa comportamiento nuevo.
+    # ⚡ CACHÉ DE PROMPT (OpenAI): el bloque de arriba es ESTÁTICO por clínica (mismo prefijo
+    # para todos los pacientes del mismo día) → OpenAI lo cachea y descuenta ~50% del input.
+    # Por eso el contexto DINÁMICO del paciente y el saludo van acá, AL FINAL, sin romper el
+    # prefijo cacheable. NO cambia el contenido: es el mismo texto, reubicado.
+    if extra_context:
+        _base_prompt += extra_context
+    if greeting_rule:
+        _base_prompt += "\n" + greeting_rule
+
+    # ⚡ ANCLA DE FOCO (post-caché): el greeting_rule de arriba puede pedir "comentá su
+    # próximo turno". Como es lo ÚLTIMO que lee el modelo, sin este recordatorio pivotea a
+    # los turnos aunque el paciente haya preguntado por otra cosa. Este bloque va en la cola
+    # dinámica (no cacheable) → costo de caché CERO. NO repite reglas del prefijo: solo re-ancla
+    # por REFERENCIA la prioridad en la posición que el LLM más pondera.
     _base_prompt += """
 
 ═══ FOCO DE ESTA RESPUESTA (LEÉ ÚLTIMO, PESA MÁS) ═══

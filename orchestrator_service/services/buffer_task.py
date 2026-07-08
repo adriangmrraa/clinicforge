@@ -1555,7 +1555,7 @@ async def process_buffer_task(
                 SELECT a.appointment_datetime, tt.name as treatment_name,
                        prof.first_name as professional_name, a.payment_status
                 FROM appointments a
-                LEFT JOIN treatment_types tt ON a.appointment_type = tt.code
+                LEFT JOIN treatment_types tt ON a.appointment_type = tt.code AND tt.tenant_id = a.tenant_id
                 LEFT JOIN professionals prof ON a.professional_id = prof.id
                 WHERE a.tenant_id = $1 AND a.patient_id = $2
                 AND a.appointment_datetime >= NOW()
@@ -1686,7 +1686,7 @@ async def process_buffer_task(
                 SELECT a.appointment_datetime, tt.name as treatment_name,
                        prof.first_name as professional_name, a.status
                 FROM appointments a
-                LEFT JOIN treatment_types tt ON a.appointment_type = tt.code
+                LEFT JOIN treatment_types tt ON a.appointment_type = tt.code AND tt.tenant_id = a.tenant_id
                 LEFT JOIN professionals prof ON a.professional_id = prof.id
                 WHERE a.tenant_id = $1 AND a.patient_id = $2
                 AND a.appointment_datetime < NOW()
@@ -1857,7 +1857,7 @@ async def process_buffer_task(
                         """
                         SELECT a.appointment_datetime, tt.name as treatment_name, prof.first_name as professional_name
                         FROM appointments a
-                        LEFT JOIN treatment_types tt ON a.appointment_type = tt.code
+                        LEFT JOIN treatment_types tt ON a.appointment_type = tt.code AND tt.tenant_id = a.tenant_id
                         LEFT JOIN professionals prof ON a.professional_id = prof.id
                         WHERE a.tenant_id = $1 AND a.patient_id = $2 AND a.appointment_datetime >= NOW() AND a.status IN ('scheduled', 'confirmed')
                         ORDER BY a.appointment_datetime ASC LIMIT 1
@@ -1989,7 +1989,7 @@ async def process_buffer_task(
                             """SELECT a.appointment_datetime, tt.name as treatment_name,
                                       prof.first_name as professional_name
                                FROM appointments a
-                               LEFT JOIN treatment_types tt ON a.appointment_type = tt.code
+                               LEFT JOIN treatment_types tt ON a.appointment_type = tt.code AND tt.tenant_id = a.tenant_id
                                LEFT JOIN professionals prof ON a.professional_id = prof.id
                                WHERE a.tenant_id = $1 AND a.patient_id = $2
                                AND a.appointment_datetime >= NOW()
@@ -2013,7 +2013,7 @@ async def process_buffer_task(
                             """SELECT a.appointment_datetime, tt.name as treatment_name,
                                       prof.first_name as professional_name, a.status
                                FROM appointments a
-                               LEFT JOIN treatment_types tt ON a.appointment_type = tt.code
+                               LEFT JOIN treatment_types tt ON a.appointment_type = tt.code AND tt.tenant_id = a.tenant_id
                                LEFT JOIN professionals prof ON a.professional_id = prof.id
                                WHERE a.tenant_id = $1 AND a.patient_id = $2
                                AND a.appointment_datetime < NOW()
@@ -2502,6 +2502,7 @@ async def process_buffer_task(
                         _tp = _sched_constraints.get("time_preference")
                         _mt = _sched_constraints.get("min_time")
                         _mxt = _sched_constraints.get("max_time")
+                        _prefd2 = _sched_constraints.get("preferred_days") or []
                         _exd2 = _sched_constraints.get("exclude_days") or []
                         _exdt2 = _sched_constraints.get("exclude_dates") or []
                         if _tp:
@@ -2510,6 +2511,8 @@ async def process_buffer_task(
                             _sc_lines.append(f"  - Hora minima: {_mt} - PROHIBIDO ofrecer slots antes de {_mt}.")
                         if _mxt:
                             _sc_lines.append(f"  - Hora maxima: {_mxt} - PROHIBIDO ofrecer slots despues de {_mxt}.")
+                        if _prefd2:
+                            _sc_lines.append(f"  - Dias UNICOS que el paciente puede: {', '.join(_prefd2)} - el paciente SOLO puede esos dias. Pasa preferred_days con esos dias en check_availability (NO uses exclude_days para esto).")
                         if _exd2:
                             _sc_lines.append(f"  - Dias excluidos: {', '.join(_exd2)} - NO ofrecer turnos esos dias.")
                         if _exdt2:
@@ -4050,9 +4053,11 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                                     state_retry_count += 1
 
                                     # Retry with stronger nudge
-                                    nudge_input = f"{user_input}\n\n[SISTEMA: IMPORTANTE - El paciente YA tiene opciones de turnos ofrecidas. "
-                                    f"Si el paciente quiere SELECCIONAR un turno, usa 'confirm_slot', NO 'check_availability'. "
-                                    f"Ve a 'confirm_slot' directamente.]"
+                                    nudge_input = (
+                                        f"{user_input}\n\n[SISTEMA: IMPORTANTE - El paciente YA tiene opciones de turnos ofrecidas. "
+                                        "Si el paciente quiere SELECCIONAR un turno, usa 'confirm_slot', NO 'check_availability'. "
+                                        "Ve a 'confirm_slot' directamente.]"
+                                    )
 
                                     if _get_cb:
                                         with _get_cb() as cb3:
