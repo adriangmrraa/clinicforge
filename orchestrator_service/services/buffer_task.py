@@ -1552,12 +1552,12 @@ async def process_buffer_task(
             # 3. Fetching Next Appointment Context
             next_apt = await pool.fetchrow(
                 """
-                SELECT a.appointment_datetime, tt.name as treatment_name, 
-                       prof.first_name as professional_name
+                SELECT a.appointment_datetime, tt.name as treatment_name,
+                       prof.first_name as professional_name, a.payment_status
                 FROM appointments a
                 LEFT JOIN treatment_types tt ON a.appointment_type = tt.code AND tt.tenant_id = a.tenant_id
                 LEFT JOIN professionals prof ON a.professional_id = prof.id
-                WHERE a.tenant_id = $1 AND a.patient_id = $2 
+                WHERE a.tenant_id = $1 AND a.patient_id = $2
                 AND a.appointment_datetime >= NOW()
                 AND a.status IN ('scheduled', 'confirmed')
                 ORDER BY a.appointment_datetime ASC
@@ -1610,6 +1610,21 @@ async def process_buffer_task(
                 identity_lines.append(
                     f"• FECHA EXACTA DEL TURNO: {dt.strftime('%d/%m/%Y')} a las {dt.strftime('%H:%M')}. {time_until}."
                 )
+                # Estado de pago de ESTE turno (fix Norma): que el bot no confunda un pago
+                # viejo (de otro turno ya atendido) con el coseguro/seña de este turno próximo.
+                _pay_st = (next_apt["payment_status"] or "").lower()
+                if _pay_st == "paid":
+                    identity_lines.append(
+                        "• PAGO DE ESTE TURNO: la seña/coseguro de ESTE turno ya figura ABONADA."
+                    )
+                elif _pay_st == "partial":
+                    identity_lines.append(
+                        "• PAGO DE ESTE TURNO: la seña/coseguro de ESTE turno está PARCIAL (falta completar). Un pago de OTRO turno anterior NO lo cubre."
+                    )
+                else:
+                    identity_lines.append(
+                        "• PAGO DE ESTE TURNO: la seña/coseguro de ESTE turno figura PENDIENTE. ⛔ NO asumas que está pago por un pago anterior (los pagos son POR TURNO): si el paciente pregunta cómo abonarlo, pasale los datos; NUNCA le digas que ya lo pagó salvo que la seña de ESTE turno figure abonada."
+                    )
                 # Si tiene MÁS de un turno futuro, avisar al agente: el contexto solo
                 # muestra el más próximo, y ante cancelar/reprogramar debe confirmar CUÁL.
                 try:
