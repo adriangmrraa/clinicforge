@@ -758,16 +758,35 @@ def _format_post_instructions(instructions, treatment_name: str) -> list[str]:
 
     # Detect legacy timed-sequence list
     if isinstance(instructions, list):
-        # Take the first entry ("Inmediato" / immediate) as the post-op instructions
-        immediate = instructions[0] if instructions else {}
-        if isinstance(immediate, dict):
-            # The data may use "text" (legacy) or "content" (newer UI format) as the key
-            text = immediate.get("text") or immediate.get("content") or ""
-        else:
-            text = str(immediate)
-        if text.strip():
+        # FIX (caso Julio, prod 2026-07-08): antes se tomaba instructions[0]
+        # asumiendo que era la entrada "Inmediato", SIN mirar su timing. Si la
+        # primera entrada era programada (24h/1w/custom con días), se mandaba
+        # IGUAL al instante — un mensaje configurado para 11 días después salió
+        # al marcar el turno como completado. Ahora SOLO se envían las entradas
+        # con timing inmediato; las programadas se saltean y se loguean (no hay
+        # todavía un scheduler que las mande a su debido día — feature pendiente).
+        immediate_texts = []
+        skipped = 0
+        for entry in instructions:
+            if isinstance(entry, dict):
+                # UI nueva usa "timing" ('immediate'|'24h'|'48h'|'72h'|'1w'|
+                # 'stitch_removal'|'custom') y "content"; legacy usa "name" y "text".
+                timing = str(entry.get("timing") or entry.get("name") or "immediate").strip().lower()
+                text = entry.get("text") or entry.get("content") or ""
+            else:
+                timing, text = "immediate", str(entry)
+            if timing in ("immediate", "inmediato", "inmediata"):
+                if str(text).strip():
+                    immediate_texts.append(str(text).strip())
+            else:
+                skipped += 1
+        if skipped:
+            logger.info(
+                f"send_instructions: {skipped} entrada(s) con timing programado (24h/1w/custom) NO enviadas ahora — solo se envía lo inmediato"
+            )
+        if immediate_texts:
             bubbles.append(f"📋 Instrucciones post-tratamiento para {treatment_name}:")
-            bubbles.append(text.strip())
+            bubbles.extend(immediate_texts)
         return bubbles
 
     if not isinstance(instructions, dict):
