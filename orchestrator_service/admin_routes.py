@@ -10649,6 +10649,24 @@ def _validate_insurance_provider(data) -> None:
             status_code=422,
             detail=f"status inválido. Debe ser uno de: {', '.join(VALID_INSURANCE_STATUSES)}",
         )
+    # Semáforo de agendamiento: el modo lo valida Pydantic (Literal); acá el rango
+    # de los días (el min=0 del input es solo client-side) y la coherencia
+    # modo-días — 'delayed' con 0 días es un "diferido" que no difiere nada.
+    _sched_delay = getattr(data, "scheduling_delay_days", None)
+    _sched_mode = getattr(data, "scheduling_mode", None) or "immediate"
+    if _sched_delay is not None and _sched_delay < 0:
+        raise HTTPException(
+            status_code=422, detail="scheduling_delay_days no puede ser negativo"
+        )
+    if _sched_delay is not None and _sched_delay > 365:
+        raise HTTPException(
+            status_code=422, detail="scheduling_delay_days no puede superar 365"
+        )
+    if _sched_mode == "delayed" and not (_sched_delay and _sched_delay > 0):
+        raise HTTPException(
+            status_code=422,
+            detail="El modo 'Diferido' requiere días de espera (mínimo 1). Cargá los días o volvé a modo Inmediato.",
+        )
     # Per-treatment coverage validation (migration 034)
     if data.coverage_by_treatment:
         for code, cov in data.coverage_by_treatment.items():

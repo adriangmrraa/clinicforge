@@ -142,6 +142,9 @@ interface InsuranceProvider {
     requires_copay: boolean;
     copay_notes?: string;
     ai_response_template?: string;
+    restrictions?: string;
+    scheduling_mode?: 'immediate' | 'delayed' | 'blocked';
+    scheduling_delay_days?: number;
     sort_order: number;
     is_active: boolean;
 }
@@ -2948,7 +2951,7 @@ export default function ClinicsView() {
                             </div>
                             <div className="space-y-1">
                                 <label className="text-sm font-semibold text-white/60">{t('settings.insurance.fields.schedulingMode') || 'Modo de Agendamiento'}</label>
-                                <select value={insuranceForm.scheduling_mode || 'immediate'} onChange={e => setInsuranceForm(p => ({ ...p, scheduling_mode: e.target.value as any }))}
+                                <select value={insuranceForm.scheduling_mode || 'immediate'} onChange={e => setInsuranceForm(p => ({ ...p, scheduling_mode: e.target.value as InsuranceProvider['scheduling_mode'] }))}
                                     className="w-full px-4 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white outline-none">
                                     <option value="immediate" className="bg-[#0f1525]">{t('settings.insurance.fields.modeImmediate') || 'Inmediato (Verde)'}</option>
                                     <option value="delayed" className="bg-[#0f1525]">{t('settings.insurance.fields.modeDelayed') || 'Diferido (Amarillo)'}</option>

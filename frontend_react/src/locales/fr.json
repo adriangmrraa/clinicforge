@@ -1132,7 +1132,20 @@
         "modeImmediate": "Immédiat (Vert)",
         "modeDelayed": "Différé (Jaune)",
         "modeBlocked": "Bloqué (Rouge)",
-        "delayDays": "Jours de différé"
+        "delayDays": "Jours de différé",
+        "isPrepaid": "Assurance privée (prépayée)",
+        "defaultCopay": "Participation par défaut (%)",
+        "employeeDiscount": "Remise employés (%)",
+        "coverageMatrix": "Couverture par traitement",
+        "coverageMatrixHint": "Configurez la couverture, la participation et les conditions pour chaque traitement",
+        "covered": "Couvert",
+        "copayPercent": "Participation (%)",
+        "requiresPreAuth": "Autorisation préalable requise",
+        "preAuthDays": "Jours d'autorisation",
+        "waitingDays": "Jours d'attente",
+        "treatmentNotes": "Notes du traitement",
+        "configureAllCovered": "Marquer tout comme couvert",
+        "coverageCollapsed": "couverture(s) configurée(s)"
       },
       "errors": {
         "nameRequired": "Le nom est obligatoire",

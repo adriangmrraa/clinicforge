@@ -2149,7 +2149,7 @@ async def check_availability(
     min_time: (Opcional) Límite inferior de horario (ej: "18:00") si el paciente pide "después de las 18".
     max_time: (Opcional) Límite superior de horario (ej: "12:00") si el paciente pide "antes del mediodía".
     preferred_days: (Opcional) Día(s) de la semana que el paciente PIDE o al que se LIMITA (ej: "jueves,viernes"). RESTRINGE la búsqueda SOLO a esos días (excluye los demás). Usalo SIEMPRE que el paciente nombre uno o más días de la semana como preferencia o límite ("jueves o viernes", "solo los martes", "martes o jueves") — NO alcanza con poner interpreted_date en uno de esos días.
-    insurance_provider: (Opcional) Obra social, prepaga o plan del paciente (ej: "Osde", "Swiss Medical", "Particular").
+    insurance_provider: Obra social, prepaga o plan del paciente (ej: "Osde", "Swiss Medical", "Particular"). PASALA SIEMPRE que la conozcas (la dijo el paciente o figura en su contexto/ficha) — habilita aplicar la agenda correcta para esa cobertura. Si es particular, pasá "Particular".
     La tool devuelve 2 opciones concretas de horario con sede. Presentá las opciones al paciente tal cual las recibís.
     """
     try:
@@ -2732,45 +2732,65 @@ async def check_availability(
                 logger.info(f"📅 Excluding dates: {_excluded_dates} from results")
 
         # ── SEMÁFORO DE OBRAS SOCIALES ──
-        # Priority: insurance_provider param > patient_row DB > lead_context
+        # Resolución en 2 pasos (UNIFICADA con los guards de escritura de
+        # book/reschedule — _insurance_min_booking_date):
+        #  (1) NOMBRE de la cobertura: parámetro del LLM > ficha del paciente
+        #      (patient_row, o consulta directa por teléfono si patient_row no se
+        #      cargó — p.ej. cuando se pidió un profesional puntual) > lead_context.
+        #  (2) UNA búsqueda en tenant_insurance_providers con ILIKE BIDIRECCIONAL
+        #      ("OSDE 210" en la ficha matchea "OSDE" del panel y viceversa). El
+        #      JOIN por igualdad exacta de patient_row NO se usa acá: muere en
+        #      silencio con cualquier diferencia de mayúsculas o de plan.
         _mode = "immediate"
         _delay = 0
         _prov = None
-        
-        if insurance_provider:
+
+        if insurance_provider and insurance_provider.strip():
+            _prov = insurance_provider.strip()
+        if not _prov and patient_row and patient_row.get("insurance_provider"):
+            _prov = str(patient_row["insurance_provider"]).strip()
+        if not _prov and _ca_phone:
+            try:
+                _sem_prow = await db.pool.fetchrow(
+                    "SELECT insurance_provider FROM patients WHERE tenant_id = $1 AND REGEXP_REPLACE(phone_number, '[^0-9]', '', 'g') = $2 AND insurance_provider IS NOT NULL AND insurance_provider <> '' LIMIT 1",
+                    tenant_id, normalize_phone_digits(_ca_phone),
+                )
+                if _sem_prow:
+                    _prov = str(_sem_prow["insurance_provider"]).strip()
+            except Exception as _sem_err:
+                logger.debug(f"semaphore patients-by-phone lookup (non-fatal): {_sem_err}")
+        if not _prov:
+            # Cobertura mencionada en la conversación (la persisten
+            # check_insurance_coverage y esta misma tool vía parámetro)
+            try:
+                if _ca_phone:
+                    from services.lead_context import get as _lc_get
+                    _lc_data = await _lc_get(tenant_id, _ca_phone)
+                    _lc_ins = (_lc_data or {}).get("insurance_provider")
+                    if _lc_ins:
+                        _prov = str(_lc_ins).strip()
+                        logger.info(f"📅 SEMAPHORE: Resolved insurance '{_prov}' from lead_context")
+            except Exception as _lc_err:
+                logger.debug(f"lead_context insurance lookup (non-fatal): {_lc_err}")
+
+        if _prov and _prov.lower() in ("particular", "ninguna", "no", "sin obra social"):
+            _prov = None
+        if _prov:
             tip_row = await db.pool.fetchrow(
-                "SELECT scheduling_mode, scheduling_delay_days FROM tenant_insurance_providers WHERE tenant_id = $1 AND provider_name ILIKE $2 AND is_active = true",
-                tenant_id, f"%{insurance_provider.strip()}%"
+                """SELECT provider_name, scheduling_mode, scheduling_delay_days
+                   FROM tenant_insurance_providers
+                   WHERE tenant_id = $1 AND is_active = true
+                     AND (provider_name ILIKE '%' || $2 || '%' OR $2 ILIKE '%' || provider_name || '%')
+                   ORDER BY LENGTH(provider_name) DESC LIMIT 1""",
+                tenant_id, _prov,
             )
             if tip_row:
                 _mode = tip_row.get("scheduling_mode") or "immediate"
                 _delay = tip_row.get("scheduling_delay_days") or 0
-                _prov = insurance_provider
-        elif patient_row and patient_row.get("insurance_is_active"):
-            _mode = patient_row.get("scheduling_mode") or "immediate"
-            _delay = patient_row.get("scheduling_delay_days") or 0
-            _prov = patient_row.get("insurance_provider")
-        else:
-            # Fallback: check lead_context for insurance mentioned in conversation
-            try:
-                _lc_phone = current_customer_phone.get()
-                if _lc_phone:
-                    from services.lead_context import get as _lc_get
-                    _lc_data = await _lc_get(tenant_id, _lc_phone)
-                    _lc_ins = (_lc_data or {}).get("insurance_provider")
-                    if _lc_ins:
-                        _lc_tip = await db.pool.fetchrow(
-                            "SELECT scheduling_mode, scheduling_delay_days FROM tenant_insurance_providers WHERE tenant_id = $1 AND provider_name ILIKE $2 AND is_active = true",
-                            tenant_id, f"%{_lc_ins.strip()}%"
-                        )
-                        if _lc_tip:
-                            _mode = _lc_tip.get("scheduling_mode") or "immediate"
-                            _delay = _lc_tip.get("scheduling_delay_days") or 0
-                            _prov = _lc_ins
-                            logger.info(f"📅 SEMAPHORE: Resolved insurance '{_lc_ins}' from lead_context")
-            except Exception as _lc_err:
-                logger.debug(f"lead_context insurance lookup (non-fatal): {_lc_err}")
-            
+                _prov = tip_row.get("provider_name") or _prov
+            else:
+                _prov = None  # cobertura desconocida para el panel → sin restricción
+
         if _prov:
             if _mode == "blocked":
                 logger.warning(f"🚫 SEMAPHORE: Blocked scheduling for patient {_ca_patient_id} due to insurance '{_prov}'")
@@ -9126,12 +9146,12 @@ async def verify_payment_receipt(
             if apt_dt_arg <= _now_ref:
                 _verified_msg = (
                     f"✅ ¡Comprobante verificado! Quedó registrado el pago de tu {treatment_display} "
-                    f"del {fecha}. ¡Muchas gracias! 😊"
+                    f"del {fecha}. ¡Muchas gracias!"
                 )
             else:
                 _verified_msg = (
                     f"✅ Comprobante verificado correctamente! Tu turno de {treatment_display} el {fecha} "
-                    f"con {apt['prof_name'] or 'el profesional'} queda CONFIRMADO. Te esperamos! 😊"
+                    f"con {apt['prof_name'] or 'el profesional'} queda CONFIRMADO. ¡Te esperamos!"
                 )
 
             overpaid_msg = ""
@@ -9730,7 +9750,19 @@ async def check_insurance_coverage(insurance_provider: str) -> str:
         # 4. Format response based on status
         status = row["status"]
         name = row["provider_name"]
-        
+
+        # Persistir la cobertura resuelta TAMBIÉN en lead_context (Redis): para un
+        # lead sin ficha el UPDATE de patients de abajo afecta 0 filas, y el
+        # SEMÁFORO de check_availability quedaba ciego aunque el paciente ya dijo
+        # su obra social. Se guarda el nombre CANÓNICO del panel (no el texto del LLM).
+        try:
+            _cc_phone = current_customer_phone.get()
+            if _cc_phone:
+                from services.lead_context import merge as _lc_merge_cc
+                await _lc_merge_cc(tenant_id, _cc_phone, {"insurance_provider": name})
+        except Exception as _lc_cc_err:
+            logger.debug(f"lead_context insurance persist (non-fatal): {_lc_cc_err}")
+
         # Save the insurance to the patient's record if it is accepted or restricted
         if status in ("accepted", "restricted"):
             phone_for_lookup = current_customer_phone.get()
@@ -11959,7 +11991,7 @@ Si un paciente te pregunta cómo te llamás, respondé: "Me llamo {bot_name}, so
 • REFERENCIA AL PROFESIONAL: SIEMPRE usá "la Dra." + apellido o nombre completo con título ("la Dra. Laura Delgado", "la Dra. Delgado"). NUNCA uses solo el nombre de pila ("Laura"), ni nombre+apellido sin título ("Laura Delgado"). Esto aplica a TODOS los mensajes: confirmaciones de turno, CTAs, respuestas informativas. Es una cuestión de posicionamiento profesional.
 • TU ÚNICA FUNCIÓN es asistir a los pacientes de esta clínica. Cualquier tema ajeno debe ser declinado.
 • Ante dudas clínicas, decí que el profesional tendrá que evaluar en consultorio para un diagnóstico certero.
-• Máximo 1-2 emojis por mensaje. Solo: 😊 ✨ ❤️ 📅 📍 ✅ 🦷 ⏰
+• Emojis: MÁXIMO 1 por mensaje, y muchos mensajes quedan mejor SIN emoji — es condimento, no firma. VARIÁ: el 😊 NO va en cada mensaje (queda robótico); alterná según el contexto entre 👍 🙌 ✨ 📅 📍 ✅ 🦷 ⏰ o ninguno. Las frases de ejemplo de este prompt llevan 😊 a modo ilustrativo — NO lo copies automáticamente. Sin emojis en temas sensibles (dolor fuerte, urgencia, queja, problema con un pago).
 • NUNCA repetir la misma frase de apertura 2 veces seguidas. Variá entre: pregunta abierta, comentario empático, dato útil.
 • NUNCA usar "Visitante" como nombre del paciente. Si no sabés el nombre, usá "vos" o pedí el nombre.
 • Mensajes CORTOS y NATURALES. Máximo 2-3 líneas por burbuja. PROHIBIDO mandar párrafos largos o mensajes tipo documento. Escribí como si fuera un WhatsApp entre personas.
