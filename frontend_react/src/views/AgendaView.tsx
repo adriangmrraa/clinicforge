@@ -902,9 +902,12 @@ export default function AgendaView() {
           rangeEnd = newDate > rangeEnd ? endOfDay(addDays(newDate, 1)) : rangeEnd;
         }
       }
-      // Refetch con rango explícito para que el turno nuevo aparezca de inmediato
-      await fetchData(false, rangeStart ?? undefined, rangeEnd ?? undefined);
+      // PERF: cerrar el modal apenas el guardado da 2xx; el refetch corre en
+      // background (antes el modal quedaba con spinner esperando 2 oleadas de
+      // requests — la lentitud percibida al guardar). silent=true para no
+      // mostrar el spinner global durante el refetch.
       setShowModal(false);
+      void fetchData(true, rangeStart ?? undefined, rangeEnd ?? undefined);
     } catch (error: any) {
       throw error; // Propagate to form for error display
     }
@@ -917,8 +920,9 @@ export default function AgendaView() {
     try {
       // Borrado físico (Protocolo Platinum: limpieza total de agenda)
       await api.delete(`/admin/appointments/${id}`);
-      await fetchData();
+      // PERF: cerrar ya y refetchear en background (igual que handleSave).
       setShowModal(false);
+      void fetchData(true);
     } catch (error) {
       showAlert(t('agenda.alert_cancel_error'), { variant: 'error' });
     }
