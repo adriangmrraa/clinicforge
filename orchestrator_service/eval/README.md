@@ -63,7 +63,7 @@ Editá `cases.jsonl` — **un caso por línea** (JSON). Campos:
 
 - `id`, `categoria` — identificación.
 - `patient_status` — `new_lead` | `patient_no_appointment` | `patient_with_appointment`.
-- `patient_context` *(opcional)* — texto de contexto del paciente (turnos, nombre) para simular un paciente existente.
+- `patient_context` *(opcional)* — texto de contexto del paciente para simular un paciente existente. IMPORTANTE: debe espejar VERBATIM los labels que inyecta `services/buffer_task.py` (`• Nombre registrado:`, `• PRÓXIMO TURNO:`, `• HISTORIAL: Paciente recurrente`, `• ⚠️ TURNO EN CURSO HOY:`, etc.) — las reglas del prompt están keyeadas a esos labels literales y un label inventado no las dispara (fue la causa del falso-fallo `paciente-con-turno-otra-consulta`).
 - `history` *(opcional)* — turnos previos: `[{"role":"user","content":"..."},{"role":"assistant","content":"..."}]`.
 - `user` — el mensaje del paciente a evaluar.
 - `espera` — lista de criterios en lenguaje natural que evalúa el **juez IA**.
