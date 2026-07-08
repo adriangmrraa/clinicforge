@@ -17,7 +17,7 @@ import { getSocket } from '../services/socket';
 import type { Socket } from 'socket.io-client';
 import { useAuth } from '../context/AuthContext';
 import { useTranslation } from '../context/LanguageContext';
-import { confirmDialog, showAlert } from '../components/Dialogs';
+import { showAlert } from '../components/Dialogs';
 
 // ==================== TYPE DEFINITIONS ====================
 export interface Appointment {
@@ -911,7 +911,9 @@ export default function AgendaView() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!(await confirmDialog(t('agenda.confirm_delete'), { danger: true }))) return;
+    // La confirmación la hace AppointmentForm (único caller, via onDelete) con
+    // t('alerts.confirm_delete_appointment'). Confirmar acá de nuevo mostraba
+    // DOS diálogos seguidos (y con la clave agenda.confirm_delete inexistente).
     try {
       // Borrado físico (Protocolo Platinum: limpieza total de agenda)
       await api.delete(`/admin/appointments/${id}`);
