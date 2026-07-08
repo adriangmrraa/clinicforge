@@ -293,7 +293,7 @@ async def _execute_step(pool, execution: dict, step: dict) -> bool:
     elif action == "send_ai_message":
         return await _action_send_ai_message(pool, tenant_id, phone, step, execution, variables)
     elif action == "send_text":
-        return await _action_send_text(pool, tenant_id, phone, step, variables)
+        return await _action_send_text(pool, tenant_id, phone, step, variables, execution)
     elif action == "send_instructions":
         return await _action_send_instructions(pool, tenant_id, phone, step, execution)
     elif action == "notify_team":
@@ -562,13 +562,52 @@ async def _persist_playbook_outbound(pool, tenant_id, phone, message, yc_msg_id=
         logger.warning(f"playbook outbound persist skipped: {_persist_err}")
 
 
-async def _action_send_text(pool, tenant_id, phone, step, variables) -> bool:
+async def _clinic_owes_reply(pool, tenant_id: int, phone: str) -> bool:
+    """True si el ÚLTIMO mensaje de la conversación es del PACIENTE (nadie le
+    respondió) => la clínica debe la respuesta. Caso María Sol: el recuperador
+    le decía '¿no se te pasó?' cuando los que no contestamos fuimos nosotros."""
+    try:
+        row = await pool.fetchrow(
+            """SELECT cm.role FROM chat_messages cm
+               JOIN chat_conversations cc ON cm.conversation_id = cc.id
+               WHERE cc.tenant_id = $1 AND cc.external_user_id = $2
+               ORDER BY cm.created_at DESC LIMIT 1""",
+            tenant_id, phone,
+        )
+        return bool(row and row["role"] == "user")
+    except Exception:
+        return False
+
+
+# Texto de recuperación cuando LA CLÍNICA debe la respuesta: saluda, reconoce y
+# ofrece coordinar — jamás insinúa que el paciente "desapareció".
+_OWED_REPLY_TEXT = (
+    "¡Hola{nombre}! 😊 Te debíamos una respuesta — perdoná la demora. "
+    "Vi tu consulta y quiero ayudarte a coordinar: contame qué día y horario te quedan cómodos y lo vemos. "
+    "Quedo atenta por acá 🙌"
+)
+
+
+async def _action_send_text(pool, tenant_id, phone, step, variables, execution=None) -> bool:
     """Send a free text message."""
     try:
         from services.playbook_variables import substitute_variables
         message = substitute_variables(step.get("message_text") or "", variables)
         if not message:
             return False
+
+        # Contexto del recuperador (caso María Sol): si el ÚLTIMO mensaje fue del
+        # paciente (la clínica debe la respuesta), NO mandar el texto tipo
+        # "¿no se te pasó?" — se reemplaza por un saludo que reconoce la demora
+        # nuestra y ofrece coordinar.
+        if execution and execution.get("trigger_type") in ("lead_no_booking", "patient_inactive"):
+            try:
+                if await _clinic_owes_reply(pool, tenant_id, phone):
+                    _nom = (variables or {}).get("nombre_paciente") or ""
+                    message = _OWED_REPLY_TEXT.format(nombre=f", {_nom}" if _nom else "")
+                    logger.info(f"lead_recovery: clinic owes reply to {phone} — using owed-reply text")
+            except Exception as _owed_err:
+                logger.warning(f"_clinic_owes_reply check failed (non-blocking): {_owed_err}")
 
         conv = await pool.fetchrow(
             "SELECT id, provider, channel, external_account_id, external_chatwoot_id "
@@ -645,7 +684,19 @@ async def _action_send_ai_message(pool, tenant_id, phone, step, execution, varia
         patient_name = variables.get("nombre_paciente", "")
         treatment = variables.get("tratamiento", "")
 
-        prompt = f"""Sos un asistente de seguimiento para una clínica dental. Analizá esta conversación con un paciente y generá UN mensaje de seguimiento personalizado.
+        # Caso María Sol: si el último mensaje es del paciente, la demora fue NUESTRA.
+        _owed_line = ""
+        try:
+            if await _clinic_owes_reply(pool, tenant_id, phone):
+                _owed_line = (
+                    "\n⚠️ LA CLÍNICA DEBE LA RESPUESTA: el ÚLTIMO mensaje de la conversación es del PACIENTE y nadie le respondió. "
+                    "Tu mensaje debe RECONOCER su consulta y pedir disculpas breves por la demora (fue nuestra, no suya) y ofrecer coordinar. "
+                    "PROHIBIDO decir 'no se te pasó', 'quería saber si seguís interesado' o insinuar que él desapareció."
+                )
+        except Exception:
+            pass
+
+        prompt = f"""Sos un asistente de seguimiento para una clínica dental. Analizá esta conversación con un paciente y generá UN mensaje de seguimiento personalizado.{_owed_line}
 
 CONVERSACIÓN RECIENTE:
 {conversation}
