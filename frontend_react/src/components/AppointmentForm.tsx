@@ -3,6 +3,7 @@ import { X, Calendar, User, Clock, FileText, DollarSign, Activity, AlertTriangle
 import type { Appointment, Patient, Professional } from '../views/AgendaView';
 import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
+import { confirmDialog } from './Dialogs';
 import { useAuth } from '../context/AuthContext';
 import AnamnesisPanel from './AnamnesisPanel';
 import { getSocket } from '../services/socket';
@@ -478,7 +479,7 @@ export default function AppointmentForm({
 
     const handleDelete = async () => {
         if (!onDelete || !initialData.id) return;
-        if (confirm(t('alerts.confirm_delete_appointment'))) {
+        if (await confirmDialog(t('alerts.confirm_delete_appointment'), { danger: true })) {
             setLoading(true);
             try {
                 await onDelete(initialData.id);
