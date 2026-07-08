@@ -4024,6 +4024,57 @@ async def create_patient(
 
 
 @tool
+async def _insurance_min_booking_date(tenant_id: int, phone=None, patient_id=None):
+    """(min_date, provider_name) si la cobertura vigente del paciente tiene plazo
+    'delayed' (scheduling_delay_days > 0). Espeja el SEMÁFORO de check_availability
+    pero para los puntos de ESCRITURA (book/reschedule): que NO se pueda reservar
+    antes de hoy+N por NINGÚN camino (reserva directa sin re-búsqueda, insistencia,
+    reprogramación). Resolución: ficha del paciente > lead_context. None si no aplica."""
+    try:
+        prov = None
+        if patient_id:
+            _prow = await db.pool.fetchrow(
+                "SELECT insurance_provider FROM patients WHERE id = $1 AND tenant_id = $2",
+                patient_id, tenant_id,
+            )
+            if _prow and _prow["insurance_provider"]:
+                prov = _prow["insurance_provider"]
+        if not prov and phone:
+            _digits = normalize_phone_digits(phone)
+            _prow = await db.pool.fetchrow(
+                "SELECT insurance_provider FROM patients WHERE tenant_id = $1 AND REGEXP_REPLACE(phone_number, '[^0-9]', '', 'g') = $2 AND insurance_provider IS NOT NULL AND insurance_provider <> '' LIMIT 1",
+                tenant_id, _digits,
+            )
+            if _prow:
+                prov = _prow["insurance_provider"]
+        if not prov and phone:
+            try:
+                from services.lead_context import get as _lc_get2
+                _lc = await _lc_get2(tenant_id, phone)
+                prov = (_lc or {}).get("insurance_provider")
+            except Exception:
+                pass
+        if not prov or str(prov).strip().lower() in ("particular", "ninguna", "no", "sin obra social"):
+            return None
+        # Match bidireccional (cubre "OSDE 210" en la ficha vs "OSDE" en el panel y viceversa)
+        tip = await db.pool.fetchrow(
+            """SELECT provider_name, scheduling_mode, scheduling_delay_days
+               FROM tenant_insurance_providers
+               WHERE tenant_id = $1 AND is_active = true
+                 AND (provider_name ILIKE '%' || $2 || '%' OR $2 ILIKE '%' || provider_name || '%')
+               ORDER BY LENGTH(provider_name) DESC LIMIT 1""",
+            tenant_id, str(prov).strip(),
+        )
+        if tip and (tip["scheduling_mode"] or "immediate") == "delayed" and (tip["scheduling_delay_days"] or 0) > 0:
+            return (
+                get_now_arg().date() + timedelta(days=int(tip["scheduling_delay_days"])),
+                tip["provider_name"],
+            )
+    except Exception as _sem_e:
+        logger.debug(f"insurance min booking date (non-fatal): {_sem_e}")
+    return None
+
+
 async def book_appointment(
     date_time: str,
     treatment_reason: str,
@@ -4478,6 +4529,23 @@ async def book_appointment(
         # No agendar en el pasado
         if apt_datetime < get_now_arg():
             return "❌ No se pueden agendar turnos para horarios que ya pasaron. Indicá un día y hora futuros. Formato esperado: date_time como 'día 17:00' (ej. miércoles 17:00)."
+
+        # SEMÁFORO OS EN ESCRITURA: espejo del plazo de check_availability. Si la
+        # cobertura tiene días de espera (ej. OSDE + 40), NO se puede RESERVAR antes
+        # de hoy+N por ningún camino (reserva directa, insistencia, etc.). El mensaje
+        # NO explica el motivo (regla del prompt: nunca mencionar el plazo de la OS).
+        try:
+            _ins_min = await _insurance_min_booking_date(tenant_id, phone=chat_phone)
+            if _ins_min and apt_datetime.date() < _ins_min[0]:
+                logger.info(
+                    f"⏳ SEMAPHORE(BOOK): bloqueada reserva {apt_datetime.date()} < {_ins_min[0]} (OS '{_ins_min[1]}') para {chat_phone}"
+                )
+                return (
+                    f"Ese día todavía no tengo disponibilidad 😊 La primera fecha disponible es a partir del "
+                    f"{_ins_min[0].strftime('%d/%m')}. ¿Querés que te pase opciones desde esa fecha?"
+                )
+        except Exception as _semb_err:
+            logger.warning(f"semaphore book guard (non-fatal): {_semb_err}")
 
         # R1 — Validate that the requested slot was actually offered by check_availability
         try:
@@ -6508,6 +6576,23 @@ async def reschedule_appointment(original_date: str, new_date_time: str, interpr
                 f"Necesito la nueva fecha y hora para reprogramar el turno del {original_date}. "
                 f"\u00bfPara cu\u00e1ndo lo quer\u00e9s cambiar?"
             )
+
+        # SEM\u00c1FORO OS EN ESCRITURA (igual que book_appointment): una reprogramaci\u00f3n
+        # tampoco puede caer antes de hoy+N d\u00edas de la cobertura. Sin explicar el motivo.
+        try:
+            _ins_min_r = await _insurance_min_booking_date(
+                current_tenant_id.get(), phone=phone or current_customer_phone.get(), patient_id=p_id
+            )
+            if _ins_min_r and new_dt.date() < _ins_min_r[0]:
+                logger.info(
+                    f"\u23f3 SEMAPHORE(RESCHEDULE): bloqueada reprogramaci\u00f3n {new_dt.date()} < {_ins_min_r[0]} (OS '{_ins_min_r[1]}')"
+                )
+                return (
+                    f"Para esa fecha todav\u00eda no tengo disponibilidad \ud83d\ude0a La primera fecha disponible es a partir del "
+                    f"{_ins_min_r[0].strftime('%d/%m')}. \u00bfQuer\u00e9s que busque opciones desde ah\u00ed?"
+                )
+        except Exception as _semr_err:
+            logger.warning(f"semaphore reschedule guard (non-fatal): {_semr_err}")
         try:
             from services.relay import get_redis as _get_redis_resched_validate
             _r_rv = _get_redis_resched_validate()
