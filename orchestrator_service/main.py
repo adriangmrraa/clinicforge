@@ -2706,6 +2706,12 @@ async def check_availability(
             )
             target_date = today_date
 
+        # Fecha ORIGINAL pedida por el paciente (capturada ANTES de los ajustes
+        # DLD-67 / semáforo de OS / min_appointment_date / auto-advance). Es la
+        # base del AVISO DE BRECHA: si las opciones arrancan DESPUÉS de esto,
+        # hay que decírselo amablemente al paciente en vez de listar como si nada.
+        requested_date = target_date
+
         # DLD-67: no agendar para el mismo día — mínimo 1 día de margen operativo
         if target_date == today_date:
             logger.info(
@@ -3542,6 +3548,37 @@ async def check_availability(
                 lines.append(f"{auto_advance_reason}.")
                 lines.append(f"Te busqué los turnos más cercanos:\n")
 
+            # ── AVISO DE BRECHA: el paciente pidió un día/semana concreta y las
+            # opciones arrancan DESPUÉS (día lleno, semáforo de OS o fecha mínima
+            # del tenant). Sin este aviso el bot lista fechas posteriores sin
+            # explicar el salto y el paciente no entiende ("pedí para esta semana
+            # y me ofrece el 20"). Solo aplica a pedidos concretos (exact/week);
+            # el motivo REAL nunca se revela si es por obra social (semáforo).
+            if not auto_advanced and search_mode and search_mode.lower() in ("exact", "week"):
+                try:
+                    _first_opt_date = date.fromisoformat(str(options[0].get("date", "")))
+                    if search_mode.lower() == "week":
+                        _req_end = requested_date + timedelta(days=6 - requested_date.weekday())
+                        _req_label = "esa semana"
+                    else:
+                        _req_end = requested_date
+                        _req_label = f"el {requested_date.strftime('%d/%m')}"
+                    if _first_opt_date > _req_end:
+                        lines.append(
+                            f"[SYSTEM_NOTE: el paciente pidió {_req_label} y ahí ya no hay lugar. "
+                            f"La primera disponibilidad es el {options[0].get('date_display')}. "
+                            f"Decíselo amablemente ANTES de listar las opciones, ej.: "
+                            f'"Para {_req_label} ya no me quedan lugares 😊 Tengo disponibilidad '
+                            f"a partir del {options[0].get('date_display')} — ¿te sirve alguna de estas opciones?\". "
+                            f"Adaptá la frase a cómo lo pidió el paciente (hoy / mañana / esta semana). "
+                            f"NUNCA menciones la obra social ni una fecha mínima como motivo.]"
+                        )
+                        logger.info(
+                            f"📅 GAP_NOTE: requested={requested_date} first_option={_first_opt_date} search_mode={search_mode}"
+                        )
+                except Exception as _gap_err:
+                    logger.debug(f"check_availability gap note skipped: {_gap_err}")
+
             # Note if time_preference was relaxed
             if _time_pref_note:
                 lines.append(_time_pref_note)
@@ -3725,8 +3762,17 @@ async def check_availability(
                     f" cercanos a la fecha que pediste ({auto_advance_reason})"
                 )
             else:
-                no_slots_msg += f" para {date_query} ni en los días cercanos"
-            no_slots_msg += ". ¿Querés que busque en otra semana?"
+                no_slots_msg += f" para {date_query} ni en las semanas siguientes"
+            # La búsqueda ya expandió ~1 mes hacia adelante (pick_representative_slots):
+            # repetir "otra semana" con las MISMAS condiciones va a fallar igual. Guiar
+            # al LLM a una salida concreta en vez de un loop de rechazos secos.
+            no_slots_msg += (
+                ". [SYSTEM_NOTE: esta búsqueda ya cubrió ~1 mes desde la fecha pedida con las "
+                "condiciones dadas. Respondé cálido y con una salida concreta: ofrecé relajar la "
+                "condición más restrictiva (otro día de la semana, otra franja horaria u otro "
+                "profesional si el tratamiento lo permite) o probar un rango más lejano (ej. el mes "
+                "siguiente). Nunca un 'no hay' seco. Seguí la regla SIN DISPONIBILIDAD CERCANA.]"
+            )
             # Migration 038: same escalation prepend on the no-slots branch.
             # When escalation triggered AND fallback also empty, the message
             # contextualizes the failure ("we tried both, no luck").
@@ -12898,6 +12944,7 @@ SIN DISPONIBILIDAD CERCANA — REGLA DE MÚLTIPLES INTENTOS ANTES DE DERIVAR:
   → MANEJO DE "CUALQUIER DÍA" / "LO QUE HAYA": Si el paciente dice "cualquier día", "lo que haya", "buscame vos", "lo que tengas", "indiferente", "el que sea" → NO usar search_mode="open". Usá search_mode="week" con la próxima semana hábil como interpreted_date, aplicando time_preference. Presentá los 2 primeros slots disponibles. NUNCA pidas elegir un día específico si el paciente dijo que le es indiferente.
 • PROHIBIDO llamar derivhumano por "falta de disponibilidad" si solo probaste UNA fecha.
 • Si check_availability devuelve turnos disponibles AUNQUE SEA EN FECHA LEJANA → mostralos al paciente. No decidas por él que "es muy lejos".
+• Si las opciones arrancan DESPUÉS de lo que pidió el paciente (pidió "hoy"/"mañana"/"esta semana" y le ofrecés fechas posteriores) → reconocelo SIEMPRE antes de listar: "Para [lo que pidió] ya no me quedan lugares 😊 Tengo disponibilidad a partir del [primera fecha]". NUNCA listes fechas posteriores como si nada, y NUNCA expliques el motivo si es por obra social o fecha mínima.
 • Para tratamientos de IMPLANTES/PRÓTESIS: PROHIBIDO derivar a otro profesional (los implantes son siempre con la doctora). SIEMPRE ofrecer el primer turno disponible con la doctora aunque sea más lejano.
 • Respuesta sugerida: "Perfecto 😊 Estos tratamientos los realiza la doctora de forma personalizada. Actualmente el primer turno disponible es en [fecha]. ¿Te lo agendo?"
 • PROHIBIDO ofrecer "lista de espera" — esa funcionalidad NO existe en el sistema.
