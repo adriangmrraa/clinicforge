@@ -4069,7 +4069,6 @@ async def create_patient(
         return f"❌ Error al crear el paciente: {e}"
 
 
-@tool
 async def _insurance_min_booking_date(tenant_id: int, phone=None, patient_id=None):
     """(min_date, provider_name) si la cobertura vigente del paciente tiene plazo
     'delayed' (scheduling_delay_days > 0). Espeja el SEMÁFORO de check_availability
@@ -4121,6 +4120,7 @@ async def _insurance_min_booking_date(tenant_id: int, phone=None, patient_id=Non
     return None
 
 
+@tool
 async def book_appointment(
     date_time: str,
     treatment_reason: str,
