@@ -1,8 +1,7 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from '../../context/LanguageContext';
 import { SurfacePath } from './SurfacePath';
 import { type SurfaceName, type SurfaceDetail } from './ToothSVG';
-import { STATE_FILLS } from '../../constants/odontogramStates';
 import { getPathForSurface } from './utils';
 
 /**
@@ -70,8 +69,6 @@ export function MobileToothZoom({
     if (typeof sd === 'string') return { state: sd };
     return { state: toothState };
   };
-
-  const fills = STATE_FILLS[toothState] || STATE_FILLS['healthy'];
 
   return (
     <div

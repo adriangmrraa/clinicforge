@@ -50,7 +50,7 @@ export default function LiquidationManager({ periodStart, periodEnd, formatCurre
   const [liquidations, setLiquidations] = useState<LiquidationRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
   const [detailData, setDetailData] = useState<{
     treatment_groups: TreatmentGroup[];
     payouts: ProfessionalPayout[];
@@ -61,14 +61,14 @@ export default function LiquidationManager({ periodStart, periodEnd, formatCurre
   const [totalCount, setTotalCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [confirmAction, setConfirmAction] = useState<{
-    id: string;
+    id: number;
     action: 'approve' | 'paid';
     name: string;
   } | null>(null);
-  const [updating, setUpdating] = useState<string | null>(null);
-  const [pdfLoading, setPdfLoading] = useState<string | null>(null);
+  const [updating, setUpdating] = useState<number | null>(null);
+  const [pdfLoading, setPdfLoading] = useState<number | null>(null);
   const [emailModal, setEmailModal] = useState<{
-    id: string;
+    id: number;
     name: string;
     email: string;
   } | null>(null);
@@ -161,7 +161,7 @@ export default function LiquidationManager({ periodStart, periodEnd, formatCurre
     }
   };
 
-  const handleExpand = async (id: string) => {
+  const handleExpand = async (id: number) => {
     if (expandedId === id) {
       setExpandedId(null);
       setDetailData(null);
@@ -182,13 +182,16 @@ export default function LiquidationManager({ periodStart, periodEnd, formatCurre
     }
   };
 
-  const handleStatusUpdate = async (id: string, newStatus: 'approve' | 'paid') => {
+  const handleStatusUpdate = async (id: number, newStatus: 'approve' | 'paid') => {
     setUpdating(id);
     const backendStatus = newStatus === 'approve' ? 'approved' : newStatus;
     try {
       await api.patch(`/admin/liquidations/${id}`, { status: backendStatus });
       setConfirmAction(null);
-      showToast('success', newStatus === 'approved' ? t('liquidation.generated_success') : t('liquidation.status_paid'));
+      // NOTA: newStatus nunca es 'approved' (solo 'approve'|'paid'), así que siempre
+      // muestra el mensaje de "pagado". Se preserva el comportamiento actual a propósito;
+      // decidir el mensaje correcto para "aprobar" es una decisión de producto.
+      showToast('success', (newStatus as string) === 'approved' ? t('liquidation.generated_success') : t('liquidation.status_paid'));
       fetchLiquidations();
     } catch (err: any) {
       console.error('Error updating status:', err);
@@ -198,7 +201,7 @@ export default function LiquidationManager({ periodStart, periodEnd, formatCurre
     }
   };
 
-  const handleDownloadPDF = async (id: string) => {
+  const handleDownloadPDF = async (id: number) => {
     setPdfLoading(id);
     try {
       const response = await api.get(`/admin/liquidations/${id}/pdf`, {
@@ -222,7 +225,7 @@ export default function LiquidationManager({ periodStart, periodEnd, formatCurre
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (id: number) => {
     if (!(await confirmDialog("¿Estás seguro de que deseas eliminar esta liquidación?", { danger: true }))) return;
     setUpdating(id);
     try {
@@ -478,7 +481,7 @@ export default function LiquidationManager({ periodStart, periodEnd, formatCurre
                           <div className="flex items-center justify-center gap-1">
                             <span className="text-sm text-white/60">{liq.commission_pct}%</span>
                             {liq.commission_pct === 0 && (
-                              <AlertTriangle size={12} className="text-amber-400" title={t('liquidation.commission_warning')} />
+                              <AlertTriangle size={12} className="text-amber-400" {...({ title: t('liquidation.commission_warning') } as any)} />
                             )}
                           </div>
                         </td>

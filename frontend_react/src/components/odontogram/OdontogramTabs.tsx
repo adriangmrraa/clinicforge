@@ -1,4 +1,3 @@
-import React from 'react';
 import { useTranslation } from '../../context/LanguageContext';
 
 export type DentitionType = 'permanent' | 'deciduous';

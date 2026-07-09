@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Clock, AlertCircle, CheckCircle, Save, X, Zap, Shield, Heart, Activity, Stethoscope, Edit2, Upload, Trash2, Image as ImageIcon, Users, FileText, CheckCircle2, Plus, Info, Search, Files, MessageSquare, Send } from 'lucide-react';
+import { Clock, AlertCircle, CheckCircle, Save, X, Zap, Shield, Heart, Activity, Stethoscope, Edit2, Upload, Trash2, Image as ImageIcon, Users, FileText, CheckCircle2, Plus, Info, Search, Send } from 'lucide-react';
 import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
 import { confirmDialog, showAlert } from '../components/Dialogs';
@@ -40,6 +40,9 @@ interface TreatmentType {
   consultation_requirements?: string;
   consultation_notes?: string;
   ai_response_template?: string;
+  // Migration 011: priority fields / Migration 022: patient display name
+  priority?: string;
+  patient_display_name?: string | null;
 }
 
 type PostTiming = 'immediate' | '24h' | '48h' | '72h' | '1w' | 'stitch_removal' | 'custom';
@@ -286,7 +289,7 @@ const StringListEditor: React.FC<{
           <input
             type="text"
             value=""
-            onChange={e => updateAt(0, e.target.value) || add()}
+            onChange={e => { updateAt(0, e.target.value); add(); }}
             placeholder={placeholder}
             className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-xl text-white text-sm placeholder-white/20 outline-none focus:ring-2 focus:ring-blue-500/20"
             onFocus={() => items.length === 0 && onChange([''])}

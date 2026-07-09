@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Plus, Edit, Trash2, X, FileText, Brain, Calendar, User, Clock, Stethoscope, Mail, Phone, Upload, CheckCircle, AlertTriangle, XCircle, UserCheck, AlertCircle } from 'lucide-react';
+import { Search, Plus, Edit, Trash2, X, FileText, Brain, Calendar, User, Clock, Stethoscope, Mail, Upload, CheckCircle, AlertTriangle, XCircle, UserCheck, AlertCircle } from 'lucide-react';
 import api, { setTenantId } from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
 import { confirmDialog, showAlert } from '../components/Dialogs';
@@ -111,7 +111,7 @@ export default function PatientsView() {
   const [treatmentFilter, setTreatmentFilter] = useState<string>('all');
 
   // Debounce ref for semantic search
-  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Fetch clinics + patients on mount; clean up debounce timeout on unmount
   useEffect(() => {
@@ -717,9 +717,9 @@ export default function PatientsView() {
                       </td>
                       {(user?.role === 'ceo' || user?.role === 'secretary') && (
                       <td className="px-3 py-4 whitespace-nowrap">
-                        {patient.pending_balance > 0 ? (
+                        {(patient.pending_balance ?? 0) > 0 ? (
                           <span className="text-xs font-semibold text-amber-400">
-                            ${Math.round(patient.pending_balance).toLocaleString('es-AR')}
+                            ${Math.round(patient.pending_balance ?? 0).toLocaleString('es-AR')}
                           </span>
                         ) : null}
                       </td>

@@ -3,17 +3,17 @@
  * Allows CEOs to start/stop WhatsApp message sync from YCloud.
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { RefreshCw, Clock, Loader2, CheckCircle2, AlertCircle, XCircle, Lock } from 'lucide-react';
 import { useTranslation } from '../context/LanguageContext';
 import api from '../api/axios';
 import {
-    startYCloudSync, 
-    getSyncStatus, 
-    cancelSync, 
-    getSyncConfig, 
-    YCloudSyncProgress,
-    YCloudSyncConfig 
+    startYCloudSync,
+    getSyncStatus,
+    cancelSync,
+    getSyncConfig,
+    type YCloudSyncProgress,
+    type YCloudSyncConfig
 } from '../api/ycloud';
 
 interface YCloudSyncSectionProps {
@@ -92,7 +92,7 @@ export const YCloudSyncSection: React.FC<YCloudSyncSectionProps> = ({ tenantId, 
     
     // Poll progress when task is running
     useEffect(() => {
-        let interval: NodeJS.Timeout;
+        let interval: ReturnType<typeof setInterval>;
         
         if (currentTaskId && polling) {
             interval = setInterval(async () => {
@@ -191,38 +191,10 @@ export const YCloudSyncSection: React.FC<YCloudSyncSectionProps> = ({ tenantId, 
     const canStart = config && config.sync_enabled && config.ycloud_api_key_configured && !config.rate_limited && !isSyncing;
     
     // Format last sync time
-    const formatLastSync = (dateStr: string | null) => {
+    const formatLastSync = (dateStr: string | null | undefined) => {
         if (!dateStr) return t('ycloud_sync.last_sync_never');
         const date = new Date(dateStr);
         return date.toLocaleString();
-    };
-    
-    // Get status color/class
-    const getStatusBadge = (status: string) => {
-        switch (status) {
-            case 'queued':
-                return 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20';
-            case 'processing':
-                return 'bg-blue-500/10 text-blue-400 border-blue-500/20';
-            case 'completed':
-                return 'bg-green-500/10 text-green-400 border-green-500/20';
-            case 'error':
-            case 'cancelled':
-                return 'bg-red-500/10 text-red-400 border-red-500/20';
-            default:
-                return 'bg-gray-500/10 text-gray-400 border-gray-500/20';
-        }
-    };
-    
-    const getStatusText = (status: string) => {
-        switch (status) {
-            case 'queued': return t('ycloud_sync.status_queued');
-            case 'processing': return t('ycloud_sync.status_processing');
-            case 'completed': return t('ycloud_sync.status_completed');
-            case 'error': return t('ycloud_sync.status_error');
-            case 'cancelled': return t('ycloud_sync.status_cancelled');
-            default: return status;
-        }
     };
     
     if (loadingConfig) {
@@ -240,8 +212,6 @@ export const YCloudSyncSection: React.FC<YCloudSyncSectionProps> = ({ tenantId, 
     // if (!config?.ycloud_api_key_configured) {
     //     return null;
     // }
-    
-    const isConfigured = config?.ycloud_api_key_configured;
     
     return (
         <div className={`bg-white/[0.03] border border-white/[0.06] rounded-2xl p-4 sm:p-6 ${className}`}>

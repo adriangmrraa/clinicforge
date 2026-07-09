@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Megaphone, RefreshCw, ExternalLink, Globe, BarChart3 } from 'lucide-react';
+import { Megaphone, RefreshCw, Globe, BarChart3 } from 'lucide-react';
 import api from '../api/axios';
-import PageHeader from '../components/PageHeader';
 import { useTranslation } from '../context/LanguageContext';
 import { showAlert } from '../components/Dialogs';
 import MarketingPerformanceCard from '../components/MarketingPerformanceCard';
@@ -38,7 +37,7 @@ export default function MarketingHubView() {
 
     // UI state
     const [activeTab, setActiveTab] = useState<'campaigns' | 'ads'>('campaigns');
-    const [deploymentConfig, setDeploymentConfig] = useState<any>(null);
+    const [, setDeploymentConfig] = useState<any>(null);
     const [isLoading, setIsLoading] = useState(false);
 
     useEffect(() => {
@@ -160,21 +159,6 @@ export default function MarketingHubView() {
         } catch (error) {
             console.error("Error initiating Meta OAuth:", error);
             showAlert(t('marketing.errors.init_failed'), { variant: 'error' });
-        }
-    };
-
-    const handleConnectGoogle = async () => {
-        try {
-            const tenantId = getCurrentTenantId();
-            const { data } = await api.get(`/admin/auth/google/ads/url?state=tenant_${tenantId}_ads`);
-            if (data?.url) {
-                window.open(data.url, '_blank', 'noopener,noreferrer,width=600,height=700');
-            } else {
-                throw new Error(t('marketing_google.errors.no_auth_url'));
-            }
-        } catch (error: any) {
-            console.error("Error initiating Google OAuth:", error);
-            showAlert(error.response?.data?.detail || error.message || t('common.error'), { variant: 'error' });
         }
     };
 
@@ -700,7 +684,7 @@ export default function MarketingHubView() {
                 <MetaConnectionWizard
                     isOpen={isMetaWizardOpen}
                     onClose={() => setIsMetaWizardOpen(false)}
-                    onConnected={() => {
+                    onSuccess={() => {
                         loadMetaStats();
                         loadCombinedStats();
                     }}

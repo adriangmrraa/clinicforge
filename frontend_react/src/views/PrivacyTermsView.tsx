@@ -1,4 +1,4 @@
-import { Shield, FileText, ChevronLeft, Lock, Eye, Server, Trash2, Scale, HeartHandshake } from 'lucide-react';
+import { Shield, FileText, ChevronLeft, Lock, Eye, Server, Scale, HeartHandshake } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from '../context/LanguageContext';
 

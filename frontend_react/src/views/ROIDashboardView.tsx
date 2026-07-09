@@ -17,8 +17,6 @@ import {
   ResponsiveContainer,
   AreaChart,
   Area,
-  BarChart,
-  Bar,
   PieChart,
   Pie,
   Cell,
@@ -290,7 +288,7 @@ export default function ROIDashboardView() {
                     innerRadius={55}
                     outerRadius={90}
                     dataKey="value"
-                    label={({ name, value }) => `${value.toFixed(0)}%`}
+                    label={({ value }) => `${value.toFixed(0)}%`}
                     labelLine={{ stroke: 'rgba(255,255,255,0.2)' }}
                   >
                     {pieData.map((_entry, i) => (
@@ -303,7 +301,7 @@ export default function ROIDashboardView() {
                   <Tooltip
                     contentStyle={{ background: '#0d1117', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8 }}
                     itemStyle={{ color: '#fff' }}
-                    formatter={(val: number) => `${val.toFixed(1)}%`}
+                    formatter={(val: any) => `${val.toFixed(1)}%`}
                   />
                 </PieChart>
               </ResponsiveContainer>

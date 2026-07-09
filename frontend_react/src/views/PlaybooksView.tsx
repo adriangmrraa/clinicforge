@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Plus, Zap, Filter } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { Plus, Zap } from 'lucide-react';
 import { useTranslation } from '../context/LanguageContext';
 import api from '../api/axios';
 import PlaybookCard from '../components/playbooks/PlaybookCard';
@@ -55,7 +55,7 @@ export default function PlaybooksView() {
     // Optimistic update
     setPlaybooks(prev => prev.map(p => p.id === id ? { ...p, is_active: !p.is_active } : p));
     try {
-      const { data } = await api.patch(`/admin/playbooks/${id}/toggle`);
+      await api.patch(`/admin/playbooks/${id}/toggle`);
       // Refresh full list to get accurate state
       await loadPlaybooks();
     } catch (e: any) {

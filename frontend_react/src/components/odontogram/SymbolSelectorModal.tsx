@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { useTranslation } from '../../context/LanguageContext';
-import { ODONTOGRAM_STATES, OdontogramState, OdontogramCategory } from '../../constants/odontogramStates';
+import { ODONTOGRAM_STATES, type OdontogramState, type OdontogramCategory } from '../../constants/odontogramStates';
 import { Search, X, Check, ChevronLeft } from 'lucide-react';
 
 interface SymbolSelectorModalProps {

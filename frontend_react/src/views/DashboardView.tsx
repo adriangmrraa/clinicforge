@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { getSocket } from '../services/socket';
 import type { Socket } from 'socket.io-client';
-import { MessageSquare, Calendar, Activity as LucideActivity, DollarSign, TrendingUp, TrendingDown, Target, Zap, Clock, ArrowUpRight, User, AlertCircle } from 'lucide-react';
+import { MessageSquare, Calendar, Activity as LucideActivity, DollarSign, TrendingUp, Clock, ArrowUpRight, User, AlertCircle } from 'lucide-react';
 import {
   XAxis,
   YAxis,
@@ -276,7 +276,7 @@ export default function DashboardView() {
           />
           <KPICard
             title={t('dashboard.urgencies')}
-            value={stats?.active_urgencies}
+            value={stats?.active_urgencies ?? ''}
             icon={LucideActivity}
             color="bg-rose-500"
             image={CARD_IMAGES.completion}
@@ -304,14 +304,14 @@ export default function DashboardView() {
                 value={`$${Math.round(stats?.pending_payments || 0).toLocaleString('es-AR')}`}
                 icon={AlertCircle}
                 color="bg-amber-500"
-                image={CARD_IMAGES?.pending}
+                image={(CARD_IMAGES as Record<string, string>).pending}
               />
               <KPICard
                 title={t('dashboard.today_revenue')}
                 value={`$${Math.round(stats?.today_revenue || 0).toLocaleString('es-AR')}`}
                 icon={DollarSign}
                 color="bg-teal-500"
-                image={CARD_IMAGES?.revenue_today}
+                image={(CARD_IMAGES as Record<string, string>).revenue_today}
               />
             </>
           )}
@@ -364,7 +364,7 @@ export default function DashboardView() {
                       <Tooltip
                         contentStyle={{ borderRadius: '12px', border: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.3)', fontSize: 13, backgroundColor: '#1a1e2e', color: '#fff' }}
                         labelFormatter={(v) => { const d = new Date(v + 'T00:00:00'); return d.toLocaleDateString('es-AR', { day: 'numeric', month: 'short' }); }}
-                        formatter={(value: number, name: string) => [
+                        formatter={(value: any, name: any) => [
                           value,
                           name === 'ia_referrals' ? 'Derivaciones IA' : name === 'completed_appointments' ? 'Turnos completados' : name
                         ]}

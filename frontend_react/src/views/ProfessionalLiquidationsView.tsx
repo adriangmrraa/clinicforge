@@ -5,7 +5,7 @@ import { showAlert } from '../components/Dialogs';
 import api from '../api/axios';
 import GlassCard from '../components/GlassCard';
 import LiquidationStatusBadge from '../components/finance/LiquidationStatusBadge';
-import type { LiquidationRecord, TreatmentGroup, ProfessionalPayout } from '../types/finance';
+import type { LiquidationRecord, ProfessionalPayout } from '../types/finance';
 
 /**
  * T4.2: ProfessionalLiquidationsView
@@ -14,17 +14,36 @@ import type { LiquidationRecord, TreatmentGroup, ProfessionalPayout } from '../t
  * Fetches from GET /my/liquidations (JWT auth, not admin token).
  */
 
+// Shapes returned by GET /my/liquidations/{id} (my_routes.py) — distinct from
+// the admin TreatmentGroup/TreatmentSession in types/finance.
+interface MyLiquidationSession {
+  appointment_id: string;
+  date: string;
+  description: string;
+  amount: number;
+  payment_status: string;
+}
+
+interface MyLiquidationGroup {
+  patient_id: string;
+  patient_name: string;
+  treatment_code: string;
+  treatment_name: string;
+  sessions: MyLiquidationSession[];
+  total: number;
+}
+
 export default function ProfessionalLiquidationsView() {
   const { t } = useTranslation();
   const [liquidations, setLiquidations] = useState<LiquidationRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
   const [detailData, setDetailData] = useState<{
-    treatment_groups: TreatmentGroup[];
+    treatment_groups: MyLiquidationGroup[];
     payouts: ProfessionalPayout[];
   } | null>(null);
-  const [pdfLoading, setPdfLoading] = useState<string | null>(null);
+  const [pdfLoading, setPdfLoading] = useState<number | null>(null);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
 
@@ -69,7 +88,7 @@ export default function ProfessionalLiquidationsView() {
     fetchLiquidations();
   }, [fetchLiquidations]);
 
-  const handleExpand = async (id: string) => {
+  const handleExpand = async (id: number) => {
     if (expandedId === id) {
       setExpandedId(null);
       setDetailData(null);
@@ -88,7 +107,7 @@ export default function ProfessionalLiquidationsView() {
     }
   };
 
-  const handleDownloadPDF = async (id: string) => {
+  const handleDownloadPDF = async (id: number) => {
     setPdfLoading(id);
     try {
       const response = await api.get(`/my/liquidations/${id}/pdf`, {
@@ -120,7 +139,7 @@ export default function ProfessionalLiquidationsView() {
     }).format(n);
   };
 
-  const formatPeriod = (start: string, end: string) => {
+  const formatPeriod = (start: string, _end: string) => {
     const d = new Date(start && start.includes('T') ? start : start + 'T00:00:00');
     const months = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
     return `${months[d.getMonth()]} ${d.getFullYear()}`;
@@ -244,7 +263,7 @@ export default function ProfessionalLiquidationsView() {
               <AlertTriangle size={32} className="text-amber-400 mx-auto mb-3" />
               <p className="text-white/60 mb-4">{error}</p>
               <button
-                onClick={fetchLiquidations}
+                onClick={() => fetchLiquidations()}
                 className="px-4 py-2 bg-blue-500/20 text-blue-400 rounded-xl hover:bg-blue-500/30 transition-colors text-sm font-medium"
               >
                 {t('common.retry', 'Reintentar')}
@@ -450,7 +469,7 @@ export default function ProfessionalLiquidationsView() {
 /**
  * Sub-component: Treatment group card (collapsed/expandable)
  */
-function TreatmentGroupCard({ group, formatCurrency }: { group: TreatmentGroup; formatCurrency: (n: number) => string }) {
+function TreatmentGroupCard({ group, formatCurrency }: { group: MyLiquidationGroup; formatCurrency: (n: number) => string }) {
   const [open, setOpen] = useState(false);
 
   return (

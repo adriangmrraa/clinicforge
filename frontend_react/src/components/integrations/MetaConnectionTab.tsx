@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useTranslation } from '../../context/LanguageContext';
 import { confirmDialog } from '../Dialogs';
 import { Facebook, Instagram, MessageCircle, Check, Loader2, AlertTriangle, Trash2, RefreshCw } from 'lucide-react';
 import { useFacebookSdk } from '../../hooks/useFacebookSdk';
@@ -13,7 +12,6 @@ interface MetaAssets {
 }
 
 const MetaConnectionTab: React.FC = () => {
-    const { t } = useTranslation();
     const isSdkReady = useFacebookSdk();
 
     const [status, setStatus] = useState<'loading' | 'idle' | 'connecting' | 'connected' | 'error'>('loading');

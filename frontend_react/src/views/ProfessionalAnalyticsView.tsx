@@ -5,7 +5,7 @@ import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
 import {
   Zap, Crown, Award, TrendingUp, AlertTriangle, BarChart3,
-  DollarSign, CalendarCheck, Users, UserCheck, XCircle, Clock,
+  DollarSign, CalendarCheck, Users, UserCheck, XCircle,
   Target, ArrowUpRight, ArrowDownRight, Percent, Star, Activity
 } from 'lucide-react';
 import AnalyticsFilters from '../components/analytics/AnalyticsFilters';

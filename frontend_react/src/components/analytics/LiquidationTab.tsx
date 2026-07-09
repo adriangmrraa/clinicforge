@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { FileText, ExternalLink, RefreshCw, Loader2, Zap, Database } from 'lucide-react';
+import { FileText, RefreshCw, Loader2, Zap, Database } from 'lucide-react';
 import { useTranslation } from '../../context/LanguageContext';
 import { showAlert } from '../Dialogs';
 import { useAuth } from '../../context/AuthContext';
@@ -44,7 +44,7 @@ const LiquidationTab: React.FC<LiquidationTabProps> = ({
   // T5.1: Data source mode — 'computed' (on-the-fly) or 'persistent' (liquidation_records)
   const [dataSource, setDataSource] = useState<'computed' | 'persistent'>('computed');
   const [persistentLoading, setPersistentLoading] = useState(false);
-  const [hasPersistentData, setHasPersistentData] = useState(false);
+  const [, setHasPersistentData] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
@@ -135,7 +135,9 @@ const LiquidationTab: React.FC<LiquidationTabProps> = ({
           {}
         );
 
-        setData({ professionals: transformed, totals });
+        // period: el modo persistente no lo traía y ExportCSVButton lee data.period.start
+        // (crasheaba al exportar). Se completa con el mismo período pedido al API.
+        setData({ professionals: transformed, totals, period: { start: startDate, end: endDate } });
       } else {
         setData(null);
       }

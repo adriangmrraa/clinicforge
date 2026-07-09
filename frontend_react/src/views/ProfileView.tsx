@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api/axios';
-import { User, Mail, Calendar, Save, CheckCircle, AlertCircle, Loader2, Phone, Award, Clock, DollarSign } from 'lucide-react';
+import { User, Mail, Calendar, Save, CheckCircle, AlertCircle, Loader2, Phone, Award, Clock } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTranslation } from '../context/LanguageContext';
 import PageHeader from '../components/PageHeader';

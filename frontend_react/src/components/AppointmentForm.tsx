@@ -1158,9 +1158,12 @@ export default function AppointmentForm({
                         >
                             {t('common.cancel')}
                         </button>
+                        {/* handleSubmit(true) preserva el comportamiento histórico: onClick={handleSubmit}
+                            pasaba el MouseEvent como forceOverride (truthy) => check_collisions: false.
+                            Activar el chequeo de colisiones acá es una decisión de producto pendiente. */}
                         <button
                             type="button"
-                            onClick={handleSubmit}
+                            onClick={() => handleSubmit(true)}
                             disabled={loading}
                             className={`px-6 py-2 text-sm font-medium text-white rounded-lg shadow-lg shadow-blue-500/30 flex items-center gap-2 transition-all ${loading ? 'bg-blue-400 cursor-not-allowed' : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 hover:scale-[1.02]'
                                 }`}

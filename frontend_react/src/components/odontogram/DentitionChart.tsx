@@ -1,6 +1,4 @@
-import React from 'react';
-import { useTranslation } from '../../context/LanguageContext';
-import { ToothSVG, type SurfaceName } from './ToothSVG';
+import { ToothSVG, type SurfaceName, type SurfaceDetail } from './ToothSVG';
 
 export type DentitionType = 'permanent' | 'deciduous';
 
@@ -30,7 +28,7 @@ export const DECIDUOUS_QUADRANTS: QuadrantsConfig = {
 export interface ToothState {
   id: number;
   state: string;
-  surfaces?: Record<SurfaceName, string>;
+  surfaces?: Record<SurfaceName, SurfaceDetail>;
   notes?: string;
 }
 
@@ -60,10 +58,8 @@ export function DentitionChart({
   readOnly,
   changedTeeth = new Set(),
 }: DentitionChartProps) {
-  const { t } = useTranslation();
-
   // Render a row of teeth with numbers
-  const renderTeethRow = (ids: number[], numbersBelow: boolean, isUpper: boolean) => (
+  const renderTeethRow = (ids: number[], numbersBelow: boolean, _isUpper: boolean) => (
     <div className="flex gap-[2px] sm:gap-1">
       {ids.map(id => {
         const tooth = teeth.find(t => t.id === id);

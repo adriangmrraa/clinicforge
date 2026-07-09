@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Copy, CheckCircle2, ExternalLink, AlertCircle, Settings, Link, MessageSquare, Users } from 'lucide-react';
 import api from '../../api/axios';
 import { useTranslation } from '../../context/LanguageContext';

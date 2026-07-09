@@ -30,7 +30,7 @@ const readonlyCls = "w-full px-3 py-2 rounded-lg bg-white/[0.02] border border-w
 const labelCls = "block text-xs font-medium text-white/50 mb-1";
 
 export default function CreatePatientModal({
-  isOpen, onClose, onSaved, initialPhone, initialName, editPatientId, editPatientData, tenantId,
+  isOpen, onClose, onSaved, initialPhone, initialName, editPatientId, editPatientData,
 }: CreatePatientModalProps) {
   const { t } = useTranslation();
   const isEdit = !!editPatientId;

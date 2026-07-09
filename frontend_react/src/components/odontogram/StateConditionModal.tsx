@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from '../../context/LanguageContext';
-import { OdontogramState } from '../../constants/odontogramStates';
+import type { OdontogramState } from '../../constants/odontogramStates';
 import { ChevronLeft, Check } from 'lucide-react';
 
 export type DentalCondition = 'bueno' | 'malo' | 'indefinido';

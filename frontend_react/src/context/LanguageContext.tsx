@@ -26,7 +26,7 @@ function getNested(obj: Record<string, unknown>, path: string): string | undefin
 interface LanguageContextType {
   language: UiLanguage;
   setLanguage: (lang: UiLanguage) => void;
-  t: (key: string, data?: Record<string, any>) => string;
+  t: (key: string, data?: Record<string, any> | string) => string;
   isLoading: boolean;
 }
 
@@ -69,11 +69,12 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
   }, []);
 
   const t = useCallback(
-    (key: string, data?: Record<string, any>): string => {
+    (key: string, data?: Record<string, any> | string): string => {
       let value = getNested(translations[language], key);
-      if (!value) return key;
+      // Second arg as string = fallback text when the key is missing (i18next-style)
+      if (!value) return typeof data === 'string' ? data : key;
 
-      if (data) {
+      if (data && typeof data === 'object') {
         Object.entries(data).forEach(([k, v]) => {
           value = (value as string).replace(new RegExp(`{{${k}}}`, 'g'), String(v));
         });

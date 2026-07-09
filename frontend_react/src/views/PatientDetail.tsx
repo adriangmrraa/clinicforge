@@ -3,7 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft, User, Phone, Mail, AlertTriangle,
   FileText, Plus, Activity, Heart, Pill, Stethoscope, Megaphone,
-  ClipboardList, History, Folder, X, HeartPulse, Link, Check, Copy, Receipt, Send
+  ClipboardList, History, Folder, X, HeartPulse, Check, Copy, Receipt, Send
 } from 'lucide-react';
 import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
@@ -12,7 +12,6 @@ import { useAuth } from '../context/AuthContext';
 import Odontogram from '../components/Odontogram';
 import { ODONTOGRAM_STATES } from '../constants/odontogramStates';
 
-import AttachmentSummaryCard from '../components/AttachmentSummaryCard';
 import DocumentGallery from '../components/DocumentGallery';
 import AnamnesisPanel from '../components/AnamnesisPanel';
 import DigitalRecordsTab from '../components/DigitalRecordsTab';
@@ -44,6 +43,7 @@ interface Patient {
   pending_balance?: number;
   anamnesis_token?: string;
   patient_source?: string;
+  appointment_count?: number;
 }
 
 interface ClinicalRecord {
@@ -59,12 +59,6 @@ interface ClinicalRecord {
   notes?: string;
   created_at: string;
   odontogram_data?: any;
-}
-interface AttachmentSummary {
-  summary_text: string;
-  attachments_count: number;
-  attachments_types: string[];
-  created_at: string;
 }
 
 
@@ -150,7 +144,6 @@ export default function PatientDetail() {
   const [anamnesisRefreshKey, setAnamnesisRefreshKey] = useState(0);
   const [digitalRecordsRefreshKey, setDigitalRecordsRefreshKey] = useState(0);
   const [billingRefreshKey, setBillingRefreshKey] = useState(0);
-  const [attachmentSummary, setAttachmentSummary] = useState<AttachmentSummary | null>(null);
 
   const [formData, setFormData] = useState({
     record_type: 'evolution',
@@ -609,7 +602,7 @@ export default function PatientDetail() {
                     <p className="text-[10px] text-white/40 uppercase font-bold">Balance pendiente</p>
                     <p className={`text-sm font-bold ${(patient?.pending_balance || 0) > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
                       {(patient?.pending_balance || 0) > 0
-                        ? `$${Math.round(patient.pending_balance).toLocaleString('es-AR')}`
+                        ? `$${Math.round(patient?.pending_balance ?? 0).toLocaleString('es-AR')}`
                         : 'Al día'}
                     </p>
                   </div>

@@ -2,7 +2,6 @@ import {
   DollarSign,
   Banknote,
   TrendingUp,
-  TrendingDown,
   Clock,
   ArrowUpRight,
   ArrowDownRight,
@@ -19,8 +18,6 @@ import {
   PieChart,
   Pie,
   Cell,
-  LineChart,
-  Line,
   AreaChart,
   Area,
 } from 'recharts';
@@ -159,8 +156,8 @@ export default function FinancialDashboard({ data, loading, formatCurrency }: Fi
           value={formatCurrency(summary.total_revenue)}
           icon={DollarSign}
           color="bg-emerald-500/10 text-emerald-400"
-          trend={growth && growth.growth_pct > 0 ? 'up' : growth && growth.growth_pct < 0 ? 'down' : undefined}
-          trendValue={growth ? `${growth.growth_pct >= 0 ? '+' : ''}${growth.growth_pct.toFixed(1)}%` : undefined}
+          trend={growth && growth.growth_pct != null && growth.growth_pct > 0 ? 'up' : growth && growth.growth_pct != null && growth.growth_pct < 0 ? 'down' : undefined}
+          trendValue={growth && growth.growth_pct != null ? `${growth.growth_pct >= 0 ? '+' : ''}${growth.growth_pct.toFixed(1)}%` : undefined}
           image={CARD_IMAGES.revenue}
         />
         <KPICard
@@ -220,7 +217,7 @@ export default function FinancialDashboard({ data, loading, formatCurrency }: Fi
                         fontSize: '12px',
                         color: '#fff',
                       }}
-                      formatter={(value: number) => [formatCurrency(value), '']}
+                      formatter={(value: any) => [formatCurrency(value), '']}
                     />
                     <Bar dataKey="total_billed" name="Facturado" fill="#3b82f6" radius={[6, 6, 0, 0]} barSize={20} />
                     <Bar dataKey="total_paid" name="Cobrado" fill="#10b981" radius={[6, 6, 0, 0]} barSize={20} />
@@ -269,7 +266,7 @@ export default function FinancialDashboard({ data, loading, formatCurrency }: Fi
                           fontSize: '12px',
                           color: '#fff',
                         }}
-                        formatter={(value: number, name: string, props: any) => [
+                        formatter={(value: any, name: any, props: any) => [
                           `${formatCurrency(value)} (${props.payload.pct}%)`,
                           name,
                         ]}
@@ -346,7 +343,7 @@ export default function FinancialDashboard({ data, loading, formatCurrency }: Fi
                       backgroundColor: '#1a1e2e',
                       color: '#fff',
                     }}
-                    formatter={(value: number, name: string) => [
+                    formatter={(value: any, name: any) => [
                       formatCurrency(value),
                       name === 'total' ? 'Ingresos' : 'Pagos',
                     ]}
@@ -422,11 +419,11 @@ export default function FinancialDashboard({ data, loading, formatCurrency }: Fi
                 <div className="flex items-center justify-between pt-2 border-t border-white/[0.06]">
                   <span className="text-xs text-white/40">{t('finance.growth')}</span>
                   <span
-                    className={`flex items-center gap-1 text-sm font-bold ${growth.growth_pct >= 0 ? 'text-green-400' : 'text-red-400'}`}
+                    className={`flex items-center gap-1 text-sm font-bold ${(growth.growth_pct ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}
                   >
-                    {growth.growth_pct >= 0 ? <ArrowUpRight size={16} /> : <ArrowDownRight size={16} />}
-                    {growth.growth_pct >= 0 ? '+' : ''}
-                    {growth.growth_pct.toFixed(1)}%
+                    {(growth.growth_pct ?? 0) >= 0 ? <ArrowUpRight size={16} /> : <ArrowDownRight size={16} />}
+                    {(growth.growth_pct ?? 0) >= 0 ? '+' : ''}
+                    {(growth.growth_pct ?? 0).toFixed(1)}%
                   </span>
                 </div>
               </div>

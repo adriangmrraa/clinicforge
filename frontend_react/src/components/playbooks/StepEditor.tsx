@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   ChevronDown, ChevronUp, Trash2, ArrowUp, ArrowDown,
-  Send, MessageSquare, FileText, Clock, RefreshCw, Bell, Settings, GitBranch, Plus, X, Zap
+  Send, MessageSquare, FileText, Clock, RefreshCw, Bell, Settings, Plus, X, Zap
 } from 'lucide-react';
 import { useTranslation } from '../../context/LanguageContext';
 import MessagePreview from './MessagePreview';
@@ -449,7 +449,7 @@ export default function StepEditor({
           {action === 'notify_team' && (
             <div className="space-y-2">
               <label className="text-xs font-medium text-white/40">{t('playbooks.notify_channel')}</label>
-              <p className="text-[11px] text-white/25">El equipo recibirá esta alerta cuando se ejecute este paso. Podés usar variables como {{nombre_paciente}} en el mensaje.</p>
+              <p className="text-[11px] text-white/25">El equipo recibirá esta alerta cuando se ejecute este paso. Podés usar variables como {'{{nombre_paciente}}'} en el mensaje.</p>
               <select
                 value={step.notify_channel || 'telegram'}
                 onChange={e => update({ notify_channel: e.target.value })}

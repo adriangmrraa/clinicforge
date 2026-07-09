@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { BarChart3, FileText, Scale, Loader2, AlertTriangle } from 'lucide-react';
+import { BarChart3, Scale, AlertTriangle } from 'lucide-react';
 import { useTranslation } from '../context/LanguageContext';
 import api from '../api/axios';
 import PageHeader from '../components/PageHeader';

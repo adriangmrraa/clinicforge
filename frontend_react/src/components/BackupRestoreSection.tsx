@@ -9,7 +9,7 @@ interface BackupRestoreSectionProps {
   tenantId?: number;
 }
 
-export const BackupRestoreSection: React.FC<BackupRestoreSectionProps> = ({ userRole, tenantId }) => {
+export const BackupRestoreSection: React.FC<BackupRestoreSectionProps> = ({ userRole }) => {
   const { t } = useTranslation();
   const fileInputRef = useRef<HTMLInputElement>(null);
 

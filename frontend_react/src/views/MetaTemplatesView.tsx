@@ -506,7 +506,6 @@ function RuleCard({ rule, onEdit, onDelete, onToggle }: {
   onEdit: () => void; onDelete: (() => void) | null;
 }) {
   const { t } = useTranslation();
-  const triggerColor = TRIGGER_COLORS[rule.trigger_type] || '#64748b';
   return (
     <div style={{
       background: 'rgba(255,255,255,0.03)', borderRadius: '12px', padding: '14px 18px',

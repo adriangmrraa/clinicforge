@@ -13,7 +13,7 @@ interface CommissionEditorProps {
 
 export default function CommissionEditor({ professionalId, professionalName, onClose, onSuccess }: CommissionEditorProps) {
   const { t } = useTranslation();
-  const [config, setConfig] = useState<ProfessionalCommission | null>(null);
+  const [, setConfig] = useState<ProfessionalCommission | null>(null);
   const [defaultPct, setDefaultPct] = useState<number>(60);
   const [defaultClinicPct, setDefaultClinicPct] = useState<number>(40);
   const [overrides, setOverrides] = useState<CommissionOverride[]>([]);

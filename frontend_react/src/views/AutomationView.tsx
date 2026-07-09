@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Zap, Layout, Clock, MessageSquare, Plus } from 'lucide-react';
-import { useTranslation } from '../context/LanguageContext';
+import { Zap, Clock, MessageSquare, Plus } from 'lucide-react';
 import { confirmDialog, showAlert } from '../components/Dialogs';
 import api from '../api/axios';
 import PlaybookCard from '../components/playbooks/PlaybookCard';
@@ -97,9 +96,7 @@ type Tab = 'playbooks' | 'logs' | 'templates';
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function AutomationView() {
-  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<Tab>('playbooks');
-  const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
 
   // Playbooks state
   const [playbooks, setPlaybooks] = useState<Playbook[]>([]);

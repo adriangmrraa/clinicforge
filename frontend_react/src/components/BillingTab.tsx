@@ -1721,7 +1721,7 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
                 (planDetail.status === 'approved' || planDetail.status === 'in_progress') && (
                 <button
                   onClick={() => setShowGenerateInstallments(true)}
-                  disabled={planDetail.status === 'cancelled'}
+                  disabled={(planDetail.status as string) === 'cancelled'}
                   className="flex items-center gap-1 text-primary text-sm hover:text-primary-dark disabled:opacity-50"
                 >
                   <Plus size={16} />

@@ -5,7 +5,7 @@ import { useTranslation } from '../context/LanguageContext';
 import api from '../api/axios';
 import {
   Lock, Mail, Shield, AlertCircle, CheckCircle,
-  Info, User, Phone, Building2, Stethoscope, CalendarDays, BadgeCheck, ArrowRight, ChevronRight,
+  Info, ArrowRight,
   Sparkles, Zap, BarChart3, MessageCircle, Eye, EyeOff
 } from 'lucide-react';
 import ParticleBackground from '../components/public/ParticleBackground';

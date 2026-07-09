@@ -1,5 +1,4 @@
-import React, { useRef, useEffect } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useRef, useEffect } from 'react';
 
 interface DateStripProps {
     selectedDate: Date;

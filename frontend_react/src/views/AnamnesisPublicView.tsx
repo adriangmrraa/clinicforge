@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
-import { HeartPulse, Pill, AlertTriangle, Scissors, Cigarette, Baby, Frown, Brain, Loader2, CheckCircle2, XCircle, Lock, Mic, MicOff, Volume2, ArrowRight } from 'lucide-react';
+import { HeartPulse, Pill, AlertTriangle, Scissors, Cigarette, Baby, Frown, Brain, Loader2, CheckCircle2, XCircle, Lock, Mic, Volume2, ArrowRight } from 'lucide-react';
 import api, { BACKEND_URL } from '../api/axios';
 import ParticleBackground from '../components/public/ParticleBackground';
 

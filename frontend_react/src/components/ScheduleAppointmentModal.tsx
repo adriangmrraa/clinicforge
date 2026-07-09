@@ -58,7 +58,7 @@ const selectCls = "w-full px-3 py-2 rounded-lg bg-white/[0.04] border border-whi
 const labelCls = "block text-xs font-medium text-white/50 mb-1";
 
 export default function ScheduleAppointmentModal({
-  isOpen, onClose, onSaved, onPatientCreated, patientId, patientPhone, patientName, tenantId, isForMinor = false,
+  isOpen, onClose, onSaved, onPatientCreated, patientId, patientPhone, patientName, isForMinor = false,
 }: ScheduleAppointmentModalProps) {
   const { t } = useTranslation();
 
@@ -83,7 +83,7 @@ export default function ScheduleAppointmentModal({
   const [durationMinutes, setDurationMinutes] = useState(30);
   const [appointmentNotes, setAppointmentNotes] = useState('');
   const [collision, setCollision] = useState<CollisionResult | null>(null);
-  const [checkingCollision, setCheckingCollision] = useState(false);
+  const [, setCheckingCollision] = useState(false);
 
   // Bank data for seña
   const [bankData, setBankData] = useState<{ bank_cbu?: string; bank_alias?: string; bank_holder_name?: string } | null>(null);
@@ -91,10 +91,6 @@ export default function ScheduleAppointmentModal({
 
   // Patient context (read-only header in step 2)
   const [patientContext, setPatientContext] = useState<any>(null);
-
-  // For minor/family bookings: don't auto-fill phone (use parent's phone, not child's)
-  const isForMinorBooking = isForMinor;
-  const displayPhone = isForMinorBooking ? '' : patientPhone;  // Empty for minor = use parent's phone in API
 
   // Blocked professionals by date
   const [blockedProfs, setBlockedProfs] = useState<number[]>([]);

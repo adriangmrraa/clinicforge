@@ -4,7 +4,7 @@ import {
   X, ChevronRight, ChevronLeft, CheckCircle, Sparkles,
   Home, Calendar, Users, MessageSquare, ShieldCheck, BarChart3,
   Zap, Clock, User, Megaphone, Layout, Settings, Stethoscope,
-  Target, BookOpen, Mic
+  Target, BookOpen
 } from 'lucide-react';
 
 interface GuideStep {

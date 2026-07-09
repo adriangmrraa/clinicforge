@@ -1,4 +1,4 @@
-import React from 'react';
+import type { MouseEvent } from 'react';
 import { STATE_FILLS } from '../../constants/odontogramStates';
 
 interface SurfacePathProps {
@@ -7,12 +7,11 @@ interface SurfacePathProps {
   state: string;
   color?: string;
   isSelected: boolean;
-  onClick?: () => void;
+  onClick?: (e: MouseEvent) => void;
 }
 
 export function SurfacePath({
   pathD,
-  surfaceName,
   state,
   color,
   isSelected,

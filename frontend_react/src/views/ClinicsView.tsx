@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Building2, Plus, Edit, Trash2, Phone, Loader2, AlertCircle, CheckCircle2, Calendar, CalendarX, Clock, MapPin, HelpCircle, ChevronDown, ChevronUp, X, DollarSign, Shield, ShieldAlert, GitMerge, ToggleLeft, ToggleRight, Info, Search, Check, Pencil } from 'lucide-react';
+import { Building2, Plus, Edit, Trash2, Phone, Loader2, AlertCircle, CheckCircle2, Calendar, CalendarX, Clock, MapPin, HelpCircle, ChevronDown, ChevronUp, X, DollarSign, Shield, ShieldAlert, GitMerge, ToggleLeft, ToggleRight, Info, Pencil } from 'lucide-react';
 import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
 import { confirmDialog, showAlert } from '../components/Dialogs';
@@ -118,7 +118,6 @@ const ALLOWED_PAYMENT_METHODS = [
     'cash', 'credit_card', 'debit_card', 'transfer', 'mercado_pago',
     'rapipago', 'pagofacil', 'modo', 'uala', 'naranja', 'crypto', 'other',
 ] as const;
-type PaymentMethodToken = typeof ALLOWED_PAYMENT_METHODS[number];
 
 interface FAQ {
     id?: number;
@@ -515,7 +514,7 @@ export default function ClinicsView() {
     });
     const [insuranceSaving, setInsuranceSaving] = useState(false);
     const [insuranceTreatments, setInsuranceTreatments] = useState<{code: string; name: string}[]>([]);
-    const [insuranceTreatmentSearch, setInsuranceTreatmentSearch] = useState('');
+    const [, setInsuranceTreatmentSearch] = useState('');
     const [coverageMatrixExpanded, setCoverageMatrixExpanded] = useState(false);
 
     // Derivation state
@@ -708,7 +707,11 @@ export default function ClinicsView() {
                 expected_wait_time_minutes: clinica.expected_wait_time_minutes != null ? String(clinica.expected_wait_time_minutes) : '',
                 revision_policy: clinica.revision_policy || '',
                 review_platforms: Array.isArray(clinica.review_platforms) ? clinica.review_platforms : [],
-                complaint_handling_protocol: clinica.complaint_handling_protocol || { level_1: '', level_2: '', level_3: '' },
+                complaint_handling_protocol: {
+                    level_1: clinica.complaint_handling_protocol?.level_1 || '',
+                    level_2: clinica.complaint_handling_protocol?.level_2 || '',
+                    level_3: clinica.complaint_handling_protocol?.level_3 || '',
+                },
                 auto_send_review_link_after_followup: Boolean(clinica.auto_send_review_link_after_followup),
                 review_goal_monthly: Number(clinica.review_goal_monthly) || 0,
                 // Min appointment date
@@ -991,7 +994,6 @@ export default function ClinicsView() {
     };
 
     /* ── Insurance Handlers ── */
-    const tenantHeaders = selectedClinicId ? { headers: { 'X-Tenant-ID': String(selectedClinicId) } } : {};
 
     const fetchInsurance = async () => {
         if (!selectedClinicId) return;

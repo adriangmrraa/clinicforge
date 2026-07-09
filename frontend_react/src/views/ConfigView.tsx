@@ -316,8 +316,7 @@ export default function ConfigView() {
     const handleEngineModeConfirm = async () => {
         if (!engineTargetMode || !engineHealthResult) return;
 
-        const targetEngine = engineTargetMode === 'multi' ? 'multi' : 'solo';
-        const targetStatus = engineTargetMode === 'multi' 
+        const targetStatus = engineTargetMode === 'multi'
             ? engineHealthResult.multi?.ok 
             : engineHealthResult.solo?.ok;
 

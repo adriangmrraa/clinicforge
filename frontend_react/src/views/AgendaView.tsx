@@ -9,7 +9,7 @@ import resourceTimeGridPlugin from '@fullcalendar/resource-timegrid';
 import AppointmentForm from '../components/AppointmentForm';
 import MobileAgenda from '../components/MobileAgenda';
 import HolidayDetailModal from '../components/HolidayDetailModal';
-import { RefreshCw, Stethoscope, Download, FileText, Image, Loader2, Printer } from 'lucide-react';
+import { RefreshCw, Stethoscope, Download, FileText, Loader2, Printer } from 'lucide-react';
 import AppointmentCard from '../components/AppointmentCard';
 import api from '../api/axios';
 import { addDays, subDays, startOfDay, endOfDay } from 'date-fns';
@@ -65,6 +65,7 @@ export interface Patient {
   first_name: string;
   last_name: string;
   phone_number: string;
+  dni?: string | null;
 }
 
 export interface Holiday {
@@ -115,11 +116,6 @@ const SOURCE_COLORS: Record<string, { hex: string; label: string; bgClass: strin
 
 
 
-// Get color based on appointment source (AI vs Manual)
-const getSourceColor = (source: string | undefined): string => {
-  if (!source) return SOURCE_COLORS.ai.hex; // Default to AI if no source
-  return SOURCE_COLORS[source]?.hex || SOURCE_COLORS.ai.hex;
-};
 
 
 
@@ -267,15 +263,6 @@ export default function AgendaView() {
 
 
 
-  // Fetch clinic settings
-  const fetchClinicSettings = useCallback(async () => {
-    try {
-      await api.get('/admin/settings/clinic');
-      // Values are now hardcoded in the calendar view per FIX 1
-    } catch (error) {
-      console.error('Error fetching clinic settings:', error);
-    }
-  }, []);
 
   // Fetch all data
   // explicitStart/explicitEnd: fechas pasadas directamente desde datesSet para evitar leer
@@ -1380,7 +1367,7 @@ export default function AgendaView() {
                     // Kill sticky on list view after data loads
                     if (dateInfo.view.type.startsWith('list')) {
                       requestAnimationFrame(() => {
-                        const table = dateInfo.view.el?.querySelector('.fc-list-sticky');
+                        const table = (dateInfo.view as any).el?.querySelector('.fc-list-sticky');
                         if (table) table.classList.remove('fc-list-sticky');
                       });
                     }

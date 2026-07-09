@@ -152,7 +152,7 @@ export const NovaWidget: React.FC = () => {
   // --- UI State ---
   const [isOpen, setIsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<TabKey>('chat');
-  const [showPulse, setShowPulse] = useState(true);
+  const [, setShowPulse] = useState(true);
   const [toastVisible, setToastVisible] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [toastChecked, setToastChecked] = useState(false);
@@ -190,7 +190,6 @@ export const NovaWidget: React.FC = () => {
   const novaPlayingWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const micPausedWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const transcriptBufferRef = useRef('');
-  const assistantMsgIndexRef = useRef(-1);
   const userDisabledMicRef = useRef(false);
   const sedeDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -532,7 +531,6 @@ export const NovaWidget: React.FC = () => {
       const captureCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
       captureCtxRef.current = captureCtx;
       if (captureCtx.state === 'suspended') captureCtx.resume().catch(() => {});
-      const nativeSampleRate = 24000;
 
       // Build WS URL
       const wsBase = BACKEND_URL.replace(/^http/, 'ws');

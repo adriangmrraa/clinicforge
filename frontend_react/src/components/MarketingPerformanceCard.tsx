@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { TrendingUp, TrendingDown, DollarSign, Users, Award, Target } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { TrendingUp, TrendingDown, DollarSign, Target } from 'lucide-react';
 import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
 
@@ -7,6 +7,12 @@ interface MarketingPerformanceCardProps {
     stats?: any;
     loading?: boolean;
     timeRange?: string;
+    // Pasados por MarketingHubView pero (todavía) no consumidos por esta card:
+    // la card auto-fetchea sus stats. Conectarlos es una decisión de producto pendiente.
+    investment?: number;
+    return?: number;
+    patients?: number;
+    currency?: string;
 }
 
 export default function MarketingPerformanceCard({ stats: externalStats, loading: externalLoading, timeRange = 'last_30d' }: MarketingPerformanceCardProps) {

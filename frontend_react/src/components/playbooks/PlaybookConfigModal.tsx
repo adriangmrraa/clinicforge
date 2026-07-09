@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { X, Plus, Loader2, Save, Zap, Users, Shield, Clock } from 'lucide-react';
 import { useTranslation } from '../../context/LanguageContext';
 import api from '../../api/axios';
-import StepEditor, { StepData } from './StepEditor';
+import StepEditor, { type StepData } from './StepEditor';
 import StepTimeline from './StepTimeline';
 
 interface PlaybookConfigModalProps {

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Settings, BarChart3, Zap, ZapOff, Play, Clock, Send, Trash2 } from 'lucide-react';
+import { useState } from 'react';
+import { Settings, BarChart3, Play, Send, Trash2 } from 'lucide-react';
 import { useTranslation } from '../../context/LanguageContext';
 import { confirmDialog } from '../Dialogs';
 import api from '../../api/axios';
@@ -24,8 +24,9 @@ interface PlaybookCardProps {
   };
   onConfigure: (id: number) => void;
   onToggle: (id: number) => void;
-  onStats: (id: number) => void;
-  onDelete: (id: number) => void;
+  // Opcionales: AutomationView no pasa onStats y PlaybooksView no pasa onDelete
+  onStats?: (id: number) => void;
+  onDelete?: (id: number) => void;
 }
 
 const CATEGORY_COLORS: Record<string, { bg: string; text: string; border: string }> = {
@@ -152,7 +153,7 @@ export default function PlaybookCard({ playbook, onConfigure, onToggle, onStats,
           </button>
         )}
         <button
-          onClick={() => onStats(playbook.id)}
+          onClick={() => onStats?.(playbook.id)}
           className="p-2 text-white/40 hover:text-white/70 hover:bg-white/[0.04] rounded-lg transition-colors"
           title={t('playbooks.view_stats')}
         >
@@ -166,7 +167,7 @@ export default function PlaybookCard({ playbook, onConfigure, onToggle, onStats,
           {t('playbooks.configure')}
         </button>
         <button
-          onClick={() => onDelete(playbook.id)}
+          onClick={() => onDelete?.(playbook.id)}
           className="p-2 text-white/40 hover:text-red-400 hover:bg-red-500/[0.08] rounded-lg transition-colors"
           title="Eliminar regla"
         >

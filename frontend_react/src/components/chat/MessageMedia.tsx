@@ -1,4 +1,3 @@
-import React from 'react';
 import { FileText, Image as ImageIcon, Video, Music, Download, ExternalLink, RefreshCw } from 'lucide-react';
 import api from '../../api/axios';
 import { getCurrentTenantId } from '../../api/axios';

@@ -1,4 +1,3 @@
-import React from 'react';
 import { useTranslation } from '../../context/LanguageContext';
 import { STATE_FILLS } from '../../constants/odontogramStates';
 

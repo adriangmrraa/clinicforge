@@ -49,6 +49,7 @@ interface ChatSession {
   agent_failed?: boolean;
   last_agent_error_at?: string;
   review_requested_at?: string | null;
+  linked_patient_name?: string | null;
 }
 
 interface ChatMessage {
@@ -203,7 +204,7 @@ export default function ChatsView() {
 
   // Scroll Inteligente
   const scrollDependency = useMemo(() => [messages, chatwootMessages], [messages, chatwootMessages]);
-  const { containerRef, messagesEndRef, showScrollButton, scrollToBottom } = useSmartScroll(scrollDependency);
+  const { messagesEndRef, scrollToBottom } = useSmartScroll(scrollDependency);
 
 
   // ============================================
@@ -1003,13 +1004,14 @@ export default function ChatsView() {
           attachments: [attachment],
         });
         // Optimistic update — show audio in chat immediately
+        // (shape histórica del mensaje optimista; difiere de ChatMessage a propósito)
         setMessages(prev => [...prev, {
           id: String(Date.now()),
           role: 'human_supervisor',
           content: '',
           timestamp: new Date().toISOString(),
           content_attributes: [attachment],
-        }]);
+        } as unknown as ChatMessage]);
         fetchMessages(selectedSession.phone_number, selectedSession.tenant_id);
       }
     } catch (err) {
@@ -1116,27 +1118,6 @@ export default function ChatsView() {
       });
     } finally {
       setForceBookingLoading(false);
-    }
-  };
-
-  const handleRemoveSilence = async () => {
-    if (!selectedSession || !selectedSession.human_override_until) return;
-
-    try {
-      await api.post('/admin/chat/remove-silence', {
-        phone: selectedSession.phone_number,
-        tenant_id: selectedSession.tenant_id,
-      });
-
-      // Actualización local inmediata
-      const updateFn = (s: ChatSession) => s.phone_number === selectedSession.phone_number
-        ? { ...s, status: 'active' as const, human_override_until: undefined, last_derivhumano_at: undefined }
-        : s;
-
-      setSessions(prev => prev.map(updateFn));
-      setSelectedSession(prev => prev ? updateFn(prev) : null);
-    } catch (error) {
-      console.error('Error removing silence:', error);
     }
   };
 
@@ -1514,7 +1495,6 @@ export default function ChatsView() {
               const isSelected = selectedChatwoot?.id === item.id;
               const platform = getPlatformConfig(item.channel || 'chatwoot');
               const avatarUrl = item.meta?.customer_avatar || item.avatar_url;
-              const windowOpen = isWindowOpen(item.last_user_message_at);
 
               return (
                 <div
@@ -1680,7 +1660,7 @@ export default function ChatsView() {
                     return (
                       <div className="flex flex-wrap items-center gap-1.5 mt-2 ml-0.5">
                         <span className="text-[10px] text-white/30 font-medium mr-0.5">{t('chats.family_members')}:</span>
-                        {familyPats.map((fp: { id: number; name: string }, i: number) => (
+                        {familyPats.map((fp: { id: number; name: string }) => (
                           <span
                             key={fp.id}
                             className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/25"
@@ -2404,7 +2384,7 @@ export default function ChatsView() {
       <ScheduleAppointmentModal
         isOpen={showScheduleModal}
         onClose={() => setShowScheduleModal(false)}
-        onSaved={(appointment) => {
+        onSaved={() => {
           // Refresh patient context to show new appointment
           const phone = selectedSession?.phone_number || selectedChatwoot?.external_user_id;
           const tid = selectedSession?.tenant_id || selectedTenantId;

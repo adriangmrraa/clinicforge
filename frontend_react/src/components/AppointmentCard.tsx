@@ -16,6 +16,8 @@ interface ExtendedProps {
     urgency_level?: string;
     has_medical_alerts?: boolean;
     patient_source?: string;
+    payment_status?: 'pending' | 'partial' | 'paid' | string;
+    billing_amount?: number;
 }
 
 // Status Visual Configuration
@@ -74,7 +76,7 @@ const STATUS_STYLES: Record<string, { bg: string; border: string; text: string; 
 export const AppointmentCard: React.FC<EventContentArg> = (eventInfo) => {
     const { t } = useTranslation();
     const props = eventInfo.event.extendedProps as ExtendedProps;
-    const { eventType, status, appointment_type, professional_name, urgency_level, source } = props;
+    const { eventType, status, professional_name, urgency_level, source } = props;
     const isGCal = eventType === 'gcalendar_block';
     const isManual = source === 'manual'; // puntito teal para distinguir los turnos cargados a mano
 
@@ -142,7 +144,7 @@ export const AppointmentCard: React.FC<EventContentArg> = (eventInfo) => {
                     {/* Payment status dot */}
                     {props.payment_status === 'paid' && <div className="w-2 h-2 rounded-full bg-emerald-400" title="Pagado" />}
                     {props.payment_status === 'partial' && <div className="w-2 h-2 rounded-full bg-amber-400" title="Pago parcial" />}
-                    {props.payment_status === 'pending' && props.billing_amount > 0 && <div className="w-2 h-2 rounded-full bg-red-400 animate-pulse" title="Pago pendiente" />}
+                    {props.payment_status === 'pending' && (props.billing_amount ?? 0) > 0 && <div className="w-2 h-2 rounded-full bg-red-400 animate-pulse" title="Pago pendiente" />}
                     <StatusIcon size={12} className={`opacity-80 ${styles.text}`} />
                 </div>
             </div>

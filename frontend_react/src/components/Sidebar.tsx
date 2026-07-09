@@ -16,7 +16,6 @@ import {
   User,
   X,
   Megaphone,
-  Layout,
   Zap,
   TrendingUp,
   Wallet,

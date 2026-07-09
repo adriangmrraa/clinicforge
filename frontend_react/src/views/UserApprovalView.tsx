@@ -82,6 +82,7 @@ interface ProfessionalRow {
     phone_number?: string;
     registration_id?: string;
     google_calendar_id?: string;
+    consultation_price?: number | string | null;
 }
 
 const UserApprovalView: React.FC = () => {

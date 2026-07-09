@@ -23,6 +23,7 @@ export interface ChatSummaryItem {
   meta?: { username?: string; inbox_name?: string; customer_avatar?: string };
   last_derivhumano_at?: string | null;
   linked_patient_id?: number | null;
+  linked_patient_name?: string | null;
   family_patient_ids?: number[];
   family_patients?: { id: number; name: string }[];
 }

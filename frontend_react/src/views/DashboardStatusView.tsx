@@ -341,7 +341,7 @@ export default function DashboardStatusView() {
                         <Tooltip
                           contentStyle={{ borderRadius: '12px', border: '1px solid rgba(255,255,255,0.08)', backgroundColor: '#0d1117', color: '#fff', fontSize: 13 }}
                           labelFormatter={(v) => { const d = new Date(v + 'T00:00:00'); return d.toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short' }); }}
-                          formatter={(value: number, name: string) => {
+                          formatter={(value: any, name: any) => {
                             if (name === 'Tokens') return [value.toLocaleString('es-AR'), 'Tokens'];
                             return [value, name];
                           }}

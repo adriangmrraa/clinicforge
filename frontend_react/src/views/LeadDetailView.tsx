@@ -1,14 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft, Phone, Mail, Calendar, MapPin, User, MessageSquare,
-  CheckCircle2, Clock, XCircle, AlertCircle, Edit, Copy, 
-  ExternalLink, History, FileText, Tag, Building2, Globe,
-  Send, Plus, Trash2, UserCheck, Shield
+  ArrowLeft, Phone, Mail, Calendar, User, MessageSquare,
+  CheckCircle2, Clock, XCircle, AlertCircle, Edit, Copy,
+  History, Tag,
+  Send, Plus, UserCheck, Shield
 } from 'lucide-react';
 import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
-import PageHeader from '../components/PageHeader';
 import { Modal } from '../components/Modal';
 
 interface Lead {

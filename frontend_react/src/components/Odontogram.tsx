@@ -10,8 +10,8 @@ import { getPathForSurface, shouldSwapMesialDistal } from './odontogram/utils';
 import { OdontogramLegend } from './odontogram/OdontogramLegend';
 import { OdontogramTabs, type DentitionType } from './odontogram/OdontogramTabs';
 import SymbolSelectorModal from './odontogram/SymbolSelectorModal';
-import { OdontogramState, normalizeLegacyStateId, getStateById, STATE_FILLS } from '../constants/odontogramStates';
-import StateConditionModal, { DentalCondition } from './odontogram/StateConditionModal';
+import { type OdontogramState, normalizeLegacyStateId, getStateById } from '../constants/odontogramStates';
+import StateConditionModal, { type DentalCondition } from './odontogram/StateConditionModal';
 
 // ── Types ──
 interface SurfaceDetail { state: string; condition?: string | null; color?: string | null; }
@@ -428,26 +428,6 @@ export default function Odontogram({ patientId, recordId, initialData, onSave, r
           </div>
         );
       })}
-    </div>
-  );
-
-  const renderQuadrantChart = (right: number[], left: number[], numbersBelow: boolean, upperLabel: string, lowerLabel?: string) => (
-    <div className="flex gap-0 sm:gap-1 items-end">
-      <div className="flex flex-col items-center">
-        {!numbersBelow && <span className="text-[7px] text-white/15 font-medium mb-1 hidden sm:block">{upperLabel}</span>}
-        {renderTeethRow(right, numbersBelow)}
-        {numbersBelow && <span className="text-[7px] text-white/15 font-medium mt-1 hidden sm:block">{upperLabel}</span>}
-      </div>
-      <div className="flex flex-col items-center mx-0.5 sm:mx-1 self-stretch justify-center">
-        <div className="w-px flex-1 bg-white/[0.06]" />
-        <span className="text-[6px] text-white/10 py-0.5 hidden sm:block">|</span>
-        <div className="w-px flex-1 bg-white/[0.06]" />
-      </div>
-      <div className="flex flex-col items-center">
-        {!numbersBelow && <span className="text-[7px] text-white/15 font-medium mb-1 hidden sm:block">{lowerLabel || ''}</span>}
-        {renderTeethRow(left, numbersBelow)}
-        {numbersBelow && <span className="text-[7px] text-white/15 font-medium mt-1 hidden sm:block">{lowerLabel || ''}</span>}
-      </div>
     </div>
   );
 

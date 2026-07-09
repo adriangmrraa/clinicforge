@@ -6,7 +6,7 @@ import {
   Users, Search, Filter, Calendar, Phone, Mail, MessageSquare,
   CheckCircle2, Clock, XCircle, AlertCircle, UserPlus, Edit,
   ChevronRight, ChevronLeft, Download, RefreshCw, BarChart3,
-  Eye, MoreVertical, Tag, UserCheck, ArrowUpDown
+  Eye, Tag, UserCheck
 } from 'lucide-react';
 import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';

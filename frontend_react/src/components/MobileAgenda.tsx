@@ -135,24 +135,6 @@ export default function MobileAgenda({
         return map;
     }, [holidays]);
 
-    // List view: all future events from now, grouped by date, up to 3 years
-    const listEvents = useMemo(() => {
-        if (viewMode !== 'list') return {};
-        const now = new Date();
-        const limit = addYears(now, 3);
-        const future = allEvents.filter((evt: any) => {
-            const evtDate = parseISO(evt.appointment_datetime || evt.start_datetime);
-            return isAfter(evtDate, now) && !isAfter(evtDate, limit);
-        });
-        const groups: Record<string, any[]> = {};
-        future.forEach((evt: any) => {
-            const dateKey = format(parseISO(evt.appointment_datetime || evt.start_datetime), 'yyyy-MM-dd');
-            if (!groups[dateKey]) groups[dateKey] = [];
-            groups[dateKey].push(evt);
-        });
-        return groups;
-    }, [allEvents, viewMode]);
-
     const views: { id: ViewMode; icon: any; label: string }[] = [
         { id: 'day', icon: CalendarDays, label: t('agenda.view_day') },
         { id: 'week', icon: CalendarRange, label: t('agenda.view_week') },
