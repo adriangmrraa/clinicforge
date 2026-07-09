@@ -1519,6 +1519,19 @@ async def process_buffer_task(
             p_insurance = patient_row.get("insurance_provider") or ""
             if p_insurance:
                 identity_lines.append(f"• Obra Social registrada: {p_insurance}")
+                # BLINDAJE del gate de precio (por conversación): como ESTE paciente
+                # tiene OS registrada, inyectamos la instrucción específica y fresca —
+                # mucha más adherencia que la regla lejana del prompt (que tanto
+                # gpt-5.4-mini como gpt-4o se saltean). Evita el error MÁS dañino:
+                # tirarle el valor PARTICULAR a un paciente que tiene obra social.
+                _p_ins_low = p_insurance.strip().lower()
+                if _p_ins_low not in ("particular", "ninguna", "sin obra social", "no"):
+                    identity_lines.append(
+                        f"  ⛔ GATE DE PRECIO: tiene {p_insurance}. Si pregunta el precio/valor de la consulta, "
+                        f"NUNCA le des el valor PARTICULAR: corresponde el coseguro de {p_insurance} (relatá el detalle "
+                        f"configurado / lo que devuelva check_insurance_coverage, o 'se confirma en la clínica'). "
+                        f"El valor particular SOLO si pide EXPLÍCITAMENTE atenderse de forma particular."
+                    )
 
             # Assigned Professional (persistent patient→professional relationship)
             assigned_prof_id = patient_row.get("assigned_professional_id")

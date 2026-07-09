@@ -2149,7 +2149,7 @@ async def check_availability(
     min_time: (Opcional) Límite inferior de horario (ej: "18:00") si el paciente pide "después de las 18".
     max_time: (Opcional) Límite superior de horario (ej: "12:00") si el paciente pide "antes del mediodía".
     preferred_days: (Opcional) Día(s) de la semana que el paciente PIDE o al que se LIMITA (ej: "jueves,viernes"). RESTRINGE la búsqueda SOLO a esos días (excluye los demás). Usalo SIEMPRE que el paciente nombre uno o más días de la semana como preferencia o límite ("jueves o viernes", "solo los martes", "martes o jueves") — NO alcanza con poner interpreted_date en uno de esos días.
-    insurance_provider: (Opcional) Obra social, prepaga o plan del paciente (ej: "Osde", "Swiss Medical", "Particular").
+    insurance_provider: Obra social, prepaga o plan del paciente (ej: "Osde", "Swiss Medical", "Particular"). PASALA SIEMPRE que la conozcas (la dijo el paciente o figura en su contexto/ficha) — habilita aplicar la agenda correcta para esa cobertura. Si es particular, pasá "Particular".
     La tool devuelve 2 opciones concretas de horario con sede. Presentá las opciones al paciente tal cual las recibís.
     """
     try:
@@ -2706,6 +2706,12 @@ async def check_availability(
             )
             target_date = today_date
 
+        # Fecha ORIGINAL pedida por el paciente (capturada ANTES de los ajustes
+        # DLD-67 / semáforo de OS / min_appointment_date / auto-advance). Es la
+        # base del AVISO DE BRECHA: si las opciones arrancan DESPUÉS de esto,
+        # hay que decírselo amablemente al paciente en vez de listar como si nada.
+        requested_date = target_date
+
         # DLD-67: no agendar para el mismo día — mínimo 1 día de margen operativo
         if target_date == today_date:
             logger.info(
@@ -2726,45 +2732,60 @@ async def check_availability(
                 logger.info(f"📅 Excluding dates: {_excluded_dates} from results")
 
         # ── SEMÁFORO DE OBRAS SOCIALES ──
-        # Priority: insurance_provider param > patient_row DB > lead_context
+        # Resolución en 2 pasos (UNIFICADA con los guards de escritura de
+        # book/reschedule — _insurance_min_booking_date):
+        #  (1) NOMBRE de la cobertura: parámetro del LLM > ficha del paciente
+        #      (patient_row, o consulta directa por teléfono si patient_row no se
+        #      cargó — p.ej. cuando se pidió un profesional puntual) > lead_context.
+        #  (2) UNA búsqueda en tenant_insurance_providers con ILIKE BIDIRECCIONAL
+        #      ("OSDE 210" en la ficha matchea "OSDE" del panel y viceversa). El
+        #      JOIN por igualdad exacta de patient_row NO se usa acá: muere en
+        #      silencio con cualquier diferencia de mayúsculas o de plan.
         _mode = "immediate"
         _delay = 0
         _prov = None
-        
-        if insurance_provider:
-            tip_row = await db.pool.fetchrow(
-                "SELECT scheduling_mode, scheduling_delay_days FROM tenant_insurance_providers WHERE tenant_id = $1 AND provider_name ILIKE $2 AND is_active = true",
-                tenant_id, f"%{insurance_provider.strip()}%"
-            )
+
+        if insurance_provider and insurance_provider.strip():
+            _prov = insurance_provider.strip()
+        if not _prov and patient_row and patient_row.get("insurance_provider"):
+            _prov = str(patient_row["insurance_provider"]).strip()
+        if not _prov and _ca_phone:
+            try:
+                _sem_prow = await db.pool.fetchrow(
+                    "SELECT insurance_provider FROM patients WHERE tenant_id = $1 AND REGEXP_REPLACE(phone_number, '[^0-9]', '', 'g') = $2 AND insurance_provider IS NOT NULL AND insurance_provider <> '' LIMIT 1",
+                    tenant_id, normalize_phone_digits(_ca_phone),
+                )
+                if _sem_prow:
+                    _prov = str(_sem_prow["insurance_provider"]).strip()
+            except Exception as _sem_err:
+                logger.debug(f"semaphore patients-by-phone lookup (non-fatal): {_sem_err}")
+        if not _prov:
+            # Cobertura mencionada en la conversación (la persisten
+            # check_insurance_coverage y esta misma tool vía parámetro)
+            try:
+                if _ca_phone:
+                    from services.lead_context import get as _lc_get
+                    _lc_data = await _lc_get(tenant_id, _ca_phone)
+                    _lc_ins = (_lc_data or {}).get("insurance_provider")
+                    if _lc_ins:
+                        _prov = str(_lc_ins).strip()
+                        logger.info(f"📅 SEMAPHORE: Resolved insurance '{_prov}' from lead_context")
+            except Exception as _lc_err:
+                logger.debug(f"lead_context insurance lookup (non-fatal): {_lc_err}")
+
+        if _prov and _prov.lower() in ("particular", "ninguna", "no", "sin obra social"):
+            _prov = None
+        if _prov:
+            # Escalera compartida (exacto → alias → trigram → bidireccional):
+            # idéntica a check_insurance_coverage y a los guards de reserva.
+            tip_row = await _match_insurance_provider_row(tenant_id, _prov)
             if tip_row:
                 _mode = tip_row.get("scheduling_mode") or "immediate"
                 _delay = tip_row.get("scheduling_delay_days") or 0
-                _prov = insurance_provider
-        elif patient_row and patient_row.get("insurance_is_active"):
-            _mode = patient_row.get("scheduling_mode") or "immediate"
-            _delay = patient_row.get("scheduling_delay_days") or 0
-            _prov = patient_row.get("insurance_provider")
-        else:
-            # Fallback: check lead_context for insurance mentioned in conversation
-            try:
-                _lc_phone = current_customer_phone.get()
-                if _lc_phone:
-                    from services.lead_context import get as _lc_get
-                    _lc_data = await _lc_get(tenant_id, _lc_phone)
-                    _lc_ins = (_lc_data or {}).get("insurance_provider")
-                    if _lc_ins:
-                        _lc_tip = await db.pool.fetchrow(
-                            "SELECT scheduling_mode, scheduling_delay_days FROM tenant_insurance_providers WHERE tenant_id = $1 AND provider_name ILIKE $2 AND is_active = true",
-                            tenant_id, f"%{_lc_ins.strip()}%"
-                        )
-                        if _lc_tip:
-                            _mode = _lc_tip.get("scheduling_mode") or "immediate"
-                            _delay = _lc_tip.get("scheduling_delay_days") or 0
-                            _prov = _lc_ins
-                            logger.info(f"📅 SEMAPHORE: Resolved insurance '{_lc_ins}' from lead_context")
-            except Exception as _lc_err:
-                logger.debug(f"lead_context insurance lookup (non-fatal): {_lc_err}")
-            
+                _prov = tip_row.get("provider_name") or _prov
+            else:
+                _prov = None  # cobertura desconocida para el panel → sin restricción
+
         if _prov:
             if _mode == "blocked":
                 logger.warning(f"🚫 SEMAPHORE: Blocked scheduling for patient {_ca_patient_id} due to insurance '{_prov}'")
@@ -3542,6 +3563,37 @@ async def check_availability(
                 lines.append(f"{auto_advance_reason}.")
                 lines.append(f"Te busqué los turnos más cercanos:\n")
 
+            # ── AVISO DE BRECHA: el paciente pidió un día/semana concreta y las
+            # opciones arrancan DESPUÉS (día lleno, semáforo de OS o fecha mínima
+            # del tenant). Sin este aviso el bot lista fechas posteriores sin
+            # explicar el salto y el paciente no entiende ("pedí para esta semana
+            # y me ofrece el 20"). Solo aplica a pedidos concretos (exact/week);
+            # el motivo REAL nunca se revela si es por obra social (semáforo).
+            if not auto_advanced and search_mode and search_mode.lower() in ("exact", "week"):
+                try:
+                    _first_opt_date = date.fromisoformat(str(options[0].get("date", "")))
+                    if search_mode.lower() == "week":
+                        _req_end = requested_date + timedelta(days=6 - requested_date.weekday())
+                        _req_label = "esa semana"
+                    else:
+                        _req_end = requested_date
+                        _req_label = f"el {requested_date.strftime('%d/%m')}"
+                    if _first_opt_date > _req_end:
+                        lines.append(
+                            f"[SYSTEM_NOTE: el paciente pidió {_req_label} y ahí ya no hay lugar. "
+                            f"La primera disponibilidad es el {options[0].get('date_display')}. "
+                            f"Decíselo amablemente ANTES de listar las opciones, ej.: "
+                            f'"Para {_req_label} ya no me quedan lugares 😊 Tengo disponibilidad '
+                            f"a partir del {options[0].get('date_display')} — ¿te sirve alguna de estas opciones?\". "
+                            f"Adaptá la frase a cómo lo pidió el paciente (hoy / mañana / esta semana). "
+                            f"NUNCA menciones la obra social ni una fecha mínima como motivo.]"
+                        )
+                        logger.info(
+                            f"📅 GAP_NOTE: requested={requested_date} first_option={_first_opt_date} search_mode={search_mode}"
+                        )
+                except Exception as _gap_err:
+                    logger.debug(f"check_availability gap note skipped: {_gap_err}")
+
             # Note if time_preference was relaxed
             if _time_pref_note:
                 lines.append(_time_pref_note)
@@ -3725,8 +3777,17 @@ async def check_availability(
                     f" cercanos a la fecha que pediste ({auto_advance_reason})"
                 )
             else:
-                no_slots_msg += f" para {date_query} ni en los días cercanos"
-            no_slots_msg += ". ¿Querés que busque en otra semana?"
+                no_slots_msg += f" para {date_query} ni en las semanas siguientes"
+            # La búsqueda ya expandió ~1 mes hacia adelante (pick_representative_slots):
+            # repetir "otra semana" con las MISMAS condiciones va a fallar igual. Guiar
+            # al LLM a una salida concreta en vez de un loop de rechazos secos.
+            no_slots_msg += (
+                ". [SYSTEM_NOTE: esta búsqueda ya cubrió ~1 mes desde la fecha pedida con las "
+                "condiciones dadas. Respondé cálido y con una salida concreta: ofrecé relajar la "
+                "condición más restrictiva (otro día de la semana, otra franja horaria u otro "
+                "profesional si el tratamiento lo permite) o probar un rango más lejano (ej. el mes "
+                "siguiente). Nunca un 'no hay' seco. Seguí la regla SIN DISPONIBILIDAD CERCANA.]"
+            )
             # Migration 038: same escalation prepend on the no-slots branch.
             # When escalation triggered AND fallback also empty, the message
             # contextualizes the failure ("we tried both, no luck").
@@ -4021,6 +4082,107 @@ async def create_patient(
     except Exception as e:
         logger.exception(f"create_patient failed for tenant {tid}")
         return f"❌ Error al crear el paciente: {e}"
+
+
+async def _match_insurance_provider_row(tenant_id: int, raw_name: str):
+    """Resuelve la fila (provider_name, scheduling_mode, scheduling_delay_days) de
+    tenant_insurance_providers para un nombre "sucio" (texto del LLM, ficha o Redis).
+    ESCALERA IDÉNTICA a check_insurance_coverage, compartida por el semáforo de
+    check_availability y los guards de book/reschedule, para que los tres puntos
+    coincidan SIEMPRE en qué obra social es:
+      (1) exacto case-insensitive — evita que "OSDE" caiga en "OSDEPYM";
+      (2) alias ISSN/Instituto (sigla vs nombre largo, no matchean por trigram);
+      (3) similitud trigram, solo si es inequívoca;
+      (4) ILIKE bidireccional ("OSDE 210" en ficha ↔ "OSDE" en panel), solo si es
+          inequívoco. Ambiguo → None: mejor NO aplicar restricción que aplicar la
+          de OTRA obra social.
+    """
+    _q = (raw_name or "").strip()
+    if not _q:
+        return None
+    _cols = "provider_name, scheduling_mode, scheduling_delay_days"
+    try:
+        row = await db.pool.fetchrow(
+            f"SELECT {_cols} FROM tenant_insurance_providers WHERE tenant_id = $1 AND LOWER(provider_name) = LOWER($2) AND is_active = true",
+            tenant_id, _q,
+        )
+        if row:
+            return row
+        _ql = _q.lower()
+        if "issn" in _ql or "instituto" in _ql:
+            _alias = await db.pool.fetch(
+                f"SELECT {_cols} FROM tenant_insurance_providers WHERE tenant_id = $1 AND is_active = true AND (provider_name ILIKE '%issn%' OR provider_name ILIKE '%instituto%')",
+                tenant_id,
+            )
+            if len(_alias) == 1:
+                return _alias[0]
+        try:
+            _tri = await db.pool.fetch(
+                f"SELECT {_cols} FROM tenant_insurance_providers WHERE tenant_id = $1 AND is_active = true AND provider_name % $2 ORDER BY similarity(provider_name, $2) DESC LIMIT 2",
+                tenant_id, _q,
+            )
+            if len(_tri) == 1:
+                return _tri[0]
+        except Exception:
+            pass  # pg_trgm no disponible → seguir con ILIKE
+        _like = await db.pool.fetch(
+            f"SELECT {_cols} FROM tenant_insurance_providers WHERE tenant_id = $1 AND is_active = true AND (provider_name ILIKE '%' || $2 || '%' OR $2 ILIKE '%' || provider_name || '%') LIMIT 3",
+            tenant_id, _q,
+        )
+        if len(_like) == 1:
+            return _like[0]
+        if len(_like) > 1:
+            logger.warning(
+                f"insurance match ambiguo para '{_q}' (tenant {tenant_id}): {[r['provider_name'] for r in _like]} — sin restricción"
+            )
+    except Exception as _mi_err:
+        logger.debug(f"insurance provider match (non-fatal): {_mi_err}")
+    return None
+
+
+async def _insurance_min_booking_date(tenant_id: int, phone=None, patient_id=None):
+    """(min_date, provider_name) si la cobertura vigente del paciente tiene plazo
+    'delayed' (scheduling_delay_days > 0). Espeja el SEMÁFORO de check_availability
+    pero para los puntos de ESCRITURA (book/reschedule): que NO se pueda reservar
+    antes de hoy+N por NINGÚN camino (reserva directa sin re-búsqueda, insistencia,
+    reprogramación). Resolución: ficha del paciente > lead_context. None si no aplica."""
+    try:
+        prov = None
+        if patient_id:
+            _prow = await db.pool.fetchrow(
+                "SELECT insurance_provider FROM patients WHERE id = $1 AND tenant_id = $2",
+                patient_id, tenant_id,
+            )
+            if _prow and _prow["insurance_provider"]:
+                prov = _prow["insurance_provider"]
+        if not prov and phone:
+            _digits = normalize_phone_digits(phone)
+            _prow = await db.pool.fetchrow(
+                "SELECT insurance_provider FROM patients WHERE tenant_id = $1 AND REGEXP_REPLACE(phone_number, '[^0-9]', '', 'g') = $2 AND insurance_provider IS NOT NULL AND insurance_provider <> '' LIMIT 1",
+                tenant_id, _digits,
+            )
+            if _prow:
+                prov = _prow["insurance_provider"]
+        if not prov and phone:
+            try:
+                from services.lead_context import get as _lc_get2
+                _lc = await _lc_get2(tenant_id, phone)
+                prov = (_lc or {}).get("insurance_provider")
+            except Exception:
+                pass
+        if not prov or str(prov).strip().lower() in ("particular", "ninguna", "no", "sin obra social"):
+            return None
+        # Escalera de matching compartida (exacto → alias → trigram → bidireccional),
+        # idéntica al semáforo de check_availability y a check_insurance_coverage.
+        tip = await _match_insurance_provider_row(tenant_id, str(prov).strip())
+        if tip and (tip["scheduling_mode"] or "immediate") == "delayed" and (tip["scheduling_delay_days"] or 0) > 0:
+            return (
+                get_now_arg().date() + timedelta(days=int(tip["scheduling_delay_days"])),
+                tip["provider_name"],
+            )
+    except Exception as _sem_e:
+        logger.debug(f"insurance min booking date (non-fatal): {_sem_e}")
+    return None
 
 
 @tool
@@ -4478,6 +4640,23 @@ async def book_appointment(
         # No agendar en el pasado
         if apt_datetime < get_now_arg():
             return "❌ No se pueden agendar turnos para horarios que ya pasaron. Indicá un día y hora futuros. Formato esperado: date_time como 'día 17:00' (ej. miércoles 17:00)."
+
+        # SEMÁFORO OS EN ESCRITURA: espejo del plazo de check_availability. Si la
+        # cobertura tiene días de espera (ej. OSDE + 40), NO se puede RESERVAR antes
+        # de hoy+N por ningún camino (reserva directa, insistencia, etc.). El mensaje
+        # NO explica el motivo (regla del prompt: nunca mencionar el plazo de la OS).
+        try:
+            _ins_min = await _insurance_min_booking_date(tenant_id, phone=chat_phone)
+            if _ins_min and apt_datetime.date() < _ins_min[0]:
+                logger.info(
+                    f"⏳ SEMAPHORE(BOOK): bloqueada reserva {apt_datetime.date()} < {_ins_min[0]} (OS '{_ins_min[1]}') para {chat_phone}"
+                )
+                return (
+                    f"Ese día todavía no tengo disponibilidad 😊 La primera fecha disponible es a partir del "
+                    f"{_ins_min[0].strftime('%d/%m')}. ¿Querés que te pase opciones desde esa fecha?"
+                )
+        except Exception as _semb_err:
+            logger.warning(f"semaphore book guard (non-fatal): {_semb_err}")
 
         # R1 — Validate that the requested slot was actually offered by check_availability
         try:
@@ -6508,6 +6687,23 @@ async def reschedule_appointment(original_date: str, new_date_time: str, interpr
                 f"Necesito la nueva fecha y hora para reprogramar el turno del {original_date}. "
                 f"\u00bfPara cu\u00e1ndo lo quer\u00e9s cambiar?"
             )
+
+        # SEM\u00c1FORO OS EN ESCRITURA (igual que book_appointment): una reprogramaci\u00f3n
+        # tampoco puede caer antes de hoy+N d\u00edas de la cobertura. Sin explicar el motivo.
+        try:
+            _ins_min_r = await _insurance_min_booking_date(
+                current_tenant_id.get(), phone=phone or current_customer_phone.get(), patient_id=p_id
+            )
+            if _ins_min_r and new_dt.date() < _ins_min_r[0]:
+                logger.info(
+                    f"\u23f3 SEMAPHORE(RESCHEDULE): bloqueada reprogramaci\u00f3n {new_dt.date()} < {_ins_min_r[0]} (OS '{_ins_min_r[1]}')"
+                )
+                return (
+                    f"Para esa fecha todav\u00eda no tengo disponibilidad \ud83d\ude0a La primera fecha disponible es a partir del "
+                    f"{_ins_min_r[0].strftime('%d/%m')}. \u00bfQuer\u00e9s que busque opciones desde ah\u00ed?"
+                )
+        except Exception as _semr_err:
+            logger.warning(f"semaphore reschedule guard (non-fatal): {_semr_err}")
         try:
             from services.relay import get_redis as _get_redis_resched_validate
             _r_rv = _get_redis_resched_validate()
@@ -8995,12 +9191,12 @@ async def verify_payment_receipt(
             if apt_dt_arg <= _now_ref:
                 _verified_msg = (
                     f"✅ ¡Comprobante verificado! Quedó registrado el pago de tu {treatment_display} "
-                    f"del {fecha}. ¡Muchas gracias! 😊"
+                    f"del {fecha}. ¡Muchas gracias!"
                 )
             else:
                 _verified_msg = (
                     f"✅ Comprobante verificado correctamente! Tu turno de {treatment_display} el {fecha} "
-                    f"con {apt['prof_name'] or 'el profesional'} queda CONFIRMADO. Te esperamos! 😊"
+                    f"con {apt['prof_name'] or 'el profesional'} queda CONFIRMADO. ¡Te esperamos!"
                 )
 
             overpaid_msg = ""
@@ -9545,6 +9741,27 @@ async def check_insurance_coverage(insurance_provider: str) -> str:
     """
     tenant_id = current_tenant_id.get()
     try:
+        # ── ANTI-LOOP DE COBERTURA (caso OSPE prod 2026-07-09) ──
+        # Si YA se resolvió ESTA misma OS en la charla, el modelo tiende a re-llamar
+        # esta tool y re-emitir el rechazo en CADA turno (loop real de prod: la paciente
+        # dice "sí" y el bot repite "No trabajamos con OSPE..." una y otra vez). En vez
+        # de repetir, devolvemos una orden de AVANZAR (el tool-result manda mucho más
+        # que la regla lejana del prompt, que el modelo se saltea).
+        try:
+            from services.conversation_state import get_insurance_resolved as _cc_gir
+            _cc_loop_phone = current_customer_phone.get()
+            if _cc_loop_phone:
+                _cc_prev = await _cc_gir(tenant_id, _cc_loop_phone)
+                if _cc_prev and (str(_cc_prev.get("provider", "")).strip().lower() == insurance_provider.strip().lower()):
+                    return json.dumps({
+                        "status": "already_informed",
+                        "provider_name": _cc_prev.get("provider"),
+                        "prev_status": _cc_prev.get("status"),
+                        "next_action": "advance",
+                        "nota_obligatoria": "Ya le informaste sobre esta cobertura en esta charla. ⛔ NO repitas la explicación de cobertura NI vuelvas a describir el reintegro. Si el paciente dijo 'sí'/'dale' o quiere turnos → llamá check_availability AHORA y pasale opciones. Si preguntó si TIENE/le corresponde REINTEGRO → respondé SOLO eso, cálido: 'Eso depende de tu obra social 😊 Quedate tranquila que nosotros te entregamos toda la documentación necesaria para que puedas gestionarlo con ellos, y ahí te confirman si te corresponde.' (sin montos, sin prometer que se lo darán). Si preguntó un detalle puntual del coseguro, respondé en UNA sola línea (se confirma en la clínica el día del turno) sin repetir todo lo anterior.",
+                    }, ensure_ascii=False)
+        except Exception:
+            pass
         # 1. Try exact match (case-insensitive)
         row = await db.pool.fetchrow(
             "SELECT * FROM tenant_insurance_providers WHERE tenant_id = $1 AND LOWER(provider_name) = LOWER($2) AND is_active = true",
@@ -9595,11 +9812,38 @@ async def check_insurance_coverage(insurance_provider: str) -> str:
                 return json.dumps({"status": "multiple_matches", "matches": [r["provider_name"] for r in rows], "next_action": "ask_which_one"}, ensure_ascii=False)
         # 3. No match at all → convert to particular + reintegro
         if not row:
-            return json.dumps({"status": "not_found", "provider_name": insurance_provider.strip(), "alternative": "particular_con_reintegro", "next_action": "offer_particular"}, ensure_ascii=False)
+            # Anti-loop: registrar que esta OS ya se resolvió (not_found) en la charla.
+            try:
+                from services.conversation_state import mark_insurance_resolved as _cc_mir_nf
+                _cc_nf_phone = current_customer_phone.get()
+                if _cc_nf_phone:
+                    await _cc_mir_nf(tenant_id, _cc_nf_phone, insurance_provider.strip(), "not_found")
+            except Exception:
+                pass
+            # nota_obligatoria: instrucción inline para el LLM en el momento exacto —
+            # la regla del prompt ("MENCIÓN OBLIGATORIA DEL COMPROBANTE") se le caía
+            # sistemáticamente al formular la respuesta (caso os-swiss, estable en
+            # todas las corridas del banco). El tool-result tiene mucha más adherencia.
+            return json.dumps({"status": "not_found", "provider_name": insurance_provider.strip(), "alternative": "particular_con_reintegro", "next_action": "offer_particular", "nota_obligatoria": "Decile EXPLÍCITAMENTE que la clínica le entrega el comprobante/recibo para que pueda gestionar el reintegro con su cobertura — 'podés pedir reintegro' a secas no alcanza."}, ensure_ascii=False)
         # 4. Format response based on status
         status = row["status"]
         name = row["provider_name"]
-        
+
+        # Persistir la cobertura resuelta TAMBIÉN en lead_context (Redis): para un
+        # lead sin ficha el UPDATE de patients de abajo afecta 0 filas, y el
+        # SEMÁFORO de check_availability quedaba ciego aunque el paciente ya dijo
+        # su obra social. Se guarda el nombre CANÓNICO del panel (no el texto del LLM).
+        try:
+            _cc_phone = current_customer_phone.get()
+            if _cc_phone:
+                from services.lead_context import merge as _lc_merge_cc
+                await _lc_merge_cc(tenant_id, _cc_phone, {"insurance_provider": name})
+                # Anti-loop: registrar que esta OS ya se resolvió (status) en la charla.
+                from services.conversation_state import mark_insurance_resolved as _cc_mir
+                await _cc_mir(tenant_id, _cc_phone, name, status)
+        except Exception as _lc_cc_err:
+            logger.debug(f"lead_context insurance persist (non-fatal): {_lc_cc_err}")
+
         # Save the insurance to the patient's record if it is accepted or restricted
         if status in ("accepted", "restricted"):
             phone_for_lookup = current_customer_phone.get()
@@ -9652,7 +9896,7 @@ async def check_insurance_coverage(insurance_provider: str) -> str:
         elif status == "external_derivation":
             return json.dumps({"status": "external_derivation", "provider_name": name, "external_target": row.get("external_target", ""), "next_action": "provide_contact"}, ensure_ascii=False)
         else:  # rejected → particular + reintegro
-            return json.dumps({"status": "rejected", "provider_name": name, "alternative": "particular_con_reintegro", "next_action": "offer_particular"}, ensure_ascii=False)
+            return json.dumps({"status": "rejected", "provider_name": name, "alternative": "particular_con_reintegro", "next_action": "offer_particular", "nota_obligatoria": "Decile EXPLÍCITAMENTE que la clínica le entrega el comprobante/recibo para que pueda gestionar el reintegro con su cobertura — 'podés pedir reintegro' a secas no alcanza."}, ensure_ascii=False)
     except Exception as e:
         logger.warning(
             f"check_insurance_coverage error (tabla puede no existir aún): {e}"
@@ -10680,7 +10924,7 @@ def _format_insurance_providers(
         _sched_mode = p.get("scheduling_mode") or "immediate"
         _sched_delay = p.get("scheduling_delay_days") or 0
         if _sched_mode == "delayed" and _sched_delay > 0:
-            _sched_str = f" ⏳ Plazo mínimo: {_sched_delay} días — NO ofrecer turnos antes de {_sched_delay} días desde hoy. REGLA CRÍTICA: NUNCA le expliques este plazo al paciente. No menciones obra social, no digas 'período de espera', no digas 'restricción'. Solo ofrecé el primer turno disponible como si fuera la fecha natural. Si el paciente pregunta por qué tan lejos, decí 'es la primera disponibilidad que tenemos' sin más detalle."
+            _sched_str = f" ⏳ Plazo mínimo: {_sched_delay} días — NO ofrecer turnos antes de {_sched_delay} días desde hoy. Si pide una fecha ANTES de ese plazo ('mañana', 'esta semana'), NO prometas buscar para esa fecha: respondé DIRECTO y NEUTRO que la primera disponibilidad es a partir de (hoy + {_sched_delay} días) y ofrecé opciones desde ahí. ⛔ PROHIBIDO empezar con 'Con [obra social]' o nombrar la cobertura al dar esa fecha — decilo como agenda natural: 'La primera fecha que tengo disponible es a partir del [fecha], ¿te paso opciones desde ahí?'. REGLA CRÍTICA: NUNCA le expliques este plazo al paciente. No menciones obra social, no digas 'período de espera', no digas 'restricción'. Solo ofrecé el primer turno disponible como si fuera la fecha natural. Si el paciente pregunta por qué tan lejos, decí 'es la primera disponibilidad que tenemos' sin más detalle."
         elif _sched_mode == "blocked":
             _sched_str = " 🚫 Atención suspendida temporalmente — ofrecer turno particular"
         else:
@@ -11438,6 +11682,7 @@ REGLA ANTI-MARKDOWN (WHATSAPP):
             address_info += f"\n• Google Maps: {clinic_maps_url}"
         address_info += "\n• REGLA: Si el paciente pregunta dónde están, la dirección o cómo llegar, SIEMPRE respondé con la dirección y el link (NUNCA antes de book_appointment exitoso). NUNCA digas que no podés brindar esa información."
         address_info += "\n• MULTI-SEDE: Si la clínica opera en diferentes sedes según el día, y el paciente pregunta 'dónde queda?' sin especificar día, respondé: 'Dependemos del día! Te cuento las ubicaciones:' y listá las sedes por día de los horarios de arriba. Si el paciente tiene turno agendado, dar la dirección del DÍA de su turno."
+        address_info += "\n• MULTI-SEDE al ELEGIR (CRÍTICO): si el paciente pregunta la dirección MIENTRAS elige entre opciones de turno (todavía sin confirmar): si TODAS las opciones caen el mismo día, dale la sede de ESE día; si son de días distintos con sedes distintas, respondé 'depende del día' y aclará cada una. ⛔ NUNCA respondas con la dirección principal por default cuando el turno en juego cae un día con OTRA sede (ej.: si los miércoles la sede es Córdoba y ofreciste un miércoles, JAMÁS digas la de otro día) — ese error obliga a la secretaria a corregirte."
 
     # Multi-sede: info de sedes por día
     sede_section = ""
@@ -11760,7 +12005,7 @@ REGLAS ESTRICTAS:
 
 RESPUESTA CORTA Y DIRECTA (no agregar más):
 "En implantes lo ideal es hacer primero una evaluación para ver qué opción es la más adecuada para vos. Si querés, te ayudo a coordinar un turno."
-PROHIBIDO: párrafos largos, explicaciones sobre hueso disponible, zona a tratar o tipo de rehabilitación. La doctora pidió explícitamente "la más cortita". UNA frase de evaluación + CTA. Nada más.
+PROHIBIDO: párrafos largos, explicaciones sobre hueso disponible, zona a tratar o tipo de rehabilitación. La doctora pidió explícitamente "la más cortita". UNA frase de evaluación + CTA. Nada más. ⛔ PROHIBIDO también pegarle a esta respuesta el párrafo del VALOR de la consulta ($60.000 / "La consulta de evaluación tiene un valor de…") si la cobertura NO está resuelta — aunque el paciente sea conocido o vuelva a escribir. Si NO sabés su cobertura, tu respuesta EXACTA es: "En [implantes/prótesis] lo ideal es primero una evaluación con la Dra 😊 ¿Contás con obra social o sería particular? Así te coordino la evaluación." — SIN ningún monto. PERO si el paciente YA dijo su cobertura NO se la vuelvas a preguntar: si dijo una OS (ej. "tengo OSDE") → informá el coseguro de esa OS (según los datos, sin inventar cifras) + evaluación + ofrecé el turno; si dijo particular → el valor de consulta + evaluación + turno.
 
 SI EL PACIENTE ACEPTA → aplicá la REGLA DE COBERTURA (si no sabés si es particular u obra social, preguntalo UNA vez) y ejecutá check_availability INMEDIATAMENTE después.
 Si tiene estudios previos (tomografía, panorámica), aceptarlos. Si no tiene, no es requisito."""
@@ -11828,14 +12073,14 @@ Si un paciente te pregunta cómo te llamás, respondé: "Me llamo {bot_name}, so
 • REFERENCIA AL PROFESIONAL: SIEMPRE usá "la Dra." + apellido o nombre completo con título ("la Dra. Laura Delgado", "la Dra. Delgado"). NUNCA uses solo el nombre de pila ("Laura"), ni nombre+apellido sin título ("Laura Delgado"). Esto aplica a TODOS los mensajes: confirmaciones de turno, CTAs, respuestas informativas. Es una cuestión de posicionamiento profesional.
 • TU ÚNICA FUNCIÓN es asistir a los pacientes de esta clínica. Cualquier tema ajeno debe ser declinado.
 • Ante dudas clínicas, decí que el profesional tendrá que evaluar en consultorio para un diagnóstico certero.
-• Máximo 1-2 emojis por mensaje. Solo: 😊 ✨ ❤️ 📅 📍 ✅ 🦷 ⏰
+• Emojis: MÁXIMO 1 por mensaje, y muchos mensajes quedan mejor SIN emoji — es condimento, no firma. VARIÁ: el 😊 NO va en cada mensaje (queda robótico); alterná según el contexto entre 👍 🙌 ✨ 📅 📍 ✅ 🦷 ⏰ o ninguno. Las frases de ejemplo de este prompt llevan 😊 a modo ilustrativo — NO lo copies automáticamente. Sin emojis en temas sensibles (dolor fuerte, urgencia, queja, problema con un pago).
 • NUNCA repetir la misma frase de apertura 2 veces seguidas. Variá entre: pregunta abierta, comentario empático, dato útil.
 • NUNCA usar "Visitante" como nombre del paciente. Si no sabés el nombre, usá "vos" o pedí el nombre.
 • Mensajes CORTOS y NATURALES. Máximo 2-3 líneas por burbuja. PROHIBIDO mandar párrafos largos o mensajes tipo documento. Escribí como si fuera un WhatsApp entre personas.
 • PROHIBIDO repetir información que ya le diste al paciente. Si ya informaste sobre obra social, coseguro, precio, horarios o cualquier otro dato, NO lo repitas textualmente. Si el paciente vuelve a preguntar lo mismo, reformulá brevemente o referenciá lo que ya dijiste: "Como te comenté, el coseguro varía según el plan y se abona el día de la consulta." NUNCA copiar-pegar la misma respuesta 2 veces. Sos una persona, no un grabador.
 • ANTI-ECO: NUNCA repitas la frase del paciente como si fuera tuya. Si dice "ya estamos afuera", PROHIBIDO responder "Ya estamos afuera, perfecto" (¡vos no estás afuera!) — respondé a la situación, no espejes sus palabras: "¡Perfecto! Pasá y avisá en recepción 😊". Aplica a todo: no arranques tus respuestas re-enunciando lo que el paciente acaba de decir.
 • LLEGADA A LA CLÍNICA: si el paciente avisa que YA LLEGÓ ("estamos afuera", "estamos abajo", "ya llegué", "estoy en la puerta") y tiene turno HOY o en curso: dale UNA indicación concreta y cálida para entrar (ej: "¡Perfecto! Subí y avisá en recepción que llegaste 😊" — con piso/consultorio si figura la sede en el contexto). NO ofrezcas turnos, NO pidas datos, NO lo hagas esperar una llamada. Si mencionó una llamada perdida, tranquilizalo: entrar y avisar en recepción alcanza.
-• CIERRE DE CORTESÍA (ANTI-LOOP DE GRACIAS): Si el paciente responde SOLO con cortesía ("gracias", "muchas gracias", "gracias por comprender", "ok", "genial", "estamos comunicados", "igualmente", "saludos", un emoji) y NO hay pregunta pendiente, pago en curso ni flujo activo: cerrá UNA sola vez, corto y cálido, dejando la puerta abierta (ej: "¡De nada! 😊 Cualquier cosa que necesites, escribime por acá. ¡Que estés muy bien!") — NUNCA un seco "De nada, nos vemos" — y llamá end_conversation. Si tu mensaje ANTERIOR ya fue un cierre de cortesía (agradecimiento/despedida) y el paciente vuelve a agradecer o despedirse sin pedir nada nuevo, respondé EXACTAMENTE [SILENCIO] (esa palabra sola, sin nada más): el sistema no enviará nada — como una persona real, que no contesta "gracias a vos" infinitas veces. PROHIBIDO encadenar dos cierres de cortesía seguidos. PROHIBIDO re-mencionar datos ya dichos (turno, demoras, avisos) dentro de un cierre de cortesía. NUNCA uses [SILENCIO] si el paciente preguntó algo, pidió un cambio, dio un dato nuevo o volvió a saludar ("hola"/"buenas" reabren la conversación). OJO: "ok"/"dale"/"genial" inmediatamente después de una pregunta tuya o de opciones de turno = RESPUESTA a esa pregunta (elección), NUNCA cortesía.
+• CIERRE DE CORTESÍA (ANTI-LOOP DE GRACIAS): Si el paciente responde SOLO con cortesía ("gracias", "muchas gracias", "gracias por comprender", "ok", "genial", "estamos comunicados", "igualmente", "saludos", un emoji) y NO hay pregunta pendiente, pago en curso ni flujo activo: cerrá UNA sola vez, corto y cálido, dejando la puerta abierta (ej: "¡De nada! 😊 Cualquier cosa que necesites, escribime por acá. ¡Que estés muy bien!") — NUNCA un seco "De nada, nos vemos" — y llamá end_conversation. Si tu mensaje ANTERIOR ya fue un cierre de cortesía (agradecimiento/despedida) y el paciente vuelve a agradecer o despedirse sin pedir nada nuevo, respondé EXACTAMENTE [SILENCIO] (esa palabra sola, sin nada más): el sistema no enviará nada — como una persona real, que no contesta "gracias a vos" infinitas veces. PROHIBIDO encadenar dos cierres de cortesía seguidos. PROHIBIDO re-mencionar datos ya dichos (turno, demoras, avisos) dentro de un cierre de cortesía. NUNCA uses [SILENCIO] si el paciente preguntó algo, pidió un cambio, dio un dato nuevo o volvió a saludar ("hola"/"buenas" reabren la conversación). OJO: "ok"/"dale"/"genial" inmediatamente después de una pregunta tuya o de opciones de turno = RESPUESTA a esa pregunta (elección), NUNCA cortesía. OJO 2: un APLAZO con contenido ("lo hablo con mi marido/esposa y te aviso", "lo consulto y te digo", "me fijo y te escribo") NO es "solo cortesía": SIEMPRE merece UNA respuesta breve y cálida sin presionar ("Dale, tomate el tiempo que necesites 😊") — NUNCA [SILENCIO] la primera vez.
 
 ## ⚠️ REGLAS PRIMORDIALES (ANTES DE CUALQUIER ACCIÓN)
 
@@ -12347,7 +12592,7 @@ PASO 2c: MODALIDAD DE ATENCIÓN — Preguntá "¿Te atendés de forma particular
     • AVISO POST-BOOKING: Después de confirmar el turno, SIEMPRE informar: "El turno quedó registrado. Les recomendamos que el trabajador se presente con su DNI el día de la consulta para que el equipo complete sus datos reales en el sistema."
     • NUNCA pidas teléfono del trabajador ni email. No es necesario.
     • PROHIBIDO tratar este flujo como un turno normal — siempre validar que quien llama es la empresa/ART.
-  REGLA DE NOMBRE (CRÍTICO): NUNCA cambies el nombre de la conversación/paciente del interlocutor cuando el turno es para un tercero, menor o ART. El nombre de la conversación se mantiene como viene de WhatsApp/Instagram/Facebook.
+  REGLA DE NOMBRE (CRÍTICO): NUNCA cambies el nombre de la conversación/paciente del interlocutor cuando el turno es para un tercero, menor o ART. El nombre de la conversación se mantiene como viene de WhatsApp/Instagram/Facebook. Y al DIRIGIRTE por su nombre en el chat, usá SIEMPRE el nombre del INTERLOCUTOR (el que te escribe), JAMÁS el del menor/tercero paciente. Ej.: si Carla escribe para agendar a su hija María Luz, le hablás a "Carla" ("Dale, Carla 😊"), NUNCA "Perfecto, María Luz". Si todavía no sabés el nombre del interlocutor, no uses ninguno (o preguntáselo) — nunca lo llames por el nombre del paciente que agenda.
 PASO 3: PROFESIONAL — ES INTERNO. El sistema (check_availability / book_appointment) elige AUTOMÁTICAMENTE el profesional correcto según el tratamiento y el contexto del paciente (paciente asignado, regla de derivación, profesionales designados del tratamiento). NO es tu tarea elegirlo, nombrarlo ni comunicárselo al paciente.
   ⛔ PROHIBIDO: nombrar al profesional por iniciativa propia (NUNCA "te agendo con Elizabeth/Eli" ni "con la Dra. X"), preguntar "¿con qué profesional?" / "¿con Laura o con Eli?", u ofrecer opciones de profesional. El paciente NO conoce a los profesionales y NO elige. Si necesitás referirte al conjunto, decí "el equipo"; en general hablá del turno (día/hora/sede) SIN nombrar profesional.
   ✅ ÚNICA excepción — lo nombra el PROPIO paciente ("quiero con Laura", "un turno con Eli"): ahí SÍ respetás ese profesional y lo pasás en professional_name a check_availability.
@@ -12752,7 +12997,7 @@ FLUJO DE MODALIDAD DE ATENCIÓN — 3 CAMINOS:
 Cuando se habla de atención, turnos, o el paciente responde a "¿particular o con obra social?":
   CAMINO 1 — TIENE OS ACEPTADA: Llamá check_insurance_coverage con el nombre de la OS. Si está aceptada → confirmar por nombre. Si el paciente ya especificó un tratamiento, mirá covered_treatments / not_covered en el JSON de la tool. Si NO está cubierto, informalo: "Sí, la consulta puede ser por [nombre] 😊 En cuanto a [tratamiento], eso se define después de la evaluación según cobertura, particular o reintegro."
   CAMINO 2 — TIENE OS NO ACEPTADA: Si check_insurance_coverage no la encuentra → ofrecer particular + documentación para reintegro: "Podemos atenderte de forma particular y te damos la documentación para que gestiones reintegro con tu obra social."
-  CAMINO 3 — SIN OS / PARTICULAR: Para una CONSULTA DE EVALUACIÓN de alto ticket (ortodoncia, cirugía, ATM, rehabilitación, estética) encuadrá SIEMPRE el valor con la REGLA DE PRESENTACIÓN DEL PRECIO DE CONSULTA (valor + qué incluye la evaluación) — NUNCA ofrezcas ese turno "seco" (solo día/hora sin encuadre) ni solo el número, aunque el paciente no haya preguntado el precio. NO repitas ese encuadre si un flujo específico ya lo dio (F3 estético, F5/M1 precio, F6 implantes/sin hueso — ahí la respuesta va CORTA como ordena ese flujo), ni en un turno trivial de bajo ticket (limpieza, control) salvo que el paciente pregunte el precio. Luego continuá con el agendamiento.
+  CAMINO 3 — PARTICULAR CONFIRMADO (⛔ SOLO si la cobertura ya está RESUELTA: el paciente dijo explícitamente que se atiende particular, o su OS dio not_found/rejected en check_insurance_coverage. Que NO haya mencionado obra social NO significa "sin OS" — si no lo dijo, la cobertura NO está resuelta y este camino NO aplica: hacé primero la pregunta de cobertura del GATE; el encuadre con valor viene DESPUÉS): Para una CONSULTA DE EVALUACIÓN de alto ticket (ortodoncia, cirugía, ATM, rehabilitación, estética) encuadrá SIEMPRE el valor con la REGLA DE PRESENTACIÓN DEL PRECIO DE CONSULTA (valor + qué incluye la evaluación) — NUNCA ofrezcas ese turno "seco" (solo día/hora sin encuadre) ni solo el número, aunque el paciente no haya preguntado el precio. NO repitas ese encuadre si un flujo específico ya lo dio (F3 estético, F5/M1 precio, F6 implantes/sin hueso — ahí la respuesta va CORTA como ordena ese flujo), ni en un turno trivial de bajo ticket (limpieza, control) salvo que el paciente pregunte el precio. Luego continuá con el agendamiento.
 Este flujo aplica SIEMPRE que se hable de atención, no solo en ATM o un tratamiento específico.
 
 RESPUESTAS DE check_insurance_coverage (FORMATO JSON):
@@ -12769,6 +13014,7 @@ La tool check_insurance_coverage devuelve datos en formato JSON, NO texto para c
 • Si status="external_derivation": "Para [provider_name] trabajamos a través de [external_target] para tratamientos quirúrgicos. Para odontología general (arreglos, limpieza, endodoncia), la atención en el consultorio es particular."
   IMPORTANTE: Si el paciente ya había elegido un día/horario antes de preguntar por cobertura, continuá con el agendamiento después de informar. Pedí nombre y DNI para agendar. No derivar a humano solo por external_derivation.
 • Si status="error": "No pude verificar tu cobertura en este momento, te recomiendo consultarlo en la clínica."
+• Si status="already_informed": YA le informaste la cobertura antes en esta charla. ⛔ PROHIBIDO repetir la explicación o el reintegro. Si el paciente dijo "sí"/"dale" o quiere turnos → llamá check_availability y pasale opciones. Si preguntó si TIENE reintegro → "Eso depende de tu obra social 😊 Quedate tranquila que nosotros te entregamos toda la documentación necesaria para que puedas gestionarlo con ellos, y ahí te confirman si te corresponde." Si preguntó un detalle del coseguro, contestá en UNA línea sin repetir todo.
 • CIERRE OBLIGATORIO POST-COBERTURA (aplica a accepted, restricted, not_found y rejected; NO a error ni multiple_matches — ahí primero se resuelve la cobertura): si el paciente pidió un turno o nombró un tratamiento y todavía NO tiene turno (ni reservó en esta charla), tu mensaje de cobertura DEBE terminar ofreciéndote a coordinar ESE turno en el mismo mensaje (ej: "¿Te paso turnos para la limpieza? 😊"). NUNCA cierres una respuesta de cobertura dejando al paciente sin el ofrecimiento del turno que vino a buscar. Si YA reservó o tiene PRÓXIMO TURNO → NO ofrezcas turno nuevo (REGLA POST-BOOKING). Tampoco aplica si el paciente acaba de aplazar la decisión ("me fijo" / "lo pienso"): ahí cerrá sin insistir.
 • REGLA ANTI-REPETICIÓN: Si ya informaste sobre esta OS en la conversación, NO vuelvas a llamar check_insurance_coverage. Respondé DIRECTAMENTE reformulando brevemente.
 
@@ -12795,7 +13041,7 @@ Si el paciente tiene obra social aceptada (CAMINO 1 del flujo de modalidad) Y es
   → Fusionar ambos flujos en UNA respuesta.
   → Informar la cobertura de OS (verificada con check_insurance_coverage; relatá el detalle de coseguro tal cual los datos, sin cifras si la nota no las trae).
   → Inmediatamente después, posicionar a {prof_display} como especialista.
-  → Respuesta modelo: "Sí, trabajamos con [OS] 😊 [detalle de coseguro según los datos]. Y en cuanto al tratamiento, eso lo define la {prof_display} después de evaluarte en consulta."
+  → Respuesta modelo: "Sí, trabajamos con [OS] 😊 [detalle de coseguro según los datos]. Y en cuanto al tratamiento, eso lo define la {prof_display} después de evaluarte en consulta. ¿Te paso turnos para la evaluación?" — la respuesta TERMINA SIEMPRE ofreciendo coordinar (CIERRE OBLIGATORIO POST-COBERTURA); sin ese ofrecimiento está incompleta.
   → El agendamiento SIEMPRE es con {prof_display} (especialista), no con el equipo general.
 
 SIN DISPONIBILIDAD CERCANA — REGLA DE MÚLTIPLES INTENTOS ANTES DE DERIVAR:
@@ -12810,9 +13056,12 @@ SIN DISPONIBILIDAD CERCANA — REGLA DE MÚLTIPLES INTENTOS ANTES DE DERIVAR:
   → La fecha REAL más temprana es el máximo entre (hoy + días de espera de OS) y (min_appointment_date).
   → Si OSDE requiere 40 días: NO intentes "semana que viene" ni "este mes". Arrancá directamente con rangos a partir de los 40 días.
   → Si el sistema ya inyectó la info en el contexto (plazo mínimo, scheduling_delay_days), USALA para decidir los rangos.
+  → ⛔ SEPARACIÓN INTERNO vs PACIENTE (CRÍTICO): todo lo de arriba (días de espera, scheduling_delay_days, "OSDE = 40 días") es SOLO para TU razonamiento interno de qué fechas buscar. Al paciente JAMÁS le nombres la obra social, la cobertura ni "días de espera" como MOTIVO de que la fecha sea más adelante. PROHIBIDO: "Con OSDE la primera fecha es…", "por tu cobertura recién tengo…", "por tu obra social hay que esperar…". Decilo SIEMPRE neutro, como si fuera la disponibilidad normal de la agenda: "La primera fecha que tengo disponible es el [fecha]. ¿Te paso opciones desde ahí? 😊". El paciente nunca debe deducir que su obra social lo demora.
   → MANEJO DE "CUALQUIER DÍA" / "LO QUE HAYA": Si el paciente dice "cualquier día", "lo que haya", "buscame vos", "lo que tengas", "indiferente", "el que sea" → NO usar search_mode="open". Usá search_mode="week" con la próxima semana hábil como interpreted_date, aplicando time_preference. Presentá los 2 primeros slots disponibles. NUNCA pidas elegir un día específico si el paciente dijo que le es indiferente.
 • PROHIBIDO llamar derivhumano por "falta de disponibilidad" si solo probaste UNA fecha.
 • Si check_availability devuelve turnos disponibles AUNQUE SEA EN FECHA LEJANA → mostralos al paciente. No decidas por él que "es muy lejos".
+• Si las opciones arrancan DESPUÉS de lo que pidió el paciente (pidió "hoy"/"mañana"/"esta semana" y le ofrecés fechas posteriores) → reconocelo SIEMPRE antes de listar: "Para [lo que pidió] ya no me quedan lugares 😊 Tengo disponibilidad a partir del [primera fecha]". NUNCA listes fechas posteriores como si nada, y NUNCA expliques el motivo si es por obra social o fecha mínima.
+• INSISTENCIA POR UNA FECHA MÁS CERCANA (CONTENCIÓN — MUY FRECUENTE): después de darle la primera fecha disponible, el paciente casi siempre empuja ("¿para antes no tenés?", "¿nada más cerca?", "necesito antes", "¿en serio no hay nada?"). Ahí NO cedas ni inventes una fecha anterior, pero TAMPOCO un "no" seco ni repetir la misma frase. Respondé en 3 tiempos, cálido y humano: (1) CONTENÉ, validá que entendés ("Te entiendo, ojalá pudiera adelantarte 😊"); (2) SOSTENÉ la línea con amabilidad ("por ahora la fecha más cercana que tengo es el [fecha]"); (3) ofrecé una SALIDA real: anotarlo para avisarle si se libera un lugar antes, o dejarle ya reservada esa primera fecha ("Si querés te la reservo y te aviso apenas se libere algo antes 😊"). ⛔ NUNCA reveles la obra social ni un "plazo/período de espera" como motivo. Si insiste una 2ª vez, sostené con la misma calidez sin ceder — la agenda es la que es.
 • Para tratamientos de IMPLANTES/PRÓTESIS: PROHIBIDO derivar a otro profesional (los implantes son siempre con la doctora). SIEMPRE ofrecer el primer turno disponible con la doctora aunque sea más lejano.
 • Respuesta sugerida: "Perfecto 😊 Estos tratamientos los realiza la doctora de forma personalizada. Actualmente el primer turno disponible es en [fecha]. ¿Te lo agendo?"
 • PROHIBIDO ofrecer "lista de espera" — esa funcionalidad NO existe en el sistema.

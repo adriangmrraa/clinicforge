@@ -188,6 +188,14 @@ async def _collect_tenant(pool, tenant_id):
                  AND cm.created_at >= NOW() - INTERVAL '24 hours'
                  AND cm.conversation_id IS NOT NULL
                  AND cm.content IS NOT NULL AND length(trim(cm.content)) > 0
+                 -- NO contar placeholders de media ([AUDIO]/[IMAGE]/[DOCUMENT]...) como
+                 -- "mensaje repetido": son la SECRETARIA mandando notas de voz/imágenes
+                 -- desde el celular (rol 'assistant' = outbound del número del negocio,
+                 -- indistinguible del bot). Eran ~80% de los falsos 'loop' del colector.
+                 AND cm.content NOT LIKE '[%]'
+                 -- Ignorar repeticiones triviales (CTA cortos tipo "¿Cuál te queda mejor?"):
+                 -- un loop REAL del bot es un mensaje largo pegado 3+ veces.
+                 AND length(trim(cm.content)) >= 25
                GROUP BY cm.conversation_id, cc.external_user_id, cc.display_name, cm.content
                HAVING COUNT(*) >= 3
                ORDER BY COUNT(*) DESC""",

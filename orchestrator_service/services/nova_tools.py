@@ -8054,6 +8054,23 @@ async def execute_nova_tool(
         String response for OpenAI Realtime to speak
     """
     try:
+        # 🔒 GUARDA DE ROL PACIENTE (fix seguridad C1 — auditoría 2026-07-03):
+        # La sesión de voz PÚBLICA de anamnesis corre con user_role='patient'
+        # (public_routes.py:122) validada solo por el anamnesis_token de UN paciente.
+        # Sin este guard, ese "paciente" podía ejecutar CUALQUIER tool de Nova (buscar_paciente,
+        # obtener_registros, herramienta_avanzada, etc.) y leer/enumerar la ficha de TODOS los
+        # pacientes del tenant. Acá lo acotamos a lo mínimo de su propósito y a SU propia ficha.
+        if user_role == "patient":
+            _PATIENT_ALLOWED_TOOLS = {"guardar_anamnesis", "ver_anamnesis"}
+            if name not in _PATIENT_ALLOWED_TOOLS:
+                logger.warning(
+                    f"🔒 NOVA: tool '{name}' denegada para user_role=patient (tenant {tenant_id})"
+                )
+                return "Esa acción no está disponible en esta sesión."
+            # Forzar el paciente objetivo = el de la sesión: nunca puede tocar la ficha de otro.
+            if isinstance(args, dict):
+                args = {**args, "patient_id": user_id}
+
         # A. Pacientes
         if name == "buscar_paciente":
             return await _buscar_paciente(args, tenant_id)

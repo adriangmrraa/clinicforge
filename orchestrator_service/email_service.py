@@ -24,6 +24,45 @@ class EmailService:
         self.smtp_sender = os.getenv("SMTP_SENDER", "")
         self.clinic_name = os.getenv("CLINIC_NAME", "Sistema de Gestión")
 
+    def send_html(self, to_emails, subject: str, html_content: str) -> bool:
+        """Envío genérico de un email HTML a uno o varios destinatarios.
+
+        Boilerplate SMTP reutilizable (evita duplicarlo en cada tipo de email).
+        Best-effort: devuelve False y loguea si SMTP no está configurado o falla.
+        """
+        if not self.smtp_host or not self.smtp_user:
+            logger.warning("SMTP not configured. Skipping send_html.")
+            return False
+
+        if isinstance(to_emails, str):
+            to_emails = [to_emails]
+        to_emails = [e.strip() for e in (to_emails or []) if e and e.strip()]
+        if not to_emails:
+            logger.warning("send_html: no destination emails.")
+            return False
+
+        try:
+            msg = MIMEMultipart("alternative")
+            msg["Subject"] = subject
+            msg["From"] = self.smtp_sender
+            msg["To"] = ", ".join(to_emails)
+            msg.attach(MIMEText(html_content, "html"))
+
+            if self.smtp_port == 465:
+                server = smtplib.SMTP_SSL(self.smtp_host, self.smtp_port, timeout=15)
+            else:
+                server = smtplib.SMTP(self.smtp_host, self.smtp_port, timeout=15)
+                server.starttls()
+
+            server.login(self.smtp_user, self.smtp_pass)
+            server.sendmail(self.smtp_sender, to_emails, msg.as_string())
+            server.quit()
+            logger.info(f"📧 send_html enviado a {len(to_emails)} destinatario(s): {subject[:60]}")
+            return True
+        except Exception as e:
+            logger.error(f"❌ Error en send_html: {e}")
+            return False
+
     def send_handoff_email(
         self,
         to_emails: list,
