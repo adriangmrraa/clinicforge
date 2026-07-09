@@ -9741,6 +9741,27 @@ async def check_insurance_coverage(insurance_provider: str) -> str:
     """
     tenant_id = current_tenant_id.get()
     try:
+        # ── ANTI-LOOP DE COBERTURA (caso OSPE prod 2026-07-09) ──
+        # Si YA se resolvió ESTA misma OS en la charla, el modelo tiende a re-llamar
+        # esta tool y re-emitir el rechazo en CADA turno (loop real de prod: la paciente
+        # dice "sí" y el bot repite "No trabajamos con OSPE..." una y otra vez). En vez
+        # de repetir, devolvemos una orden de AVANZAR (el tool-result manda mucho más
+        # que la regla lejana del prompt, que el modelo se saltea).
+        try:
+            from services.conversation_state import get_insurance_resolved as _cc_gir
+            _cc_loop_phone = current_customer_phone.get()
+            if _cc_loop_phone:
+                _cc_prev = await _cc_gir(tenant_id, _cc_loop_phone)
+                if _cc_prev and (str(_cc_prev.get("provider", "")).strip().lower() == insurance_provider.strip().lower()):
+                    return json.dumps({
+                        "status": "already_informed",
+                        "provider_name": _cc_prev.get("provider"),
+                        "prev_status": _cc_prev.get("status"),
+                        "next_action": "advance",
+                        "nota_obligatoria": "Ya le informaste sobre esta cobertura en esta charla. ⛔ NO repitas la explicación de cobertura NI vuelvas a describir el reintegro. Si el paciente dijo 'sí'/'dale' o quiere turnos → llamá check_availability AHORA y pasale opciones. Si preguntó un detalle puntual del coseguro, respondé en UNA sola línea (se confirma en la clínica el día del turno) sin repetir todo lo anterior.",
+                    }, ensure_ascii=False)
+        except Exception:
+            pass
         # 1. Try exact match (case-insensitive)
         row = await db.pool.fetchrow(
             "SELECT * FROM tenant_insurance_providers WHERE tenant_id = $1 AND LOWER(provider_name) = LOWER($2) AND is_active = true",
@@ -9791,6 +9812,14 @@ async def check_insurance_coverage(insurance_provider: str) -> str:
                 return json.dumps({"status": "multiple_matches", "matches": [r["provider_name"] for r in rows], "next_action": "ask_which_one"}, ensure_ascii=False)
         # 3. No match at all → convert to particular + reintegro
         if not row:
+            # Anti-loop: registrar que esta OS ya se resolvió (not_found) en la charla.
+            try:
+                from services.conversation_state import mark_insurance_resolved as _cc_mir_nf
+                _cc_nf_phone = current_customer_phone.get()
+                if _cc_nf_phone:
+                    await _cc_mir_nf(tenant_id, _cc_nf_phone, insurance_provider.strip(), "not_found")
+            except Exception:
+                pass
             # nota_obligatoria: instrucción inline para el LLM en el momento exacto —
             # la regla del prompt ("MENCIÓN OBLIGATORIA DEL COMPROBANTE") se le caía
             # sistemáticamente al formular la respuesta (caso os-swiss, estable en
@@ -9809,6 +9838,9 @@ async def check_insurance_coverage(insurance_provider: str) -> str:
             if _cc_phone:
                 from services.lead_context import merge as _lc_merge_cc
                 await _lc_merge_cc(tenant_id, _cc_phone, {"insurance_provider": name})
+                # Anti-loop: registrar que esta OS ya se resolvió (status) en la charla.
+                from services.conversation_state import mark_insurance_resolved as _cc_mir
+                await _cc_mir(tenant_id, _cc_phone, name, status)
         except Exception as _lc_cc_err:
             logger.debug(f"lead_context insurance persist (non-fatal): {_lc_cc_err}")
 
@@ -12982,6 +13014,7 @@ La tool check_insurance_coverage devuelve datos en formato JSON, NO texto para c
 • Si status="external_derivation": "Para [provider_name] trabajamos a través de [external_target] para tratamientos quirúrgicos. Para odontología general (arreglos, limpieza, endodoncia), la atención en el consultorio es particular."
   IMPORTANTE: Si el paciente ya había elegido un día/horario antes de preguntar por cobertura, continuá con el agendamiento después de informar. Pedí nombre y DNI para agendar. No derivar a humano solo por external_derivation.
 • Si status="error": "No pude verificar tu cobertura en este momento, te recomiendo consultarlo en la clínica."
+• Si status="already_informed": YA le informaste la cobertura antes en esta charla. ⛔ PROHIBIDO repetir la explicación o el reintegro. Si el paciente dijo "sí"/"dale" o quiere turnos → llamá check_availability y pasale opciones. Si preguntó un detalle del coseguro, contestá en UNA línea sin repetir todo.
 • CIERRE OBLIGATORIO POST-COBERTURA (aplica a accepted, restricted, not_found y rejected; NO a error ni multiple_matches — ahí primero se resuelve la cobertura): si el paciente pidió un turno o nombró un tratamiento y todavía NO tiene turno (ni reservó en esta charla), tu mensaje de cobertura DEBE terminar ofreciéndote a coordinar ESE turno en el mismo mensaje (ej: "¿Te paso turnos para la limpieza? 😊"). NUNCA cierres una respuesta de cobertura dejando al paciente sin el ofrecimiento del turno que vino a buscar. Si YA reservó o tiene PRÓXIMO TURNO → NO ofrezcas turno nuevo (REGLA POST-BOOKING). Tampoco aplica si el paciente acaba de aplazar la decisión ("me fijo" / "lo pienso"): ahí cerrá sin insistir.
 • REGLA ANTI-REPETICIÓN: Si ya informaste sobre esta OS en la conversación, NO vuelvas a llamar check_insurance_coverage. Respondé DIRECTAMENTE reformulando brevemente.
 

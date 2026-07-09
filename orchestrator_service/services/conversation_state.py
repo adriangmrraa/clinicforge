@@ -586,6 +586,32 @@ async def has_insurance_been_asked(tenant_id: int, phone_number: str) -> bool:
         return False
 
 
+async def mark_insurance_resolved(tenant_id: int, phone_number: str, provider: str, status: str) -> None:
+    """Registra que la cobertura de ESTA conversación ya fue resuelta (provider+status).
+    Sirve de anti-loop: si el modelo re-llama check_insurance_coverage para la misma OS,
+    la tool devuelve una orden de AVANZAR en vez de repetir el rechazo (caso OSPE prod).
+    TTL 24h para sobrevivir la charla completa."""
+    try:
+        payload = await _read_payload(tenant_id, phone_number)
+        payload["insurance_resolved"] = {"provider": (provider or "").strip(), "status": status}
+        payload["updated_at"] = _dt.now().isoformat()
+        await _raw_write(tenant_id, phone_number, payload, ttl=BOOKED_TTL)
+    except Exception as e:
+        logger.warning(f"[conversation_state] mark_insurance_resolved failed: {e}")
+
+
+async def get_insurance_resolved(tenant_id: int, phone_number: str) -> Optional[Dict[str, Any]]:
+    """Devuelve {'provider','status'} si la cobertura ya fue resuelta en esta charla, o None."""
+    try:
+        payload = await get_state(tenant_id, phone_number)
+        if not isinstance(payload, dict):
+            return None
+        return payload.get("insurance_resolved")
+    except Exception as e:
+        logger.warning(f"[conversation_state] get_insurance_resolved failed: {e}")
+        return None
+
+
 # ── Scheduling Constraints Helpers (v8.4) ──────────────────────────────────────
 # Persiste las restricciones horarias/de día que el paciente declaró durante la
 # conversación (ej: "a la tarde", "antes de las 18 no puedo", "los lunes no").
