@@ -437,6 +437,46 @@ def classify_intent(messages: list) -> set:
     if any(kw in text for kw in payment_kw):
         tags.add("payment")
 
+    # Terceros / menores / turnos dobles / ART (ronda 2 de grasa: gatea los
+    # ESCENARIOS B/C/E/D del PASO 2b). Falsos positivos = solo tokens de más
+    # (nunca pérdida de comportamiento); el riesgo real es el falso NEGATIVO,
+    # por eso la lista es generosa y los tags son pegajosos por conversación.
+    family_kw = [
+        "hijo", "hija", "nene", "nena", "niño", "niña", "bebé", "bebe",
+        "menor", "mi mamá", "mi mama", "mi papá", "mi papa", "mi viej",
+        "mi esposo", "mi esposa", "mi marido", "mi mujer", "mi señora",
+        "mi pareja", "mi novi", "mi herman", "mi cuñad", "mi abuel",
+        "mi suegr", "mi vecin", "mi amig", "mi sobrin", "mi tí", "mi ti",
+        "para otra persona", "para un familiar", "para mi familiar",
+        "somos dos", "para los dos", "para ambos", "los dos queremos",
+        "y para mí también", "y para mi también", "y para mi tambien",
+        "recursos humanos", "rrhh", " art ", "aseguradora", "accidente laboral",
+        "enfermedad laboral", "empleado accidentado",
+    ]
+    if any(kw in text for kw in family_kw):
+        tags.add("family")
+
+    # Gestión previa (presupuestos/estudios/autorizaciones arreglados o esperados)
+    gestion_kw = [
+        "presupuesto", "autorizaci", "placa", "resultado", "reintegro",
+        "arregl", "quedamos", "quedé en", "quede en", "habíamos hablado",
+        "habiamos hablado", "hablé con", "hable con", "me dijo la",
+        "me dijeron", "me pasó la", "me paso la", "me habían", "me habian",
+        "ya dejé", "ya deje", "encarg", "llegó", "llego", "llegaron",
+        "contención", "contencion", "me iba a mandar", "me iban a",
+    ]
+    if any(kw in text for kw in gestion_kw):
+        tags.add("gestion")
+
+    # Ortodoncia
+    ortho_kw = [
+        "ortodoncia", "bracket", "brakets", "braquets", "frenillo",
+        "alineador", "invisalign", "alinear los dientes", "alinear mis dientes",
+        "dientes chuecos", "dientes torcidos",
+    ]
+    if any(kw in text for kw in ortho_kw):
+        tags.add("ortho")
+
     return tags
 
 

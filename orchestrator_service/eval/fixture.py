@@ -159,6 +159,7 @@ def build_eval_prompt(
     patient_context: str = "",
     current_time: Optional[str] = None,
     is_greeting_pending: bool = True,
+    intent_tags: Optional[set] = None,
 ) -> str:
     """Arma el system prompt REAL con build_system_prompt() y la config cargada."""
     from main import build_system_prompt  # import perezoso (main es pesado)
@@ -188,7 +189,7 @@ def build_eval_prompt(
         specialty_pitch=inputs["system_prompt_template"],
         professional_name=inputs["lead_professional_name"],
         bot_name=inputs["bot_name"],
-        intent_tags=None,
+        intent_tags=intent_tags,
         is_greeting_pending=is_greeting_pending,
         treatment_types=inputs["treatment_types_list"],
         payment_methods=inputs["payment_methods"],

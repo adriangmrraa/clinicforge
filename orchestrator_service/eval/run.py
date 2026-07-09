@@ -127,17 +127,24 @@ async def main() -> int:
         # Cache del prompt por patient_status (mismo prefijo estático para todos los casos)
         prompt_cache: dict[str, str] = {}
 
-        def prompt_for(status: str, patient_context: str = "") -> str:
-            key = f"{status}||{patient_context}"
+        def prompt_for(status: str, patient_context: str = "", tags: set | None = None) -> str:
+            key = f"{status}||{patient_context}||{sorted(tags) if tags else []}"
             if key not in prompt_cache:
                 prompt_cache[key] = build_eval_prompt(
-                    inputs, patient_status=status, patient_context=patient_context
+                    inputs, patient_status=status, patient_context=patient_context,
+                    intent_tags=tags,
                 )
             return prompt_cache[key]
 
         if args.show_prompt:
             print(prompt_for("new_lead"))
             return 0
+
+        # Clasificador REAL de producción (ronda 2 de grasa): cada caso se corre con
+        # los tags que ese paciente tendría en prod → el banco prueba el MISMO prompt
+        # gateado que producción. Sin esto, probaría el prompt inject-all que prod
+        # casi nunca corre para mensajes con intención detectada.
+        from services.buffer_task import classify_intent
 
         mc = await _resolve_model(pool, args.tenant, args.model)
         if not mc["api_key"]:
@@ -163,7 +170,18 @@ async def main() -> int:
         tot_pt = tot_ct = 0
         for c in cases:
             status = c.get("patient_status", "new_lead")
-            messages = [{"role": "system", "content": prompt_for(status, c.get("patient_context", ""))}]
+            # Tags como en prod: texto del paciente (user actual + historial rol user)
+            # + suplemento de payment desde el contexto (espeja buffer_task ~2298).
+            _case_texts = [c.get("user", "")] + [
+                (h.get("content") or h.get("texto") or "")
+                for h in (c.get("history") or [])
+                if (h.get("role") or ("assistant" if h.get("de") in ("bot", "asistente") else "user")) == "user"
+            ]
+            case_tags = classify_intent([t for t in _case_texts if t])
+            _ctx_low = (c.get("patient_context") or "").lower()
+            if "payment_status" in _ctx_low or "pendiente" in _ctx_low:
+                case_tags.add("payment")
+            messages = [{"role": "system", "content": prompt_for(status, c.get("patient_context", ""), case_tags)}]
             messages += _history_to_messages(c.get("history"))
             messages.append({"role": "user", "content": c.get("user", "")})
 
@@ -189,7 +207,8 @@ async def main() -> int:
             results.append((c, verdict, answer))
 
             mark = "PASA " if verdict["pasa"] else "FALLA"
-            print(f"\n[{mark}] {c.get('id')}  ({c.get('categoria', '-')})")
+            _tags_str = f"  tags={sorted(case_tags)}" if case_tags else ""
+            print(f"\n[{mark}] {c.get('id')}  ({c.get('categoria', '-')}){_tags_str}")
             print(f"    paciente: {c.get('user','')[:90]}")
             for cr in verdict["criterios"]:
                 if not cr["pasa"]:
