@@ -2300,6 +2300,17 @@ async def process_buffer_task(
             or "pendiente" in patient_context.lower()
         ):
             intent_tags.add("payment")
+        # Tags PEGAJOSOS por conversación (base del recorte de grasa): la unión con
+        # los tags previos evita que un mensaje sin keywords ("dale", una foto sola)
+        # dropee mid-charla una sección ya activada (ej. el flujo de implantes justo
+        # cuando el paciente manda la panorámica). Solo AGREGA secciones vs. hoy.
+        try:
+            from services.conversation_state import merge_intent_tags as _mit
+            _tags_phone = current_customer_phone.get() if current_customer_phone else None
+            if _tags_phone:
+                intent_tags = set(await _mit(tenant_id, _tags_phone, intent_tags))
+        except Exception as _mit_err:
+            logger.debug(f"sticky intent_tags merge skipped (non-fatal): {_mit_err}")
 
         # Bug #8: Check greeting state to avoid repeating institutional greeting
         is_greeting_pending = True

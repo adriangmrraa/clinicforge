@@ -586,6 +586,30 @@ async def has_insurance_been_asked(tenant_id: int, phone_number: str) -> bool:
         return False
 
 
+async def merge_intent_tags(tenant_id: int, phone_number: str, tags: set) -> set:
+    """Tags de intención PEGAJOSOS por conversación (TTL del convstate).
+
+    classify_intent solo mira el LOTE actual de mensajes: si en plena charla de
+    implantes el paciente manda una foto sola ("mirá mi boca"), el tag del turno
+    pasa a {'media'} y la sección de implantes se DROPEA justo cuando más se
+    necesita. Con la unión persistida, una sección activada sigue inyectada el
+    resto de la charla. Solo AGREGA secciones respecto del comportamiento actual
+    (nunca quita) — es la base segura para gatear más secciones (recorte de grasa).
+    Devuelve la unión acumulada.
+    """
+    try:
+        payload = await _read_payload(tenant_id, phone_number)
+        merged = set(payload.get("intent_tags") or []) | set(tags or [])
+        if merged != set(payload.get("intent_tags") or []):
+            payload["intent_tags"] = sorted(merged)
+            payload["updated_at"] = _dt.now().isoformat()
+            await _raw_write(tenant_id, phone_number, payload)
+        return merged
+    except Exception as e:
+        logger.warning(f"[conversation_state] merge_intent_tags failed: {e}")
+        return set(tags or [])
+
+
 async def mark_insurance_resolved(tenant_id: int, phone_number: str, provider: str, status: str) -> None:
     """Registra que la cobertura de ESTA conversación ya fue resuelta (provider+status).
     Sirve de anti-loop: si el modelo re-llama check_insurance_coverage para la misma OS,

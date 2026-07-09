@@ -12010,25 +12010,16 @@ PROHIBIDO: párrafos largos, explicaciones sobre hueso disponible, zona a tratar
 SI EL PACIENTE ACEPTA → aplicá la REGLA DE COBERTURA (si no sabés si es particular u obra social, preguntalo UNA vez) y ejecutá check_availability INMEDIATAMENTE después.
 Si tiene estudios previos (tomografía, panorámica), aceptarlos. Si no tiene, no es requisito."""
 
-    # ESTUDIOS PREVIOS: data-driven section built from treatment_types.consultation_requirements
+    # ESTUDIOS PREVIOS — RECORTE DE GRASA (2026-07-09): antes se listaban acá los
+    # consultation_requirements de CADA tratamiento (~1.000 tokens en CADA mensaje).
+    # Ese dato ya viaja por DOS canales en el momento justo: check_availability
+    # devuelve la línea "ℹ️ {requisitos}" al ofrecer turnos del tratamiento, y las
+    # pre-instrucciones automáticas lo mandan solas tras agendar (verificado en
+    # prod, caso Ana María 09/07). El prompt conserva solo la INSTRUCCIÓN de uso.
     estudios_previos_section = ""
-    _treatments_with_requirements = [
-        t for t in (treatment_types or [])
-        if isinstance(t, dict) and t.get("consultation_requirements")
-    ]
-    if _treatments_with_requirements:
-        _req_lines = "\n".join(
-            f"- {t.get('patient_display_name') or t.get('name') or t.get('code')}: {t['consultation_requirements']}"
-            for t in _treatments_with_requirements
-        )
-        estudios_previos_section = f"""## ESTUDIOS PREVIOS (POR TRATAMIENTO)
-DESPUÉS DE CONFIRMAR EL TURNO, si el tratamiento requiere estudios previos, mencioná:
-"Si contás con estudios (radiografías, tomografías, etc.), traelos el día de la consulta. Nos ayudan a preparar mejor tu atención 😊"
-
-Tratamientos que requieren estudios:
-{_req_lines}
-
-Para tratamientos NO listados arriba (limpieza, blanqueamiento, consulta general, etc.), NO pedir estudios previos."""
+    if any(isinstance(t, dict) and t.get("consultation_requirements") for t in (treatment_types or [])):
+        estudios_previos_section = """## ESTUDIOS PREVIOS
+Si check_availability devolvió una línea "ℹ️" con requisitos del tratamiento, mencionala UNA sola vez al confirmar el turno ("Si contás con estudios (radiografías u otros), traelos el día de la consulta 😊"). Para tratamientos sin esa línea, NO pidas estudios previos."""
 
     # MANEJO ADJUNTOS: only when media detected or unknown intent
     adjuntos_section = ""
