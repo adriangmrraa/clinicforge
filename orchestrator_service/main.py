@@ -10892,7 +10892,7 @@ def _format_insurance_providers(
         _sched_mode = p.get("scheduling_mode") or "immediate"
         _sched_delay = p.get("scheduling_delay_days") or 0
         if _sched_mode == "delayed" and _sched_delay > 0:
-            _sched_str = f" ⏳ Plazo mínimo: {_sched_delay} días — NO ofrecer turnos antes de {_sched_delay} días desde hoy. Si pide una fecha ANTES de ese plazo ('mañana', 'esta semana'), NO prometas buscar para esa fecha: respondé DIRECTO que la primera disponibilidad es a partir de (hoy + {_sched_delay} días) y ofrecé opciones desde ahí. REGLA CRÍTICA: NUNCA le expliques este plazo al paciente. No menciones obra social, no digas 'período de espera', no digas 'restricción'. Solo ofrecé el primer turno disponible como si fuera la fecha natural. Si el paciente pregunta por qué tan lejos, decí 'es la primera disponibilidad que tenemos' sin más detalle."
+            _sched_str = f" ⏳ Plazo mínimo: {_sched_delay} días — NO ofrecer turnos antes de {_sched_delay} días desde hoy. Si pide una fecha ANTES de ese plazo ('mañana', 'esta semana'), NO prometas buscar para esa fecha: respondé DIRECTO y NEUTRO que la primera disponibilidad es a partir de (hoy + {_sched_delay} días) y ofrecé opciones desde ahí. ⛔ PROHIBIDO empezar con 'Con [obra social]' o nombrar la cobertura al dar esa fecha — decilo como agenda natural: 'La primera fecha que tengo disponible es a partir del [fecha], ¿te paso opciones desde ahí?'. REGLA CRÍTICA: NUNCA le expliques este plazo al paciente. No menciones obra social, no digas 'período de espera', no digas 'restricción'. Solo ofrecé el primer turno disponible como si fuera la fecha natural. Si el paciente pregunta por qué tan lejos, decí 'es la primera disponibilidad que tenemos' sin más detalle."
         elif _sched_mode == "blocked":
             _sched_str = " 🚫 Atención suspendida temporalmente — ofrecer turno particular"
         else:
@@ -11973,7 +11973,7 @@ REGLAS ESTRICTAS:
 
 RESPUESTA CORTA Y DIRECTA (no agregar más):
 "En implantes lo ideal es hacer primero una evaluación para ver qué opción es la más adecuada para vos. Si querés, te ayudo a coordinar un turno."
-PROHIBIDO: párrafos largos, explicaciones sobre hueso disponible, zona a tratar o tipo de rehabilitación. La doctora pidió explícitamente "la más cortita". UNA frase de evaluación + CTA. Nada más. ⛔ PROHIBIDO también pegarle a esta respuesta el párrafo del VALOR de la consulta si la cobertura NO está resuelta: primero la pregunta de cobertura del GATE; el valor recién después (solo con particular confirmado).
+PROHIBIDO: párrafos largos, explicaciones sobre hueso disponible, zona a tratar o tipo de rehabilitación. La doctora pidió explícitamente "la más cortita". UNA frase de evaluación + CTA. Nada más. ⛔ PROHIBIDO también pegarle a esta respuesta el párrafo del VALOR de la consulta ($60.000 / "La consulta de evaluación tiene un valor de…") si la cobertura NO está resuelta — aunque el paciente sea conocido o vuelva a escribir. Si NO sabés su cobertura, tu respuesta EXACTA es: "En [implantes/prótesis] lo ideal es primero una evaluación con la Dra 😊 ¿Contás con obra social o sería particular? Así te coordino la evaluación." — SIN ningún monto. El valor recién después, y solo con particular confirmado.
 
 SI EL PACIENTE ACEPTA → aplicá la REGLA DE COBERTURA (si no sabés si es particular u obra social, preguntalo UNA vez) y ejecutá check_availability INMEDIATAMENTE después.
 Si tiene estudios previos (tomografía, panorámica), aceptarlos. Si no tiene, no es requisito."""
