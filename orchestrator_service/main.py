@@ -11973,7 +11973,7 @@ REGLAS ESTRICTAS:
 
 RESPUESTA CORTA Y DIRECTA (no agregar más):
 "En implantes lo ideal es hacer primero una evaluación para ver qué opción es la más adecuada para vos. Si querés, te ayudo a coordinar un turno."
-PROHIBIDO: párrafos largos, explicaciones sobre hueso disponible, zona a tratar o tipo de rehabilitación. La doctora pidió explícitamente "la más cortita". UNA frase de evaluación + CTA. Nada más.
+PROHIBIDO: párrafos largos, explicaciones sobre hueso disponible, zona a tratar o tipo de rehabilitación. La doctora pidió explícitamente "la más cortita". UNA frase de evaluación + CTA. Nada más. ⛔ PROHIBIDO también pegarle a esta respuesta el párrafo del VALOR de la consulta si la cobertura NO está resuelta: primero la pregunta de cobertura del GATE; el valor recién después (solo con particular confirmado).
 
 SI EL PACIENTE ACEPTA → aplicá la REGLA DE COBERTURA (si no sabés si es particular u obra social, preguntalo UNA vez) y ejecutá check_availability INMEDIATAMENTE después.
 Si tiene estudios previos (tomografía, panorámica), aceptarlos. Si no tiene, no es requisito."""
@@ -13008,7 +13008,7 @@ Si el paciente tiene obra social aceptada (CAMINO 1 del flujo de modalidad) Y es
   → Fusionar ambos flujos en UNA respuesta.
   → Informar la cobertura de OS (verificada con check_insurance_coverage; relatá el detalle de coseguro tal cual los datos, sin cifras si la nota no las trae).
   → Inmediatamente después, posicionar a {prof_display} como especialista.
-  → Respuesta modelo: "Sí, trabajamos con [OS] 😊 [detalle de coseguro según los datos]. Y en cuanto al tratamiento, eso lo define la {prof_display} después de evaluarte en consulta."
+  → Respuesta modelo: "Sí, trabajamos con [OS] 😊 [detalle de coseguro según los datos]. Y en cuanto al tratamiento, eso lo define la {prof_display} después de evaluarte en consulta. ¿Te paso turnos para la evaluación?" — la respuesta TERMINA SIEMPRE ofreciendo coordinar (CIERRE OBLIGATORIO POST-COBERTURA); sin ese ofrecimiento está incompleta.
   → El agendamiento SIEMPRE es con {prof_display} (especialista), no con el equipo general.
 
 SIN DISPONIBILIDAD CERCANA — REGLA DE MÚLTIPLES INTENTOS ANTES DE DERIVAR:
