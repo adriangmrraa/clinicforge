@@ -1201,7 +1201,7 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
                   className="flex items-center gap-2 bg-red-500/10 text-red-400 border border-red-500/20 px-3 py-1.5 rounded-lg text-sm hover:bg-red-500/20 transition-colors md:ml-auto"
                 >
                   <Trash2 size={14} />
-                  {t('billing.delete_plan') || 'Eliminar'}
+                  {t('billing.delete_plan', 'Eliminar')}
                 </button>
               )}
             </div>
@@ -1259,8 +1259,10 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
               </div>
               <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-3">
                 <p className="text-[10px] text-white/40 uppercase font-bold">{t('billing.pending')}</p>
-                <p className={`text-base font-bold ${pendingTotal > 0 ? 'text-amber-400' : 'text-green-400'}`}>
-                  {pendingTotal > 0 ? formatCurrency(pendingTotal) : t('billing.paid_complete')}
+                <p className={`text-base font-bold ${pendingTotal > 0 ? 'text-amber-400' : (approvedTotal > 0 ? 'text-green-400' : 'text-white/40')}`}>
+                  {pendingTotal > 0
+                    ? formatCurrency(pendingTotal)
+                    : (approvedTotal > 0 ? t('billing.paid_complete') : formatCurrency(0))}
                 </p>
               </div>
             </div>

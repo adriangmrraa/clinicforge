@@ -191,7 +191,7 @@ export default function ProfessionalAnalyticsView() {
           <KPI icon={<XCircle size={20} className="text-red-400" />} label={t('analytics.no_shows')} value={`${avgNoShow.toFixed(1)}%`} sub={t('analytics.team_average')} color="bg-red-500/10" trend={avgNoShow > 10 ? 'down' : 'up'} image={CARD_IMAGES.analytics} />
           <KPI icon={<Target size={20} className="text-amber-400" />} label={t('analytics.avg_ticket')} value={`$${totalAppointments > 0 ? Math.round(totalRevenue / totalAppointments).toLocaleString() : 0}`} sub={t('analytics.per_appointment')} color="bg-amber-500/10" image={CARD_IMAGES.revenue} />
           <KPI icon={<Users size={20} className="text-indigo-400" />} label={t('analytics.active_professionals')} value={data.length} sub={`${data.map(d => d.specialty).filter((v, i, a) => a.indexOf(v) === i).length} ${t('analytics.specialties')}`} color="bg-indigo-500/10" image={CARD_IMAGES.team} />
-          <KPI icon={<Star size={20} className="text-pink-400" />} label={t('analytics.best_professional')} value={data.length > 0 ? data.sort((a, b) => b.metrics.revenue - a.metrics.revenue)[0]?.name.split(' ')[0] || '-' : '-'} sub={t('analytics.by_revenue')} color="bg-pink-500/10" image={CARD_IMAGES.profile} />
+          <KPI icon={<Star size={20} className="text-pink-400" />} label={t('analytics.best_professional')} value={data.length > 0 ? [...data].sort((a, b) => b.metrics.revenue - a.metrics.revenue)[0]?.name.split(' ')[0] || '-' : '-'} sub={t('analytics.by_revenue')} color="bg-pink-500/10" image={CARD_IMAGES.profile} />
         </div>
 
         {/* Charts Row */}

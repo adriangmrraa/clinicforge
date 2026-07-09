@@ -188,10 +188,10 @@ export default function LiquidationManager({ periodStart, periodEnd, formatCurre
     try {
       await api.patch(`/admin/liquidations/${id}`, { status: backendStatus });
       setConfirmAction(null);
-      // NOTA: newStatus nunca es 'approved' (solo 'approve'|'paid'), así que siempre
-      // muestra el mensaje de "pagado". Se preserva el comportamiento actual a propósito;
-      // decidir el mensaje correcto para "aprobar" es una decisión de producto.
-      showToast('success', (newStatus as string) === 'approved' ? t('liquidation.generated_success') : t('liquidation.status_paid'));
+      // El toast refleja la acción REAL: 'approve' → "aprobada", 'paid' → "pagada".
+      // (Antes comparaba contra 'approved', valor que newStatus nunca toma, así que
+      // al aprobar mostraba erróneamente "Pagado" en una pantalla que maneja plata.)
+      showToast('success', newStatus === 'approve' ? t('liquidation.status_approved') : t('liquidation.status_paid'));
       fetchLiquidations();
     } catch (err: any) {
       console.error('Error updating status:', err);
