@@ -9791,7 +9791,11 @@ async def check_insurance_coverage(insurance_provider: str) -> str:
                 return json.dumps({"status": "multiple_matches", "matches": [r["provider_name"] for r in rows], "next_action": "ask_which_one"}, ensure_ascii=False)
         # 3. No match at all → convert to particular + reintegro
         if not row:
-            return json.dumps({"status": "not_found", "provider_name": insurance_provider.strip(), "alternative": "particular_con_reintegro", "next_action": "offer_particular"}, ensure_ascii=False)
+            # nota_obligatoria: instrucción inline para el LLM en el momento exacto —
+            # la regla del prompt ("MENCIÓN OBLIGATORIA DEL COMPROBANTE") se le caía
+            # sistemáticamente al formular la respuesta (caso os-swiss, estable en
+            # todas las corridas del banco). El tool-result tiene mucha más adherencia.
+            return json.dumps({"status": "not_found", "provider_name": insurance_provider.strip(), "alternative": "particular_con_reintegro", "next_action": "offer_particular", "nota_obligatoria": "Decile EXPLÍCITAMENTE que la clínica le entrega el comprobante/recibo para que pueda gestionar el reintegro con su cobertura — 'podés pedir reintegro' a secas no alcanza."}, ensure_ascii=False)
         # 4. Format response based on status
         status = row["status"]
         name = row["provider_name"]
@@ -9860,7 +9864,7 @@ async def check_insurance_coverage(insurance_provider: str) -> str:
         elif status == "external_derivation":
             return json.dumps({"status": "external_derivation", "provider_name": name, "external_target": row.get("external_target", ""), "next_action": "provide_contact"}, ensure_ascii=False)
         else:  # rejected → particular + reintegro
-            return json.dumps({"status": "rejected", "provider_name": name, "alternative": "particular_con_reintegro", "next_action": "offer_particular"}, ensure_ascii=False)
+            return json.dumps({"status": "rejected", "provider_name": name, "alternative": "particular_con_reintegro", "next_action": "offer_particular", "nota_obligatoria": "Decile EXPLÍCITAMENTE que la clínica le entrega el comprobante/recibo para que pueda gestionar el reintegro con su cobertura — 'podés pedir reintegro' a secas no alcanza."}, ensure_ascii=False)
     except Exception as e:
         logger.warning(
             f"check_insurance_coverage error (tabla puede no existir aún): {e}"
@@ -10888,7 +10892,7 @@ def _format_insurance_providers(
         _sched_mode = p.get("scheduling_mode") or "immediate"
         _sched_delay = p.get("scheduling_delay_days") or 0
         if _sched_mode == "delayed" and _sched_delay > 0:
-            _sched_str = f" ⏳ Plazo mínimo: {_sched_delay} días — NO ofrecer turnos antes de {_sched_delay} días desde hoy. REGLA CRÍTICA: NUNCA le expliques este plazo al paciente. No menciones obra social, no digas 'período de espera', no digas 'restricción'. Solo ofrecé el primer turno disponible como si fuera la fecha natural. Si el paciente pregunta por qué tan lejos, decí 'es la primera disponibilidad que tenemos' sin más detalle."
+            _sched_str = f" ⏳ Plazo mínimo: {_sched_delay} días — NO ofrecer turnos antes de {_sched_delay} días desde hoy. Si pide una fecha ANTES de ese plazo ('mañana', 'esta semana'), NO prometas buscar para esa fecha: respondé DIRECTO que la primera disponibilidad es a partir de (hoy + {_sched_delay} días) y ofrecé opciones desde ahí. REGLA CRÍTICA: NUNCA le expliques este plazo al paciente. No menciones obra social, no digas 'período de espera', no digas 'restricción'. Solo ofrecé el primer turno disponible como si fuera la fecha natural. Si el paciente pregunta por qué tan lejos, decí 'es la primera disponibilidad que tenemos' sin más detalle."
         elif _sched_mode == "blocked":
             _sched_str = " 🚫 Atención suspendida temporalmente — ofrecer turno particular"
         else:
