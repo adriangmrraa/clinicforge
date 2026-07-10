@@ -173,7 +173,7 @@ export default function MobileAgenda({
                     {evt.payment_status === 'paid' && <div className="w-2 h-2 rounded-full bg-emerald-400" />}
                     {evt.payment_status === 'partial' && <div className="w-2 h-2 rounded-full bg-amber-400" />}
                     {evt.payment_status === 'pending' && evt.billing_amount > 0 && <div className="w-2 h-2 rounded-full bg-red-400 animate-pulse" />}
-                    <span className="text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-white/[0.04] text-white/40">
+                    <span className="text-[11px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-white/[0.04] text-white/60">
                         {evt.uiType === 'block' ? 'Bloqueado' : evt.status}
                     </span>
                 </div>
@@ -225,7 +225,7 @@ export default function MobileAgenda({
                         <button
                             key={v.id}
                             onClick={() => setViewMode(v.id)}
-                            className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-all duration-200
+                            className={`flex-1 flex items-center justify-center gap-1.5 py-2 min-h-[44px] rounded-lg text-xs font-semibold transition-all duration-200
                                 ${active
                                     ? 'bg-white/[0.08] text-white border border-white/[0.12]'
                                     : 'text-white/40 hover:text-white/60 hover:bg-white/[0.04]'
@@ -259,7 +259,7 @@ export default function MobileAgenda({
                             d.setDate(d.getDate() - (viewMode === 'week' ? 7 : 30));
                             onDateChange(d);
                         }}
-                        className="p-2 rounded-lg hover:bg-white/[0.06] text-white/50 transition-colors"
+                        className="p-2 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg hover:bg-white/[0.06] text-white/50 transition-colors"
                     >
                         ←
                     </button>
@@ -275,7 +275,7 @@ export default function MobileAgenda({
                             d.setDate(d.getDate() + (viewMode === 'week' ? 7 : 30));
                             onDateChange(d);
                         }}
-                        className="p-2 rounded-lg hover:bg-white/[0.06] text-white/50 transition-colors"
+                        className="p-2 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg hover:bg-white/[0.06] text-white/50 transition-colors"
                     >
                         →
                     </button>

@@ -237,10 +237,10 @@ export default function BlockedContactsView() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-2">
-                      <button onClick={() => openEdit(it)} className="p-1.5 rounded text-white/50 hover:text-white hover:bg-white/[0.06]">
+                      <button onClick={() => openEdit(it)} className="min-w-[44px] min-h-[44px] inline-flex items-center justify-center rounded text-white/50 hover:text-white hover:bg-white/[0.06]">
                         <Edit2 size={15} />
                       </button>
-                      <button onClick={() => remove(it)} className="p-1.5 rounded text-white/50 hover:text-red-400 hover:bg-red-500/10">
+                      <button onClick={() => remove(it)} className="min-w-[44px] min-h-[44px] inline-flex items-center justify-center rounded text-white/50 hover:text-red-400 hover:bg-red-500/10">
                         <Trash2 size={15} />
                       </button>
                     </div>

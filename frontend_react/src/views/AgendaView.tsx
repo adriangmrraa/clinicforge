@@ -988,7 +988,7 @@ export default function AgendaView() {
                   onClick={() => setShowExportMenu(!showExportMenu)}
                   disabled={exporting}
                   title="Descargar agenda"
-                  className="print:hidden flex items-center justify-center w-8 h-8 rounded-lg bg-white/[0.04] border border-white/[0.08] text-white/50 hover:bg-white/[0.08] hover:text-white transition-colors disabled:opacity-50"
+                  className="print:hidden flex items-center justify-center w-11 h-11 rounded-lg bg-white/[0.04] border border-white/[0.08] text-white/50 hover:bg-white/[0.08] hover:text-white transition-colors disabled:opacity-50"
                 >
                   {exporting ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
                 </button>

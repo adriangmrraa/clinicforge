@@ -3029,7 +3029,7 @@ export default function ClinicsView() {
                                             <p className="text-xs text-white/50 mt-2 font-mono bg-white/[0.02] rounded px-2 py-1 line-clamp-2">{rule.prompt_injection.slice(0, 200)}{rule.prompt_injection.length > 200 ? '...' : ''}</p>
                                             <div className="flex items-center gap-2 mt-2">
                                                 {rule.applies_to.map(a => (
-                                                    <span key={a} className="px-1.5 py-0.5 rounded text-[9px] bg-white/[0.04] text-white/40">{a}</span>
+                                                    <span key={a} className="px-1.5 py-0.5 rounded text-[11px] bg-white/[0.04] text-white/60">{a}</span>
                                                 ))}
                                             </div>
                                         </div>
@@ -3267,8 +3267,8 @@ export default function ClinicsView() {
                                                 }}
                                                 className="h-4 w-4 rounded border-white/20 text-blue-500 focus:ring-blue-500" />
                                             <span className="text-sm text-white/70">{treat.name}</span>
-                                            {treat.priority === 'high' && <span className="text-[9px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 font-bold">ALTA</span>}
-                                            {treat.priority === 'medium-high' && <span className="text-[9px] px-1.5 py-0.5 rounded bg-orange-500/10 text-orange-400 font-bold">MEDIA-ALTA</span>}
+                                            {treat.priority === 'high' && <span className="text-[11px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 font-bold">ALTA</span>}
+                                            {treat.priority === 'medium-high' && <span className="text-[11px] px-1.5 py-0.5 rounded bg-orange-500/10 text-orange-400 font-bold">MEDIA-ALTA</span>}
                                         </label>
                                     ))}
                                 </div>

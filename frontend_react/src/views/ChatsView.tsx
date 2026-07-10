@@ -1366,7 +1366,7 @@ export default function ChatsView() {
             <h2 className="text-lg font-bold text-white">{t('chats.title')}</h2>
             <button
               onClick={() => setSoundEnabled(!soundEnabled)}
-              className="p-2 rounded-lg hover:bg-white/[0.04] text-white/60"
+              className="p-2 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg hover:bg-white/[0.04] text-white/60"
               title={soundEnabled ? t('chats.mute_sound') : t('chats.enable_sound')}
             >
               {soundEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />}
@@ -1450,16 +1450,16 @@ export default function ChatsView() {
                                   {session.patient_name || session.phone_number}
                                 </span>
                                 {session.patient_id ? (
-                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 shrink-0">
+                                  <span className="px-1.5 py-0.5 rounded text-[11px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 shrink-0">
                                     {t('chats.badge_patient')}
                                   </span>
                                 ) : (
-                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/20 shrink-0">
+                                  <span className="px-1.5 py-0.5 rounded text-[11px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/20 shrink-0">
                                     {t('chats.badge_lead')}
                                   </span>
                                 )}
                                 {session.agent_failed && (
-                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-red-500/15 text-red-400 border border-red-500/30 shrink-0 flex items-center gap-0.5">
+                                  <span className="px-1.5 py-0.5 rounded text-[11px] font-bold bg-red-500/15 text-red-400 border border-red-500/30 shrink-0 flex items-center gap-0.5">
                                     <AlertCircle size={9} /> {t('chats.agent_failed')}
                                   </span>
                                 )}
@@ -1524,11 +1524,11 @@ export default function ChatsView() {
                             {item.name || item.external_user_id || 'Chatwoot'}
                           </span>
                           {item.linked_patient_id ? (
-                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 shrink-0">
+                            <span className="px-1.5 py-0.5 rounded text-[11px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 shrink-0">
                               {t('chats.badge_patient')}
                             </span>
                           ) : (
-                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/20 shrink-0">
+                            <span className="px-1.5 py-0.5 rounded text-[11px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/20 shrink-0">
                               {t('chats.badge_lead')}
                             </span>
                           )}
