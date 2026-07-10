@@ -2216,7 +2216,8 @@
     "pay_installment": "Payer l'échéance",
     "amounts_title": "Montant de chaque échéance",
     "amounts_hint": "Vous pouvez définir des montants différents. Ils doivent totaliser le montant du plan.",
-    "sum": "Somme"
+    "sum": "Somme",
+    "need_total": "Pour définir le montant de chaque échéance, ajoutez d'abord des traitements au plan (le total ne peut pas être 0 $)."
   },
   "finance": {
     "title": "Centre Financier",
