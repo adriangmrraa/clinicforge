@@ -215,6 +215,7 @@ class UpdateTreatmentPlanBody(BaseModel):
     installments_amount: Optional[float] = None  # monto por cuota
     currency: Optional[str] = None  # ARS, USD, PYG, EUR, BRL, CLP, UYU, MXN
     financed_total: Optional[float] = None  # total con recargo por financiación
+    installments_schedule: Optional[List[float]] = None  # montos por cuota (variables, ej: 1000/500/500); [] limpia el desglose
 
 
 class TreatmentPlanItemResponse(BaseModel):
@@ -15800,6 +15801,7 @@ async def update_treatment_plan(
             payload.installments_amount is not None,
             payload.currency is not None,
             payload.financed_total is not None,
+            payload.installments_schedule is not None,
         ]
     )
 
@@ -15823,6 +15825,24 @@ async def update_treatment_plan(
             budget_meta["installments"] = payload.installments
         if payload.installments_amount is not None:
             budget_meta["installments_amount"] = payload.installments_amount
+        if payload.installments_schedule is not None:
+            # Cuotas variables (ej: 1000/500/500). Lista vacía = limpiar el desglose.
+            _sched = [round(float(a), 2) for a in payload.installments_schedule]
+            if len(_sched) > 48:
+                raise HTTPException(
+                    status_code=400, detail="Máximo 48 cuotas en el desglose"
+                )
+            if any(a <= 0 for a in _sched):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Cada cuota del desglose debe ser mayor a 0",
+                )
+            if _sched and payload.installments is not None and len(_sched) != payload.installments:
+                raise HTTPException(
+                    status_code=400,
+                    detail="El desglose de cuotas no coincide con la cantidad de cuotas",
+                )
+            budget_meta["installments_schedule"] = _sched
         if payload.currency is not None:
             budget_meta["currency"] = payload.currency
         if payload.financed_total is not None:

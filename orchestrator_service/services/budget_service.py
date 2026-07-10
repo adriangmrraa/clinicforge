@@ -177,6 +177,22 @@ async def gather_budget_data(pool, plan_id: str, tenant_id: int) -> Optional[dic
     discount_fixed = float(budget_cfg.get("discount_amount") or 0)
     currency = budget_cfg.get("currency") or "ARS"
 
+    # Cuotas variables (desglose opcional, ej: 1000/500/500). Solo se muestra si
+    # coincide con la cantidad de cuotas, todos los montos son válidos y NO son
+    # todos iguales (si son iguales, el "Monto por cuota" parejo ya lo cubre).
+    installments_schedule = budget_cfg.get("installments_schedule") or []
+    try:
+        installments_schedule = [round(float(x), 2) for x in installments_schedule]
+    except Exception:
+        installments_schedule = []
+    if (
+        installments_count <= 1
+        or len(installments_schedule) != installments_count
+        or any(x <= 0 for x in installments_schedule)
+        or len(set(installments_schedule)) <= 1
+    ):
+        installments_schedule = []
+
     # ── Assemble ─────────────────────────────────────────────────────────────
     return {
         "plan": {
@@ -190,6 +206,7 @@ async def gather_budget_data(pool, plan_id: str, tenant_id: int) -> Optional[dic
         "budget_config": {
             "installments": installments_count if installments_count > 1 else 0,
             "installment_amount": installment_amount,
+            "installments_schedule": installments_schedule,
             "payment_conditions": payment_conditions,
             "discount_pct": discount_pct,
             "discount_fixed": discount_fixed,

@@ -1711,6 +1711,7 @@
     "installments": "Cuotas",
     "financed_total": "Total financiado",
     "installments_amount": "Monto por cuota",
+    "installments_variable": "Variable",
     "verified": "Verificado",
     "rejected": "Rechazado",
     "save_config": "Guardar configuración",

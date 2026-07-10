@@ -335,7 +335,8 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
     installments_amount: string;
     currency: string;
     financed_total: string;
-  }>({ payment_conditions: '', discount_pct: '', discount_amount: '', installments: '', installments_amount: '', currency: 'ARS', financed_total: '' });
+    installments_schedule: string[];
+  }>({ payment_conditions: '', discount_pct: '', discount_amount: '', installments: '', installments_amount: '', currency: 'ARS', financed_total: '', installments_schedule: [] });
   const [savingBudgetConfig, setSavingBudgetConfig] = useState(false);
 
   // ── Form data
@@ -470,12 +471,13 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
           installments_amount: parsed.installments_amount != null ? String(parsed.installments_amount) : '',
           currency: parsed.currency || 'ARS',
           financed_total: parsed.financed_total != null ? String(parsed.financed_total) : '',
+          installments_schedule: Array.isArray(parsed.installments_schedule) ? parsed.installments_schedule.map(String) : [],
         });
       } catch {
-        setBudgetConfig({ payment_conditions: '', discount_pct: '', discount_amount: '', installments: '', installments_amount: '', currency: 'ARS', financed_total: '' });
+        setBudgetConfig({ payment_conditions: '', discount_pct: '', discount_amount: '', installments: '', installments_amount: '', currency: 'ARS', financed_total: '', installments_schedule: [] });
       }
     } else {
-      setBudgetConfig({ payment_conditions: '', discount_pct: '', discount_amount: '', installments: '', installments_amount: '', currency: 'ARS', financed_total: '' });
+      setBudgetConfig({ payment_conditions: '', discount_pct: '', discount_amount: '', installments: '', installments_amount: '', currency: 'ARS', financed_total: '', installments_schedule: [] });
     }
   }, [planDetail?.notes]);
 
@@ -499,6 +501,34 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [budgetConfig.installments, approvedTotal]);
+
+  // ─── Desglose de cuotas variables (ej: 1000/500/500) ─────────────────────
+  // Si la cantidad de cuotas cambia y el desglose no coincide, se precarga el
+  // reparto parejo (editable). Si ya hay un desglose guardado con la cantidad
+  // correcta, se respeta y NO se pisa.
+  useEffect(() => {
+    const n = parseInt(budgetConfig.installments);
+    if (!(n > 1)) {
+      if (budgetConfig.installments_schedule.length > 0) {
+        setBudgetConfig(prev => ({ ...prev, installments_schedule: [] }));
+      }
+      return;
+    }
+    if (budgetConfig.installments_schedule.length === n) return;
+    if (approvedTotal > 0) {
+      const base = Math.round(approvedTotal / n);
+      const arr = Array.from({ length: n }, (_, i) =>
+        i === n - 1 ? String(Math.round(approvedTotal - base * (n - 1))) : String(base)
+      );
+      setBudgetConfig(prev => ({ ...prev, installments_schedule: arr }));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [budgetConfig.installments, approvedTotal]);
+
+  const scheduleSum = budgetConfig.installments_schedule.reduce((s, a) => s + (parseFloat(a) || 0), 0);
+  const scheduleActive = budgetConfig.installments_schedule.length > 0;
+  const scheduleValid = !scheduleActive || Math.abs(scheduleSum - approvedTotal) < 1;
+  const scheduleIsVariable = scheduleActive && new Set(budgetConfig.installments_schedule.map(a => parseFloat(a) || 0)).size > 1;
 
   // ─── Auto-relleno del reparto parejo para el plan de cuotas (editable) ─────
   // El backend valida que los montos sumen plan.approved_total (_baseApproved),
@@ -876,6 +906,8 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
         installments_amount: budgetConfig.installments_amount ? parseFloat(budgetConfig.installments_amount) : null,
         currency: budgetConfig.currency || 'ARS',
         financed_total: budgetConfig.financed_total ? parseFloat(budgetConfig.financed_total) : null,
+        // Desglose de cuotas variables; [] limpia el desglose guardado
+        installments_schedule: budgetConfig.installments_schedule.map((a) => parseFloat(a) || 0),
       });
       await loadPlanDetail(planDetail.id);
       setSuccess(t('billing.config_saved'));
@@ -1579,14 +1611,45 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
               <div>
                 <label className="block text-xs text-white/40 mb-1">{t('billing.installments_amount')}</label>
                 <div className="px-3 py-2 bg-white/[0.02] border border-white/[0.06] rounded-lg text-white/60 text-sm">
-                  {budgetConfig.installments_amount ? formatCurrency(parseFloat(budgetConfig.installments_amount)) : '—'}
+                  {scheduleIsVariable
+                    ? t('billing.installments_variable', 'Variable')
+                    : (budgetConfig.installments_amount ? formatCurrency(parseFloat(budgetConfig.installments_amount)) : '—')}
                 </div>
               </div>
+              {/* Desglose de cuotas variables (ej: $1.000 / $500 / $500) */}
+              {scheduleActive && (
+                <div className="sm:col-span-2 lg:col-span-3">
+                  <label className="block text-xs text-white/40 mb-1">{t('installment.amounts_title', 'Monto de cada cuota')}</label>
+                  <p className="text-xs text-white/30 mb-2">{t('installment.amounts_hint', 'Podés poner montos distintos. Deben sumar el total del plan.')}</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                    {budgetConfig.installments_schedule.map((amt, i) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <span className="text-xs text-white/50 w-14 shrink-0">{t('installment.cuota')} {i + 1}</span>
+                        <input
+                          type="number"
+                          min="0"
+                          value={amt}
+                          onChange={(e) => {
+                            const next = [...budgetConfig.installments_schedule];
+                            next[i] = e.target.value;
+                            setBudgetConfig({ ...budgetConfig, installments_schedule: next });
+                          }}
+                          className="flex-1 min-w-0 px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/30 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <div className={`flex items-center justify-between mt-2 text-xs font-medium ${scheduleValid ? 'text-green-400' : 'text-amber-400'}`}>
+                    <span>{t('installment.sum', 'Suma')}: {formatCurrency(scheduleSum)}</span>
+                    <span>{scheduleValid ? '✓' : `${t('installment.of', 'de')} ${formatCurrency(approvedTotal)}`}</span>
+                  </div>
+                </div>
+              )}
             </div>
             <div className="mt-4 flex justify-end">
               <button
                 onClick={handleSaveBudgetConfig}
-                disabled={savingBudgetConfig}
+                disabled={savingBudgetConfig || !scheduleValid}
                 className="flex items-center gap-2 bg-primary hover:bg-primary/80 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
               >
                 {savingBudgetConfig ? (

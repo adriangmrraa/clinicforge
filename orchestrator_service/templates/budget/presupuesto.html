@@ -362,6 +362,12 @@ body {
     padding: 0;
 }
 
+.inst-desglose {
+    margin-top: 8px;
+    font-size: 8.5pt;
+    color: #1e40af;
+}
+
 .inst-card {
     background: #ffffff;
     border: 1px solid #dbeafe;
@@ -667,7 +673,7 @@ body {
             <td width="33%">
                 <div class="inst-card">
                     <p class="inst-card-label">Monto por cuota</p>
-                    <p class="inst-card-value">{{ cs }}{{ budget_config.installment_amount | ars }}</p>
+                    <p class="inst-card-value">{% if budget_config.installments_schedule %}Variable{% else %}{{ cs }}{{ budget_config.installment_amount | ars }}{% endif %}</p>
                 </div>
             </td>
             <td width="33%">
@@ -678,6 +684,9 @@ body {
             </td>
         </tr>
     </table>
+    {% if budget_config.installments_schedule %}
+    <p class="inst-desglose">Desglose: {% for m in budget_config.installments_schedule %}<strong>Cuota {{ loop.index }}: {{ cs }}{{ m | ars }}</strong>{% if not loop.last %} &middot; {% endif %}{% endfor %}</p>
+    {% endif %}
 </div>
 {% endif %}
 
@@ -725,7 +734,11 @@ body {
         <li>Los precios son referenciales y pueden ajustarse segun la evaluacion clinica al momento del tratamiento.</li>
         <li>Metodos de pago aceptados: <strong>Efectivo &middot; Transferencia bancaria &middot; Tarjeta de debito/credito</strong>.</li>
         {% if budget_config.installments > 1 %}
+        {% if budget_config.installments_schedule %}
+        <li>Financiacion disponible en <strong>{{ budget_config.installments }} cuotas</strong>: <strong>{% for m in budget_config.installments_schedule %}{{ cs }}{{ m | ars }}{% if not loop.last %} &middot; {% endif %}{% endfor %}</strong>.</li>
+        {% else %}
         <li>Financiacion disponible en <strong>{{ budget_config.installments }} cuotas</strong> de <strong>{{ cs }}{{ budget_config.installment_amount | ars }}</strong>.</li>
+        {% endif %}
         {% endif %}
         <li>El inicio del tratamiento queda sujeto a la aprobacion formal del presente presupuesto.</li>
     </ul>
