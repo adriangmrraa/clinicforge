@@ -2180,6 +2180,7 @@
     "budget_config": "Configuration du budget",
     "currency": "Devise",
     "payment_conditions": "Conditions de paiement",
+    "payment_conditions_placeholder": "Ex : Valable 30 jours",
     "discount_pct": "Remise %",
     "discount_amount": "Remise fixe $",
     "installments": "Versements",

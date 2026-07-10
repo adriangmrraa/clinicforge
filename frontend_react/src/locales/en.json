@@ -2412,6 +2412,7 @@
     "budget_config": "Budget configuration",
     "currency": "Currency",
     "payment_conditions": "Payment conditions",
+    "payment_conditions_placeholder": "E.g.: Valid for 30 days",
     "discount_pct": "Discount %",
     "discount_amount": "Fixed discount $",
     "installments": "Installments",

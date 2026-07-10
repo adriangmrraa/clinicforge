@@ -25,6 +25,19 @@ from services.digital_records_service import resolve_logo_data_uri
 
 logger = logging.getLogger(__name__)
 
+
+def _absolute_logo_url(raw: Optional[str]) -> str:
+    """Fallback de logo para el PDF: solo URLs que WeasyPrint pueda resolver.
+
+    tenants.logo_url suele ser una ruta relativa del frontend
+    ("/public/tenant-logo/{id}") que dentro del renderer se convierte en
+    file:///public/... inexistente. En ese caso devolvemos "" y la plantilla
+    oculta el bloque del logo sin intentar cargar nada.
+    """
+    if raw and raw.startswith(("http://", "https://", "data:")):
+        return raw
+    return ""
+
 # ---------------------------------------------------------------------------
 # Jinja2 setup — templates/budget/ relative to orchestrator_service root
 # ---------------------------------------------------------------------------
@@ -227,7 +240,11 @@ async def gather_budget_data(pool, plan_id: str, tenant_id: int) -> Optional[dic
             "name": plan["clinic_name"] or "Clínica",
             "address": plan["clinic_address"] or "",
             "phone": plan["clinic_phone"] or "",
-            "logo_url": resolve_logo_data_uri(tenant_id) or plan["logo_url"] or "",
+            # Logo: data URI si el archivo existe en el disco del server; como
+            # fallback solo URLs absolutas (http/https/data:). Una ruta relativa
+            # tipo "/public/tenant-logo/1" es irresoluble para WeasyPrint y
+            # generaba "Failed to load image" en cada PDF sin logo subido.
+            "logo_url": resolve_logo_data_uri(tenant_id) or _absolute_logo_url(plan["logo_url"]),
         },
         "items": [
             {
