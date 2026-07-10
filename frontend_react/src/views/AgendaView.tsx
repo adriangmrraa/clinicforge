@@ -1048,7 +1048,12 @@ export default function AgendaView() {
         </div>
       ) : (
         <div className="flex-1 min-h-0 px-4 lg:px-6 pb-4 lg:pb-6">
-            <div className="h-[calc(100vh-140px)] bg-white/[0.03] backdrop-blur-lg md:backdrop-blur-2xl border border-white/[0.06] shadow-2xl rounded-2xl md:rounded-3xl p-2 sm:p-4 overflow-y-auto">
+            {/* SIN backdrop-blur: el desenfoque en el CONTENEDOR DE SCROLL rompe
+                position:sticky de todos sus hijos (bug conocido de Chromium) —
+                por eso la toolbar y los encabezados de días/profesionales no se
+                pegaban al scrollear aunque el CSS sticky estaba bien. Además el
+                blur es carísimo en mobile. */}
+            <div className="h-[calc(100vh-140px)] bg-white/[0.03] border border-white/[0.06] shadow-2xl rounded-2xl md:rounded-3xl p-2 sm:p-4 overflow-y-auto">
               {/* Calendar */}
 
               {/* Custom FullCalendar Styles for Spacious TimeGrid */}
@@ -1159,6 +1164,16 @@ export default function AgendaView() {
           .fc .fc-scrollgrid-section-header > td,
           .fc thead .fc-scrollgrid-section > td {
             position: sticky !important;
+            top: var(--fc-toolbar-height, 57px) !important;
+            z-index: 19 !important;
+            background-color: #0d1117 !important;
+          }
+
+          /* Sticky NATIVO de FullCalendar (stickyHeaderDates=true): su CSS pega
+             los headers en top:0 — acá los corremos DEBAJO de nuestra toolbar
+             sticky y les damos fondo sólido para que el contenido no se
+             transparente al pasar por atrás. */
+          .fc .fc-scrollgrid-section-sticky > * {
             top: var(--fc-toolbar-height, 57px) !important;
             z-index: 19 !important;
             background-color: #0d1117 !important;
@@ -1325,7 +1340,11 @@ export default function AgendaView() {
                   dayMaxEvents={true}
                   weekends={true}
                   nowIndicator={true}
-                  stickyHeaderDates={false}
+                  // Sticky NATIVO de FullCalendar: al scrollear siguen visibles los
+                  // encabezados de días/profesionales (pedido Carlos). El CSS manual
+                  // no funcionaba (celdas de tabla con border-collapse). En vistas de
+                  // LISTA el hack de datesSet ya le quita el sticky (fc-list-sticky).
+                  stickyHeaderDates={true}
                   slotDuration="00:15:00"
                   slotLabelInterval="01:00"
                   initialDate={new Date()}
@@ -1339,8 +1358,16 @@ export default function AgendaView() {
                     day: t('agenda.day'),
                     year: t('agenda.year'),
                     three_years: t('agenda.three_years'),
-                    list: t('agenda.list')
-                  }}
+                    // ⛔ NO agregar la clave genérica "list" acá: FullCalendar la
+                    // resuelve con MÁXIMA prioridad (viewDef.defaults.buttonTextKey
+                    // = 'list' para toda la familia de vistas de lista) y PISA el
+                    // nombre específico de cada vista — por eso los dos botones
+                    // decían "Lista | Lista" aunque listYear/listThreeYears
+                    // tuvieran su texto (verificado en @fullcalendar/core 6.1.21,
+                    // index.cjs queryButtonText).
+                    listYear: t('agenda.year'),
+                    listThreeYears: t('agenda.three_years')
+                  } as any}
                   views={{
                     listYear: {
                       type: 'list',
