@@ -360,7 +360,7 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
 
   // ── Installments
   const [showGenerateInstallments, setShowGenerateInstallments] = useState(false);
-  const [generateInstallmentsData, setGenerateInstallmentsData] = useState({ count: '3', start_date: new Date().toISOString().split('T')[0], frequency: 'monthly' });
+  const [generateInstallmentsData, setGenerateInstallmentsData] = useState({ count: '3', start_date: new Date().toISOString().split('T')[0], frequency: 'monthly', amounts: [] as string[] });
   const [generatingInstallments, setGeneratingInstallments] = useState(false);
   const [submittingPayment, setSubmittingPayment] = useState(false);
 
@@ -500,6 +500,23 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [budgetConfig.installments, approvedTotal]);
 
+  // ─── Auto-relleno del reparto parejo para el plan de cuotas (editable) ─────
+  // El backend valida que los montos sumen plan.approved_total (_baseApproved),
+  // así que ese es el objetivo. Al abrir el modal o cambiar la cantidad,
+  // precargamos el reparto parejo; la Dra. puede editar cada cuota (ej: 1000/500/500).
+  useEffect(() => {
+    if (!showGenerateInstallments) return;
+    const n = parseInt(generateInstallmentsData.count);
+    if (n > 0 && n <= 24 && _baseApproved > 0) {
+      const base = Math.round(_baseApproved / n);
+      const arr = Array.from({ length: n }, (_, i) =>
+        i === n - 1 ? String(_baseApproved - base * (n - 1)) : String(base)
+      );
+      setGenerateInstallmentsData(prev => ({ ...prev, amounts: arr }));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [generateInstallmentsData.count, showGenerateInstallments]);
+
   // ─── Handlers ─────────────────────────────────────────────────────────────
 
   const handleCreatePlan = async () => {
@@ -581,11 +598,19 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
     if (!planDetail) return;
     try {
       setGeneratingInstallments(true);
-      await api.post(`/admin/treatment-plans/${planDetail.id}/installments/generate`, {
-        count: parseInt(generateInstallmentsData.count),
+      const n = parseInt(generateInstallmentsData.count);
+      const amountsNum = generateInstallmentsData.amounts.map((a) => parseFloat(a) || 0);
+      const payload: Record<string, unknown> = {
+        count: n,
         start_date: generateInstallmentsData.start_date,
         frequency: generateInstallmentsData.frequency,
-      });
+      };
+      // Enviar montos personalizados solo si están completos y bien formados;
+      // si no, el backend hace el reparto parejo por defecto.
+      if (amountsNum.length === n && amountsNum.every((v) => v > 0)) {
+        payload.custom_amounts = amountsNum;
+      }
+      await api.post(`/admin/treatment-plans/${planDetail.id}/installments/generate`, payload);
       setShowGenerateInstallments(false);
       setSuccess(t('installment.generated_success'));
       await loadPlanDetail(planDetail.id);
@@ -2040,6 +2065,41 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
                 className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-primary"
               />
             </div>
+            {/* Monto de cada cuota — editable, pueden ser distintos (ej: 1000/500/500) */}
+            {generateInstallmentsData.amounts.length > 0 && (
+              <div>
+                <label className="block text-sm text-white/60 mb-1">{t('installment.amounts_title', 'Monto de cada cuota')}</label>
+                <p className="text-xs text-white/40 mb-2">{t('installment.amounts_hint', 'Podés poner montos distintos. Deben sumar el total del plan.')}</p>
+                <div className="space-y-2">
+                  {generateInstallmentsData.amounts.map((amt, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <span className="text-xs text-white/50 w-16 shrink-0">{t('installment.cuota')} {i + 1}</span>
+                      <input
+                        type="number"
+                        min="0"
+                        value={amt}
+                        onChange={(e) => {
+                          const next = [...generateInstallmentsData.amounts];
+                          next[i] = e.target.value;
+                          setGenerateInstallmentsData({ ...generateInstallmentsData, amounts: next });
+                        }}
+                        className="flex-1 px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-primary"
+                      />
+                    </div>
+                  ))}
+                </div>
+                {(() => {
+                  const sum = generateInstallmentsData.amounts.reduce((s, a) => s + (parseFloat(a) || 0), 0);
+                  const ok = Math.abs(sum - _baseApproved) < 1;
+                  return (
+                    <div className={`flex items-center justify-between mt-2 text-xs font-medium ${ok ? 'text-green-400' : 'text-amber-400'}`}>
+                      <span>{t('installment.sum', 'Suma')}: {formatCurrency(sum)}</span>
+                      <span>{ok ? '✓' : `${t('installment.of', 'de')} ${formatCurrency(_baseApproved)}`}</span>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
             <div>
               <label className="block text-sm text-white/60 mb-1">{t('installment.start_date')}</label>
               <input
@@ -2063,7 +2123,7 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
             </div>
             <button
               onClick={handleGenerateInstallments}
-              disabled={generatingInstallments || !generateInstallmentsData.count || !generateInstallmentsData.start_date}
+              disabled={generatingInstallments || !generateInstallmentsData.count || !generateInstallmentsData.start_date || (generateInstallmentsData.amounts.length > 0 && Math.abs(generateInstallmentsData.amounts.reduce((s, a) => s + (parseFloat(a) || 0), 0) - _baseApproved) >= 1)}
               className="w-full flex items-center justify-center gap-2 bg-white text-[#0a0e1a] py-2 rounded-lg hover:opacity-90 disabled:opacity-50 font-medium"
             >
               {generatingInstallments ? (
