@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from '../context/LanguageContext';
 import {
   Plus, Trash2, Loader2, Receipt, X, RefreshCw,
@@ -293,6 +293,10 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
   // ── Plan state (plan_view)
   const [plans, setPlans] = useState<TreatmentPlan[]>([]);
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
+  // Ref espejo de la selección: loadPlans la lee SIN closure viejo (evita que
+  // un refresh en tiempo real pise la selección del usuario con datos stale)
+  const selectedPlanIdRef = useRef<string | null>(null);
+  useEffect(() => { selectedPlanIdRef.current = selectedPlanId; }, [selectedPlanId]);
   const [planDetail, setPlanDetail] = useState<TreatmentPlanDetail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
 
@@ -370,7 +374,16 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
     setSelectedPlanId(null);
     setPlanDetail(null);
     loadBillingSummary();
-  }, [patientId, refreshKey]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patientId]);
+
+  // Eventos en tiempo real (TREATMENT_PLAN_UPDATED, pagos, etc.): refrescar los
+  // datos SIN resetear la selección del usuario. Antes esto pateaba al primer
+  // plan de la lista en cada evento — incluso al guardar la propia config.
+  useEffect(() => {
+    if (refreshKey > 0) loadBillingSummary();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshKey]);
 
   const loadBillingSummary = async () => {
     try {
@@ -406,7 +419,11 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
 
       if (activePlans.length > 0) {
         setViewState('plan_view');
-        if (!selectedPlanId || !activePlans.some((p: any) => p.id === selectedPlanId)) {
+        const current = selectedPlanIdRef.current;
+        if (current && activePlans.some((p: any) => p.id === current)) {
+          // Mantener la selección del usuario y refrescar su detalle
+          loadPlanDetail(current);
+        } else {
           setSelectedPlanId(activePlans[0].id);
         }
       } else {
@@ -897,7 +914,7 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
     if (!planDetail) return;
     try {
       setSavingBudgetConfig(true);
-      await api.patch(`/admin/treatment-plans/${planDetail.id}`, {
+      const res = await api.patch(`/admin/treatment-plans/${planDetail.id}`, {
         payment_conditions: budgetConfig.payment_conditions || null,
         discount_pct: budgetConfig.discount_pct ? parseFloat(budgetConfig.discount_pct) : 0,
         discount_amount: budgetConfig.discount_amount ? parseFloat(budgetConfig.discount_amount) : 0,
@@ -908,6 +925,18 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
         // Desglose de cuotas variables; [] limpia el desglose guardado
         installments_schedule: budgetConfig.installments_schedule.map((a) => parseFloat(a) || 0),
       });
+      // Detector anti-pérdida: si mandamos un desglose y el servidor NO lo
+      // guardó (ej. backend desactualizado que ignora el campo), avisar fuerte
+      // en vez de mostrar un "guardado" mentiroso. (Caso real: rebuild a medias.)
+      if (budgetConfig.installments_schedule.length > 0) {
+        let savedSchedule: unknown = null;
+        try { savedSchedule = JSON.parse(res.data?.notes || '{}')?.installments_schedule; } catch { /* notes no-JSON */ }
+        if (!Array.isArray(savedSchedule) || savedSchedule.length !== budgetConfig.installments_schedule.length) {
+          await loadPlanDetail(planDetail.id);
+          setError(t('billing.schedule_not_saved'));
+          return;
+        }
+      }
       await loadPlanDetail(planDetail.id);
       setSuccess(t('billing.config_saved'));
     } catch (err: any) {

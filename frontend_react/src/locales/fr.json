@@ -2190,6 +2190,7 @@
     "rejected": "Rejeté",
     "save_config": "Enregistrer la configuration",
     "config_saved": "Configuration enregistrée avec succès",
+    "schedule_not_saved": "⚠️ Le détail des échéances n'a PAS été enregistré sur le serveur. Attendez quelques minutes (mise à jour possible) et réenregistrez.",
     "email_sent_success": "Devis envoyé par email avec succès"
   },
   "installment": {
