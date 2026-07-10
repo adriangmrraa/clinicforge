@@ -1578,7 +1578,7 @@ export default function ChatsView() {
                       setSelectedChatwoot(null);
                       setShowMobileContext(false);
                     }}
-                    className="lg:hidden p-2 -ml-2 hover:bg-white/[0.04] rounded-full text-white/60 active:bg-white/[0.08] transition-colors"
+                    className="lg:hidden p-2 -ml-2 min-w-[44px] min-h-[44px] flex items-center justify-center hover:bg-white/[0.04] rounded-full text-white/60 active:bg-white/[0.08] transition-colors"
                   >
                     <ChevronLeft size={24} />
                   </button>
@@ -1686,7 +1686,7 @@ export default function ChatsView() {
                   {(selectedSession || selectedChatwoot) && (
                     <button
                       onClick={() => setShowMobileContext(!showMobileContext)}
-                      className="p-2 text-medical-600 hover:bg-medical-50 rounded-full lg:hidden transition-colors"
+                      className="p-2 min-w-[44px] min-h-[44px] flex items-center justify-center text-medical-600 hover:bg-medical-50 rounded-full lg:hidden transition-colors"
                       title={t('chats.view_clinical_chart')}
                     >
                       <Activity size={20} />
@@ -2038,7 +2038,7 @@ export default function ChatsView() {
                 </div>
                 <button
                   onClick={() => setShowMobileContext(false)}
-                  className="p-2 hover:bg-white/[0.04] rounded-full text-white/60"
+                  className="p-2 min-w-[44px] min-h-[44px] flex items-center justify-center hover:bg-white/[0.04] rounded-full text-white/60"
                 >
                   <ChevronLeft size={24} className="rotate-180" />
                 </button>
