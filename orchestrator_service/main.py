@@ -8995,7 +8995,7 @@ async def verify_payment_receipt(
                     """
                     INSERT INTO treatment_plan_payments
                         (id, plan_id, tenant_id, amount, payment_method, payment_date, notes)
-                    VALUES ($1, $2, $3, $4, 'transfer', NOW(), $5)
+                    VALUES ($1, $2, $3, $4, 'transfer', (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date, $5)
                     """,
                     str(_uuid_mod.uuid4()),
                     plan_id,
@@ -9088,7 +9088,7 @@ async def verify_payment_receipt(
                                 """
                                 INSERT INTO treatment_plan_payments
                                     (id, plan_id, tenant_id, amount, payment_method, payment_date, notes)
-                                VALUES ($1, $2, $3, $4, 'transfer', NOW(), $5)
+                                VALUES ($1, $2, $3, $4, 'transfer', (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date, $5)
                                 """,
                                 str(_uuid_mod2.uuid4()),
                                 str(active_plan["id"]),
