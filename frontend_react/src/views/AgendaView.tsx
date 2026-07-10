@@ -1331,11 +1331,10 @@ export default function AgendaView() {
                   dayMaxEvents={true}
                   weekends={true}
                   nowIndicator={true}
-                  {/* Sticky NATIVO de FullCalendar: al scrollear, los encabezados de
-                      días/profesionales siguen visibles (pedido Carlos: "que deslice
-                      los días y la fecha"). El CSS manual anterior no funcionaba
-                      (celdas de tabla con border-collapse). En vistas de LISTA el
-                      hack de datesSet ya le quita el sticky (fc-list-sticky). */}
+                  // Sticky NATIVO de FullCalendar: al scrollear siguen visibles los
+                  // encabezados de días/profesionales (pedido Carlos). El CSS manual
+                  // no funcionaba (celdas de tabla con border-collapse). En vistas de
+                  // LISTA el hack de datesSet ya le quita el sticky (fc-list-sticky).
                   stickyHeaderDates={true}
                   slotDuration="00:15:00"
                   slotLabelInterval="01:00"
