@@ -957,10 +957,10 @@ export default function PatientDetail() {
 
             {/* Meta Ads Badge */}
             {patient.acquisition_source && patient.acquisition_source !== 'ORGANIC' && (
-              <div className="group relative flex items-center gap-2 bg-blue-500/10 text-blue-400 px-3 py-1.5 rounded-full cursor-pointer">
+              <div className="group relative flex items-center gap-2 bg-blue-500/10 text-blue-400 px-3 py-1.5 rounded-full cursor-pointer" tabIndex={0}>
                 <Megaphone size={16} className="shrink-0" />
                 <span className="text-xs sm:text-sm font-semibold">Meta Ads</span>
-                <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 w-64 bg-gray-900 text-white text-xs rounded-lg p-3 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-50">
+                <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 w-64 bg-gray-900 text-white text-xs rounded-lg p-3 shadow-lg opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-200 pointer-events-none z-50">
                   {patient.meta_campaign_id && (
                     <p className="mb-1"><span className="text-white/30">{t('patient_extra.meta_campaign')}</span> {patient.meta_campaign_id}</p>
                   )}

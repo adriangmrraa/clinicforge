@@ -969,7 +969,7 @@ export default function ConfigView() {
                                     {cred.category} • {cred.scope === 'global' ? t('config.scope_global') : getTenantName(cred.tenant_id)}
                                 </span>
                             </div>
-                            <div className="flex gap-1 group-hover:opacity-100 opacity-0 transition-opacity">
+                            <div className="flex gap-1 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
                                 <button onClick={() => { setEditingCred(cred); setCredForm({ ...cred, value: '' }); setIsCredModalOpen(true); }} className="p-1.5 hover:bg-white/[0.04] rounded-lg text-white/40 hover:text-indigo-400">
                                     <Edit2 size={16} />
                                 </button>

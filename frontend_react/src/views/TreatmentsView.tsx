@@ -1116,9 +1116,9 @@ export default function TreatmentsView() {
                   <div className="space-y-2">
                     <label className="block text-xs font-bold text-white/40 uppercase tracking-wider flex items-center gap-1.5">
                       {t('treatments.base_price_label') || 'Precio base ($)'}
-                      <span className="relative group/tooltip inline-flex">
+                      <span className="relative group/tooltip inline-flex" tabIndex={0}>
                         <Info size={12} className="text-white/30 cursor-help" />
-                        <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-[#1a1f2e] border border-white/[0.08] rounded-lg text-[10px] text-white/70 whitespace-nowrap opacity-0 group-hover/tooltip:opacity-100 transition-opacity pointer-events-none z-50">
+                        <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-[#1a1f2e] border border-white/[0.08] rounded-lg text-[10px] text-white/70 whitespace-nowrap opacity-0 group-hover/tooltip:opacity-100 group-focus-within/tooltip:opacity-100 transition-opacity pointer-events-none z-50">
                           {t('treatments.priceTooltip')}
                         </span>
                       </span>
@@ -1427,9 +1427,9 @@ export default function TreatmentsView() {
                           <div className="space-y-2">
                             <label className="block text-xs font-bold text-white/55 ml-1 uppercase flex items-center gap-1.5">
                               {t('treatments.base_price_label') || 'Precio base ($)'}
-                              <span className="relative group/tooltip inline-flex">
+                              <span className="relative group/tooltip inline-flex" tabIndex={0}>
                                 <Info size={12} className="text-white/30 cursor-help" />
-                                <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-[#1a1f2e] border border-white/[0.08] rounded-lg text-[10px] text-white/70 whitespace-nowrap opacity-0 group-hover/tooltip:opacity-100 transition-opacity pointer-events-none z-50">
+                                <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-[#1a1f2e] border border-white/[0.08] rounded-lg text-[10px] text-white/70 whitespace-nowrap opacity-0 group-hover/tooltip:opacity-100 group-focus-within/tooltip:opacity-100 transition-opacity pointer-events-none z-50">
                                   {t('treatments.priceTooltip')}
                                 </span>
                               </span>
@@ -1733,7 +1733,7 @@ export default function TreatmentsView() {
                             <TreatmentImagesList code={treatment.code} />
                           </div>
 
-                          <div className="flex gap-2 opacity-0 group-hover/item:opacity-100 transition-all translate-x-2 group-hover/item:translate-x-0">
+                          <div className="flex gap-2 opacity-100 translate-x-0 lg:opacity-0 lg:translate-x-2 lg:group-hover/item:opacity-100 lg:group-hover/item:translate-x-0 transition-all">
                             <button
                               onClick={() => handleEdit(treatment)}
                               className="p-3 text-white/30 hover:text-blue-400 hover:bg-blue-500/10 rounded-2xl transition-all bg-white/[0.04] border border-white/[0.06]"

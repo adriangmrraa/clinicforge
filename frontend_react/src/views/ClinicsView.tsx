@@ -1362,7 +1362,7 @@ export default function ClinicsView() {
                                 <div className="bg-blue-500/10 p-3 rounded-lg text-blue-400 group-hover:bg-blue-500 group-hover:text-white transition-colors">
                                     <Building2 size={24} />
                                 </div>
-                                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <div className="flex gap-1 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
                                     <button
                                         onClick={() => openFaqModal(clinica)}
                                         className="p-2 text-amber-400 hover:bg-amber-500/10 rounded-lg transition-colors"

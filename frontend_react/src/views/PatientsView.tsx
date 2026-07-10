@@ -790,10 +790,10 @@ export default function PatientsView() {
                             return missing.length > 0 ? (
                               <span
                                 title={t('patients.missing_fields', { fields: missing.join(', ') })}
-                                className="inline-flex items-center ml-2 px-1.5 py-0.5 rounded text-xs bg-amber-500/10 text-amber-400 border border-amber-500/20 shrink-0"
+                                className="inline-flex items-center ml-2 px-1.5 py-0.5 rounded text-[11px] bg-amber-500/10 text-amber-400 border border-amber-500/20 shrink-0 max-w-[180px]"
                               >
-                                <AlertCircle size={12} className="mr-1" />
-                                {missing.length}
+                                <AlertCircle size={12} className="mr-1 shrink-0" />
+                                <span className="truncate">{t('patients.missing_fields', { fields: missing.join(', ') })}</span>
                               </span>
                             ) : null;
                           })()}
