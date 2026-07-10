@@ -2090,7 +2090,7 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
       {showApprovePlan && planDetail && (
         <Modal onClose={() => setShowApprovePlan(false)}>
           <h3 className="text-lg font-semibold text-white mb-2">{t('billing.approve_plan')}</h3>
-          <p className="text-sm text-white/60 mb-4">{t('billing.approve_confirm')}</p>
+          <p className="text-sm text-white/60 mb-4">{t('billing.approve_confirm', { amount: (parseFloat(approveData.approved_total) || 0).toLocaleString('es-AR') })}</p>
           <div className="space-y-4">
             <div>
               <label className="block text-sm text-white/60 mb-1">{t('billing.approved_total')}</label>
@@ -2100,10 +2100,14 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
                 onChange={(e) => setApproveData({ ...approveData, approved_total: e.target.value })}
                 className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary"
               />
+              {/* Aprobar por $0 rompe las cuotas y la facturación de ese plan: bloquear con aviso */}
+              {(parseFloat(approveData.approved_total) || 0) <= 0 && (
+                <p className="text-xs text-amber-400/90 mt-2">{t('installment.need_total')}</p>
+              )}
             </div>
             <button
               onClick={handleApprovePlan}
-              disabled={!approveData.approved_total}
+              disabled={!approveData.approved_total || (parseFloat(approveData.approved_total) || 0) <= 0}
               className="w-full bg-white text-[#0a0e1a] py-2 rounded-lg hover:opacity-90 disabled:opacity-50 font-medium"
             >
               {t('billing.approve_plan')}
