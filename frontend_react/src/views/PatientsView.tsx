@@ -268,6 +268,43 @@ export default function PatientsView() {
         birth_date: sanitize(formData.birth_date),
       };
 
+      // Aviso anti-duplicados (pedido de Carlos 2026-07-10): fichas repetidas
+      // parten los chats en dos y se mezclan los mensajes de WhatsApp. Con la
+      // lista completa ya cargada, el chequeo es local e instantáneo.
+      if (!editingPatient) {
+        const digits = (s: string) => (s || '').replace(/\D/g, '');
+        const newPhone = digits(formData.phone_number).slice(-10);
+        const newName = normalize(`${formData.first_name} ${formData.last_name || ''}`.trim());
+        const newDni = (formData.dni || '').trim();
+
+        const samePhone = patients.find(
+          (p) => newPhone.length >= 8 && digits(p.phone_number || '').slice(-10) === newPhone
+        );
+        if (samePhone) {
+          // Mismo teléfono: el backend NO crea otro, actualiza el existente (upsert).
+          const ok = await confirmDialog(
+            t('patients.duplicate_same_phone', { name: `${samePhone.first_name} ${samePhone.last_name || ''}`.trim() })
+          );
+          if (!ok) return;
+        } else {
+          const similares = patients.filter((p) => {
+            const dniMatch = !!newDni && (p.dni || '').trim() === newDni;
+            const nameMatch =
+              newName.length >= 5 &&
+              normalize(`${p.first_name || ''} ${p.last_name || ''}`.trim()) === newName;
+            return dniMatch || nameMatch;
+          });
+          if (similares.length > 0) {
+            const lista = similares
+              .slice(0, 3)
+              .map((p) => `${p.first_name} ${p.last_name || ''} (${p.phone_number || 'sin tel'}${p.dni ? ', DNI ' + p.dni : ''})`)
+              .join(' · ');
+            const ok = await confirmDialog(t('patients.duplicate_similar', { list: lista }), { danger: true });
+            if (!ok) return;
+          }
+        }
+      }
+
       let patientId;
 
       if (editingPatient) {

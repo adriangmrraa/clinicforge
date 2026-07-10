@@ -508,6 +508,8 @@
     "health": "Health",
     "date_added": "Date added",
     "next_appointment": "Next Appointment",
+    "duplicate_same_phone": "A patient with that phone already exists: {{name}}. A new one will NOT be created: their data will be updated. Continue?",
+    "duplicate_similar": "⚠️ A patient with the same data already exists: {{list}}. Creating another may duplicate the record and mix up WhatsApp chats. Create anyway?",
     "balance": "Balance",
     "loading": "Loading patients...",
     "view_chart": "View chart",

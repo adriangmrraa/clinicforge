@@ -520,6 +520,8 @@
     "date_added": "Fecha de Alta",
     "actions": "Acciones",
     "next_appointment": "Próximo Turno",
+    "duplicate_same_phone": "Ya existe un paciente con ese teléfono: {{name}}. No se va a crear uno nuevo: se van a actualizar sus datos. ¿Continuar?",
+    "duplicate_similar": "⚠️ Ya existe un paciente con los mismos datos: {{list}}. Crear otro puede duplicar la ficha y mezclar los chats de WhatsApp. ¿Crear de todos modos?",
     "balance": "Balance",
     "no_appointment": "Sin turno",
     "no_patients_found": "No se encontraron pacientes",

@@ -502,6 +502,8 @@
     "health": "Santé",
     "date_added": "Date d'inscription",
     "next_appointment": "Prochain rendez-vous",
+    "duplicate_same_phone": "Un patient avec ce téléphone existe déjà : {{name}}. Aucun nouveau ne sera créé : ses données seront mises à jour. Continuer ?",
+    "duplicate_similar": "⚠️ Un patient avec les mêmes données existe déjà : {{list}}. En créer un autre peut dupliquer la fiche et mélanger les conversations WhatsApp. Créer quand même ?",
     "balance": "Solde",
     "loading": "Chargement des patients...",
     "view_chart": "Voir fiche",
