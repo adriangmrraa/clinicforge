@@ -1039,7 +1039,12 @@ export default function AgendaView() {
         </div>
       ) : (
         <div className="flex-1 min-h-0 px-4 lg:px-6 pb-4 lg:pb-6">
-            <div className="h-[calc(100dvh-140px)] bg-white/[0.03] backdrop-blur-lg md:backdrop-blur-2xl border border-white/[0.06] shadow-2xl rounded-2xl md:rounded-3xl p-2 sm:p-4 overflow-y-auto">
+            {/* SIN backdrop-blur: el desenfoque en el CONTENEDOR DE SCROLL rompe
+                position:sticky de todos sus hijos (bug conocido de Chromium) —
+                por eso la toolbar y los encabezados de días/profesionales no se
+                pegaban al scrollear aunque el CSS sticky estaba bien. Además el
+                blur es carísimo en mobile. */}
+            <div className="h-[calc(100dvh-140px)] bg-white/[0.03] border border-white/[0.06] shadow-2xl rounded-2xl md:rounded-3xl p-2 sm:p-4 overflow-y-auto">
               {/* Calendar */}
 
               {/* Custom FullCalendar Styles for Spacious TimeGrid */}
@@ -1330,8 +1335,13 @@ export default function AgendaView() {
                     day: t('agenda.day'),
                     year: t('agenda.year'),
                     three_years: t('agenda.three_years'),
-                    list: t('agenda.list')
-                  }}
+                    list: t('agenda.list'),
+                    // Por NOMBRE de vista (así lo resuelve FullCalendar): sin esto,
+                    // las dos vistas de lista caían al genérico "Lista" y los
+                    // botones se veían duplicados: "Lista | Lista".
+                    listYear: t('agenda.year'),
+                    listThreeYears: t('agenda.three_years')
+                  } as any}
                   views={{
                     listYear: {
                       type: 'list',
