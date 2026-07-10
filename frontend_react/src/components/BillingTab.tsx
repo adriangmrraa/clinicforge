@@ -1645,6 +1645,12 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
                   </div>
                 </div>
               )}
+              {/* Sin total no hay nada que repartir: avisar en vez de no mostrar nada */}
+              {!scheduleActive && parseInt(budgetConfig.installments) > 1 && approvedTotal <= 0 && (
+                <div className="sm:col-span-2 lg:col-span-3">
+                  <p className="text-xs text-amber-400/90">{t('installment.need_total', 'Para definir el monto de cada cuota, primero agregá tratamientos al plan (el total no puede ser $0).')}</p>
+                </div>
+              )}
             </div>
             <div className="mt-4 flex justify-end">
               <button

@@ -2450,7 +2450,8 @@
     "pay_installment": "Pay installment",
     "amounts_title": "Amount per installment",
     "amounts_hint": "You can set different amounts. They must add up to the plan total.",
-    "sum": "Sum"
+    "sum": "Sum",
+    "need_total": "To set each installment amount, first add treatments to the plan (the total cannot be $0)."
   },
   "finance": {
     "title": "Financial Center",

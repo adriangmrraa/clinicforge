@@ -1742,7 +1742,8 @@
     "pay_installment": "Pagar cuota",
     "amounts_title": "Monto de cada cuota",
     "amounts_hint": "Podés poner montos distintos. Deben sumar el total del plan.",
-    "sum": "Suma"
+    "sum": "Suma",
+    "need_total": "Para definir el monto de cada cuota, primero agregá tratamientos al plan (el total no puede ser $0)."
   },
   "marketing_google": {
     "title": "Google Ads",
