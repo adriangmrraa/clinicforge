@@ -2424,6 +2424,7 @@
     "rejected": "Rejected",
     "save_config": "Save configuration",
     "config_saved": "Configuration saved successfully",
+    "schedule_not_saved": "⚠️ The installment breakdown was NOT saved on the server. Wait a few minutes (it may be updating) and save again.",
     "email_sent_success": "Budget sent by email successfully"
   },
   "installment": {

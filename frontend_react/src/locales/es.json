@@ -1716,6 +1716,7 @@
     "rejected": "Rechazado",
     "save_config": "Guardar configuración",
     "config_saved": "Configuración guardada correctamente",
+    "schedule_not_saved": "⚠️ El desglose de cuotas NO quedó guardado en el servidor. Esperá unos minutos (puede estar actualizándose) y volvé a guardar.",
     "email_sent_success": "Presupuesto enviado por email correctamente"
   },
   "installment": {

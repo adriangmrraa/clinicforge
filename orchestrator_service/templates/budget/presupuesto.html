@@ -364,8 +364,23 @@ body {
 
 .inst-desglose {
     margin-top: 8px;
-    font-size: 8.5pt;
+}
+
+.inst-mini-card {
+    display: inline-block;
+    background: #ffffff;
+    border: 1px solid #dbeafe;
+    border-radius: 5px;
+    padding: 4px 12px;
+    margin: 2px 6px 2px 0;
+    text-align: center;
+}
+
+.inst-mini-value {
+    font-size: 10.5pt;
+    font-weight: 700;
     color: #1e40af;
+    margin: 0;
 }
 
 .inst-card {
@@ -685,7 +700,14 @@ body {
         </tr>
     </table>
     {% if budget_config.installments_schedule %}
-    <p class="inst-desglose">Desglose: {% for m in budget_config.installments_schedule %}<strong>Cuota {{ loop.index }}: {{ cs }}{{ m | ars }}</strong>{% if not loop.last %} &middot; {% endif %}{% endfor %}</p>
+    <div class="inst-desglose">
+        {% for m in budget_config.installments_schedule %}
+        <div class="inst-mini-card">
+            <p class="inst-card-label">Cuota {{ loop.index }}</p>
+            <p class="inst-mini-value">{{ cs }}{{ m | ars }}</p>
+        </div>
+        {% endfor %}
+    </div>
     {% endif %}
 </div>
 {% endif %}
