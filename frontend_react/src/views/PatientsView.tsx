@@ -157,10 +157,14 @@ export default function PatientsView() {
       );
     });
 
+    // Decisión de Carlos (2026-07-10): "Con turno" = tiene turno FUTURO agendado
+    // (scheduled/confirmed > ahora — es lo que trae next_appointment_date).
+    // "Sin turno" = nada agendado (incluye los que vinieron alguna vez y no
+    // volvieron: la lista útil para reenganchar). Los históricos quedan en Todos.
     if (appointmentFilter === 'with') {
-      filtered = filtered.filter(p => p.has_appointments);
+      filtered = filtered.filter(p => !!p.next_appointment_date);
     } else if (appointmentFilter === 'without') {
-      filtered = filtered.filter(p => !p.has_appointments);
+      filtered = filtered.filter(p => !p.next_appointment_date);
     }
 
     if (treatmentFilter !== 'all') {
