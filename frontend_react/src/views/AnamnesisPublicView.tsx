@@ -446,30 +446,26 @@ export default function AnamnesisPublicView() {
       </div>
 
       <form onSubmit={handleSubmit} className="max-w-lg mx-auto px-4 py-6 space-y-5">
-        {error && (
-          <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-3 rounded-xl text-sm">{error}</div>
-        )}
-
         {/* Enfermedades de base */}
         <Section icon={<HeartPulse size={18} className="text-red-500" />} title="Enfermedades de base" subtitle="Seleccioná todas las que apliquen">
           <CheckboxGroup options={DISEASE_OPTIONS} selected={baseDiseases} toggle={(v) => toggleCheck(baseDiseases, setBaseDiseases, v)} />
-          <input type="text" placeholder="Otra (especificar)" className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-white/30 focus:border-cyan-500 outline-none" value={baseDiseasesOther} onChange={e => setBaseDiseasesOther(e.target.value)} />
+          <input type="text" placeholder="Otra (especificar)" className="w-full px-3 py-2 scroll-mt-32 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-white/30 focus:border-cyan-500 outline-none" value={baseDiseasesOther} onChange={e => setBaseDiseasesOther(e.target.value)} />
         </Section>
 
         {/* Medicación habitual */}
         <Section icon={<Pill size={18} className="text-orange-500" />} title="Medicación habitual">
-          <textarea placeholder="Ej: Metformina 850mg, Enalapril 10mg..." className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-white/30 focus:border-cyan-500 outline-none min-h-[60px]" value={medication} onChange={e => setMedication(e.target.value)} />
+          <textarea placeholder="Ej: Metformina 850mg, Enalapril 10mg..." className="w-full px-3 py-2 scroll-mt-32 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-white/30 focus:border-cyan-500 outline-none min-h-[60px]" value={medication} onChange={e => setMedication(e.target.value)} />
         </Section>
 
         {/* Alergias */}
         <Section icon={<AlertTriangle size={18} className="text-red-600" />} title="Alergias" subtitle="Seleccioná todas las que apliquen">
           <CheckboxGroup options={ALLERGY_OPTIONS} selected={allergies} toggle={(v) => toggleCheck(allergies, setAllergies, v)} />
-          <input type="text" placeholder="Otra alergia (especificar)" className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-white/30 focus:border-cyan-500 outline-none" value={allergiesOther} onChange={e => setAllergiesOther(e.target.value)} />
+          <input type="text" placeholder="Otra alergia (especificar)" className="w-full px-3 py-2 scroll-mt-32 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-white/30 focus:border-cyan-500 outline-none" value={allergiesOther} onChange={e => setAllergiesOther(e.target.value)} />
         </Section>
 
         {/* Cirugías previas */}
         <Section icon={<Scissors size={18} className="text-gray-300" />} title="Cirugías previas">
-          <textarea placeholder="Ej: Apendicectomía 2019, cesárea 2021..." className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-white/30 focus:border-cyan-500 outline-none min-h-[60px]" value={surgeries} onChange={e => setSurgeries(e.target.value)} />
+          <textarea placeholder="Ej: Apendicectomía 2019, cesárea 2021..." className="w-full px-3 py-2 scroll-mt-32 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-white/30 focus:border-cyan-500 outline-none min-h-[60px]" value={surgeries} onChange={e => setSurgeries(e.target.value)} />
         </Section>
 
         {/* Fumador */}
@@ -480,7 +476,7 @@ export default function AnamnesisPublicView() {
             <RadioBtn label="Ex fumador" value="ex" selected={isSmoker} onSelect={setIsSmoker} />
           </div>
           {(isSmoker === 'si' || isSmoker === 'ex') && (
-            <input type="text" placeholder="Cuántos por día? (aprox)" className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-white/30 focus:border-cyan-500 outline-none mt-2" value={smokerAmount} onChange={e => setSmokerAmount(e.target.value)} />
+            <input type="text" placeholder="Cuántos por día? (aprox)" className="w-full px-3 py-2 scroll-mt-32 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-white/30 focus:border-cyan-500 outline-none mt-2" value={smokerAmount} onChange={e => setSmokerAmount(e.target.value)} />
           )}
         </Section>
 
@@ -495,14 +491,19 @@ export default function AnamnesisPublicView() {
 
         {/* Experiencias negativas */}
         <Section icon={<Frown size={18} className="text-gray-500" />} title="Experiencias negativas en odontología">
-          <textarea placeholder="Contanos si tuviste alguna mala experiencia previa..." className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-white/30 focus:border-cyan-500 outline-none min-h-[60px]" value={negativeExperiences} onChange={e => setNegativeExperiences(e.target.value)} />
+          <textarea placeholder="Contanos si tuviste alguna mala experiencia previa..." className="w-full px-3 py-2 scroll-mt-32 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-white/30 focus:border-cyan-500 outline-none min-h-[60px]" value={negativeExperiences} onChange={e => setNegativeExperiences(e.target.value)} />
         </Section>
 
         {/* Miedos dentales */}
         <Section icon={<Brain size={18} className="text-purple-500" />} title="Miedos dentales" subtitle="Seleccioná todos los que apliquen">
           <CheckboxGroup options={FEAR_OPTIONS} selected={fears} toggle={(v) => toggleCheck(fears, setFears, v)} />
-          <input type="text" placeholder="Otro miedo (especificar)" className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-white/30 focus:border-cyan-500 outline-none" value={fearsOther} onChange={e => setFearsOther(e.target.value)} />
+          <input type="text" placeholder="Otro miedo (especificar)" className="w-full px-3 py-2 scroll-mt-32 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-white/30 focus:border-cyan-500 outline-none" value={fearsOther} onChange={e => setFearsOther(e.target.value)} />
         </Section>
+
+        {/* Submit error — rendered next to the button so it's visible on mobile */}
+        {error && (
+          <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-3 rounded-xl text-sm">{error}</div>
+        )}
 
         {/* Submit */}
         <button type="submit" disabled={submitting}
@@ -536,7 +537,7 @@ function CheckboxGroup({ options, selected, toggle }: { options: string[]; selec
   return (
     <div className="grid grid-cols-2 gap-2">
       {options.map(opt => (
-        <label key={opt} className={`flex items-center gap-2 p-2.5 rounded-xl border cursor-pointer transition-all touch-manipulation
+        <label key={opt} className={`flex items-center gap-2 p-2.5 min-h-[44px] rounded-xl border cursor-pointer transition-all touch-manipulation
           ${selected.includes(opt) ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-300' : 'bg-white/5 border-white/10 text-gray-300 hover:bg-white/10'}`}>
           <input type="checkbox" checked={selected.includes(opt)} onChange={() => toggle(opt)} className="w-4 h-4 rounded border-gray-600 text-cyan-500 bg-transparent" />
           <span className="text-sm">{opt}</span>
@@ -550,7 +551,7 @@ function RadioBtn({ label, value, selected, onSelect }: { label: string; value: 
   const isActive = selected === value;
   return (
     <button type="button" onClick={() => onSelect(value)}
-      className={`px-4 py-2 rounded-xl text-sm font-medium transition-all touch-manipulation border
+      className={`px-4 py-2 min-h-[44px] rounded-xl text-sm font-medium transition-all touch-manipulation border
         ${isActive ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white border-cyan-500' : 'bg-white/5 text-gray-300 border-white/10 hover:bg-white/10'}`}>
       {label}
     </button>
