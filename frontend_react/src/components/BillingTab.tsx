@@ -170,6 +170,21 @@ const formatCurrency = (amount: number | null | undefined, cur = 'ARS') =>
     maximumFractionDigits: 0,
   }).format(amount || 0);
 
+// Fechas 'YYYY-MM-DD' parseadas como LOCAL: new Date('YYYY-MM-DD') las toma
+// como medianoche UTC y en Argentina (UTC-3) se muestran corridas UN DÍA para
+// atrás (bug real: pago registrado el 10/07 aparecía como 9/7).
+const parseLocalDate = (s: string): Date => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s || '');
+  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(s);
+};
+
+// Hoy en fecha LOCAL 'YYYY-MM-DD' (toISOString() es UTC: de 21:00 a 23:59 hora
+// argentina ya es "mañana" en UTC y los inputs de fecha arrancaban corridos).
+const todayLocalStr = (): string => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
 function PaymentReceiptBadge({ receipt }: { receipt: AppointmentBilling['payment_receipt_data'] }) {
@@ -346,7 +361,7 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
   // ── Form data
   const [newPlanData, setNewPlanData] = useState({ name: '', professional_id: '', notes: '' });
   const [newItemData, setNewItemData] = useState({ treatment_type_code: '', custom_description: '', estimated_price: '' });
-  const [newPaymentData, setNewPaymentData] = useState({ amount: '', payment_method: 'cash', payment_date: new Date().toISOString().split('T')[0], notes: '', installment_id: '' });
+  const [newPaymentData, setNewPaymentData] = useState({ amount: '', payment_method: 'cash', payment_date: todayLocalStr(), notes: '', installment_id: '' });
   const [approveData, setApproveData] = useState({ approved_total: '' });
 
   // ── Modal support data
@@ -365,7 +380,7 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
 
   // ── Installments
   const [showGenerateInstallments, setShowGenerateInstallments] = useState(false);
-  const [generateInstallmentsData, setGenerateInstallmentsData] = useState({ count: '3', start_date: new Date().toISOString().split('T')[0], frequency: 'monthly', amounts: [] as string[] });
+  const [generateInstallmentsData, setGenerateInstallmentsData] = useState({ count: '3', start_date: todayLocalStr(), frequency: 'monthly', amounts: [] as string[] });
   const [generatingInstallments, setGeneratingInstallments] = useState(false);
   const [submittingPayment, setSubmittingPayment] = useState(false);
 
@@ -629,7 +644,7 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
       }
       await api.post(`/admin/treatment-plans/${planDetail.id}/payments`, payload);
       setShowRegisterPayment(false);
-      setNewPaymentData({ amount: '', payment_method: 'cash', payment_date: new Date().toISOString().split('T')[0], notes: '', installment_id: '' });
+      setNewPaymentData({ amount: '', payment_method: 'cash', payment_date: todayLocalStr(), notes: '', installment_id: '' });
       setSuccess(t('billing.payment_registered') || 'Pago registrado correctamente');
       await loadPlanDetail(planDetail.id);
     } catch (err: any) {
@@ -674,7 +689,7 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
     setNewPaymentData({
       amount: String(installment.amount),
       payment_method: 'cash',
-      payment_date: new Date().toISOString().split('T')[0],
+      payment_date: todayLocalStr(),
       notes: '',
       installment_id: installment.id,
     });
@@ -692,9 +707,12 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
       setShowApprovePlan(false);
       setApproveData({ approved_total: '' });
       await loadPlanDetail(planDetail.id);
-    } catch (err) {
+    } catch (err: unknown) {
       console.error('Error approving plan:', err);
-      setError(t('billing.error_save'));
+      // Mostrar el motivo REAL del servidor (ej. "Transición de estado inválida:
+      // approved -> approved") en vez de un genérico mudo imposible de depurar.
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setError(detail || t('billing.error_save'));
     }
   };
 
@@ -1740,7 +1758,7 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
                       {planDetail.payments.map((payment) => (
                         <tr key={payment.id} className="border-b border-white/[0.04] hover:bg-white/[0.02]">
                           <td className="py-3 px-2 text-sm text-white">
-                            {payment.payment_date ? new Date(payment.payment_date).toLocaleDateString('es-AR') : '—'}
+                            {payment.payment_date ? parseLocalDate(payment.payment_date).toLocaleDateString('es-AR') : '—'}
                           </td>
                           <td className="py-3 px-2 text-sm text-white text-right font-medium">
                             {formatCurrency(payment.amount)}
@@ -1801,7 +1819,7 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
                       <div className="flex-1 min-w-0">
                         <p className="text-white text-sm font-medium">{formatCurrency(payment.amount)}</p>
                         <p className="text-white/40 text-xs">
-                          {payment.payment_date ? new Date(payment.payment_date).toLocaleDateString('es-AR') : '—'} — {t(`billing.method.${payment.payment_method}`)}
+                          {payment.payment_date ? parseLocalDate(payment.payment_date).toLocaleDateString('es-AR') : '—'} — {t(`billing.method.${payment.payment_method}`)}
                         </p>
                         {payment.payment_receipt_data && (
                           <div className="mt-1">
@@ -1860,7 +1878,7 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
             ) : (
               <div className="space-y-2">
                 {planDetail.installments.map((inst) => {
-                  const dueDate = new Date(inst.due_date);
+                  const dueDate = parseLocalDate(inst.due_date);
                   const dueDateStr = isNaN(dueDate.getTime())
                     ? inst.due_date
                     : dueDate.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -1987,7 +2005,7 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
       )}
 
       {showRegisterPayment && (
-        <Modal onClose={() => { setShowRegisterPayment(false); setNewPaymentData({ amount: '', payment_method: 'cash', payment_date: new Date().toISOString().split('T')[0], notes: '', installment_id: '' }); }}>
+        <Modal onClose={() => { setShowRegisterPayment(false); setNewPaymentData({ amount: '', payment_method: 'cash', payment_date: todayLocalStr(), notes: '', installment_id: '' }); }}>
           <h3 className="text-lg font-semibold text-white mb-4">{t('billing.register_payment')}</h3>
           <div className="space-y-4">
             {/* Installment selector — only when plan has installments */}
@@ -2011,7 +2029,7 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
                   {planDetail.installments
                     .filter((i) => i.status === 'pending' || i.status === 'overdue')
                     .map((i) => {
-                      const due = new Date(i.due_date);
+                      const due = parseLocalDate(i.due_date);
                       const dueFmt = isNaN(due.getTime()) ? i.due_date : due.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
                       return (
                         <option key={i.id} value={i.id}>
@@ -2307,7 +2325,9 @@ function CreatePlanModal({ newPlanData, setNewPlanData, professionals, onCreate,
 function Modal({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end md:items-center justify-center p-0 md:p-4">
-      <div className="bg-[#0d1117] border border-white/[0.08] rounded-t-2xl md:rounded-xl w-full md:w-auto md:max-w-lg p-6 relative max-h-[90vh] overflow-y-auto">
+      {/* md:w-full (antes md:w-auto): los modales se encogían al contenido y
+          quedaban angostos/apretados (caso real: Registrar pago, Nuevo Presupuesto) */}
+      <div className="bg-[#0d1117] border border-white/[0.08] rounded-t-2xl md:rounded-xl w-full md:w-full md:max-w-xl p-6 relative max-h-[90vh] overflow-y-auto">
         <button
           onClick={onClose}
           className="absolute top-4 right-4 text-white/40 hover:text-white/70"
