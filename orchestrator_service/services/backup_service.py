@@ -23,6 +23,35 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+# Volumen persistente COMPARTIDO para los ZIP de backup. Antes iban al /tmp del
+# contenedor (efímero y por-réplica): si el deploy se solapaba o el contenedor
+# se reiniciaba entre generar y descargar, el archivo no existía para quien
+# atendía la descarga ("Archivo de backup no encontrado"). /app/uploads es el
+# mismo volumen donde ya persisten los PDFs de presupuestos.
+_BACKUP_STORAGE_DIR = "/app/uploads/backups"
+
+
+def _backup_storage_dir() -> str:
+    try:
+        os.makedirs(_BACKUP_STORAGE_DIR, exist_ok=True)
+        return _BACKUP_STORAGE_DIR
+    except Exception:
+        # Entorno sin /app/uploads (ej. dev local): degradar al temp de siempre
+        return tempfile.gettempdir()
+
+
+def _sweep_old_backups(storage_dir: str, max_age_hours: int = 24) -> None:
+    """Borra ZIPs de backup viejos (el volumen es persistente, no se limpia solo)."""
+    try:
+        cutoff = datetime.now().timestamp() - max_age_hours * 3600
+        for fn in os.listdir(storage_dir):
+            if fn.startswith("backup_") and fn.endswith(".zip"):
+                fp = os.path.join(storage_dir, fn)
+                if os.path.getmtime(fp) < cutoff:
+                    os.remove(fp)
+    except Exception:
+        pass
+
 logger = logging.getLogger(__name__)
 
 BACKUP_VERSION = "1.0"
@@ -317,10 +346,12 @@ async def _build_zip(
     files: Dict[str, bytes],
     clinic_name: str,
 ) -> str:
-    """Build the backup ZIP file. Returns the temp file path."""
+    """Build the backup ZIP file. Returns the file path (volumen persistente)."""
     await _update_progress(task_id, 72, "Construyendo archivo ZIP...")
 
-    zip_path = os.path.join(tempfile.gettempdir(), f"backup_{tenant_id}_{task_id}.zip")
+    storage_dir = _backup_storage_dir()
+    _sweep_old_backups(storage_dir)
+    zip_path = os.path.join(storage_dir, f"backup_{tenant_id}_{task_id}.zip")
     date_str = datetime.now().strftime("%Y-%m-%d")
     prefix = f"backup_{re.sub(r'[^a-zA-Z0-9_-]', '_', clinic_name)}_{date_str}"
 

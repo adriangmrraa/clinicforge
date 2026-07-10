@@ -97,7 +97,18 @@ export const BackupRestoreSection: React.FC<BackupRestoreSectionProps> = ({ user
       setDownloaded(true);
       setTimeout(() => closeModal(), 3000);
     } catch (err: any) {
-      setError(err.response?.data?.detail || t('backup.error_downloading'));
+      // Con responseType blob, el error también llega como Blob: leerlo para
+      // mostrar el motivo REAL del servidor (ej. "Archivo de backup no
+      // encontrado. Generá uno nuevo.") en vez de un genérico mudo.
+      let detail = '';
+      try {
+        if (err.response?.data instanceof Blob) {
+          detail = JSON.parse(await err.response.data.text())?.detail || '';
+        } else {
+          detail = err.response?.data?.detail || '';
+        }
+      } catch { /* cuerpo no-JSON */ }
+      setError(detail || t('backup.error_downloading'));
     }
   };
 

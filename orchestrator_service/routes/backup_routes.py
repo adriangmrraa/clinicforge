@@ -360,9 +360,16 @@ async def download_backup(
 
         zip_path = data.get("zip_path", "")
 
-        # Path traversal guard: must be in temp directory and contain tenant_id
+        # Path traversal guard: solo el volumen persistente de backups (o el
+        # temp del sistema, por compatibilidad con tareas generadas antes de
+        # esta migración) y el archivo debe pertenecer al tenant.
         import tempfile as _tmpmod
-        if not zip_path or not zip_path.startswith(_tmpmod.gettempdir()) or f"backup_{tenant_id}_" not in zip_path:
+        _allowed_roots = ("/app/uploads/backups", _tmpmod.gettempdir())
+        if (
+            not zip_path
+            or not any(zip_path.startswith(root) for root in _allowed_roots)
+            or f"backup_{tenant_id}_" not in zip_path
+        ):
             raise HTTPException(500, "Ruta de archivo inválida")
 
         if not os.path.isfile(zip_path):
