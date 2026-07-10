@@ -2212,7 +2212,10 @@
     "no_installments": "Aucune échéance configurée",
     "cannot_regenerate": "Impossible de régénérer les échéances avec des paiements existants",
     "generated_success": "Échéances générées avec succès",
-    "pay_installment": "Payer l'échéance"
+    "pay_installment": "Payer l'échéance",
+    "amounts_title": "Montant de chaque échéance",
+    "amounts_hint": "Vous pouvez définir des montants différents. Ils doivent totaliser le montant du plan.",
+    "sum": "Somme"
   },
   "finance": {
     "title": "Centre Financier",

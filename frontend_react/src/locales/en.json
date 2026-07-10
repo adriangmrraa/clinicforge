@@ -2444,7 +2444,10 @@
     "no_installments": "No installments configured",
     "cannot_regenerate": "Cannot regenerate installments with existing payments",
     "generated_success": "Installments generated successfully",
-    "pay_installment": "Pay installment"
+    "pay_installment": "Pay installment",
+    "amounts_title": "Amount per installment",
+    "amounts_hint": "You can set different amounts. They must add up to the plan total.",
+    "sum": "Sum"
   },
   "finance": {
     "title": "Financial Center",

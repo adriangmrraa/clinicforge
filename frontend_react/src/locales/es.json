@@ -1737,7 +1737,10 @@
     "no_installments": "Sin cuotas configuradas",
     "cannot_regenerate": "No se pueden regenerar cuotas con pagos registrados",
     "generated_success": "Cuotas generadas correctamente",
-    "pay_installment": "Pagar cuota"
+    "pay_installment": "Pagar cuota",
+    "amounts_title": "Monto de cada cuota",
+    "amounts_hint": "Podés poner montos distintos. Deben sumar el total del plan.",
+    "sum": "Suma"
   },
   "marketing_google": {
     "title": "Google Ads",
