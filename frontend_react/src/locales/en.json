@@ -2417,6 +2417,7 @@
     "installments": "Installments",
     "financed_total": "Financed total",
     "installments_amount": "Amount per installment",
+    "installments_variable": "Variable",
     "verified": "Verified",
     "rejected": "Rejected",
     "save_config": "Save configuration",

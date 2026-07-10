@@ -2185,6 +2185,7 @@
     "installments": "Versements",
     "financed_total": "Total financé",
     "installments_amount": "Montant par versement",
+    "installments_variable": "Variable",
     "verified": "Vérifié",
     "rejected": "Rejeté",
     "save_config": "Enregistrer la configuration",
