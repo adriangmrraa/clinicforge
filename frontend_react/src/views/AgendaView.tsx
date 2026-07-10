@@ -1160,6 +1160,16 @@ export default function AgendaView() {
             background-color: #0d1117 !important;
           }
 
+          /* Sticky NATIVO de FullCalendar (stickyHeaderDates=true): su CSS pega
+             los headers en top:0 — acá los corremos DEBAJO de nuestra toolbar
+             sticky y les damos fondo sólido para que el contenido no se
+             transparente al pasar por atrás. */
+          .fc .fc-scrollgrid-section-sticky > * {
+            top: var(--fc-toolbar-height, 57px) !important;
+            z-index: 19 !important;
+            background-color: #0d1117 !important;
+          }
+
           /* Eje de tiempo (labels 08:00, 09:00...) en la columna izquierda — sticky horizontal */
           .fc .fc-timegrid-axis {
             background-color: #0d1117 !important;
@@ -1321,7 +1331,12 @@ export default function AgendaView() {
                   dayMaxEvents={true}
                   weekends={true}
                   nowIndicator={true}
-                  stickyHeaderDates={false}
+                  {/* Sticky NATIVO de FullCalendar: al scrollear, los encabezados de
+                      días/profesionales siguen visibles (pedido Carlos: "que deslice
+                      los días y la fecha"). El CSS manual anterior no funcionaba
+                      (celdas de tabla con border-collapse). En vistas de LISTA el
+                      hack de datesSet ya le quita el sticky (fc-list-sticky). */}
+                  stickyHeaderDates={true}
                   slotDuration="00:15:00"
                   slotLabelInterval="01:00"
                   initialDate={new Date()}
