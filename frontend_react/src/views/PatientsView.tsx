@@ -130,10 +130,15 @@ export default function PatientsView() {
     if (selectedTenantId != null) fetchPatients();
   }, [selectedTenantId]);
 
+  // Normaliza para búsqueda: minúsculas + sin acentos ("María" -> "maria").
+  // Sin esto, buscar "maria" no encontraba a "María" (í ≠ i tras toLowerCase).
+  const normalize = (s: string) =>
+    s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
   // Filter patients when search term or filter controls change
   useEffect(() => {
+    const q = normalize(searchTerm);
     let filtered = patients.filter((patient) => {
-      const searchLower = searchTerm.toLowerCase();
       // Safe check for nulls
       const fname = patient.first_name || '';
       const lname = patient.last_name || '';
@@ -142,11 +147,13 @@ export default function PatientsView() {
       const email = patient.email || '';
 
       return (
-        fname.toLowerCase().includes(searchLower) ||
-        lname.toLowerCase().includes(searchLower) ||
+        normalize(fname).includes(q) ||
+        normalize(lname).includes(q) ||
+        // Nombre completo: "lucas puig" no matcheaba nombre ni apellido por separado
+        normalize(`${fname} ${lname}`).includes(q) ||
         phone.includes(searchTerm) ||
         dni.includes(searchTerm) ||
-        email.toLowerCase().includes(searchLower)
+        normalize(email).includes(q)
       );
     });
 
@@ -167,6 +174,10 @@ export default function PatientsView() {
     try {
       setLoading(true);
       const params: Record<string, string> = {};
+      // Sin limit explícito el backend corta en 200 (con-turno primero): los
+      // pacientes fuera del corte no aparecían en el buscador ni en el filtro
+      // "Sin turno". 5000 = tope de seguridad, trae la clínica completa.
+      params.limit = '5000';
       // RBAC: professionals only see their own patients
       if (user?.role === 'professional' && user?.professional_id) {
         params.professional_id = String(user.professional_id);
