@@ -868,7 +868,7 @@ export default function PatientDetail() {
   }
 
   return (
-    <div key={`patient-detail-${id}`} className="flex flex-col h-screen overflow-hidden">
+    <div key={`patient-detail-${id}`} className="flex flex-col h-full overflow-hidden">
       {/* Header Fijo */}
       <div className="shrink-0 bg-white/[0.03] border-b border-white/[0.06]">
         <div className="p-4 lg:p-6">

@@ -199,7 +199,7 @@ export default function DashboardStatusView() {
 
   if (loading && !data) {
     return (
-      <div className="h-screen flex flex-col">
+      <div className="h-full flex flex-col">
         <div className="p-6">
           <PageHeader title="Dashboard de Tokens" subtitle="Cargando métricas del agente IA..." />
         </div>
@@ -220,7 +220,7 @@ export default function DashboardStatusView() {
   const dailyUsage = data?.daily_usage || [];
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden">
+    <div className="h-full flex flex-col overflow-hidden">
       <div className="flex-shrink-0 p-4 sm:p-6 bg-white/[0.02] backdrop-blur-sm border-b border-white/[0.06]">
         <PageHeader
           title="Dashboard de Tokens y Métricas"

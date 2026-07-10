@@ -321,7 +321,7 @@ export default function AnamnesisPublicView() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#0a0f1a] flex items-center justify-center">
+      <div className="min-h-dvh bg-[#0a0f1a] flex items-center justify-center">
         <Loader2 className="animate-spin text-blue-600" size={40} />
       </div>
     );
@@ -329,7 +329,7 @@ export default function AnamnesisPublicView() {
 
   if (error && !patientName) {
     return (
-      <div className="min-h-screen bg-[#0a0f1a] flex items-center justify-center p-6">
+      <div className="min-h-dvh bg-[#0a0f1a] flex items-center justify-center p-6">
         <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-5 sm:p-8 max-w-md text-center space-y-4">
           <XCircle className="mx-auto text-red-500" size={48} />
           <h1 className="text-xl font-bold text-white">Link inválido</h1>
@@ -341,7 +341,7 @@ export default function AnamnesisPublicView() {
 
   if (submitted) {
     return (
-      <div className="min-h-screen bg-[#0a0f1a] flex items-center justify-center p-6">
+      <div className="min-h-dvh bg-[#0a0f1a] flex items-center justify-center p-6">
         <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-5 sm:p-8 max-w-md text-center space-y-4">
           <CheckCircle2 className="mx-auto text-green-500" size={48} />
           <h1 className="text-xl font-bold text-white">Ficha médica guardada</h1>
@@ -355,7 +355,7 @@ export default function AnamnesisPublicView() {
   // DNI Lock Screen — Dentalogic login aesthetic
   if (requiresDni && !isUnlocked) {
     return (
-      <div className="min-h-screen bg-[#0a0f1a] flex flex-col items-center justify-center p-6 relative overflow-hidden">
+      <div className="min-h-dvh bg-[#0a0f1a] flex flex-col items-center justify-center p-6 relative overflow-hidden">
         {/* Background glow */}
         <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[400px] h-[400px] bg-cyan-500/8 rounded-full blur-[120px] pointer-events-none" />
 
@@ -425,7 +425,7 @@ export default function AnamnesisPublicView() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0a0f1a] relative">
+    <div className="min-h-dvh bg-[#0a0f1a] relative">
       <ParticleBackground particleCount={30} className="opacity-25" />
       {/* Header + Nova Voice (sticky) */}
       <div className="bg-[#0d1320]/90 backdrop-blur-md border-b border-white/5 sticky top-0 z-10">

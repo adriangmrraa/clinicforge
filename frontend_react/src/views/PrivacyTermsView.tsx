@@ -22,7 +22,7 @@ export default function PrivacyTermsView() {
     return (
         <>
             <style>{keyframesStyle}</style>
-            <div className="min-h-screen bg-[#0a0f1a] text-white relative overflow-hidden">
+            <div className="min-h-dvh bg-[#0a0f1a] text-white relative overflow-hidden">
                 {/* Background effects */}
                 <div className="absolute inset-0 pointer-events-none">
                     <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-cyan-500/5 rounded-full blur-[120px]" style={{ animation: 'glow-pulse 6s ease-in-out infinite' }} />

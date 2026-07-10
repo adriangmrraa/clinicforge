@@ -80,7 +80,7 @@ export default function FinancialCommandCenterView() {
   ];
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden">
+    <div className="h-full flex flex-col overflow-hidden">
       {/* Header */}
       <header className="p-4 sm:p-6 shrink-0 bg-white/[0.02] backdrop-blur-sm border-b border-white/[0.06]">
         <PageHeader

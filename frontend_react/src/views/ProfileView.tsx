@@ -146,7 +146,7 @@ const ProfileView: React.FC = () => {
   const isProfessional = authUser?.role === 'professional';
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden">
+    <div className="h-full flex flex-col overflow-hidden">
       <div className="shrink-0 p-4 sm:p-6 border-b border-white/[0.06]">
         <PageHeader
           title={t('profile.title')}

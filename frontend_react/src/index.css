@@ -56,6 +56,7 @@ body {
 .glass-container {
   display: flex;
   min-height: 100vh;
+  min-height: 100dvh; /* mobile: no cuenta la barra del navegador */
 }
 
 /* Custom Scrollbar */

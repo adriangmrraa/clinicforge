@@ -146,7 +146,7 @@ export default function ProfessionalLiquidationsView() {
   };
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden">
+    <div className="h-full flex flex-col overflow-hidden">
       {/* Header */}
       <div className="shrink-0 px-6 py-5 border-b border-white/[0.06]">
         <h1 className="text-xl font-bold text-white">{t('professional_liquidations.title', 'Mis Liquidaciones')}</h1>

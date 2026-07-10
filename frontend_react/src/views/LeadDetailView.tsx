@@ -262,7 +262,7 @@ export default function LeadDetailView() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-full bg-gray-50 flex items-center justify-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
       </div>
     );
@@ -270,7 +270,7 @@ export default function LeadDetailView() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-50 p-6">
+      <div className="min-h-full bg-gray-50 p-6">
         <div className="max-w-6xl mx-auto">
           <button
             onClick={() => navigate('/leads')}
@@ -303,7 +303,7 @@ export default function LeadDetailView() {
   const { lead, status_history, notes } = leadDetails;
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-full bg-gray-50">
       {/* Header */}
       <div className="bg-white border-b border-gray-200">
         <div className="max-w-6xl mx-auto px-6 py-4">

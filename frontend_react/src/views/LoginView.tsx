@@ -394,7 +394,7 @@ const LoginView: React.FC = () => {
   return (
     <>
       <style>{keyframesStyle}</style>
-      <div className="flex min-h-screen bg-[#06060e]">
+      <div className="flex min-h-dvh bg-[#06060e]">
 
         {/* ═══════════════ LEFT SIDE — BRANDING ═══════════════ */}
         <div className="hidden lg:flex lg:w-[55%] relative overflow-hidden flex-col justify-between p-12">

@@ -253,7 +253,7 @@ export default function LeadsManagementView() {
   const endItem = Math.min(currentPage * pageSize, totalLeads);
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-full">
       <PageHeader
         title={t('leads.page_title')}
         subtitle={t('leads.page_subtitle')}

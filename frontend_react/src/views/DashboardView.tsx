@@ -196,14 +196,14 @@ export default function DashboardView() {
 
   if (loading) {
     return (
-      <div className="h-screen flex items-center justify-center">
+      <div className="h-full flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
       </div>
     );
   }
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden">
+    <div className="h-full flex flex-col overflow-hidden">
       {/* HEADER SECTION */}
       <header className="p-4 sm:p-6 shrink-0 bg-white/[0.02] backdrop-blur-sm border-b border-white/[0.06]">
         <PageHeader

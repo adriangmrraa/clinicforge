@@ -52,7 +52,7 @@ export default class ErrorBoundary extends Component<Props, State> {
       const isDev = import.meta.env.DEV;
 
       return (
-        <div className="min-h-screen bg-[#06060e] flex items-center justify-center p-4">
+        <div className="min-h-dvh bg-[#06060e] flex items-center justify-center p-4">
           <div className="bg-[#0d1117] border border-white/[0.06] rounded-2xl p-8 max-w-md w-full text-center">
             <div className="text-4xl mb-4">⚠</div>
             <h1 className="text-white text-xl font-semibold mb-2">

@@ -227,7 +227,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }: LayoutProps) => {
   };
 
   return (
-    <div className="flex h-screen bg-[#06060e] relative overflow-hidden">
+    <div className="flex h-dvh bg-[#06060e] relative overflow-hidden">
       {/* Mobile Backdrop */}
       {isMobileMenuOpen && (
         <div
@@ -252,7 +252,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }: LayoutProps) => {
 
       {/* Main Content */}
       <main
-        className={`flex-1 flex flex-col transition-all duration-300 w-full min-w-0 h-screen overflow-hidden`}
+        className={`flex-1 flex flex-col transition-all duration-300 w-full min-w-0 h-full overflow-hidden`}
       >
         <MetaTokenBanner />
         {/* Top Header */}

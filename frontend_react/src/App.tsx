@@ -32,7 +32,7 @@ const ProfessionalLiquidationsView = lazy(() => import('./views/ProfessionalLiqu
 const BlockedContactsView = lazy(() => import('./views/BlockedContactsView'));
 
 const PageLoader = () => (
-  <div className="flex items-center justify-center h-screen bg-[#06060e] text-white">
+  <div className="flex items-center justify-center h-dvh bg-[#06060e] text-white">
     Cargando...
   </div>
 );

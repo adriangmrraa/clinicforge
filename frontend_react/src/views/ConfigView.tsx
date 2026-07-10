@@ -1195,7 +1195,7 @@ export default function ConfigView() {
     }
 
     return (
-        <div className="h-screen flex flex-col bg-[#0a0e1a] overflow-hidden">
+        <div className="h-full flex flex-col bg-[#0a0e1a] overflow-hidden">
             {/* Header & Tabs Area (Fixed) */}
             <div className="flex-none p-4 sm:p-6 pb-0 max-w-6xl mx-auto w-full">
                 <PageHeader

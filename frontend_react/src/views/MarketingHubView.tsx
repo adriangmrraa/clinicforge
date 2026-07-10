@@ -592,7 +592,7 @@ export default function MarketingHubView() {
     };
 
     return (
-        <div className="h-screen flex flex-col overflow-hidden">
+        <div className="h-full flex flex-col overflow-hidden">
             {/* Compact Header */}
             <div className="shrink-0 border-b border-white/[0.06] px-4 pt-4 pb-0">
                 <h1 className="text-lg font-bold text-white mb-1">Marketing Hub</h1>
