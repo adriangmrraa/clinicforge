@@ -1706,6 +1706,7 @@
     "budget_config": "Configuración del presupuesto",
     "currency": "Moneda",
     "payment_conditions": "Condiciones de pago",
+    "payment_conditions_placeholder": "Ej: Válido por 30 días",
     "discount_pct": "Descuento %",
     "discount_amount": "Descuento fijo $",
     "installments": "Cuotas",

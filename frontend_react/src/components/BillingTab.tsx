@@ -586,7 +586,14 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
     try {
       const payload: Record<string, unknown> = {
         name: newPlanData.name,
-        notes: newPlanData.notes || null,
+        // El campo del modal son las CONDICIONES DE PAGO del presupuesto. Se
+        // guardan como JSON (mismo formato que la Configuración del presupuesto)
+        // para que aparezcan en el PDF y se pre-carguen en la config. Antes se
+        // guardaba texto libre que no se mostraba en ningún lado y se PISABA al
+        // guardar la configuración por primera vez.
+        notes: newPlanData.notes.trim()
+          ? JSON.stringify({ payment_conditions: newPlanData.notes.trim() })
+          : null,
       };
       if (newPlanData.professional_id) {
         payload.professional_id = parseInt(newPlanData.professional_id);
@@ -1602,7 +1609,7 @@ export default function BillingTab({ patientId, refreshKey }: BillingTabProps) {
                   type="text"
                   value={budgetConfig.payment_conditions}
                   onChange={(e) => setBudgetConfig({ ...budgetConfig, payment_conditions: e.target.value })}
-                  placeholder="Ej: Válido por 30 días"
+                  placeholder={t('billing.payment_conditions_placeholder', 'Ej: Válido por 30 días')}
                   className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/30 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                 />
               </div>
@@ -2300,11 +2307,12 @@ function CreatePlanModal({ newPlanData, setNewPlanData, professionals, onCreate,
           </select>
         </div>
         <div>
-          <label className="block text-sm text-white/60 mb-1">{t('billing.notes')}</label>
+          <label className="block text-sm text-white/60 mb-1">{t('billing.payment_conditions')}</label>
           <textarea
             value={newPlanData.notes}
             onChange={(e) => setNewPlanData({ ...newPlanData, notes: e.target.value })}
-            rows={3}
+            rows={2}
+            placeholder={t('billing.payment_conditions_placeholder', 'Ej: Válido por 30 días')}
             className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-primary"
           />
         </div>
