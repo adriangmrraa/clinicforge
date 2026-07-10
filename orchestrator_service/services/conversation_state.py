@@ -165,6 +165,14 @@ async def set_state(
             "turn_count": (_existing or {}).get("turn_count", 0),
             # v8.4: scheduling constraints — preserved across all state transitions
             "scheduling_constraints": (_existing or {}).get("scheduling_constraints", {}),
+            # v8.5: flags pegajosos — intent_tags (gateo condicional del prompt) e
+            # insurance_resolved (anti-loop de cobertura OSPE) se escriben con
+            # merge_intent_tags/mark_insurance_resolved y NO deben perderse acá:
+            # la whitelist los borraba en cada transición (bug auditoría 2026-07-09:
+            # se dropeaba la sección de implantes justo al ofrecer turnos y el bot
+            # volvía a repetir el rechazo de cobertura ya resuelto).
+            "intent_tags": (_existing or {}).get("intent_tags", []),
+            "insurance_resolved": (_existing or {}).get("insurance_resolved"),
             "updated_at": _dt.now().isoformat(),
         }
 
