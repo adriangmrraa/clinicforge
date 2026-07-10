@@ -72,6 +72,15 @@
     "errorMessage": "If behavior is Message, enter the text."
   },
   "common": {
+    "confirm": "Confirm",
+    "confirm_delete": "Confirm deletion?",
+    "connecting": "Connecting...",
+    "copy": "Copy",
+    "optional": "Optional",
+    "refresh": "Refresh",
+    "remove": "Remove",
+    "retry": "Retry",
+    "testing": "Testing...",
     "save": "Save",
     "cancel": "Cancel",
     "close": "Close",
@@ -295,6 +304,8 @@
     "placeholder_calendar": "Optional. Configurable later in profile."
   },
   "dashboard": {
+    "my_patients": "My patients",
+    "no_data_available": "No data available",
     "title": "Dashboard",
     "urgencies": "Urgencies",
     "conversations": "IA Conversations",
@@ -395,6 +406,8 @@
     "tag_high_ticket": "High Ticket"
   },
   "agenda": {
+    "google_block": "Google Calendar block",
+    "no_name": "No name",
     "title": "Agenda",
     "subtitle": "Appointments and scheduling",
     "appointments_in_view": "appointments on screen",
@@ -468,6 +481,7 @@
     "print_no_appointments": "No appointments for this period"
   },
   "patients": {
+    "initial_appointment_notes": "First appointment — created when registering the patient",
     "title": "Patient List",
     "subtitle": "Centralized management of the clinic's patient base",
     "new_patient": "New Patient",
@@ -559,6 +573,7 @@
     "art_complete_data": "Complete real data"
   },
   "chats": {
+    "window_closed_warning": "24-hour window closed: WhatsApp does not allow sending this message until the patient writes again.",
     "badge_patient": "Patient",
     "badge_lead": "Lead",
     "agent_failed": "Bot failed",
@@ -934,6 +949,8 @@
       "review_goal_monthly_help": "How many reviews the team wants to request per month. 0 = no goal."
     },
     "holidays": {
+      "all_professionals": "All professionals",
+      "professional_label": "Professional",
       "section_title": "Holidays & Special Days",
       "section_subtitle": "The AI agent won't schedule on closed days",
       "empty_message": "No holidays configured for the next 90 days",
@@ -956,6 +973,7 @@
     }
   },
   "treatments": {
+    "select": "Select treatment",
     "title": "Treatments",
     "subtitle": "Configure smart scheduling logic",
     "new_service": "New service",
@@ -1234,6 +1252,10 @@
     "agenda_settings": "Calendar settings"
   },
   "patient_detail": {
+    "all_followups_sent": "All follow-ups have been sent",
+    "complete_treatment_desc": "Mark the treatment as complete to send the configured follow-up.",
+    "complete_treatment_title": "Complete Treatment",
+    "send_followup": "Send follow-up",
     "digital_record": "Digital Clinical History",
     "critical_antecedents": "Critical antecedents",
     "patient": "Patient",
@@ -1397,6 +1419,7 @@
     "instruction_second_click": "2nd click: apply state"
   },
   "document_gallery": {
+    "download_error": "Could not download the file",
     "title": "Documents Gallery",
     "subtitle": "Clinical documents, X-rays and patient studies",
     "count": "{{count}} documents",
@@ -1479,6 +1502,8 @@
     "priorityProfessional": "Priority Professional"
   },
   "layout": {
+    "status_connected": "Connected",
+    "status_reconnecting": "Reconnecting...",
     "app_title": "Dentalogic",
     "branch": "Branch",
     "branch_principal": "Main",
@@ -1510,6 +1535,11 @@
     "setup_complete": "Setup complete!"
   },
   "marketing": {
+    "google": {
+      "errors": {
+        "no_auth_url": "Could not get the Google authorization link"
+      }
+    },
     "subtitle": "Control panel for Meta Ads campaigns and real ROI tracking.",
     "range_30d": "30 Days",
     "range_90d": "3 Months",
@@ -2021,6 +2051,10 @@
     "credentials_password": "Password:"
   },
   "leads": {
+    "ad": "Ad",
+    "adset": "Ad set",
+    "converted_to_patient": "Converted to patient",
+    "next": "Next",
     "status_new": "New",
     "status_contacted": "Contacted",
     "status_consultation_scheduled": "Consultation Scheduled",
@@ -2499,6 +2533,7 @@
     "select_date_range": "Select a date range"
   },
   "reconciliation": {
+    "ignored_success": "Entry ignored successfully",
     "title": "Financial Reconciliation",
     "total_patient_payments": "Collected from Patients",
     "total_professional_payouts": "Paid to Professionals",
