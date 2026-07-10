@@ -9181,6 +9181,13 @@ async def verify_payment_receipt(
             dia_nombre = dias[apt_dt_arg.weekday()]
             fecha = apt_dt_arg.strftime(f"{dia_nombre} %d/%m a las %H:%M")
 
+            # Use treatment display name, not code. DEBE definirse ANTES del mensaje de
+            # éxito (_verified_msg) que lo usa — si no, salta UnboundLocalError en el
+            # camino de pago verificado y el paciente que YA pagó recibe "error".
+            treatment_display = (
+                apt.get("appointment_name") or apt.get("appointment_type") or "consulta"
+            )
+
             # Mensaje según el MOMENTO (caso Ale 2026-07-08): si el turno YA empezó o
             # pasó (el paciente pagó después de atenderse), "queda CONFIRMADO. Te
             # esperamos!" es un sinsentido — se registra el pago de la consulta ya
@@ -9203,11 +9210,6 @@ async def verify_payment_receipt(
             if amount_overpaid > 0:
                 overpaid_str = f"${int(amount_overpaid):,}".replace(",", ".")
                 overpaid_msg = f"\n\n📝 Nota: transferiste {overpaid_str} de más sobre la seña. Queda registrado para que la clínica lo tenga en cuenta."
-
-            # Use treatment display name, not code
-            treatment_display = (
-                apt.get("appointment_name") or apt.get("appointment_type") or "consulta"
-            )
 
             # Send payment confirmation email if patient has email
             # Task 6.3: If no email, return flag so agent can ask for it
