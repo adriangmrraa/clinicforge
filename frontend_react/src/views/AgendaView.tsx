@@ -1335,10 +1335,13 @@ export default function AgendaView() {
                     day: t('agenda.day'),
                     year: t('agenda.year'),
                     three_years: t('agenda.three_years'),
-                    list: t('agenda.list'),
-                    // Por NOMBRE de vista (así lo resuelve FullCalendar): sin esto,
-                    // las dos vistas de lista caían al genérico "Lista" y los
-                    // botones se veían duplicados: "Lista | Lista".
+                    // ⛔ NO agregar la clave genérica "list" acá: FullCalendar la
+                    // resuelve con MÁXIMA prioridad (viewDef.defaults.buttonTextKey
+                    // = 'list' para toda la familia de vistas de lista) y PISA el
+                    // nombre específico de cada vista — por eso los dos botones
+                    // decían "Lista | Lista" aunque listYear/listThreeYears
+                    // tuvieran su texto (verificado en @fullcalendar/core 6.1.21,
+                    // index.cjs queryButtonText).
                     listYear: t('agenda.year'),
                     listThreeYears: t('agenda.three_years')
                   } as any}
