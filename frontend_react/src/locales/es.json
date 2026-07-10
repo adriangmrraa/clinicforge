@@ -74,6 +74,15 @@
     "errorMessage": "Si el comportamiento es Mensaje, escribí el texto."
   },
   "common": {
+    "confirm": "Confirmar",
+    "confirm_delete": "¿Confirmar eliminación?",
+    "connecting": "Conectando...",
+    "copy": "Copiar",
+    "optional": "Opcional",
+    "refresh": "Actualizar",
+    "remove": "Quitar",
+    "retry": "Reintentar",
+    "testing": "Probando...",
     "save": "Guardar",
     "cancel": "Cancelar",
     "close": "Cerrar",
@@ -299,6 +308,8 @@
     "placeholder_calendar": "Opcional. Configurable después en perfil."
   },
   "dashboard": {
+    "my_patients": "Mis pacientes",
+    "no_data_available": "Sin datos disponibles",
     "title": "Dashboard",
     "urgencies": "Urgencias",
     "conversations": "Conversaciones IA",
@@ -403,6 +414,8 @@
     "tag_high_ticket": "Ticket alto"
   },
   "agenda": {
+    "google_block": "Bloqueo de Google Calendar",
+    "no_name": "Sin nombre",
     "title": "Agenda",
     "subtitle": "Gestión de turnos y citas",
     "appointments_in_view": "turnos en pantalla",
@@ -478,6 +491,7 @@
     "print_no_appointments": "No hay turnos para este período"
   },
   "patients": {
+    "initial_appointment_notes": "Primer turno — creado al dar de alta al paciente",
     "title": "Listado de Pacientes",
     "subtitle": "Gestión centralizada de la base de pacientes de la clínica",
     "new_patient": "Nuevo Paciente",
@@ -572,6 +586,7 @@
     "art_complete_data": "Completar datos reales"
   },
   "chats": {
+    "window_closed_warning": "Ventana de 24 hs cerrada: WhatsApp no permite enviar este mensaje hasta que el paciente vuelva a escribir.",
     "badge_patient": "Paciente",
     "badge_lead": "Lead",
     "agent_failed": "Bot falló",
@@ -947,6 +962,8 @@
       "review_goal_monthly_help": "Cuántas reseñas quiere pedir el equipo por mes. 0 = sin objetivo."
     },
     "holidays": {
+      "all_professionals": "Todos los profesionales",
+      "professional_label": "Profesional",
       "section_title": "Feriados y Días Especiales",
       "section_subtitle": "El agente de IA no agenda turnos en días cerrados",
       "empty_message": "No hay feriados configurados para los próximos 90 días",
@@ -969,6 +986,7 @@
     }
   },
   "treatments": {
+    "select": "Seleccionar tratamiento",
     "title": "Tratamientos",
     "subtitle": "Configura la lógica de agendamiento inteligente",
     "new_service": "Nuevo Servicio",
@@ -1255,6 +1273,10 @@
     "agenda_settings": "Configuración de Agenda"
   },
   "patient_detail": {
+    "all_followups_sent": "Todos los seguimientos ya fueron enviados",
+    "complete_treatment_desc": "Marcá el tratamiento como completo para enviar el seguimiento configurado.",
+    "complete_treatment_title": "Finalizar Tratamiento",
+    "send_followup": "Enviar seguimiento",
     "digital_record": "Historia Clínica Digital",
     "critical_antecedents": "Antecedentes Críticos",
     "patient": "Paciente",
@@ -1430,6 +1452,7 @@
     "instruction_second_click": "2do click: aplicar estado"
   },
   "document_gallery": {
+    "download_error": "No se pudo descargar el archivo",
     "title": "Galería de Documentos",
     "subtitle": "Documentos clínicos, radiografías y estudios del paciente",
     "count": "{{count}} documentos",
@@ -1512,6 +1535,8 @@
     "priorityProfessional": "Profesional Prioritario"
   },
   "layout": {
+    "status_connected": "Conectado",
+    "status_reconnecting": "Reconectando...",
     "app_title": "Dentalogic",
     "branch": "Sucursal",
     "branch_principal": "Principal",
@@ -1543,6 +1568,11 @@
     "setup_complete": "Setup Completo!"
   },
   "marketing": {
+    "google": {
+      "errors": {
+        "no_auth_url": "No se pudo obtener el enlace de autorización de Google"
+      }
+    },
     "subtitle": "Panel de control para campañas de Meta Ads y seguimiento de ROI real.",
     "range_30d": "30 Días",
     "range_90d": "3 Meses",
@@ -2009,6 +2039,10 @@
     "credentials_password": "Password:"
   },
   "leads": {
+    "ad": "Anuncio",
+    "adset": "Conjunto de anuncios",
+    "converted_to_patient": "Convertido en paciente",
+    "next": "Siguiente",
     "status_new": "Nuevo",
     "status_contacted": "Contactado",
     "status_consultation_scheduled": "Consulta Agendada",
@@ -2582,6 +2616,7 @@
     "select_date_range": "Seleccioná un rango de fechas"
   },
   "reconciliation": {
+    "ignored_success": "Movimiento ignorado correctamente",
     "title": "Conciliación Financiera",
     "total_patient_payments": "Cobrado de Pacientes",
     "total_professional_payouts": "Pagado a Profesionales",
