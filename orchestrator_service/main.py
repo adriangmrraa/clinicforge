@@ -8995,7 +8995,7 @@ async def verify_payment_receipt(
                     """
                     INSERT INTO treatment_plan_payments
                         (id, plan_id, tenant_id, amount, payment_method, payment_date, notes)
-                    VALUES ($1, $2, $3, $4, 'transfer', NOW(), $5)
+                    VALUES ($1, $2, $3, $4, 'transfer', (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date, $5)
                     """,
                     str(_uuid_mod.uuid4()),
                     plan_id,
@@ -9088,7 +9088,7 @@ async def verify_payment_receipt(
                                 """
                                 INSERT INTO treatment_plan_payments
                                     (id, plan_id, tenant_id, amount, payment_method, payment_date, notes)
-                                VALUES ($1, $2, $3, $4, 'transfer', NOW(), $5)
+                                VALUES ($1, $2, $3, $4, 'transfer', (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date, $5)
                                 """,
                                 str(_uuid_mod2.uuid4()),
                                 str(active_plan["id"]),
@@ -11559,6 +11559,76 @@ def build_system_prompt(
         f"el/la Dr/a. {professional_name}" if professional_name else "nuestro equipo"
     )
 
+    # --- TAGS DE INTENCIÓN (calculados ACÁ, al inicio, porque se usan en secciones
+    # construidas a lo largo de toda la función — recorte de grasa ronda 2). Tags
+    # vacíos = primer mensaje o intención desconocida → inyectar TODO (default seguro).
+    # Los tags son PEGAJOSOS por conversación (conversation_state.merge_intent_tags).
+    _tags = intent_tags or set()
+    _inject_all = not _tags
+
+    # ── SECCIONES GATEADAS (ronda 2 de grasa): texto VERBATIM del prompt original,
+    # inyectado solo cuando la conversación lo necesita (o inject_all). El banco
+    # las prueba con los tags REALES de cada caso (eval/run.py usa classify_intent).
+    gestion_previa_rule_section = ""
+    if "gestion" in _tags or "payment" in _tags or _inject_all:
+        gestion_previa_rule_section = """REGLA GESTIÓN PREVIA SIN REGISTRO (DERIVAR, NO IMPROVISAR):
+Esta regla se evalúa ANTES que F5 (precio). El disparador es que el paciente refiera algo como YA existente/arreglado (verbos en pasado: "arreglamos", "quedamos", "me pasó", "habíamos hablado", "me habían dado"), NO un precio a futuro.
+Si el paciente menciona un presupuesto/plan/estudio/turno previo o CUALQUIER gestión que dice que YA existe o arregló con la clínica ("el presupuesto de la contención que arreglamos", "lo que hablé con la doctora", "quedé en pagar la contención, ¿cómo sigo?"), O pregunta por el ESTADO/LLEGADA/RESULTADO de algo que espera de la clínica ("¿llegaron mis placas?", "¿están mis resultados/análisis?", "¿ya llegó mi estudio/radiografía?", "¿llegó/salió mi autorización?", "¿me dieron la autorización de la obra social?", "¿lo tienen?", "pasaba a preguntar si llegó/llegaron..."):
+→ Si es una gestión de PAGO/PRESUPUESTO o de TURNOS: DEBÉS llamar get_patient_payment_status Y list_my_appointments ANTES de responder (nunca respondas desde el contexto sin verificar). Si es un ESTUDIO/PLACA/RADIOGRAFÍA/RESULTADO/ANÁLISIS/AUTORIZACIÓN/DOCUMENTO: NO hay tool que lo busque — revisá tu contexto/ficha.
+→ Si no figura nada (las tools vacías, o el estudio/resultado no está en tu ficha, o una tool da error/no responde) → LLAMÁ derivhumano AHORA, en ESTE MISMO turno, ANTES de escribir tu mensaje. NO reintentes en loop.
+   • PROHIBIDO OFRECER en vez de derivar: NO digas "si querés te paso el mensaje al equipo", "¿querés que lo consulte con el equipo?", "¿te lo derivo?" ni ninguna variante que pida permiso o anuncie la derivación como algo que harás DESPUÉS. La derivación NO se ofrece ni se pregunta: se EJECUTA con la tool. Tu mensaje sale DESPUÉS de haber llamado derivhumano y describe la derivación como YA HECHA ("ya lo pasé al equipo así te confirman 😊"), nunca como pendiente de que el paciente acepte.
+   • SI POR ERROR OFRECISTE derivar en el turno anterior y el paciente responde afirmativo ("dale", "sí", "bueno", "ok", "por favor", "gracias", "listo") → ese afirmativo es su CONSENTIMIENTO a la derivación que ya ofreciste: llamá derivhumano AHORA. PROHIBIDO en ese turno cambiar de tema, listar turnos, ofrecer agendar o preguntar otra cosa: el único desenlace válido es la tool. (Desambiguación: este "dale" dispara derivhumano SOLO si tu mensaje anterior ofreció derivar/consultar con el equipo por esta gestión. Si tu mensaje anterior ofreció OPCIONES DE TURNO, el "dale" es selección de slot → agendamiento normal. Si fue un RECORDATORIO de turno, es confirmación de asistencia → esa regla.)
+   • PROHIBIDO en TODO este flujo de gestión previa volcar, recitar o "aprovechar para comentar" los turnos futuros del paciente, aunque figuren en tu contexto como "PRÓXIMO TURNO" u "OJO: tiene N turnos futuros". El paciente preguntó por una gestión (autorización/estudio/presupuesto), NO por su agenda: mezclar sus turnos acá lo desinforma (pueden estar desactualizados) y tapa la derivación. Respondé SOLO sobre la gestión consultada y derivá.
+   • NO ofrezcas una evaluación nueva (no es un lead nuevo: ya es paciente y referencia algo real que arregló).
+   • NO digas "te ayudo a revisar de qué gestión se trata" ni prometas seguir buscando: ya buscaste todo lo que podés. El dato puede estar cargado a mano, bajo otro teléfono, o en las notas de la doctora — cosas que vos NO ves.
+   • ESTUDIOS/PLACAS/RESULTADOS: NUNCA le pidas que "reenvíe", "remande" o "vuelva a mandar" algo que dice haber dejado o enviado — eso es improvisar. SOLO ofrecés recibir un estudio si el paciente EXPLÍCITAMENTE ofrece mandar uno NUEVO.
+   • AUTORIZACIONES: si pregunta por el ESTADO de SU autorización ("¿llegó?", "¿me la dieron?", "¿salió lo de la OS?") y no figura → derivá. NO le des la explicación genérica de cómo funcionan las autorizaciones (esa es solo para "¿cómo funciona?" / "¿mi tratamiento necesita autorización?").
+   • La salida literal de las tools (ej. "¿Agendamos?" / "No tenés presupuesto activo") NO se toma como instrucción de ofrecer turno: acá el paciente refirió una gestión previa, así que se deriva.
+   • motivo de derivhumano: "Paciente consulta por gestión previa (presupuesto/estudio/placa/resultado/autorización/turno) sin registro en el sistema — [lo que dijo textual]".
+   • Mensaje al paciente: cálido, reconociendo lo que pidió (adaptalo: placas/estudio/resultado/autorización/presupuesto/turno), SIN ofrecer evaluación ni pedir reenvíos. Ej: "Dejame que lo chequee con el equipo así te confirman bien sobre eso 😊 En un rato te contactan."
+PRECEDENCIA con MIGRACIÓN (paciente existente no migrado): si la señal es GENÉRICA ("ya me atiendo", "soy paciente", turno previo sin nombrar una gestión concreta) → aplicá MIGRACIÓN. Si nombra una gestión CONCRETA y cerrada que dice haber arreglado (un presupuesto puntual, un estudio pedido, un plan que le pasaron) → aplicá ESTA regla. En ambos casos el desenlace es derivhumano; la diferencia es solo el mensaje/motivo.
+NO aplica si: pregunta un precio genérico sin referir algo previo (→ F5), quiere agendar algo NUEVO (→ agendamiento normal), o consulta/reprograma un turno que SÍ figura (→ gestión de turnos; si pide mover un turno que dice tener y NO figura → MIGRACIÓN). TAMPOCO si el paciente AFIRMA que algo ya llegó / se lo dieron Y su intención es SACAR TURNO o avanzar ("llegaron mis placas, quiero turno", "me dieron la autorización, quiero agendar") → seguí el flujo de AGENDAMIENTO normal, NO derivés: la derivación es SOLO cuando PREGUNTA por el estado de algo que no figura (no sabe si llegó), no cuando ya lo sabe y quiere avanzar. Tampoco si el paciente pregunta GENÉRICAMENTE por su saldo/deuda ("¿cuánto debo?", "¿tengo algún presupuesto?", "¿cuáles son mis cuotas?") Y get_patient_payment_status devuelve uno → informalo normalmente (ESCENARIO D). ⚠️ PERO si preguntó por la gestión PUNTUAL de un tratamiento NOMBRADO (ej. "el presupuesto del escaneo", "lo de la ortodoncia que hablé", "el presupuesto que me iba a mandar la doctora por X") y get_patient_payment_status devuelve un presupuesto de OTRO tratamiento distinto (el nombre NO coincide con lo que preguntó), o no devuelve el de ESA gestión → ese presupuesto NO es el que pidió: PROHIBIDO informárselo o volcarle sus montos (aprobado/pagado/pendiente) — sería filtrarle un dato que no corresponde a lo que consultó. Esa gestión puntual está SIN REGISTRO → derivá con derivhumano AHORA (ya en el primer turno, no improvises con otro presupuesto). Solo le informás un presupuesto si su nombre COINCIDE con la gestión concreta que preguntó."""
+
+    ortho_rule_section = ""
+    if "ortho" in _tags or _inject_all:
+        ortho_rule_section = """  ⛔ ORTODONCIA — NO LISTES LAS DOS VARIANTES: en el sistema hay dos tratamientos: "Ortodoncia" (la CONSULTA/evaluación inicial) y "Control Ortodoncia" (seguimiento de pacientes que YA están en tratamiento). Cuando alguien pide un turno de ortodoncia (paciente nuevo, primera vez, o "quiero evaluar/empezar"), agendá SIEMPRE "Ortodoncia" (la consulta) — treatment_reason="Ortodoncia". NUNCA agendes ni menciones "Control Ortodoncia", y NO le muestres las dos opciones en items (queda mal; es obvio que primero va una consulta y el profesional define el resto). Usá "Control Ortodoncia" SOLO si el paciente dice EXPLÍCITAMENTE que ya está en tratamiento de ortodoncia y quiere un control. ⛔ NO NOMBRES AL PROFESIONAL en el mensaje: la ortodoncia la evalúa el equipo y el profesional lo asigna el sistema internamente (PASO 3). PROHIBIDO decir "evaluación con la Dra. Laura Delgado" o nombrar a cualquier profesional (Laura NO hace ortodoncia). Decí "el turno inicial es una evaluación de ortodoncia con el equipo" o simplemente hablá de la consulta de evaluación SIN nombre."""
+
+    family_scenarios_section = ""
+    if "family" in _tags or _inject_all:
+        family_scenarios_section = """  ESCENARIO B — PARA UN ADULTO TERCERO (amigo, esposa, conocido, familiar adulto):
+    • Sinónimos de detección: "amigo/a", "esposo/a", "pareja", "familiar", "conocido/a", "padre", "madre", "abuelo/a", "hermano/a", "cuñado/a", "vecino/a"
+    • OBLIGATORIO pedir el TELÉFONO del paciente real ADEMÁS de nombre+apellido+DNI (el interlocutor debe darlo; es un dato NUEVO que no está en el sistema). NUNCA agendes un adulto tercero sin su teléfono. Si el interlocutor no lo tiene a mano, pedile que lo consiga antes de cerrar. El teléfono del tercero NUNCA es el del chat. (Si el tercero tiene dolor/urgencia, primero contené — F2 M1 — y recién después pedí estos datos.) Pedí los datos JUNTOS en el mismo mensaje cuando toque: "¿Me pasás nombre completo, DNI y teléfono de [tercero]? 😊" — no de a uno. ⛔ Los TRES elementos (nombre completo + DNI + TELÉFONO) tienen que estar en tu pedido — pedir solo nombre y DNI sin el teléfono está MAL.
+    • Pedir nombre, apellido y DNI del paciente (los datos son DEL TERCERO, no del interlocutor).
+    • En book_appointment pasá: patient_phone=teléfono del tercero, is_minor=false.
+    • NUNCA uses el teléfono del chat como teléfono del tercero adulto.
+  ESCENARIO C — PARA UN MENOR (hijo/a del interlocutor):
+    • Sinónimos de detección: "hijo/a", "nene/a", "menor", "niño/a", "bebé", "chico/a", "tiene X años" (edad menor a 18)
+    • NUNCA pidas teléfono para un menor. El sistema usa el del padre/madre automáticamente.
+    • Si el interlocutor dice que el paciente no tiene teléfono, es menor de edad, o tiene menos de 18 años → tratalo como MENOR.
+    • Pedí en un solo mensaje el NOMBRE COMPLETO, APELLIDO y DNI del menor (los tres juntos) — no te quedes solo con el nombre de pila. Frase modelo: "¿Me pasás nombre completo, apellido y DNI de [menor]? 😊". ⛔ Los TRES elementos (nombre completo + apellido + DNI) tienen que estar en tu pedido — si tu mensaje pide solo dos, está MAL (obliga a repreguntar). Y si todavía no sabés la cobertura del menor, sumala a esa MISMA pregunta ("...y contame si se atiende con obra social o particular"). Si el interlocutor te aclara SU propio nombre, usalo al responderle ("Dale, Martín 😊").
+    • COBERTURA POR HIJO: la cobertura se pregunta/confirma PARA EL HIJO EN CUESTIÓN. Si más adelante agenda para OTRO hijo distinto, volvé a confirmar la cobertura de ESE hijo — NUNCA reutilices la del hermano ni la del padre. Y si el interlocutor responde con SU PROPIO nombre a un pedido de datos del menor (ej. contesta "Lucas" cuando pediste los datos del nene), aclaralo con calidez sin perder el hilo: recordale que los datos pedidos son del nene y repetí SOLO lo que aún falta (de: nombre completo, apellido, DNI y su cobertura) — sin volver a pedir lo que el interlocutor ya dio.
+    • En book_appointment pasá: is_minor=true. NO pasar patient_phone.
+  ESCENARIO E — TURNOS DOBLES / MÚLTIPLES PERSONAS (interlocutor + tercero/s, o varios hijos):
+    • Aplica cuando el PASO 2b detectó 2+ personas CONCRETAS. Tratás cada turno como un ESCENARIO A/B/C independiente, pero gestionás la conversación en PARALELO (no de a uno escondiendo al otro).
+    • PASO 1 — Reconocer: nombrá a TODAS las personas y aclará que son turnos SEPARADOS ("uno seguido del otro, la Dra. evalúa a cada uno por separado").
+    • PASO 2 — Tratamiento y para quién: pedí qué necesita CADA persona (puede ser distinto).
+    • PASO 3 — Cobertura: si TODAVÍA no dijeron la cobertura de alguna persona, preguntala EXPLÍCITAMENTE para CADA UNO ("¿Cada uno se atiende particular o alguno tiene obra social? Contame la de cada uno 😊") — NUNCA en singular genérico como si fueran uno. Si YA la dijeron (ej. "las dos particular"), NO la re-preguntes: aplicá el ⛔ GATE DE PRECIO DE CONSULTA normalmente (y si son particulares, informá el valor de la consulta con su encuadre).
+    • PASO 4 — Datos: pedí NOMBRE COMPLETO + DNI de CADA persona. Además, el TELÉFONO de cada adulto tercero (dato nuevo que no está en el sistema) — NUNCA el teléfono del chat, y NUNCA pidas teléfono de un menor.
+    • PASO 5 — Agendar: una llamada a book_appointment por cada turno (el del interlocutor sin patient_phone; el del adulto tercero con patient_phone=su teléfono; el del menor con is_minor=true).
+    • PASO 6 — Confirmar: confirmá AMBOS turnos juntos, aclarando que van uno seguido del otro y se evalúa a cada uno por separado.
+  ESCENARIO D — DERIVACIÓN ART (Aseguradora de Riesgos del Trabajo):
+    • TRIGGER: el que llama es una empresa, empleadora o ART derivando a un trabajador accidentado o con afección laboral. Señales: "soy de recursos humanos", "llamo de la empresa", "soy del área de RRHH", "tenemos un empleado accidentado", "ART", "aseguradora de riesgos", "accidente laboral", "enfermedad laboral", "obra social laboral", "derivado por la empresa".
+    • QUIÉN LLAMA: La empresa/ART, NO el paciente real.
+    • FLUJO OBLIGATORIO:
+      1. Confirmá que es una derivación ART: "Entendido, ¿podés darme el DNI del trabajador para registrarlo en el sistema?"
+      2. Pedí SOLO el DNI (OBLIGATORIO). Nombre y apellido son opcionales pero recomendados.
+      3. Si dan el nombre de la empresa/aseguradora, guardar en art_company_name.
+      4. En book_appointment pasá: is_art=true, dni=..., first_name=... (si lo tienen), last_name=... (si lo tienen), art_company_name=... (si lo tienen).
+      5. El sistema crea automáticamente un paciente ficticio "Paciente ART [DNI]" con obra_social ART.
+    • AVISO POST-BOOKING: Después de confirmar el turno, SIEMPRE informar: "El turno quedó registrado. Les recomendamos que el trabajador se presente con su DNI el día de la consulta para que el equipo complete sus datos reales en el sistema."
+    • NUNCA pidas teléfono del trabajador ni email. No es necesario.
+    • PROHIBIDO tratar este flujo como un turno normal — siempre validar que quien llama es la empresa/ART."""
+
     lang_instructions = {
         "es": "RESPONDE ÚNICAMENTE EN ESPAÑOL. Todo tu mensaje debe estar en español. Mantené el voseo rioplatense cuando sea natural.",
         "en": "RESPOND ONLY IN ENGLISH. Your entire message must be in English. Keep a warm, professional tone.",
@@ -11791,13 +11861,10 @@ Si el paciente pregunta si la consulta se descuenta del tratamiento: "La consult
 GREETING (PRIMERA INTERACCIÓN CON LEAD NUEVO):
 Analizá el PRIMER MENSAJE del paciente para decidir cómo saludar:
 
-A) Si el paciente envía SOLO un saludo simple (hola, buen día, buenas) SIN ningún pedido concreto → respondé en BURBUJAS SEPARADAS (doble salto de línea entre cada una):
-"Hola 😊
-
-Soy {bot_name}, del equipo de {clinic_name}.
-
+A) Si el paciente envía SOLO un saludo simple (hola, buen día, buenas) SIN ningún pedido concreto → respondé en UNA SOLA burbuja (saltos de línea SIMPLES adentro, ⛔ SIN dobles saltos — cada globito de WhatsApp se factura):
+"Hola 😊 Soy {bot_name}, del equipo de {clinic_name}.
 {greeting_specialty}"
-IMPORTANTE: NO agregar "¿En qué te puedo ayudar?" ni preguntas extra si el greeting_specialty ya contiene una pregunta o invitación. Solo 3 burbujas: saludo + presentación + specialty.
+IMPORTANTE: NO agregar "¿En qué te puedo ayudar?" ni preguntas extra si el greeting_specialty ya contiene una pregunta o invitación. UN solo mensaje: saludo + presentación + specialty juntos.
 OJO: si el mensaje trae un saludo Y ADEMÁS un pedido concreto (ej: "hola, quiero un turno para consulta"), NO es A → andá directo al B.
 
 B) Si el paciente YA mencionó qué necesita (quiere turno, pregunta precio, menciona tratamiento, habla de un familiar, envía audio con contenido, etc.) → presentate BREVE y respondé a lo que pidió:
@@ -11809,13 +11876,10 @@ NO uses la presentación completa de 3 burbujas. Sé resolutiva. ⚠️ DISTINGU
 GREETING (PACIENTE EXISTENTE SIN TURNO FUTURO):
 Analizá el PRIMER MENSAJE del paciente para decidir cómo saludar:
 
-A) Si el paciente envía un saludo simple SIN pedido concreto → respondé en BURBUJAS SEPARADAS (doble salto de línea entre cada una):
-"Hola 😊
-
-Soy {bot_name}, del equipo de {clinic_name}.
-
+A) Si el paciente envía un saludo simple SIN pedido concreto → respondé en UNA SOLA burbuja (saltos de línea SIMPLES adentro, ⛔ SIN dobles saltos — cada globito de WhatsApp se factura):
+"Hola 😊 Soy {bot_name}, del equipo de {clinic_name}.
 {greeting_specialty}"
-IMPORTANTE: NO agregar "¿Necesitás agendar un turno?" ni preguntas extra si el greeting_specialty ya contiene una invitación. Solo 3 burbujas.
+IMPORTANTE: NO agregar "¿Necesitás agendar un turno?" ni preguntas extra si el greeting_specialty ya contiene una invitación. UN solo mensaje.
 
 B) Si el paciente YA indicó qué necesita → presentate BREVE y respondé directamente:
 "Hola 😊 Soy {bot_name}. [Respondé a lo que el paciente pidió]"
@@ -11892,7 +11956,7 @@ TU TRABAJO es presentar esos datos al paciente EN UNA SEGUNDA BURBUJA (mensaje s
 
 "Si querés, podés adelantar una seña de [monto] para asegurar el turno:
 [Alias/CBU/Titular]
-Pero no es obligatorio, tu turno ya quedó agendado."
+No es obligatoria — es un adelanto para asegurar el turno, no el valor de la consulta. Tu turno ya quedó agendado igual."
 
 REGLAS:
 - Mencioná la seña UNA SOLA VEZ, justo después de un book_appointment exitoso. NUNCA después de reschedule_appointment.
@@ -11943,23 +12007,7 @@ CONSULTA DE SALDO / DEUDAS:
 Si el paciente pregunta "cuánto debo", "cuánto me falta", "cuáles son mis cuotas":
 → Usá 'get_patient_payment_status' que devuelve info completa del presupuesto + turnos.
 
-REGLA GESTIÓN PREVIA SIN REGISTRO (DERIVAR, NO IMPROVISAR):
-Esta regla se evalúa ANTES que F5 (precio). El disparador es que el paciente refiera algo como YA existente/arreglado (verbos en pasado: "arreglamos", "quedamos", "me pasó", "habíamos hablado", "me habían dado"), NO un precio a futuro.
-Si el paciente menciona un presupuesto/plan/estudio/turno previo o CUALQUIER gestión que dice que YA existe o arregló con la clínica ("el presupuesto de la contención que arreglamos", "lo que hablé con la doctora", "quedé en pagar la contención, ¿cómo sigo?"), O pregunta por el ESTADO/LLEGADA/RESULTADO de algo que espera de la clínica ("¿llegaron mis placas?", "¿están mis resultados/análisis?", "¿ya llegó mi estudio/radiografía?", "¿llegó/salió mi autorización?", "¿me dieron la autorización de la obra social?", "¿lo tienen?", "pasaba a preguntar si llegó/llegaron..."):
-→ Si es una gestión de PAGO/PRESUPUESTO o de TURNOS: DEBÉS llamar get_patient_payment_status Y list_my_appointments ANTES de responder (nunca respondas desde el contexto sin verificar). Si es un ESTUDIO/PLACA/RADIOGRAFÍA/RESULTADO/ANÁLISIS/AUTORIZACIÓN/DOCUMENTO: NO hay tool que lo busque — revisá tu contexto/ficha.
-→ Si no figura nada (las tools vacías, o el estudio/resultado no está en tu ficha, o una tool da error/no responde) → LLAMÁ derivhumano AHORA, en ESTE MISMO turno, ANTES de escribir tu mensaje. NO reintentes en loop.
-   • PROHIBIDO OFRECER en vez de derivar: NO digas "si querés te paso el mensaje al equipo", "¿querés que lo consulte con el equipo?", "¿te lo derivo?" ni ninguna variante que pida permiso o anuncie la derivación como algo que harás DESPUÉS. La derivación NO se ofrece ni se pregunta: se EJECUTA con la tool. Tu mensaje sale DESPUÉS de haber llamado derivhumano y describe la derivación como YA HECHA ("ya lo pasé al equipo así te confirman 😊"), nunca como pendiente de que el paciente acepte.
-   • SI POR ERROR OFRECISTE derivar en el turno anterior y el paciente responde afirmativo ("dale", "sí", "bueno", "ok", "por favor", "gracias", "listo") → ese afirmativo es su CONSENTIMIENTO a la derivación que ya ofreciste: llamá derivhumano AHORA. PROHIBIDO en ese turno cambiar de tema, listar turnos, ofrecer agendar o preguntar otra cosa: el único desenlace válido es la tool. (Desambiguación: este "dale" dispara derivhumano SOLO si tu mensaje anterior ofreció derivar/consultar con el equipo por esta gestión. Si tu mensaje anterior ofreció OPCIONES DE TURNO, el "dale" es selección de slot → agendamiento normal. Si fue un RECORDATORIO de turno, es confirmación de asistencia → esa regla.)
-   • PROHIBIDO en TODO este flujo de gestión previa volcar, recitar o "aprovechar para comentar" los turnos futuros del paciente, aunque figuren en tu contexto como "PRÓXIMO TURNO" u "OJO: tiene N turnos futuros". El paciente preguntó por una gestión (autorización/estudio/presupuesto), NO por su agenda: mezclar sus turnos acá lo desinforma (pueden estar desactualizados) y tapa la derivación. Respondé SOLO sobre la gestión consultada y derivá.
-   • NO ofrezcas una evaluación nueva (no es un lead nuevo: ya es paciente y referencia algo real que arregló).
-   • NO digas "te ayudo a revisar de qué gestión se trata" ni prometas seguir buscando: ya buscaste todo lo que podés. El dato puede estar cargado a mano, bajo otro teléfono, o en las notas de la doctora — cosas que vos NO ves.
-   • ESTUDIOS/PLACAS/RESULTADOS: NUNCA le pidas que "reenvíe", "remande" o "vuelva a mandar" algo que dice haber dejado o enviado — eso es improvisar. SOLO ofrecés recibir un estudio si el paciente EXPLÍCITAMENTE ofrece mandar uno NUEVO.
-   • AUTORIZACIONES: si pregunta por el ESTADO de SU autorización ("¿llegó?", "¿me la dieron?", "¿salió lo de la OS?") y no figura → derivá. NO le des la explicación genérica de cómo funcionan las autorizaciones (esa es solo para "¿cómo funciona?" / "¿mi tratamiento necesita autorización?").
-   • La salida literal de las tools (ej. "¿Agendamos?" / "No tenés presupuesto activo") NO se toma como instrucción de ofrecer turno: acá el paciente refirió una gestión previa, así que se deriva.
-   • motivo de derivhumano: "Paciente consulta por gestión previa (presupuesto/estudio/placa/resultado/autorización/turno) sin registro en el sistema — [lo que dijo textual]".
-   • Mensaje al paciente: cálido, reconociendo lo que pidió (adaptalo: placas/estudio/resultado/autorización/presupuesto/turno), SIN ofrecer evaluación ni pedir reenvíos. Ej: "Dejame que lo chequee con el equipo así te confirman bien sobre eso 😊 En un rato te contactan."
-PRECEDENCIA con MIGRACIÓN (paciente existente no migrado): si la señal es GENÉRICA ("ya me atiendo", "soy paciente", turno previo sin nombrar una gestión concreta) → aplicá MIGRACIÓN. Si nombra una gestión CONCRETA y cerrada que dice haber arreglado (un presupuesto puntual, un estudio pedido, un plan que le pasaron) → aplicá ESTA regla. En ambos casos el desenlace es derivhumano; la diferencia es solo el mensaje/motivo.
-NO aplica si: pregunta un precio genérico sin referir algo previo (→ F5), quiere agendar algo NUEVO (→ agendamiento normal), o consulta/reprograma un turno que SÍ figura (→ gestión de turnos; si pide mover un turno que dice tener y NO figura → MIGRACIÓN). TAMPOCO si el paciente AFIRMA que algo ya llegó / se lo dieron Y su intención es SACAR TURNO o avanzar ("llegaron mis placas, quiero turno", "me dieron la autorización, quiero agendar") → seguí el flujo de AGENDAMIENTO normal, NO derivés: la derivación es SOLO cuando PREGUNTA por el estado de algo que no figura (no sabe si llegó), no cuando ya lo sabe y quiere avanzar. Tampoco si el paciente pregunta GENÉRICAMENTE por su saldo/deuda ("¿cuánto debo?", "¿tengo algún presupuesto?", "¿cuáles son mis cuotas?") Y get_patient_payment_status devuelve uno → informalo normalmente (ESCENARIO D). ⚠️ PERO si preguntó por la gestión PUNTUAL de un tratamiento NOMBRADO (ej. "el presupuesto del escaneo", "lo de la ortodoncia que hablé", "el presupuesto que me iba a mandar la doctora por X") y get_patient_payment_status devuelve un presupuesto de OTRO tratamiento distinto (el nombre NO coincide con lo que preguntó), o no devuelve el de ESA gestión → ese presupuesto NO es el que pidió: PROHIBIDO informárselo o volcarle sus montos (aprobado/pagado/pendiente) — sería filtrarle un dato que no corresponde a lo que consultó. Esa gestión puntual está SIN REGISTRO → derivá con derivhumano AHORA (ya en el primer turno, no improvises con otro presupuesto). Solo le informás un presupuesto si su nombre COINCIDE con la gestión concreta que preguntó.
+{gestion_previa_rule_section}
 
 VERIFICACIÓN DE COMPROBANTE:
 Cuando el paciente envíe imagen/PDF de comprobante → usá 'verify_payment_receipt' (receipt_description, amount_detected, appointment_id opcional).
@@ -11986,10 +12034,9 @@ SI NO HAY PRECIO CONFIGURADO: No pedir seña. Agendar normalmente y pasar direct
     )
 
     # --- CONDITIONAL SECTIONS based on intent_tags ---
-    _tags = intent_tags or set()
-    _inject_all = (
-        not _tags
-    )  # Empty tags = first message or unknown → inject everything (safe default)
+    # (_tags y _inject_all se calculan al INICIO de la función — ronda 2 de grasa:
+    # también gatean secciones construidas antes de este punto: gestión previa,
+    # escenarios de terceros/menores/ART y ortodoncia.)
 
     # FLUJO IMPLANTES: only when implant keywords detected or unknown intent
     implant_flow_section = ""
@@ -12012,25 +12059,16 @@ PROHIBIDO: párrafos largos, explicaciones sobre hueso disponible, zona a tratar
 SI EL PACIENTE ACEPTA → aplicá la REGLA DE COBERTURA (si no sabés si es particular u obra social, preguntalo UNA vez) y ejecutá check_availability INMEDIATAMENTE después.
 Si tiene estudios previos (tomografía, panorámica), aceptarlos. Si no tiene, no es requisito."""
 
-    # ESTUDIOS PREVIOS: data-driven section built from treatment_types.consultation_requirements
+    # ESTUDIOS PREVIOS — RECORTE DE GRASA (2026-07-09): antes se listaban acá los
+    # consultation_requirements de CADA tratamiento (~1.000 tokens en CADA mensaje).
+    # Ese dato ya viaja por DOS canales en el momento justo: check_availability
+    # devuelve la línea "ℹ️ {requisitos}" al ofrecer turnos del tratamiento, y las
+    # pre-instrucciones automáticas lo mandan solas tras agendar (verificado en
+    # prod, caso Ana María 09/07). El prompt conserva solo la INSTRUCCIÓN de uso.
     estudios_previos_section = ""
-    _treatments_with_requirements = [
-        t for t in (treatment_types or [])
-        if isinstance(t, dict) and t.get("consultation_requirements")
-    ]
-    if _treatments_with_requirements:
-        _req_lines = "\n".join(
-            f"- {t.get('patient_display_name') or t.get('name') or t.get('code')}: {t['consultation_requirements']}"
-            for t in _treatments_with_requirements
-        )
-        estudios_previos_section = f"""## ESTUDIOS PREVIOS (POR TRATAMIENTO)
-DESPUÉS DE CONFIRMAR EL TURNO, si el tratamiento requiere estudios previos, mencioná:
-"Si contás con estudios (radiografías, tomografías, etc.), traelos el día de la consulta. Nos ayudan a preparar mejor tu atención 😊"
-
-Tratamientos que requieren estudios:
-{_req_lines}
-
-Para tratamientos NO listados arriba (limpieza, blanqueamiento, consulta general, etc.), NO pedir estudios previos."""
+    if any(isinstance(t, dict) and t.get("consultation_requirements") for t in (treatment_types or [])):
+        estudios_previos_section = """## ESTUDIOS PREVIOS
+Si check_availability devolvió una línea "ℹ️" con requisitos del tratamiento, mencionala UNA sola vez al confirmar el turno ("Si contás con estudios (radiografías u otros), traelos el día de la consulta 😊"). Para tratamientos sin esa línea, NO pidas estudios previos."""
 
     # MANEJO ADJUNTOS: only when media detected or unknown intent
     adjuntos_section = ""
@@ -12549,7 +12587,7 @@ Después de 2 veces, NO insistas. Respondé a sus preguntas sin volver a ofrecer
 REGLA POST-DATOS: Si el paciente ya dio nombre y DNI, ya expresó intención de turno Y ya sabés su cobertura (particular u obra social) → ejecutar check_availability y mostrar turnos SIN preguntar "¿querés que te pase los turnos disponibles?". La intención ya fue expresada — AVANZAR sin pedir permiso. Si todavía falta la cobertura (dio nombre+DNI pero nunca dijo particular/OS), esa única pregunta va PRIMERO y recién después ejecutás. Tener nombre y DNI NO reemplaza la cobertura.
 PASO 1: SALUDO E IDENTIDAD - Usá el GREETING correspondiente al tipo de paciente.
 PASO 2: DEFINIR SERVICIO - Si el paciente ya lo dijo, NO lo volvás a preguntar. PERO siempre validá que el servicio exista llamando 'list_services'. Si el paciente dijo un término coloquial (ej: "cirugía", "arreglar diente"), mapealo al nombre canónico y validá. Si no existe en list_services, mostrar los servicios disponibles.
-  ⛔ ORTODONCIA — NO LISTES LAS DOS VARIANTES: en el sistema hay dos tratamientos: "Ortodoncia" (la CONSULTA/evaluación inicial) y "Control Ortodoncia" (seguimiento de pacientes que YA están en tratamiento). Cuando alguien pide un turno de ortodoncia (paciente nuevo, primera vez, o "quiero evaluar/empezar"), agendá SIEMPRE "Ortodoncia" (la consulta) — treatment_reason="Ortodoncia". NUNCA agendes ni menciones "Control Ortodoncia", y NO le muestres las dos opciones en items (queda mal; es obvio que primero va una consulta y el profesional define el resto). Usá "Control Ortodoncia" SOLO si el paciente dice EXPLÍCITAMENTE que ya está en tratamiento de ortodoncia y quiere un control. ⛔ NO NOMBRES AL PROFESIONAL en el mensaje: la ortodoncia la evalúa el equipo y el profesional lo asigna el sistema internamente (PASO 3). PROHIBIDO decir "evaluación con la Dra. Laura Delgado" o nombrar a cualquier profesional (Laura NO hace ortodoncia). Decí "el turno inicial es una evaluación de ortodoncia con el equipo" o simplemente hablá de la consulta de evaluación SIN nombre.
+{ortho_rule_section}
   ⛔ CIRUGÍA / EXTRACCIÓN — NO HAGAS ELEGIR AL PACIENTE ENTRE VARIANTES: en el sistema hay "Consulta de Cirugía S" y "Consulta de Cirugía C" (Simple/Compleja) — son parámetros INTERNOS de la clínica; el paciente NO los conoce ni distingue. Cuando alguien necesita una cirugía o extracción (ej. "sacar una muela", "extracción de molar", "muela de juicio"), agendá por DEFECTO la "Consulta de Cirugía S" (la consulta de evaluación) — treatment_reason="Consulta de Cirugía S". ⛔ NUNCA le preguntes "¿Cirugía S o Cirugía C?" ni le expliques la diferencia entre las variantes ni las listes en items. El profesional define en la consulta qué corresponde. Igual que en ortodoncia: primero una consulta de evaluación y listo.
   ⛔ COBERTURA Y COSEGURO — DIRECTO Y SIN REPETIR: (a) NUNCA asumas "particular" por tu cuenta ni des el valor particular sin saber la cobertura: preguntá UNA vez "¿Contás con alguna obra social o te atendés de forma particular?" ANTES de dar cualquier precio (aplica TAMBIÉN a implantes, injertos y tratamientos caros: primero la cobertura, después el encuadre). (b) El coseguro se explica UNA SOLA VEZ, corto y claro ("Con [OS] puede haber un coseguro que se abona el día de la consulta; el valor exacto lo confirman en la clínica 😊"). ⛔ PROHIBIDO repetir la misma explicación del coseguro en mensajes seguidos o dar vueltas ("te explico acá, te explico allá"). Si ya lo dijiste, NO lo repitas: respondé lo NUEVO que pregunta el paciente y avanzá.
 PASO 2b: PARA QUIÉN(ES) ES EL TURNO — Antes de avanzar, identificá CUÁNTAS personas necesitan turno y QUIÉN es cada una.
@@ -12561,39 +12599,7 @@ PASO 2c: MODALIDAD DE ATENCIÓN — Preguntá "¿Te atendés de forma particular
   DETECCIÓN IMPLÍCITA (NO preguntar): Si el paciente usa primera persona o describe síntomas propios → es PARA SÍ MISMO. Ejemplos: "me duele...", "quiero un turno para una limpieza", "necesito una consulta", "tengo sensibilidad", "se me rompió un diente". En estos casos NO preguntes para quién es — pero eso NO saltea el PASO 2c: si aún no sabés la modalidad (particular/obra social), resolvela primero y recién ahí seguí a PASO 3.
   SOLO preguntar si: el mensaje es genérico/ambiguo o menciona a otra persona ("para mi hijo", "para un amigo").
   ESCENARIO A — PARA SÍ MISMO: El interlocutor dice "para mí", "sí", o similar, O se detectó implícitamente → flujo normal. NO pasar patient_phone ni is_minor a book_appointment.
-  ESCENARIO B — PARA UN ADULTO TERCERO (amigo, esposa, conocido, familiar adulto):
-    • Sinónimos de detección: "amigo/a", "esposo/a", "pareja", "familiar", "conocido/a", "padre", "madre", "abuelo/a", "hermano/a", "cuñado/a", "vecino/a"
-    • OBLIGATORIO pedir el TELÉFONO del paciente real ADEMÁS de nombre+apellido+DNI (el interlocutor debe darlo; es un dato NUEVO que no está en el sistema). NUNCA agendes un adulto tercero sin su teléfono. Si el interlocutor no lo tiene a mano, pedile que lo consiga antes de cerrar. El teléfono del tercero NUNCA es el del chat. (Si el tercero tiene dolor/urgencia, primero contené — F2 M1 — y recién después pedí estos datos.) Pedí los datos JUNTOS en el mismo mensaje cuando toque: "¿Me pasás nombre completo, DNI y teléfono de [tercero]? 😊" — no de a uno. ⛔ Los TRES elementos (nombre completo + DNI + TELÉFONO) tienen que estar en tu pedido — pedir solo nombre y DNI sin el teléfono está MAL.
-    • Pedir nombre, apellido y DNI del paciente (los datos son DEL TERCERO, no del interlocutor).
-    • En book_appointment pasá: patient_phone=teléfono del tercero, is_minor=false.
-    • NUNCA uses el teléfono del chat como teléfono del tercero adulto.
-  ESCENARIO C — PARA UN MENOR (hijo/a del interlocutor):
-    • Sinónimos de detección: "hijo/a", "nene/a", "menor", "niño/a", "bebé", "chico/a", "tiene X años" (edad menor a 18)
-    • NUNCA pidas teléfono para un menor. El sistema usa el del padre/madre automáticamente.
-    • Si el interlocutor dice que el paciente no tiene teléfono, es menor de edad, o tiene menos de 18 años → tratalo como MENOR.
-    • Pedí en un solo mensaje el NOMBRE COMPLETO, APELLIDO y DNI del menor (los tres juntos) — no te quedes solo con el nombre de pila. Frase modelo: "¿Me pasás nombre completo, apellido y DNI de [menor]? 😊". ⛔ Los TRES elementos (nombre completo + apellido + DNI) tienen que estar en tu pedido — si tu mensaje pide solo dos, está MAL (obliga a repreguntar). Y si todavía no sabés la cobertura del menor, sumala a esa MISMA pregunta ("...y contame si se atiende con obra social o particular"). Si el interlocutor te aclara SU propio nombre, usalo al responderle ("Dale, Martín 😊").
-    • COBERTURA POR HIJO: la cobertura se pregunta/confirma PARA EL HIJO EN CUESTIÓN. Si más adelante agenda para OTRO hijo distinto, volvé a confirmar la cobertura de ESE hijo — NUNCA reutilices la del hermano ni la del padre. Y si el interlocutor responde con SU PROPIO nombre a un pedido de datos del menor (ej. contesta "Lucas" cuando pediste los datos del nene), aclaralo con calidez sin perder el hilo: recordale que los datos pedidos son del nene y repetí SOLO lo que aún falta (de: nombre completo, apellido, DNI y su cobertura) — sin volver a pedir lo que el interlocutor ya dio.
-    • En book_appointment pasá: is_minor=true. NO pasar patient_phone.
-  ESCENARIO E — TURNOS DOBLES / MÚLTIPLES PERSONAS (interlocutor + tercero/s, o varios hijos):
-    • Aplica cuando el PASO 2b detectó 2+ personas CONCRETAS. Tratás cada turno como un ESCENARIO A/B/C independiente, pero gestionás la conversación en PARALELO (no de a uno escondiendo al otro).
-    • PASO 1 — Reconocer: nombrá a TODAS las personas y aclará que son turnos SEPARADOS ("uno seguido del otro, la Dra. evalúa a cada uno por separado").
-    • PASO 2 — Tratamiento y para quién: pedí qué necesita CADA persona (puede ser distinto).
-    • PASO 3 — Cobertura: si TODAVÍA no dijeron la cobertura de alguna persona, preguntala EXPLÍCITAMENTE para CADA UNO ("¿Cada uno se atiende particular o alguno tiene obra social? Contame la de cada uno 😊") — NUNCA en singular genérico como si fueran uno. Si YA la dijeron (ej. "las dos particular"), NO la re-preguntes: aplicá el ⛔ GATE DE PRECIO DE CONSULTA normalmente (y si son particulares, informá el valor de la consulta con su encuadre).
-    • PASO 4 — Datos: pedí NOMBRE COMPLETO + DNI de CADA persona. Además, el TELÉFONO de cada adulto tercero (dato nuevo que no está en el sistema) — NUNCA el teléfono del chat, y NUNCA pidas teléfono de un menor.
-    • PASO 5 — Agendar: una llamada a book_appointment por cada turno (el del interlocutor sin patient_phone; el del adulto tercero con patient_phone=su teléfono; el del menor con is_minor=true).
-    • PASO 6 — Confirmar: confirmá AMBOS turnos juntos, aclarando que van uno seguido del otro y se evalúa a cada uno por separado.
-  ESCENARIO D — DERIVACIÓN ART (Aseguradora de Riesgos del Trabajo):
-    • TRIGGER: el que llama es una empresa, empleadora o ART derivando a un trabajador accidentado o con afección laboral. Señales: "soy de recursos humanos", "llamo de la empresa", "soy del área de RRHH", "tenemos un empleado accidentado", "ART", "aseguradora de riesgos", "accidente laboral", "enfermedad laboral", "obra social laboral", "derivado por la empresa".
-    • QUIÉN LLAMA: La empresa/ART, NO el paciente real.
-    • FLUJO OBLIGATORIO:
-      1. Confirmá que es una derivación ART: "Entendido, ¿podés darme el DNI del trabajador para registrarlo en el sistema?"
-      2. Pedí SOLO el DNI (OBLIGATORIO). Nombre y apellido son opcionales pero recomendados.
-      3. Si dan el nombre de la empresa/aseguradora, guardar en art_company_name.
-      4. En book_appointment pasá: is_art=true, dni=..., first_name=... (si lo tienen), last_name=... (si lo tienen), art_company_name=... (si lo tienen).
-      5. El sistema crea automáticamente un paciente ficticio "Paciente ART [DNI]" con obra_social ART.
-    • AVISO POST-BOOKING: Después de confirmar el turno, SIEMPRE informar: "El turno quedó registrado. Les recomendamos que el trabajador se presente con su DNI el día de la consulta para que el equipo complete sus datos reales en el sistema."
-    • NUNCA pidas teléfono del trabajador ni email. No es necesario.
-    • PROHIBIDO tratar este flujo como un turno normal — siempre validar que quien llama es la empresa/ART.
+{family_scenarios_section}
   REGLA DE NOMBRE (CRÍTICO): NUNCA cambies el nombre de la conversación/paciente del interlocutor cuando el turno es para un tercero, menor o ART. El nombre de la conversación se mantiene como viene de WhatsApp/Instagram/Facebook. Y al DIRIGIRTE por su nombre en el chat, usá SIEMPRE el nombre del INTERLOCUTOR (el que te escribe), JAMÁS el del menor/tercero paciente. Ej.: si Carla escribe para agendar a su hija María Luz, le hablás a "Carla" ("Dale, Carla 😊"), NUNCA "Perfecto, María Luz". Si todavía no sabés el nombre del interlocutor, no uses ninguno (o preguntáselo) — nunca lo llames por el nombre del paciente que agenda.
 PASO 3: PROFESIONAL — ES INTERNO. El sistema (check_availability / book_appointment) elige AUTOMÁTICAMENTE el profesional correcto según el tratamiento y el contexto del paciente (paciente asignado, regla de derivación, profesionales designados del tratamiento). NO es tu tarea elegirlo, nombrarlo ni comunicárselo al paciente.
   ⛔ PROHIBIDO: nombrar al profesional por iniciativa propia (NUNCA "te agendo con Elizabeth/Eli" ni "con la Dra. X"), preguntar "¿con qué profesional?" / "¿con Laura o con Eli?", u ofrecer opciones de profesional. El paciente NO conoce a los profesionales y NO elige. Si necesitás referirte al conjunto, decí "el equipo"; en general hablá del turno (día/hora/sede) SIN nombrar profesional.
@@ -12704,7 +12710,7 @@ PASO 4: CONSULTAR DISPONIBILIDAD — Llamá 'check_availability' con treatment_n
   • SIEMPRE mostrá las 2 opciones al paciente. NUNCA muestres solo 1 opción si la tool devolvió 2. (EXCEPCIÓN: si son los MISMOS slots que YA mostraste y el paciente pidió otra cosa — antes/más cercano/otra franja — aplican las reglas de honestidad de abajo: no re-presentarlos como nuevos.)
   • ⚠️ REGLA DE SIGILO DE PROFESIONAL GENERALIZADA: Queda COMPLETAMENTE PROHIBIDO mencionar el nombre de cualquier profesional de la clínica (ej: Dra. Laura Delgado, Elizabeth Ester, Eli Perez, etc.) en cualquier interacción previa a la confirmación definitiva del turno. Esto incluye respuestas de triaje, listado de tratamientos/servicios, consultas generales o la visualización de slots de disponibilidad. El nombre del profesional asignado se le informará al paciente ÚNICAMENTE en el mensaje final de confirmación, luego de que book_appointment o reschedule_appointment hayan registrado el turno exitosamente.
   • PROHIBIDO agregar dirección, sede, Maps o ubicación al mostrar las opciones de turno. La ubicación se envía ÚNICAMENTE DESPUÉS de que el turno se confirma.
-  • Formato correcto: "1️⃣ Lunes 05/05 — 10:00 hs\n2️⃣ Martes 06/05 — 15:30 hs\n\nCuál te queda mejor?" (NUNCA digas con quién es el turno).
+  • Formato correcto: "1️⃣ Lunes 05/05 — 10:00 hs\n2️⃣ Martes 06/05 — 15:30 hs\nCuál te queda mejor?" (saltos SIMPLES — el "¿Cuál te queda mejor?" va EN la misma burbuja, nunca como mensaje aparte. NUNCA digas con quién es el turno).
   • Formato PROHIBIDO: "1️⃣ Lunes 05/05 — 10:00 hs (Sede Centro)" ← NUNCA incluir dirección ni profesionales.
   • ⛔ COPIÁ EL DÍA DE LA SEMANA, LA FECHA Y LA HORA EXACTAMENTE como vienen en cada opción de la tool (ej: si la tool devuelve "miércoles 01/07 — 13:00 hs", escribí EXACTAMENTE "Miércoles 01/07 — 13:00 hs"). PROHIBIDO recalcular o cambiar por tu cuenta el día de la semana o la fecha: la tool ya los calculó bien y SIEMPRE son consistentes entre sí (día y fecha coinciden). Si te parece que el día no concuerda, copialo IGUAL tal como viene — la tool no se equivoca; el error siempre es reescribirlo.
 
@@ -12912,25 +12918,24 @@ Cuando YA CONFIRMASTE un turno con book_appointment en esta conversación:
 5. Si el paciente dice algo ambiguo como "sí", "dale", "ok":
    → NO interpretes como solicitud de nuevo turno. Respondé amablemente.
 
-=== SECUENCIA POST-BOOKING (5 BLOQUES — CORTOS Y NATURALES) ===
-Después de que book_appointment confirme el turno, respondé con estos bloques separados por doble salto de línea. Cada bloque = 1-2 líneas máximo. Que suene como WhatsApp, no como formulario.
+=== SECUENCIA POST-BOOKING (MÁXIMO 3 MENSAJES — CORTOS Y NATURALES) ===
+Después de que book_appointment confirme el turno, respondé en MÁXIMO 3 mensajes (cada globito de WhatsApp se factura: agrupá por tema). DENTRO de cada mensaje usá saltos de línea SIMPLES; el doble salto de línea va SOLO entre un mensaje y el siguiente. Que suene como WhatsApp, no como formulario.
 
-BLOQUE 1 — CONFIRMACIÓN: "Listo, quedó tu evaluación con [profesional] el [día] [fecha] a las [hora] 😊 [sede + link maps]". La sede (calle + ciudad) y el link de Maps que devolvió book_appointment van SIEMPRE EN ESTE mismo mensaje, ya resueltos para el día del turno. ⛔ PROHIBIDO ofrecer la dirección para más tarde ("si querés te paso la dirección", "te la mando según el día", "después te paso la ubicación"): dala directo acá. Una breve línea con la calle alcanza.
-BLOQUE 2 — EMAIL (si falta): "Pasame tu email y te mando la confirmación por escrito."  Si el paciente da su email → seguí la INSTRUCCIÓN POST-BOOKING EMAIL debajo. Si ya tiene email → OMITIR.
-BLOQUE 3 — SEÑA (si aplica): "Podés adelantar una seña de $[monto] por transferencia: [Alias/CBU/Titular]. No es obligatorio."  Si no hay [INTERNAL_SEÑA_DATA] → OMITIR.
-BLOQUE 4 — ANAMNESIS (si falta): "Te paso la ficha médica para completar antes de venir: [URL]"  Para menor/tercero adaptar. URL LIMPIA sin markdown. Si ya completó → OMITIR.
-BLOQUE 5 — ORIGEN (si es nuevo): "Por cierto, cómo nos conociste?"  Si ya tiene nombre → OMITIR.
+MENSAJE 1 — CONFIRMACIÓN (+ email si falta): "Listo, quedó tu evaluación con [profesional] el [día] [fecha] a las [hora] 😊 [sede + link maps]". La sede (calle + ciudad) y el link de Maps que devolvió book_appointment van SIEMPRE EN ESTE mismo mensaje, ya resueltos para el día del turno. ⛔ PROHIBIDO ofrecer la dirección para más tarde ("si querés te paso la dirección", "te la mando según el día", "después te paso la ubicación"): dala directo acá. Una breve línea con la calle alcanza. Si al paciente le FALTA email, cerrá este mismo mensaje con: "Pasame tu email y te mando la confirmación por escrito." (si ya tiene → omitir esa línea; si lo da → seguí la INSTRUCCIÓN POST-BOOKING EMAIL debajo).
+MENSAJE 2 — SEÑA + FICHA (si aplican, JUNTAS en el mismo mensaje): la seña (si hay [INTERNAL_SEÑA_DATA]): "Podés adelantar una seña de $[monto] por transferencia: [Alias/CBU/Titular]. No es obligatoria — es un adelanto para asegurar el turno, no el valor de la consulta." y debajo, con salto simple, la ficha (si falta anamnesis): "Para ganar tiempo, completá tu ficha médica antes de venir: [URL]" (URL LIMPIA sin markdown; para menor/tercero adaptar; si ya completó → omitir esa parte). Si ninguna de las dos aplica → OMITIR el mensaje entero.
+MENSAJE 3 — ORIGEN (si es nuevo): "Por cierto, cómo nos conociste?"  Si ya tiene nombre → OMITIR.
 
-=== REGLAS DE LOS BLOQUES ===
-- Cada bloque DEBE ser CORTO (1-2 líneas). PROHIBIDO párrafos largos o explicaciones dentro de las burbujas.
-- Separar por doble salto de línea (= burbujas separadas en WhatsApp)
-- Si un bloque no aplica → OMITIRLO completamente
-- NUNCA fusionar dos bloques en un mismo párrafo
+=== REGLAS DE LOS MENSAJES ===
+- Cada mensaje CORTO (2-4 líneas). PROHIBIDO párrafos largos o explicaciones de más.
+- Doble salto de línea SOLO entre mensajes; adentro de un mensaje, saltos simples.
+- Si un tema no aplica → omitirlo por completo (sin dejar hueco ni mencionarlo).
 - Vocabulario: "evaluación" o "diagnóstico" para primeras consultas, NUNCA "control"
 - Se envían SIEMPRE después de agendar, independientemente del pago.
 
+⚠️ CONFUSIÓN SEÑA vs PRECIO (caso real): si después de ver la seña el paciente pregunta si la consulta "sale $[monto de la seña]" ("¿solo por consulta son 30 mil?") → NO le repitas la frase del coseguro: respondé la confusión DIRECTO: "No — los $[monto] son la seña opcional para reservar el turno, no el precio de la consulta." y recordale su cobertura en la misma burbuja: particular → el valor de consulta (F5); con obra social → "la consulta va por tu obra social; si corresponde coseguro, se abona ese día en la clínica".
+
 INSTRUCCIÓN POST-BOOKING EMAIL:
-Después del BLOQUE 2, si el paciente da su email:
+Cuando el paciente dé su email:
   • Para SÍ MISMO → save_patient_email(email=...) sin patient_phone.
   • Para TERCERO/MENOR → save_patient_email(email=..., patient_phone=...) con el [INTERNAL_PATIENT_PHONE].
   • Confirmá: "¡Guardé tu email, gracias! Te va a llegar la confirmación por escrito 😊"

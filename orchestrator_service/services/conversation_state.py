@@ -165,6 +165,14 @@ async def set_state(
             "turn_count": (_existing or {}).get("turn_count", 0),
             # v8.4: scheduling constraints — preserved across all state transitions
             "scheduling_constraints": (_existing or {}).get("scheduling_constraints", {}),
+            # v8.5: flags pegajosos — intent_tags (gateo condicional del prompt) e
+            # insurance_resolved (anti-loop de cobertura OSPE) se escriben con
+            # merge_intent_tags/mark_insurance_resolved y NO deben perderse acá:
+            # la whitelist los borraba en cada transición (bug auditoría 2026-07-09:
+            # se dropeaba la sección de implantes justo al ofrecer turnos y el bot
+            # volvía a repetir el rechazo de cobertura ya resuelto).
+            "intent_tags": (_existing or {}).get("intent_tags", []),
+            "insurance_resolved": (_existing or {}).get("insurance_resolved"),
             "updated_at": _dt.now().isoformat(),
         }
 
@@ -584,6 +592,30 @@ async def has_insurance_been_asked(tenant_id: int, phone_number: str) -> bool:
     except Exception as e:
         logger.warning(f"[insurance_asked] Error checking insurance_asked: {e}")
         return False
+
+
+async def merge_intent_tags(tenant_id: int, phone_number: str, tags: set) -> set:
+    """Tags de intención PEGAJOSOS por conversación (TTL del convstate).
+
+    classify_intent solo mira el LOTE actual de mensajes: si en plena charla de
+    implantes el paciente manda una foto sola ("mirá mi boca"), el tag del turno
+    pasa a {'media'} y la sección de implantes se DROPEA justo cuando más se
+    necesita. Con la unión persistida, una sección activada sigue inyectada el
+    resto de la charla. Solo AGREGA secciones respecto del comportamiento actual
+    (nunca quita) — es la base segura para gatear más secciones (recorte de grasa).
+    Devuelve la unión acumulada.
+    """
+    try:
+        payload = await _read_payload(tenant_id, phone_number)
+        merged = set(payload.get("intent_tags") or []) | set(tags or [])
+        if merged != set(payload.get("intent_tags") or []):
+            payload["intent_tags"] = sorted(merged)
+            payload["updated_at"] = _dt.now().isoformat()
+            await _raw_write(tenant_id, phone_number, payload)
+        return merged
+    except Exception as e:
+        logger.warning(f"[conversation_state] merge_intent_tags failed: {e}")
+        return set(tags or [])
 
 
 async def mark_insurance_resolved(tenant_id: int, phone_number: str, provider: str, status: str) -> None:
