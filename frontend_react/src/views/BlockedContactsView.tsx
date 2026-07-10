@@ -191,8 +191,8 @@ export default function BlockedContactsView() {
           <p className="text-white/50 text-sm">{t('blocked.empty')}</p>
         </div>
       ) : (
-        <div className="border border-white/[0.06] rounded-xl overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="border border-white/[0.06] rounded-xl overflow-x-auto">
+          <table className="w-full min-w-[640px] text-sm">
             <thead>
               <tr className="bg-white/[0.03] text-white/50 text-left">
                 <th className="px-4 py-3 font-medium">{t('blocked.colName')}</th>

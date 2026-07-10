@@ -1316,12 +1316,12 @@ export default function ClinicsView() {
             />
 
             {/* Tab navigation */}
-            <div className="flex gap-1 bg-white/[0.03] p-1 rounded-xl border border-white/[0.06] w-fit">
+            <div className="flex gap-1 bg-white/[0.03] p-1 rounded-xl border border-white/[0.06] w-fit max-w-full overflow-x-auto">
                 {([['clinics', <Building2 size={16} />, t('clinics.title')], ['insurance', <Shield size={16} />, t('settings.insurance.title')], ['derivation', <GitMerge size={16} />, t('settings.derivation.title')], ['operational', <AlertCircle size={16} />, t('settings.operational_rules.title')]] as [typeof activeTab, React.ReactNode, string][]).map(([key, icon, label]) => (
                     <button
                         key={key}
                         onClick={() => setActiveTab(key)}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${activeTab === key ? 'bg-white text-[#0a0e1a]' : 'text-white/50 hover:text-white hover:bg-white/[0.04]'}`}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap shrink-0 transition-all ${activeTab === key ? 'bg-white text-[#0a0e1a]' : 'text-white/50 hover:text-white hover:bg-white/[0.04]'}`}
                     >
                         {icon} {label}
                     </button>

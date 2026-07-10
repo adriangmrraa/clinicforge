@@ -301,7 +301,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }: LayoutProps) => {
                 isConnected ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'
               }`}>
               {isReconnecting ? <WifiOff size={12} /> : <Wifi size={12} />}
-              <span className="hidden xs:inline">
+              <span className="hidden sm:inline">
                 {isReconnecting ? t('layout.status_reconnecting') :
                   isConnected ? t('layout.status_connected') : 'Offline'}
               </span>
@@ -329,7 +329,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }: LayoutProps) => {
 
             {/* User Menu */}
             <div className="flex items-center gap-2 lg:gap-3">
-              <div className="hidden xs:flex flex-col items-end">
+              <div className="hidden sm:flex flex-col items-end">
                 <span className="text-xs lg:text-sm font-medium text-white/80">{user?.email?.split('@')[0]}</span>
                 <span className="text-[10px] lg:text-xs text-white/30 uppercase leading-none">{user?.role}</span>
               </div>
