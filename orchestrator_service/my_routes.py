@@ -212,7 +212,14 @@ async def get_my_liquidations(
 
     try:
         # Build dynamic WHERE clauses
-        conditions = ["lr.tenant_id = $1", "lr.professional_id = $2"]
+        # Pedido Carlos 2026-07-10: el profesional NO ve borradores — las
+        # liquidaciones en 'generated'/'draft' son internas del CEO hasta que
+        # se APRUEBAN. Recién aprobada (o pagada) aparece en este portal.
+        conditions = [
+            "lr.tenant_id = $1",
+            "lr.professional_id = $2",
+            "lr.status IN ('approved', 'paid')",
+        ]
         params: list = [tenant_id, prof_id]
         param_idx = 3
 
@@ -340,6 +347,7 @@ async def get_my_liquidation_detail(
             FROM liquidation_records lr
             JOIN professionals p ON p.id = lr.professional_id AND p.tenant_id = lr.tenant_id
             WHERE lr.id = $1 AND lr.professional_id = $2 AND lr.tenant_id = $3
+              AND lr.status IN ('approved', 'paid')
             """,
             liquidation_id,
             prof_id,
@@ -599,6 +607,7 @@ async def get_my_liquidation_pdf(
         SELECT id, status, professional_id
         FROM liquidation_records
         WHERE id = $1 AND professional_id = $2 AND tenant_id = $3
+          AND status IN ('approved', 'paid')
         """,
         liquidation_id,
         prof_id,
