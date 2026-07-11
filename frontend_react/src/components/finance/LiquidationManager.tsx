@@ -43,6 +43,20 @@ interface LiquidationManagerProps {
   formatCurrency: (n: number) => string;
 }
 
+// Historial mes a mes: agregado de liquidation_records por período
+interface PeriodSummary {
+  period_start: string;
+  period_end: string;
+  liquidation_count: number;
+  total_billed: number;
+  total_paid: number;
+  total_payout: number;
+  clinic_total: number;
+  paid_count: number;
+  approved_count: number;
+  open_count: number;
+}
+
 const PAGE_SIZE = 20;
 
 export default function LiquidationManager({ periodStart, periodEnd, formatCurrency }: LiquidationManagerProps) {
@@ -79,6 +93,8 @@ export default function LiquidationManager({ periodStart, periodEnd, formatCurre
 
   const [professionals, setProfessionals] = useState<ProfessionalOption[]>([]);
   const [professionalFilter, setProfessionalFilter] = useState<number | null>(null);
+
+  const [periods, setPeriods] = useState<PeriodSummary[]>([]);
 
   const [toast, setToast] = useState<ToastMessage | null>(null);
 
@@ -131,6 +147,11 @@ export default function LiquidationManager({ periodStart, periodEnd, formatCurre
       setLiquidations(res.data.liquidations || res.data);
       setTotalPages(res.data.total_pages || 1);
       setTotalCount(res.data.total || res.data.length || 0);
+      // Historial mes a mes — se refresca junto con la tabla; si falla no la bloquea
+      api
+        .get('/admin/liquidations/periods')
+        .then((r) => setPeriods(r.data.periods || []))
+        .catch(() => {});
     } catch (err: any) {
       console.error('Error fetching liquidations:', err);
       setError(err.response?.data?.detail || 'Error al cargar liquidaciones');
@@ -332,6 +353,23 @@ export default function LiquidationManager({ periodStart, periodEnd, formatCurre
     return `${formatSingleDate(sDate)} — ${formatSingleDate(eDate)}`;
   };
 
+  // "Julio 2026" cuando el rango es un mes calendario exacto; si no, dd/mm — dd/mm
+  const periodCardLabel = (start: string, end: string): string => {
+    const s = new Date(start + 'T00:00:00');
+    const e = new Date(end + 'T00:00:00');
+    const lastDay = new Date(e.getFullYear(), e.getMonth() + 1, 0).getDate();
+    if (
+      s.getFullYear() === e.getFullYear() &&
+      s.getMonth() === e.getMonth() &&
+      s.getDate() === 1 &&
+      e.getDate() === lastDay
+    ) {
+      const label = s.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
+      return label.charAt(0).toUpperCase() + label.slice(1);
+    }
+    return `${s.toLocaleDateString('es-AR')} — ${e.toLocaleDateString('es-AR')}`;
+  };
+
   if (error && liquidations.length === 0) {
     return (
       <GlassCard>
@@ -351,6 +389,62 @@ export default function LiquidationManager({ periodStart, periodEnd, formatCurre
 
   return (
     <div className="space-y-4">
+      {/* Historial mes a mes — cada período generado queda archivado */}
+      {periods.length > 0 && (
+        <div>
+          <h4 className="text-[11px] font-semibold text-white/35 uppercase tracking-wider mb-2">
+            {t('liquidation.period_history')}
+          </h4>
+          <div className="flex gap-2.5 overflow-x-auto pb-2">
+            {periods.map((p) => {
+              const isOpen = p.open_count > 0;
+              return (
+                <div
+                  key={`${p.period_start}_${p.period_end}`}
+                  className="shrink-0 min-w-[215px] bg-white/[0.02] border border-white/[0.05] rounded-xl px-3.5 py-3"
+                >
+                  <div className="flex items-center justify-between gap-2 mb-1.5">
+                    <span className="text-sm font-semibold text-white truncate">
+                      {periodCardLabel(p.period_start, p.period_end)}
+                    </span>
+                    <span
+                      className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0 ${
+                        isOpen
+                          ? 'bg-amber-500/10 text-amber-400'
+                          : 'bg-emerald-500/10 text-emerald-400'
+                      }`}
+                    >
+                      {isOpen ? t('liquidation.period_open') : t('liquidation.period_closed')}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[11px]">
+                    <span className="text-white/35">{t('liquidation.billed_short')}</span>
+                    <span className="text-right text-white/80 tabular-nums">
+                      {formatCurrency(p.total_billed)}
+                    </span>
+                    <span className="text-white/35">{t('liquidation.paid_short')}</span>
+                    <span className="text-right text-emerald-400/90 tabular-nums">
+                      {formatCurrency(p.total_paid)}
+                    </span>
+                    <span className="text-white/35">{t('liquidation.professionals_short')}</span>
+                    <span className="text-right text-violet-300/90 tabular-nums">
+                      {formatCurrency(p.total_payout)}
+                    </span>
+                    <span className="text-white/35">{t('liquidation.clinic_short')}</span>
+                    <span className="text-right text-blue-300/90 tabular-nums">
+                      {formatCurrency(p.clinic_total)}
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-white/25 mt-1.5">
+                    {p.liquidation_count} {t('liquidation.liquidations_word')}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Action Bar */}
       <div className="flex flex-wrap items-center gap-3">
         <button

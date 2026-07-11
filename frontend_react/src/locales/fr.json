@@ -1989,6 +1989,14 @@
     "period_this_year": "Cette année"
   },
   "liquidation": {
+    "period_history": "Historique par période",
+    "period_open": "Ouverte",
+    "period_closed": "Clôturée",
+    "liquidations_word": "liquidations",
+    "billed_short": "Facturé",
+    "paid_short": "Encaissé",
+    "professionals_short": "Professionnels",
+    "clinic_short": "Clinique",
     "using_persistent": "Liquidations générées",
     "using_realtime": "Données en temps réel",
     "view_in_finance": "Voir en Finance",

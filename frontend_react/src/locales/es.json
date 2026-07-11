@@ -2433,6 +2433,14 @@
     "period_this_year": "Este año"
   },
   "liquidation": {
+    "period_history": "Historial por período",
+    "period_open": "Abierta",
+    "period_closed": "Cerrada",
+    "liquidations_word": "liquidaciones",
+    "billed_short": "Facturado",
+    "paid_short": "Cobrado",
+    "professionals_short": "Profesionales",
+    "clinic_short": "Clínica",
     "using_persistent": "Liquidaciones generadas",
     "using_realtime": "Datos en tiempo real",
     "view_in_finance": "Ver en Finanzas",

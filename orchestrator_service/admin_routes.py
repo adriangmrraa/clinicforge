@@ -17931,6 +17931,36 @@ async def list_liquidations(
         raise HTTPException(status_code=500, detail="Error interno del servidor")
 
 
+# --- EP-FC-03b: GET /admin/liquidations/periods ---
+# OJO: registrada ANTES de /liquidations/{liquidation_id} — si quedara después,
+# FastAPI intentaría parsear "periods" como int y devolvería 422.
+
+
+@router.get(
+    "/liquidations/periods",
+    dependencies=[Depends(verify_admin_token)],
+    tags=["Financial Command Center"],
+    summary="Monthly archive: liquidation totals grouped by period",
+)
+async def list_liquidation_periods(
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """
+    EP-FC-03b: Historial mes a mes — agrupa liquidation_records por período
+    con totales (facturado/cobrado/profesionales/clínica) para el archivo.
+    """
+    logger.info("=== EP-FC-03b: GET /admin/liquidations/periods === tenant_id=%s", tenant_id)
+    try:
+        periods = await liquidation_service.list_liquidation_periods(
+            pool=db.pool,
+            tenant_id=tenant_id,
+        )
+        return {"periods": periods}
+    except Exception as e:
+        logger.error("EP-FC-03b ERROR: %s", str(e), exc_info=True)
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
+
+
 # --- EP-FC-04: GET /admin/liquidations/{liquidation_id} ---
 
 

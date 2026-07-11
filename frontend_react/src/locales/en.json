@@ -2208,6 +2208,14 @@
     "period_this_year": "This year"
   },
   "liquidation": {
+    "period_history": "Period history",
+    "period_open": "Open",
+    "period_closed": "Closed",
+    "liquidations_word": "settlements",
+    "billed_short": "Billed",
+    "paid_short": "Collected",
+    "professionals_short": "Professionals",
+    "clinic_short": "Clinic",
     "using_persistent": "Generated liquidations",
     "using_realtime": "Real-time data",
     "view_in_finance": "View in Finance",

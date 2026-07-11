@@ -773,6 +773,52 @@ class LiquidationService:
     # ------------------------------------------------------------------
     # Method 4: list_liquidations
     # ------------------------------------------------------------------
+    async def list_liquidation_periods(self, pool, tenant_id: int) -> list:
+        """
+        Historial mes a mes (pedido Carlos 2026-07-10: "ir almacenando todos
+        los movimientos mes a mes"): los snapshots YA quedan guardados por
+        período en liquidation_records — esto los agrupa para el archivo.
+        """
+        rows = await pool.fetch(
+            """
+            SELECT
+                period_start,
+                period_end,
+                COUNT(*) AS liquidation_count,
+                COALESCE(SUM(total_billed), 0) AS total_billed,
+                COALESCE(SUM(total_paid), 0) AS total_paid,
+                COALESCE(SUM(payout_amount), 0) AS total_payout,
+                COUNT(*) FILTER (WHERE status = 'paid') AS paid_count,
+                COUNT(*) FILTER (WHERE status = 'approved') AS approved_count,
+                COUNT(*) FILTER (WHERE status IN ('generated', 'draft')) AS open_count
+            FROM liquidation_records
+            WHERE tenant_id = $1
+            GROUP BY period_start, period_end
+            ORDER BY period_start DESC, period_end DESC
+            LIMIT 36
+            """,
+            tenant_id,
+        )
+        out = []
+        for r in rows:
+            total_paid = float(r["total_paid"] or 0)
+            total_payout = float(r["total_payout"] or 0)
+            out.append(
+                {
+                    "period_start": str(r["period_start"]),
+                    "period_end": str(r["period_end"]),
+                    "liquidation_count": r["liquidation_count"],
+                    "total_billed": float(r["total_billed"] or 0),
+                    "total_paid": total_paid,
+                    "total_payout": total_payout,
+                    "clinic_total": total_paid - total_payout,
+                    "paid_count": r["paid_count"],
+                    "approved_count": r["approved_count"],
+                    "open_count": r["open_count"],
+                }
+            )
+        return out
+
     async def list_liquidations(
         self,
         pool,
