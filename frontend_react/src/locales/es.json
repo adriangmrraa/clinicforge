@@ -2489,6 +2489,7 @@
     "empty_state": "No hay datos de liquidación para el período seleccionado",
     "filter_by_professional": "Filtrar por profesional",
     "all_professionals": "Todos los profesionales",
+    "status": "Estado",
     "summary_by_treatment": "Resumen por tratamiento",
     "treatment": "Tratamiento",
     "quantity": "Cantidad",

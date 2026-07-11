@@ -2264,6 +2264,7 @@
     "empty_state": "No liquidation data for the selected period",
     "filter_by_professional": "Filter by professional",
     "all_professionals": "All professionals",
+    "status": "Status",
     "summary_by_treatment": "Summary by treatment",
     "treatment": "Treatment",
     "quantity": "Quantity",

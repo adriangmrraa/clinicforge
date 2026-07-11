@@ -97,7 +97,14 @@ export default function LiquidationManager({ periodStart, periodEnd, formatCurre
         setProfessionals(
           data.map((p: any) => ({
             id: p.id ?? p.professional_id,
-            name: p.name ?? p.full_name ?? p.professional_name ?? '',
+            // /admin/professionals devuelve first_name/last_name (como toda la
+            // app) — sin este fallback las opciones quedaban VACÍAS y el
+            // desplegable se veía "roto" (bug real 2026-07-10)
+            name:
+              p.name ??
+              p.full_name ??
+              p.professional_name ??
+              `${p.first_name ?? ''} ${p.last_name ?? ''}`.trim(),
           }))
         );
       })
@@ -453,7 +460,9 @@ export default function LiquidationManager({ periodStart, periodEnd, formatCurre
                       {t('liquidation.payout')}
                     </th>
                     <th className="px-4 py-3 text-[11px] font-bold text-white/30 uppercase tracking-wider text-center">
-                      {t('billing.status')}
+                      {/* billing.status es un OBJETO (mapa de estados) en los locales,
+                          no un texto → t() devolvía la clave cruda "BILLING.STATUS" */}
+                      {t('liquidation.status')}
                     </th>
                     <th className="px-4 py-3 text-[11px] font-bold text-white/30 uppercase tracking-wider text-center">
                       {t('patients.actions')}

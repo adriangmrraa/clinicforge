@@ -2045,6 +2045,7 @@
     "empty_state": "Aucune donnée de liquidation pour la période sélectionnée",
     "filter_by_professional": "Filtrer par professionnel",
     "all_professionals": "Tous les professionnels",
+    "status": "Statut",
     "summary_by_treatment": "Résumé par traitement",
     "treatment": "Traitement",
     "quantity": "Quantité",
