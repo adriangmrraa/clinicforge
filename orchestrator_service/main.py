@@ -14007,6 +14007,15 @@ try:
 except Exception as e:
     logger.error(f"backup_router_registration_failed: {e}")
 
+# Módulo Laboratorio (F2-4 L1): labs + lab_cases
+try:
+    from routes.lab_routes import router as lab_router
+
+    app.include_router(lab_router, prefix="/admin", tags=["Laboratorio"])
+    logger.info("✅ Laboratorio router registered")
+except Exception as e:
+    logger.error(f"lab_router_registration_failed: {e}")
+
 # Playbook Engine V2 routes
 try:
     from routes.playbook_routes import router as playbook_router
