@@ -258,6 +258,37 @@ body {
     color: #1a365d;
 }
 
+/* Tabla única de sesiones — compacta (el diseño viejo de una tabla por
+   paciente con no-break generaba PDFs de 50+ páginas) */
+.sessions-table {
+    font-size: 8pt;
+}
+
+.sessions-table th {
+    font-size: 7.5pt;
+    padding: 4px 6px;
+}
+
+.sessions-table td {
+    padding: 3px 6px;
+}
+
+.sessions-table .pay-status {
+    font-size: 7pt;
+    padding: 0 4px;
+}
+
+/* Advertencias administrativas (precios $0, % sin configurar) */
+.warn-note {
+    background: #fffbeb;
+    border: 1px solid #f6e05e;
+    border-left: 4px solid #d69e2e;
+    padding: 6px 10px;
+    margin: 6px 0 12px 0;
+    font-size: 8.5pt;
+    color: #744210;
+}
+
 /* Payment status in detail */
 .pay-status {
     display: inline-block;
@@ -452,6 +483,10 @@ body {
         <td class="label">{{ t_commission_amount }}:</td>
         <td class="value">${{ summary.commission_amount | ars }}</td>
     </tr>
+    <tr>
+        <td class="label">{{ t_clinic_total }}:</td>
+        <td class="value">${{ summary.clinic_total | ars }}</td>
+    </tr>
     <tr class="net-row">
         <td class="label">{{ t_net_payout }}:</td>
         <td class="value">${{ summary.payout_amount | ars }}</td>
@@ -459,50 +494,95 @@ body {
 </table>
 </div>
 
-<!-- ════════════════ DETAIL BY PATIENT ════════════════ -->
-{% if treatment_groups %}
+<!-- ════════════════ BREAKDOWN BY TREATMENT ════════════════ -->
+{% if treatment_breakdown %}
+<div class="section-title">{{ t_breakdown_title }}</div>
+
+<table class="detail-table">
+    <thead>
+        <tr>
+            <th>{{ t_treatment }}</th>
+            <th class="col-right">{{ t_qty }}</th>
+            <th class="col-right">{{ t_total_billed }}</th>
+            <th class="col-right">{{ t_collected }}</th>
+            <th class="col-right">{{ t_pct_col }}</th>
+            <th class="col-right">{{ t_prof_share }}</th>
+            <th class="col-right">{{ t_clinic_share }}</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for tr in treatment_breakdown %}
+        <tr>
+            <td>{{ tr.name }}</td>
+            <td class="col-right">{{ tr.count }}</td>
+            <td class="col-right">${{ tr.billed | ars }}</td>
+            <td class="col-right">${{ tr.paid | ars }}</td>
+            <td class="col-right">{{ tr.pct_label }}</td>
+            <td class="col-right">${{ tr.prof_amount | ars }}</td>
+            <td class="col-right">${{ tr.clinic_amount | ars }}</td>
+        </tr>
+        {% endfor %}
+        <tr class="subtotal-row">
+            <td><strong>{{ t_totals }}</strong></td>
+            <td class="col-right"><strong>{{ summary.total_sessions }}</strong></td>
+            <td class="col-right"><strong>${{ live_totals.billed | ars }}</strong></td>
+            <td class="col-right"><strong>${{ live_totals.paid | ars }}</strong></td>
+            <td class="col-right"><strong>{{ live_totals.pct_label }}</strong></td>
+            <td class="col-right"><strong>${{ live_totals.prof | ars }}</strong></td>
+            <td class="col-right"><strong>${{ live_totals.clinic | ars }}</strong></td>
+        </tr>
+    </tbody>
+</table>
+
+{% if zero_price_count or no_commission_treatments %}
+<div class="warn-note">
+    {% if zero_price_count %}
+    <div>⚠ {{ zero_price_count }} {{ t_zero_price_note }}</div>
+    {% endif %}
+    {% if no_commission_treatments %}
+    <div>⚠ {{ t_no_commission_note }}: {{ no_commission_treatments | join(', ') }}</div>
+    {% endif %}
+</div>
+{% endif %}
+{% endif %}
+
+<!-- ════════════════ SESSION DETAIL (single compact table) ════════════════ -->
+{% if session_rows %}
 <div class="section-title">{{ t_detail }}</div>
 
-{% for group in treatment_groups %}
-<div class="patient-group no-break">
-    <div class="patient-name">{{ group.patient_name }}</div>
-    <table class="detail-table">
-        <thead>
-            <tr>
-                <th>{{ t_date }}</th>
-                <th>{{ t_treatment }}</th>
-                <th class="col-right">{{ t_amount }}</th>
-                <th style="width: 90px; text-align: center;">{{ t_pay_status }}</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for session in group.sessions %}
-            <tr>
-                <td>{{ session.date }}</td>
-                <td>{{ session.description }}</td>
-                <td class="col-right">${{ session.amount | ars }}</td>
-                <td style="text-align: center;">
-                    {% set ps = session.payment_status %}
-                    {% if ps == 'paid' %}
-                        <span class="pay-status pay-paid">{{ t_paid }}</span>
-                    {% elif ps == 'partial' %}
-                        <span class="pay-status pay-partial">{{ t_partial }}</span>
-                    {% else %}
-                        <span class="pay-status pay-pending">{{ t_pending }}</span>
-                    {% endif %}
-                </td>
-            </tr>
-            {% endfor %}
-            <!-- Subtotal row -->
-            <tr class="subtotal-row">
-                <td colspan="2"><strong>{{ t_subtotal }}</strong></td>
-                <td class="col-right"><strong>${{ group.total | ars }}</strong></td>
-                <td></td>
-            </tr>
-        </tbody>
-    </table>
-</div>
-{% endfor %}
+<table class="detail-table sessions-table">
+    <thead>
+        <tr>
+            <th style="width: 62px;">{{ t_date }}</th>
+            <th>{{ t_patient }}</th>
+            <th>{{ t_treatment }}</th>
+            <th class="col-right">{{ t_amount }}</th>
+            <th class="col-right">{{ t_collected }}</th>
+            <th style="width: 58px; text-align: center;">{{ t_pay_status }}</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for s in session_rows %}
+        <tr>
+            <td>{{ s.date }}</td>
+            <td>{{ s.patient_name }}</td>
+            <td>{{ s.treatment }}</td>
+            <td class="col-right">${{ s.amount | ars }}</td>
+            <td class="col-right">${{ s.paid_amount | ars }}</td>
+            <td style="text-align: center;">
+                {% set ps = s.payment_status %}
+                {% if ps == 'paid' %}
+                    <span class="pay-status pay-paid">{{ t_paid }}</span>
+                {% elif ps == 'partial' %}
+                    <span class="pay-status pay-partial">{{ t_partial }}</span>
+                {% else %}
+                    <span class="pay-status pay-pending">{{ t_pending }}</span>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
 {% endif %}
 
 <!-- ════════════════ PAYOUT HISTORY ════════════════ -->

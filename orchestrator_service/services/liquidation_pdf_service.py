@@ -13,6 +13,7 @@ import asyncio
 import logging
 import os
 from datetime import datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Optional
 
@@ -95,6 +96,18 @@ _TRANSLATIONS = {
         "method_transfer": "Transferencia",
         "method_cash": "Efectivo",
         "method_check": "Cheque",
+        # Desglose por tratamiento (rediseño 2026-07-10)
+        "breakdown_title": "Desglose por tratamiento",
+        "qty": "Cant.",
+        "collected": "Cobrado",
+        "pct_col": "% Prof.",
+        "prof_share": "$ Profesional",
+        "clinic_share": "$ Clínica",
+        "patient": "Paciente",
+        "clinic_total": "Total clínica (sobre lo cobrado)",
+        "totals": "TOTALES",
+        "zero_price_note": "sesiones con precio $0 — cargar el precio real en Tratamientos",
+        "no_commission_note": "Sin % de comisión configurado para",
         # Email template
         "email_greeting": "Hola",
         "email_body_intro": "Te adjuntamos tu liquidación correspondiente al período",
@@ -143,6 +156,18 @@ _TRANSLATIONS = {
         "method_transfer": "Transfer",
         "method_cash": "Cash",
         "method_check": "Check",
+        # Breakdown by treatment (redesign 2026-07-10)
+        "breakdown_title": "Breakdown by treatment",
+        "qty": "Qty",
+        "collected": "Collected",
+        "pct_col": "% Prof.",
+        "prof_share": "Professional $",
+        "clinic_share": "Clinic $",
+        "patient": "Patient",
+        "clinic_total": "Clinic total (on collected)",
+        "totals": "TOTALS",
+        "zero_price_note": "sessions with $0 price — set the real price in Treatments",
+        "no_commission_note": "No commission % configured for",
         # Email template
         "email_greeting": "Hello",
         "email_body_intro": "Please find attached your fee statement for the period",
@@ -191,6 +216,18 @@ _TRANSLATIONS = {
         "method_transfer": "Virement",
         "method_cash": "Espèces",
         "method_check": "Chèque",
+        # Répartition par traitement (refonte 2026-07-10)
+        "breakdown_title": "Répartition par traitement",
+        "qty": "Qté",
+        "collected": "Encaissé",
+        "pct_col": "% Prof.",
+        "prof_share": "$ Professionnel",
+        "clinic_share": "$ Clinique",
+        "patient": "Patient",
+        "clinic_total": "Total clinique (sur l'encaissé)",
+        "totals": "TOTAUX",
+        "zero_price_note": "séances avec prix 0 $ — définir le prix réel dans Traitements",
+        "no_commission_note": "Aucun % de commission configuré pour",
         # Email template
         "email_greeting": "Bonjour",
         "email_body_intro": "Veuillez trouver ci-joint votre relevé d'honoraires pour la période",
@@ -261,6 +298,15 @@ async def gather_liquidation_pdf_data(
     period_start = record["period_start"]
     period_end = record["period_end"]
 
+    # Rediseño 2026-07-10 (pedido Carlos: "un administrador y un desglosador
+    # súper apto", el PDF viejo salía en 56 páginas): misma consulta y mismas
+    # reglas de dinero que generate_liquidation — cobrado proporcional al plan,
+    # % de comisión punto-en-el-tiempo por tratamiento — para que el documento
+    # cierre EXACTO contra el motor.
+    from services.liquidation_service import (  # lazy: evita import circular
+        liquidation_service as _liq_svc,
+    )
+
     appt_rows = await pool.fetch(
         """
         SELECT
@@ -274,16 +320,30 @@ async def gather_liquidation_pdf_data(
             pat.id AS patient_id,
             pat.first_name || ' ' || COALESCE(pat.last_name, '') AS patient_name,
             tt.code AS treatment_code,
-            tt.name AS treatment_name
+            tt.name AS treatment_name,
+            COALESCE(tpi.plan_id, active_tp.id) AS plan_id,
+            COALESCE(tp.approved_total, active_tp.approved_total) AS plan_approved_total,
+            COALESCE(tp.status, active_tp.status) AS plan_status
         FROM appointments a
         JOIN patients pat ON pat.id = a.patient_id AND pat.tenant_id = $1
         LEFT JOIN treatment_types tt ON tt.code = a.appointment_type AND tt.tenant_id = $1
+        LEFT JOIN treatment_plan_items tpi ON tpi.id = a.plan_item_id AND tpi.tenant_id = $1
+        LEFT JOIN treatment_plans tp ON tp.id = tpi.plan_id AND tp.tenant_id = $1
+        LEFT JOIN LATERAL (
+            SELECT id, approved_total, status
+            FROM treatment_plans
+            WHERE tenant_id = $1
+              AND patient_id = a.patient_id
+              AND status IN ('approved', 'in_progress')
+            ORDER BY created_at DESC
+            LIMIT 1
+        ) active_tp ON tpi.plan_id IS NULL
         WHERE a.tenant_id = $1
           AND a.professional_id = $2
           AND a.appointment_datetime >= $3
           AND a.appointment_datetime < ($4::date + INTERVAL '1 day')
           AND a.status NOT IN ('deleted', 'cancelled', 'no_show')
-        ORDER BY pat.id, a.appointment_datetime
+        ORDER BY a.appointment_datetime
         """,
         tenant_id,
         prof_id,
@@ -291,59 +351,152 @@ async def gather_liquidation_pdf_data(
         period_end,
     )
 
-    # Group by patient → treatment
-    treatment_groups_map = {}
+    # Pagos por plan (criterio del motor: cobrado proporcional a lo pagado del plan)
+    plan_ids = {
+        r["plan_id"]
+        for r in appt_rows
+        if r["plan_id"] and r["plan_status"] in ("approved", "in_progress")
+    }
+    plan_paid_map = {}
+    if plan_ids:
+        for r in await pool.fetch(
+            """
+            SELECT plan_id, COALESCE(SUM(amount), 0) AS total_paid
+            FROM treatment_plan_payments
+            WHERE tenant_id = $1 AND plan_id = ANY($2::uuid[])
+            GROUP BY plan_id
+            """,
+            tenant_id,
+            list(plan_ids),
+        ):
+            plan_paid_map[r["plan_id"]] = Decimal(str(r["total_paid"]))
+
+    # % de comisión a la fecha de cada turno — cache por fecha (≤31 lookups/mes)
+    _config_cache: dict = {}
+
+    async def _config_for(day):
+        if day not in _config_cache:
+            _config_cache[day] = await _liq_svc.get_commission_config_at_date(
+                pool, tenant_id, prof_id, day
+            )
+        return _config_cache[day]
+
+    session_rows_out = []
+    breakdown_map: dict = {}
+    zero_price_count = 0
+    no_commission_treatments = set()
+    live_billed = Decimal("0")
+    live_paid = Decimal("0")
+    live_prof = Decimal("0")
+
     for row in appt_rows:
-        pat_id = row["patient_id"]
-        treatment_code = row["treatment_code"] or ""
-        group_key = (pat_id, treatment_code)
-
-        if group_key not in treatment_groups_map:
-            treatment_groups_map[group_key] = {
-                "patient_id": pat_id,
-                "patient_name": (row["patient_name"] or "").strip() or "Paciente",
-                "treatment_code": treatment_code,
-                "treatment_name": row["treatment_name"]
-                or treatment_code
-                or "Sin tratamiento",
-                "sessions": [],
-                "total": 0.0,
-            }
-
-        group = treatment_groups_map[group_key]
-        billing = float(row["billing_amount"] or 0)
+        billing = Decimal(str(row["billing_amount"] or 0))
         pstatus = row["payment_status"] or "pending"
-
         appt_dt = row["appointment_datetime"]
-        date_str = appt_dt.strftime("%d/%m/%Y") if appt_dt else ""
+        appt_date = appt_dt.date() if appt_dt else period_start
+        t_code = row["treatment_code"] or ""
+        t_name = row["treatment_name"] or t_code or "Sin tratamiento"
 
-        treatment_label = row["treatment_name"] or treatment_code or "Sin tratamiento"
+        cfg = await _config_for(appt_date)
+        per_treatment = cfg.get("per_treatment", {})
+        if t_code in per_treatment:
+            pct = per_treatment[t_code]["commission_pct"]
+        else:
+            pct = cfg["default_commission_pct"]
+        if cfg.get("source") == "default_zero":
+            no_commission_treatments.add(t_name)
+
+        is_plan = row["plan_id"] and row["plan_status"] in ("approved", "in_progress")
+        if is_plan:
+            approved = Decimal(str(row["plan_approved_total"] or 0))
+            if approved > 0:
+                ratio = plan_paid_map.get(row["plan_id"], Decimal("0")) / approved
+                if ratio > Decimal("1"):
+                    ratio = Decimal("1")
+            else:
+                ratio = Decimal("0")
+            paid_amt = billing * ratio
+            if ratio >= Decimal("0.999"):
+                display_status = "paid"
+            elif ratio > 0:
+                display_status = "partial"
+            else:
+                display_status = "pending"
+        else:
+            paid_amt = billing if pstatus == "paid" else Decimal("0")
+            display_status = pstatus
+
+        prof_amt = paid_amt * Decimal(str(pct)) / Decimal("100")
+
+        if billing == 0:
+            zero_price_count += 1
+
+        live_billed += billing
+        live_paid += paid_amt
+        live_prof += prof_amt
+
+        treatment_label = t_name
         if row["billing_notes"]:
-            treatment_label = f"{treatment_label} — {row['billing_notes']}"
+            treatment_label = f"{t_name} — {row['billing_notes']}"
 
-        group["sessions"].append(
+        session_rows_out.append(
             {
-                "date": date_str,
-                "description": treatment_label,
-                "amount": billing,
-                "payment_status": pstatus,
+                "date": appt_dt.strftime("%d/%m/%Y") if appt_dt else "",
+                "patient_name": (row["patient_name"] or "").strip() or "Paciente",
+                "treatment": treatment_label,
+                "amount": float(billing),
+                "paid_amount": float(paid_amt),
+                "payment_status": display_status,
             }
         )
-        group["total"] += billing
 
-    # Sort groups by total DESC
-    groups_sorted = sorted(
-        treatment_groups_map.values(), key=lambda g: g["total"], reverse=True
-    )
-    treatment_groups_out = [
-        {
-            "patient_name": g["patient_name"],
-            "treatment_name": g["treatment_name"],
-            "sessions": g["sessions"],
-            "total": round(g["total"], 2),
-        }
-        for g in groups_sorted
-    ]
+        b = breakdown_map.setdefault(
+            t_code or t_name,
+            {
+                "name": t_name,
+                "count": 0,
+                "billed": Decimal("0"),
+                "paid": Decimal("0"),
+                "prof": Decimal("0"),
+                "pcts": set(),
+            },
+        )
+        b["count"] += 1
+        b["billed"] += billing
+        b["paid"] += paid_amt
+        b["prof"] += prof_amt
+        b["pcts"].add(float(pct))
+
+    treatment_breakdown = []
+    for b in sorted(breakdown_map.values(), key=lambda x: x["billed"], reverse=True):
+        if len(b["pcts"]) == 1:
+            pct_label = f"{next(iter(b['pcts'])):g}%"
+        elif b["paid"] > 0:
+            # % efectivo cuando la config cambió a mitad del período
+            pct_label = f"~{float(b['prof'] / b['paid'] * 100):.0f}%"
+        else:
+            pct_label = "—"
+        treatment_breakdown.append(
+            {
+                "name": b["name"],
+                "count": b["count"],
+                "billed": float(b["billed"]),
+                "paid": float(b["paid"]),
+                "pct_label": pct_label,
+                "prof_amount": float(b["prof"]),
+                "clinic_amount": float(b["paid"] - b["prof"]),
+            }
+        )
+
+    live_totals = {
+        "billed": float(live_billed),
+        "paid": float(live_paid),
+        "prof": float(live_prof),
+        "clinic": float(live_paid - live_prof),
+        "pct_label": (
+            f"{float(live_prof / live_paid * 100):.1f}%" if live_paid > 0 else "—"
+        ),
+    }
 
     # ── Payouts ──────────────────────────────────────────────────────────────
     payouts = await pool.fetch(
@@ -452,7 +605,7 @@ async def gather_liquidation_pdf_data(
     generated_at = datetime.now().strftime("%d/%m/%Y a las %H:%M")
 
     # Count total sessions
-    total_sessions = sum(len(g["sessions"]) for g in treatment_groups_out)
+    total_sessions = len(session_rows_out)
 
     # ── Assemble ─────────────────────────────────────────────────────────────
     return {
@@ -485,6 +638,17 @@ async def gather_liquidation_pdf_data(
         "t_partial": t["partial"],
         "t_pending": t["pending"],
         "t_subtotal": t["subtotal"],
+        "t_breakdown_title": t["breakdown_title"],
+        "t_qty": t["qty"],
+        "t_collected": t["collected"],
+        "t_pct_col": t["pct_col"],
+        "t_prof_share": t["prof_share"],
+        "t_clinic_share": t["clinic_share"],
+        "t_patient": t["patient"],
+        "t_clinic_total": t["clinic_total"],
+        "t_totals": t["totals"],
+        "t_zero_price_note": t["zero_price_note"],
+        "t_no_commission_note": t["no_commission_note"],
         "t_payout_history": t["payout_history"],
         "t_clinic_signature": t["clinic_signature"],
         "t_prof_signature": t["prof_signature"],
@@ -522,8 +686,17 @@ async def gather_liquidation_pdf_data(
             "commission_pct": round(float(record["commission_pct"] or 0), 2),
             "commission_amount": round(float(record["commission_amount"] or 0), 2),
             "payout_amount": round(float(record["payout_amount"] or 0), 2),
+            # Lo que le queda a la clínica de lo efectivamente cobrado
+            "clinic_total": round(
+                float(record["total_paid"] or 0) - float(record["payout_amount"] or 0),
+                2,
+            ),
         },
-        "treatment_groups": treatment_groups_out,
+        "treatment_breakdown": treatment_breakdown,
+        "session_rows": session_rows_out,
+        "live_totals": live_totals,
+        "zero_price_count": zero_price_count,
+        "no_commission_treatments": sorted(no_commission_treatments),
         "payouts": payouts_out,
         "generated_at": generated_at,
         "generated_at_label": generated_at,  # alias for @page footer

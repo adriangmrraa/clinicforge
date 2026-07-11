@@ -881,7 +881,15 @@ export default function LiquidationManager({ periodStart, periodEnd, formatCurre
 
 // Sub-component for treatment group detail in expanded row
 function TreatmentGroupDetail({ group, formatCurrency }: { group: TreatmentGroup; formatCurrency: (n: number) => string }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
+
+  // El backend manda paid/partial/pending crudos — traducirlos siempre
+  const statusLabel: Record<string, string> = {
+    paid: t('liquidation.status_paid'),
+    partial: t('liquidation.status_partial'),
+    pending: t('liquidation.status_pending'),
+  };
 
   return (
     <div className="bg-white/[0.02] border border-white/[0.04] rounded-xl mb-2 overflow-hidden">
@@ -903,7 +911,7 @@ function TreatmentGroupDetail({ group, formatCurrency }: { group: TreatmentGroup
               <span className="text-white/40">
                 {session.date ? new Date(session.date.includes('T') ? session.date : session.date + 'T00:00:00').toLocaleDateString('es-AR') : '-'}
               </span>
-              <span className="text-white/50">{session.billing_notes || session.payment_status}</span>
+              <span className="text-white/50">{session.billing_notes || '—'}</span>
               <span className="text-white/60">{formatCurrency(session.billing_amount)}</span>
               <span
                 className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
@@ -914,7 +922,7 @@ function TreatmentGroupDetail({ group, formatCurrency }: { group: TreatmentGroup
                     : 'bg-white/[0.06] text-white/40'
                 }`}
               >
-                {session.payment_status}
+                {statusLabel[session.payment_status] || session.payment_status}
               </span>
             </div>
           ))}
