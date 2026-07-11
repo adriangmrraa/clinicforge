@@ -19,7 +19,10 @@ from typing import Any, Dict
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-import db
+# OJO: db es una INSTANCIA (clase Database en db.py) — `import db` a secas
+# trae el módulo SIN .pool y explota con AttributeError en el primer request
+# (bug real 2026-07-11, cazado en pruebas). Patrón correcto = digital_records.
+from db import db
 from core.auth import verify_admin_token, get_resolved_tenant_id
 
 logger = logging.getLogger(__name__)
