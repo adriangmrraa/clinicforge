@@ -125,24 +125,47 @@ const AnalyticsFilters: React.FC<AnalyticsFiltersProps> = ({ onFilterChange }) =
                         className="border border-white/[0.08] rounded-xl px-3 py-2.5 text-sm text-white bg-white/[0.04] focus:outline-none focus:ring-2 focus:ring-medical-500/30 focus:border-medical-500 min-w-[140px]"
                     />
                 </div>
-                <div className="min-w-[200px] flex-1 sm:flex-initial">
-                    <label className="block text-xs font-semibold text-white/60 mb-1 uppercase tracking-wider flex items-center gap-1">
+                <div className="min-w-[200px] flex-1">
+                    <label className="block text-xs font-semibold text-white/60 mb-1.5 uppercase tracking-wider flex items-center gap-1">
                         <Users size={14} /> {t('analytics.professionals_filter')}
                     </label>
-                    <select
-                        multiple
-                        className="border border-white/[0.08] rounded-xl px-3 py-2.5 text-sm w-full min-h-[88px] text-white bg-white/[0.04] focus:outline-none focus:ring-2 focus:ring-medical-500/30 focus:border-medical-500"
-                        value={selectedProfs.map(String)}
-                        onChange={(e) => {
-                            const options = Array.from(e.target.selectedOptions, option => parseInt(option.value));
-                            setSelectedProfs(options);
-                        }}
-                    >
-                        {professionals.map(p => (
-                            <option key={p.id} value={p.id} className="bg-[#0d1117] text-white">{professionalDisplayName(p)}</option>
-                        ))}
-                    </select>
-                    <p className="text-[11px] text-white/40 mt-1">{t('chats.ctrl_click_multiple')}</p>
+                    {/* Pills toggleables — reemplazan al <select multiple> con
+                        Ctrl+Click (inusable en mobile, pedido Carlos 2026-07-10).
+                        Contrato intacto: [] = todos los profesionales. */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                        <button
+                            onClick={() => setSelectedProfs([])}
+                            className={`px-3 py-2 rounded-full text-xs font-medium border transition-colors ${
+                                selectedProfs.length === 0
+                                    ? 'bg-white text-[#0a0e1a] border-white'
+                                    : 'bg-white/[0.04] text-white/60 border-white/[0.08] hover:text-white hover:bg-white/[0.08]'
+                            }`}
+                        >
+                            {t('liquidation.filter_all')}
+                        </button>
+                        {professionals.map(p => {
+                            const active = selectedProfs.includes(p.id);
+                            return (
+                                <button
+                                    key={p.id}
+                                    onClick={() =>
+                                        setSelectedProfs(prev =>
+                                            prev.includes(p.id)
+                                                ? prev.filter(id => id !== p.id)
+                                                : [...prev, p.id]
+                                        )
+                                    }
+                                    className={`px-3 py-2 rounded-full text-xs font-medium border transition-colors ${
+                                        active
+                                            ? 'bg-blue-500/20 text-blue-300 border-blue-500/40'
+                                            : 'bg-white/[0.04] text-white/60 border-white/[0.08] hover:text-white hover:bg-white/[0.08]'
+                                    }`}
+                                >
+                                    {professionalDisplayName(p)}
+                                </button>
+                            );
+                        })}
+                    </div>
                 </div>
             </div>
         </div>
