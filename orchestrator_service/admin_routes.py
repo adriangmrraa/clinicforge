@@ -9527,13 +9527,36 @@ async def get_appointment_billing_context(
     except (TypeError, ValueError):
         copay_percent = None
 
+    # Coseguro por defecto del consultorio (Carlos 2026-07-11: "el coseguro
+    # es de 30mil la mayoría de las veces") — tenants.config.default_copay_amount.
+    # Solo aplica cuando la OS cubre y no hay monto/porcentaje específico.
+    default_used = False
+    if not copay_amount and not (copay_percent and base_price):
+        try:
+            _cfg_default = await db.pool.fetchval(
+                """
+                SELECT NULLIF(config->>'default_copay_amount', '')::numeric
+                FROM tenants WHERE id = $1
+                """,
+                tenant_id,
+            )
+            if _cfg_default is not None and float(_cfg_default) > 0:
+                copay_amount = float(_cfg_default)
+                default_used = True
+        except Exception as exc:
+            logger.warning("billing-context: default_copay_amount ilegible: %s", exc)
+
     ctx["copay_amount"] = copay_amount
     ctx["copay_percent"] = copay_percent
 
     if copay_amount and copay_amount > 0:
         ctx["suggested_amount"] = copay_amount
-        ctx["origin"] = "coseguro"
-        ctx["origin_label"] = f"Coseguro {tip.get('provider_name')}"
+        ctx["origin"] = "coseguro_default" if default_used else "coseguro"
+        ctx["origin_label"] = (
+            f"Coseguro {tip.get('provider_name')} (valor por defecto)"
+            if default_used
+            else f"Coseguro {tip.get('provider_name')}"
+        )
     elif copay_percent and copay_percent > 0 and base_price:
         ctx["suggested_amount"] = round(base_price * copay_percent / 100.0, 2)
         ctx["origin"] = "coseguro_pct"
