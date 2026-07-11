@@ -1,5 +1,14 @@
 {
   "lab": {
+    "notify_confirm_title": "Confirmer la notification au patient",
+    "notify_to": "Sera envoyé à",
+    "notify_msg": "Message exact qui partira",
+    "win_free": "Fenêtre de 24h ouverte — message de session, sans coût",
+    "win_template": "Hors fenêtre — MODÈLE approuvé envoyé (payant)",
+    "win_blocked": "Envoi impossible : hors fenêtre et sans modèle configuré. Rien envoyé.",
+    "already_notified_warn": "Déjà prévenu le",
+    "resend_q": "renvoyer ?",
+    "send_confirm": "Confirmer l'envoi",
     "send_to_lab": "Envoyer au laboratoire",
     "notify_patient": "Prévenir le patient (WhatsApp)",
     "notified": "Prévenu",

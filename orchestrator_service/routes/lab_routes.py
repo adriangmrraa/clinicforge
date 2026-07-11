@@ -350,26 +350,25 @@ async def update_lab_case(
 # ---------------------------------------------------------------------------
 
 
-@router.post(
-    "/lab-cases/{case_id}/notify-patient",
-    dependencies=[Depends(verify_admin_token)],
-    tags=["Laboratorio"],
-)
-async def notify_patient_case(
-    case_id: int,
-    tenant_id: int = Depends(get_resolved_tenant_id),
-):
+async def _notify_preflight(case_id: int, tenant_id: int) -> dict:
     """
-    L2: botón "Avisar al paciente" — WhatsApp de que llegó su trabajo.
-    Espeja el patrón del feedback post-consulta: ResponseSender si hay
-    conversación (queda en el chat), fallback YCloud directo.
+    Blindaje anti-costos y anti-mensajes-falsos (Carlos 2026-07-11):
+    - WhatsApp solo permite texto libre dentro de la VENTANA de 24h desde el
+      último mensaje DEL paciente; fuera de ella hace falta PLANTILLA aprobada
+      (HSM) y desde octubre cada envío tiene costo.
+    - Este preflight resuelve destinatario + mensaje exacto + por qué vía
+      saldría ('session' gratis / 'template' con costo / 'blocked'), y el
+      POST lo re-verifica server-side: NUNCA sale nada por una vía no válida.
     """
     row = await db.pool.fetchrow(
         """
-        SELECT lc.id, lc.work_type,
-               p.first_name, p.phone_number, p.guardian_phone
+        SELECT lc.id, lc.work_type, lc.patient_notified_at,
+               p.first_name, p.last_name, p.phone_number, p.guardian_phone,
+               NULLIF(t.config->>'lab_notify_template', '') AS template_name,
+               COALESCE(NULLIF(t.config->>'lab_notify_template_lang', ''), 'es') AS template_lang
         FROM lab_cases lc
         JOIN patients p ON p.id = lc.patient_id AND p.tenant_id = lc.tenant_id
+        JOIN tenants t ON t.id = lc.tenant_id
         WHERE lc.id = $1 AND lc.tenant_id = $2
         """,
         case_id,
@@ -394,30 +393,135 @@ async def notify_patient_case(
         "laboratorio. Escribinos por acá así coordinamos el turno de colocación."
     )
 
+    # Ventana de 24h: último mensaje DEL PACIENTE (role='user') en su chat
+    last_user_msg = await db.pool.fetchval(
+        """
+        SELECT MAX(created_at) FROM chat_messages
+        WHERE tenant_id = $1 AND from_number = $2 AND role = 'user'
+          AND created_at > NOW() - INTERVAL '24 hours'
+        """,
+        tenant_id,
+        phone,
+    )
+    in_window = last_user_msg is not None
+    template_name = row["template_name"]
+    if in_window:
+        will_use = "session"
+    elif template_name:
+        will_use = "template"
+    else:
+        will_use = "blocked"
+
+    return {
+        "case_id": case_id,
+        "patient_name": f"{first_name} {(row['last_name'] or '').strip()}".strip(),
+        "first_name": first_name,
+        "work": work,
+        "phone": phone,
+        "message": message,
+        "in_window": in_window,
+        "has_template": bool(template_name),
+        "template_name": template_name,
+        "template_lang": row["template_lang"],
+        "will_use": will_use,
+        "already_notified_at": (
+            row["patient_notified_at"].isoformat()
+            if row["patient_notified_at"]
+            else None
+        ),
+    }
+
+
+@router.get(
+    "/lab-cases/{case_id}/notify-preflight",
+    dependencies=[Depends(verify_admin_token)],
+    tags=["Laboratorio"],
+)
+async def notify_preflight_case(
+    case_id: int,
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """L2: datos para el modal de confirmación — destinatario, mensaje exacto y costo."""
+    pf = await _notify_preflight(case_id, tenant_id)
+    # No exponer detalles internos innecesarios
+    pf.pop("first_name", None)
+    pf.pop("template_lang", None)
+    return pf
+
+
+@router.post(
+    "/lab-cases/{case_id}/notify-patient",
+    dependencies=[Depends(verify_admin_token)],
+    tags=["Laboratorio"],
+)
+async def notify_patient_case(
+    case_id: int,
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """
+    L2: envío REAL del aviso, re-verificando la vía en el servidor:
+    - Ventana abierta → texto de sesión (sin costo) vía ResponseSender
+      (queda en el chat) con fallback YCloud.
+    - Fuera de ventana + plantilla configurada → HSM send_template.
+    - Fuera de ventana sin plantilla → 409, NO SE ENVÍA NADA.
+    """
+    pf = await _notify_preflight(case_id, tenant_id)
+    if pf["will_use"] == "blocked":
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Fuera de la ventana de 24h y sin plantilla aprobada configurada "
+                "(Ajustes: lab_notify_template) — el mensaje NO se envió."
+            ),
+        )
+
+    phone = pf["phone"]
+    message = pf["message"]
+
     sent_ok = False
     try:
-        conv = await db.pool.fetchrow(
-            "SELECT id, provider, channel, external_account_id, external_chatwoot_id "
-            "FROM chat_conversations WHERE tenant_id = $1 AND external_user_id = $2 "
-            "ORDER BY updated_at DESC LIMIT 1",
-            tenant_id,
-            phone,
-        )
-        if conv:
-            from services.response_sender import ResponseSender
-
-            await ResponseSender.send_sequence(
-                tenant_id=tenant_id,
-                external_user_id=phone,
-                conversation_id=str(conv["id"]),
-                provider=conv.get("provider") or "ycloud",
-                channel=conv.get("channel") or "whatsapp",
-                account_id=str(conv.get("external_account_id") or ""),
-                cw_conv_id=str(conv.get("external_chatwoot_id") or ""),
-                messages_text=message,
+        if pf["will_use"] == "session":
+            # Dentro de la ventana: texto de sesión (sin costo extra).
+            # ResponseSender si hay conversación (queda en el chat de la
+            # plataforma); fallback YCloud directo.
+            conv = await db.pool.fetchrow(
+                "SELECT id, provider, channel, external_account_id, external_chatwoot_id "
+                "FROM chat_conversations WHERE tenant_id = $1 AND external_user_id = $2 "
+                "ORDER BY updated_at DESC LIMIT 1",
+                tenant_id,
+                phone,
             )
-            sent_ok = True
+            if conv:
+                from services.response_sender import ResponseSender
+
+                await ResponseSender.send_sequence(
+                    tenant_id=tenant_id,
+                    external_user_id=phone,
+                    conversation_id=str(conv["id"]),
+                    provider=conv.get("provider") or "ycloud",
+                    channel=conv.get("channel") or "whatsapp",
+                    account_id=str(conv.get("external_account_id") or ""),
+                    cw_conv_id=str(conv.get("external_chatwoot_id") or ""),
+                    messages_text=message,
+                )
+                sent_ok = True
+            else:
+                from core.credentials import (
+                    get_tenant_credential,
+                    YCLOUD_API_KEY,
+                    YCLOUD_WHATSAPP_NUMBER,
+                )
+                from ycloud_client import YCloudClient
+
+                api_key = await get_tenant_credential(tenant_id, YCLOUD_API_KEY)
+                biz_num = await get_tenant_credential(tenant_id, YCLOUD_WHATSAPP_NUMBER)
+                if api_key:
+                    yc = YCloudClient(api_key=api_key, business_number=biz_num)
+                    await yc.send_text_message(to=phone, text=message)
+                    sent_ok = True
         else:
+            # Fuera de ventana: SOLO plantilla aprobada (HSM, con costo).
+            # Variables de la plantilla: {{1}} = nombre, {{2}} = trabajo.
             from core.credentials import (
                 get_tenant_credential,
                 YCLOUD_API_KEY,
@@ -427,10 +531,28 @@ async def notify_patient_case(
 
             api_key = await get_tenant_credential(tenant_id, YCLOUD_API_KEY)
             biz_num = await get_tenant_credential(tenant_id, YCLOUD_WHATSAPP_NUMBER)
-            if api_key:
-                yc = YCloudClient(api_key=api_key, business_number=biz_num)
-                await yc.send_text_message(to=phone, text=message)
-                sent_ok = True
+            if not api_key:
+                raise HTTPException(
+                    status_code=502, detail="YCloud no configurado para esta clínica"
+                )
+            yc = YCloudClient(api_key=api_key, business_number=biz_num)
+            await yc.send_template(
+                to=phone,
+                template_name=pf["template_name"],
+                language_code=pf["template_lang"],
+                components=[
+                    {
+                        "type": "body",
+                        "parameters": [
+                            {"type": "text", "text": pf["first_name"]},
+                            {"type": "text", "text": pf["work"]},
+                        ],
+                    }
+                ],
+            )
+            sent_ok = True
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.error("notify-patient lab_case %s: %s", case_id, exc, exc_info=True)
 
@@ -445,8 +567,13 @@ async def notify_patient_case(
         case_id,
         tenant_id,
     )
-    logger.info("L2 aviso-paciente enviado: lab_case=%s tenant=%s", case_id, tenant_id)
-    return {"sent": True}
+    logger.info(
+        "L2 aviso-paciente enviado: lab_case=%s tenant=%s via=%s",
+        case_id,
+        tenant_id,
+        pf["will_use"],
+    )
+    return {"sent": True, "via": pf["will_use"]}
 
 
 @router.post(

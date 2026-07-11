@@ -174,13 +174,37 @@ export default function LaboratorioView() {
         }
     }, [notice]);
 
+    // Blindaje anti-costos / anti-mensajes-falsos: el click NO envía nada —
+    // pide el preflight (destinatario, mensaje exacto, vía y costo) y abre
+    // un modal de confirmación. El servidor re-verifica la vía al confirmar.
+    const [notifyConfirm, setNotifyConfirm] = useState<{
+        caseRow: LabCaseRow;
+        pf: any;
+    } | null>(null);
+    const [notifySending, setNotifySending] = useState(false);
+
     const notifyPatient = async (c: LabCaseRow) => {
         try {
-            await api.post(`/admin/lab-cases/${c.id}/notify-patient`);
+            const res = await api.get(`/admin/lab-cases/${c.id}/notify-preflight`);
+            setNotifyConfirm({ caseRow: c, pf: res.data });
+        } catch (e: any) {
+            setError(e?.response?.data?.detail || 'Error al preparar el aviso');
+        }
+    };
+
+    const confirmNotify = async () => {
+        if (!notifyConfirm) return;
+        setNotifySending(true);
+        try {
+            await api.post(`/admin/lab-cases/${notifyConfirm.caseRow.id}/notify-patient`);
             setNotice(t('lab.notice_sent'));
+            setNotifyConfirm(null);
             fetchCases();
         } catch (e: any) {
             setError(e?.response?.data?.detail || 'Error al enviar el WhatsApp');
+            setNotifyConfirm(null);
+        } finally {
+            setNotifySending(false);
         }
     };
 
@@ -471,6 +495,80 @@ export default function LaboratorioView() {
                     onClose={() => setLabsModal(false)}
                     onChanged={fetchLabs}
                 />
+            )}
+
+            {/* Modal de confirmación de aviso al paciente (anti-mensajes-falsos) */}
+            {notifyConfirm && (
+                <div
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+                    onClick={() => setNotifyConfirm(null)}
+                >
+                    <div
+                        className="bg-[#0d1117] border border-white/[0.08] rounded-2xl w-full max-w-md p-5 space-y-4"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <h3 className="text-base font-bold text-white">
+                            📲 {t('lab.notify_confirm_title')}
+                        </h3>
+
+                        <div className="space-y-1">
+                            <p className="text-xs text-white/40">{t('lab.notify_to')}</p>
+                            <p className="text-sm font-semibold text-white">
+                                {notifyConfirm.pf.patient_name}
+                                <span className="text-white/40 font-normal ml-2">
+                                    {notifyConfirm.pf.phone}
+                                </span>
+                            </p>
+                        </div>
+
+                        <div className="space-y-1">
+                            <p className="text-xs text-white/40">{t('lab.notify_msg')}</p>
+                            <div className="rounded-xl bg-emerald-500/[0.06] border border-emerald-500/15 p-3 text-sm text-white/80 leading-relaxed">
+                                {notifyConfirm.pf.message}
+                            </div>
+                        </div>
+
+                        {/* Semáforo de vía / costo (regla octubre: cada mensaje vale plata) */}
+                        {notifyConfirm.pf.will_use === 'session' && (
+                            <div className="px-3 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 text-xs font-medium">
+                                🟢 {t('lab.win_free')}
+                            </div>
+                        )}
+                        {notifyConfirm.pf.will_use === 'template' && (
+                            <div className="px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-400 text-xs font-medium">
+                                🟠 {t('lab.win_template')}
+                            </div>
+                        )}
+                        {notifyConfirm.pf.will_use === 'blocked' && (
+                            <div className="px-3 py-2 rounded-xl bg-red-500/10 border border-red-500/25 text-red-400 text-xs font-medium">
+                                🔴 {t('lab.win_blocked')}
+                            </div>
+                        )}
+                        {notifyConfirm.pf.already_notified_at && (
+                            <div className="px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-400 text-xs">
+                                ⚠ {t('lab.already_notified_warn')}{' '}
+                                {fmtDate(notifyConfirm.pf.already_notified_at.slice(0, 10))} —{' '}
+                                {t('lab.resend_q')}
+                            </div>
+                        )}
+
+                        <div className="flex gap-2 pt-1">
+                            <button
+                                onClick={() => setNotifyConfirm(null)}
+                                className="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium bg-white/[0.05] text-white/60 border border-white/[0.08] hover:bg-white/[0.09] transition-colors"
+                            >
+                                {t('lab.cancel')}
+                            </button>
+                            <button
+                                onClick={confirmNotify}
+                                disabled={notifySending || notifyConfirm.pf.will_use === 'blocked'}
+                                className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/30 transition-colors disabled:opacity-40"
+                            >
+                                {notifySending ? '…' : t('lab.send_confirm')}
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );

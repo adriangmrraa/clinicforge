@@ -1,5 +1,14 @@
 {
   "lab": {
+    "notify_confirm_title": "Confirm patient notification",
+    "notify_to": "Will be sent to",
+    "notify_msg": "Exact message that will go out",
+    "win_free": "24h window open — session message, no extra cost",
+    "win_template": "Outside window — approved TEMPLATE will be sent (paid)",
+    "win_blocked": "Cannot send: outside window and no template configured. Nothing was sent.",
+    "already_notified_warn": "Already notified on",
+    "resend_q": "send again?",
+    "send_confirm": "Confirm send",
     "send_to_lab": "Send to lab",
     "notify_patient": "Notify patient (WhatsApp)",
     "notified": "Notified",
