@@ -1,5 +1,8 @@
 {
   "lab": {
+    "from_blocked": "Desde la lista de bloqueos",
+    "use_candidate": "Usar",
+    "candidate_hint": "Detectados por la etiqueta Laboratorio en bloqueos — tocá Usar, completá el email y guardá.",
     "notify_confirm_title": "Confirmar aviso al paciente",
     "notify_to": "Se enviará a",
     "notify_msg": "Mensaje exacto que va a salir",

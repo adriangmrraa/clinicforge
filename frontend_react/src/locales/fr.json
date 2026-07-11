@@ -1,5 +1,8 @@
 {
   "lab": {
+    "from_blocked": "Depuis la liste de blocage",
+    "use_candidate": "Utiliser",
+    "candidate_hint": "Détectés via l'étiquette Laboratoire — touchez Utiliser, ajoutez l'email et enregistrez.",
     "notify_confirm_title": "Confirmer la notification au patient",
     "notify_to": "Sera envoyé à",
     "notify_msg": "Message exact qui partira",

@@ -801,6 +801,15 @@ function LabsModal({
     const [busy, setBusy] = useState(false);
     const [msg, setMsg] = useState<string | null>(null);
 
+    // Idea Carlos: los labs cargados en BLOQUEOS (etiqueta "Laboratorio") se
+    // ofrecen acá para importar con un click — solo se completa el email
+    const [candidates, setCandidates] = useState<{ phone_number: string; name: string }[]>([]);
+    const fetchCandidates = () =>
+        api.get('/admin/labs/blocked-candidates')
+            .then(r => setCandidates(r.data.candidates || []))
+            .catch(() => {});
+    useEffect(() => { fetchCandidates(); }, []);
+
     const addLab = async () => {
         if (!form.name.trim()) return;
         setBusy(true);
@@ -809,6 +818,7 @@ function LabsModal({
             await api.post('/admin/labs', form);
             setForm({ name: '', email: '', phone: '' });
             onChanged();
+            fetchCandidates();
         } catch (e: any) {
             setMsg(e?.response?.data?.detail || 'Error');
         } finally {
@@ -835,6 +845,35 @@ function LabsModal({
                     </h3>
                     <button onClick={onClose} className="text-white/30 hover:text-white"><X size={18} /></button>
                 </div>
+
+                {/* Importar desde la lista de bloqueos (etiqueta Laboratorio) */}
+                {candidates.length > 0 && (
+                    <div className="space-y-1.5">
+                        <p className="text-[11px] font-semibold text-white/35 uppercase tracking-wider">
+                            {t('lab.from_blocked')}
+                        </p>
+                        {candidates.map(c => (
+                            <div
+                                key={c.phone_number}
+                                className="flex items-center gap-2 px-3 py-2 rounded-xl bg-blue-500/[0.06] border border-blue-500/15"
+                            >
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-sm text-white/80 truncate">{c.name}</p>
+                                    <p className="text-[11px] text-white/35">{c.phone_number}</p>
+                                </div>
+                                <button
+                                    onClick={() =>
+                                        setForm({ name: c.name, phone: c.phone_number, email: '' })
+                                    }
+                                    className="text-[11px] px-2.5 py-1 rounded-lg font-semibold bg-blue-500/15 text-blue-300 border border-blue-500/25 hover:bg-blue-500/25 transition-colors"
+                                >
+                                    {t('lab.use_candidate')}
+                                </button>
+                            </div>
+                        ))}
+                        <p className="text-[10px] text-white/25">{t('lab.candidate_hint')}</p>
+                    </div>
+                )}
 
                 <div className="space-y-2">
                     <input className={inputCls} placeholder={`${t('lab.name')} *`} value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} />

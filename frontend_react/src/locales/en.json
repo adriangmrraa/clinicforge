@@ -1,5 +1,8 @@
 {
   "lab": {
+    "from_blocked": "From the blocked list",
+    "use_candidate": "Use",
+    "candidate_hint": "Detected via the Laboratory label in the blocked list — tap Use, add the email and save.",
     "notify_confirm_title": "Confirm patient notification",
     "notify_to": "Will be sent to",
     "notify_msg": "Exact message that will go out",

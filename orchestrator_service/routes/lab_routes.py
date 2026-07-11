@@ -83,6 +83,42 @@ async def list_labs(
     return {"labs": [dict(r) for r in rows]}
 
 
+@router.get(
+    "/labs/blocked-candidates",
+    dependencies=[Depends(verify_admin_token)],
+    tags=["Laboratorio"],
+)
+async def list_blocked_lab_candidates(
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """
+    Idea Carlos 2026-07-11: una sola carga. Los contactos de la lista de
+    BLOQUEOS con etiqueta 'laboratorio' que todavía no existen en labs
+    (match por dígitos del teléfono) se ofrecen para importar con un click
+    — solo falta completar el email.
+    """
+    rows = await db.pool.fetch(
+        """
+        SELECT b.phone_number,
+               COALESCE(NULLIF(b.contact_name, ''), b.phone_number) AS name
+        FROM blocked_phone_numbers b
+        WHERE b.tenant_id = $1
+          AND b.is_active = true
+          AND b.label = 'laboratorio'
+          AND NOT EXISTS (
+                SELECT 1 FROM labs l
+                WHERE l.tenant_id = b.tenant_id
+                  AND regexp_replace(COALESCE(l.phone, ''), '[^0-9]', '', 'g') <> ''
+                  AND regexp_replace(COALESCE(l.phone, ''), '[^0-9]', '', 'g')
+                      = regexp_replace(b.phone_number, '[^0-9]', '', 'g')
+          )
+        ORDER BY name
+        """,
+        tenant_id,
+    )
+    return {"candidates": [dict(r) for r in rows]}
+
+
 @router.post("/labs", dependencies=[Depends(verify_admin_token)], tags=["Laboratorio"])
 async def create_lab(
     data: Dict[str, Any],
