@@ -409,6 +409,13 @@
     "tag_high_ticket": "High Ticket"
   },
   "agenda": {
+    "billing_quick_title": "Front-desk charge (copay / balance)",
+    "billing_quick_btn": "Register payment",
+    "billing_quick_done": "Payment registered — total:",
+    "billing_quick_remaining": "remaining:",
+    "billing_method_cash": "Cash",
+    "billing_method_transfer": "Transfer",
+    "billing_method_card": "Card",
     "billing_ctx_use": "Use",
     "billing_ctx_os_rest": "Insurance pays later:",
     "billing_ctx_no_debt": "Not patient debt — covered by insurance",

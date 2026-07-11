@@ -403,6 +403,13 @@
     "tag_high_ticket": "Ticket élevé"
   },
   "agenda": {
+    "billing_quick_title": "Encaissement au comptoir (ticket / solde)",
+    "billing_quick_btn": "Enregistrer",
+    "billing_quick_done": "Encaissement enregistré — total :",
+    "billing_quick_remaining": "reste :",
+    "billing_method_cash": "Espèces",
+    "billing_method_transfer": "Virement",
+    "billing_method_card": "Carte",
     "billing_ctx_use": "Utiliser",
     "billing_ctx_os_rest": "La mutuelle paie ensuite :",
     "billing_ctx_no_debt": "Pas une dette du patient — couvert par la mutuelle",

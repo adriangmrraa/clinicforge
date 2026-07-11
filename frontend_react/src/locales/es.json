@@ -417,6 +417,13 @@
     "tag_high_ticket": "Ticket alto"
   },
   "agenda": {
+    "billing_quick_title": "Cobro en mostrador (coseguro / resto)",
+    "billing_quick_btn": "Registrar cobro",
+    "billing_quick_done": "Cobro registrado — total:",
+    "billing_quick_remaining": "resta:",
+    "billing_method_cash": "Efectivo",
+    "billing_method_transfer": "Transferencia",
+    "billing_method_card": "Tarjeta",
     "billing_ctx_use": "Usar",
     "billing_ctx_os_rest": "Después paga la obra social:",
     "billing_ctx_no_debt": "No es deuda del paciente — lo cubre la obra social",

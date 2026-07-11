@@ -85,6 +85,42 @@ export default function AppointmentForm({
     const [billingContext, setBillingContext] = useState<any | null>(null);
     const billingCtxAppliedRef = useRef(false);
 
+    // CT-3: cobro en mostrador (coseguro de OS / resto del particular) sin
+    // pasar por Presupuestos. Regla Carlos: nada se marca pagado solo —
+    // SOLO este registro cambia el estado.
+    const [quickPay, setQuickPay] = useState({ amount: '', method: 'cash' });
+    const [quickPaySaving, setQuickPaySaving] = useState(false);
+    const [quickPayMsg, setQuickPayMsg] = useState<string | null>(null);
+
+    const handleQuickCharge = async () => {
+        const amt = Number(quickPay.amount);
+        if (!initialData?.id || !amt || amt <= 0) return;
+        setQuickPaySaving(true);
+        setQuickPayMsg(null);
+        try {
+            const res = await api.post(`/admin/appointments/${initialData.id}/payments`, {
+                amount: amt,
+                method: quickPay.method,
+            });
+            setBillingData(prev => ({
+                ...prev,
+                payment_status: res.data.payment_status || prev.payment_status,
+            }));
+            const rem = res.data.remaining;
+            setQuickPayMsg(
+                `${t('agenda.billing_quick_done')} $${Number(res.data.total_paid).toLocaleString('es-AR')}` +
+                    (rem && rem > 0
+                        ? ` — ${t('agenda.billing_quick_remaining')} $${Number(rem).toLocaleString('es-AR')}`
+                        : '')
+            );
+            setQuickPay(prev => ({ ...prev, amount: '' }));
+        } catch (e: any) {
+            setQuickPayMsg(e?.response?.data?.detail || 'Error al registrar el cobro');
+        } finally {
+            setQuickPaySaving(false);
+        }
+    };
+
     // CT-2: traer el contexto de cobro al abrir un turno existente
     useEffect(() => {
         if (!isOpen || !isEditing || !initialData?.id) {
@@ -1065,6 +1101,50 @@ export default function AppointmentForm({
                                             className="w-full px-4 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm text-white resize-none"
                                             value={billingData.billing_notes}
                                             onChange={(e) => setBillingData(prev => ({ ...prev, billing_notes: e.target.value }))} />
+                                    </div>
+                                    {/* CT-3: cobro en mostrador — coseguro / resto del día */}
+                                    <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 space-y-2">
+                                        <label className="text-xs font-semibold text-white/50">
+                                            {t('agenda.billing_quick_title')}
+                                        </label>
+                                        <div className="flex gap-2">
+                                            <div className="relative flex-1">
+                                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30 text-sm">$</span>
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    step="0.01"
+                                                    placeholder="0.00"
+                                                    className="w-full pl-7 pr-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm text-white"
+                                                    value={quickPay.amount}
+                                                    onChange={(e) =>
+                                                        setQuickPay(prev => ({ ...prev, amount: e.target.value }))
+                                                    }
+                                                />
+                                            </div>
+                                            <select
+                                                value={quickPay.method}
+                                                onChange={(e) =>
+                                                    setQuickPay(prev => ({ ...prev, method: e.target.value }))
+                                                }
+                                                className="bg-white/[0.04] border border-white/[0.08] text-white text-sm rounded-lg px-2 py-2 focus:outline-none"
+                                            >
+                                                <option value="cash">{t('agenda.billing_method_cash')}</option>
+                                                <option value="transfer">{t('agenda.billing_method_transfer')}</option>
+                                                <option value="card">{t('agenda.billing_method_card')}</option>
+                                            </select>
+                                            <button
+                                                type="button"
+                                                onClick={handleQuickCharge}
+                                                disabled={quickPaySaving || !Number(quickPay.amount)}
+                                                className="px-3 py-2 text-xs font-semibold rounded-lg bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 hover:bg-emerald-500/25 transition-colors disabled:opacity-40 whitespace-nowrap"
+                                            >
+                                                {quickPaySaving ? '…' : t('agenda.billing_quick_btn')}
+                                            </button>
+                                        </div>
+                                        {quickPayMsg && (
+                                            <p className="text-xs text-emerald-400/80">{quickPayMsg}</p>
+                                        )}
                                     </div>
                                     <div className="space-y-1">
                                         <label className="text-xs font-semibold text-white/50">{t('agenda.payment_status')}</label>

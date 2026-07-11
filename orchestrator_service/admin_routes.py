@@ -9570,6 +9570,105 @@ async def get_appointment_billing_context(
     return ctx
 
 
+@router.post(
+    "/appointments/{id}/payments",
+    tags=["Turnos"],
+    summary="Registrar un cobro en mostrador para el turno",
+)
+async def register_appointment_payment(
+    id: str,
+    data: Dict[str, Any],
+    user_data=Depends(verify_admin_token),
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """
+    CT-3 (OK Carlos 2026-07-11: "empezá a crear todo... dejémoslo en estado
+    pendiente"): el cobro del día — coseguro de OS o resto del particular —
+    se registra ACÁ, sin desviarse a Presupuestos. Regla de oro: nada se
+    marca pagado solo; SOLO este registro (o el editor manual) cambia el
+    estado. El precio congelado (billing_amount) NUNCA se toca.
+    """
+    try:
+        amount = float(data.get("amount") or 0)
+    except (TypeError, ValueError):
+        amount = 0
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="Monto inválido")
+    method = (data.get("method") or "cash").strip()[:30]
+
+    appt = await db.pool.fetchrow(
+        """
+        SELECT a.billing_amount, a.payment_status, a.patient_id, a.appointment_type
+        FROM appointments a
+        WHERE a.id = $1 AND a.tenant_id = $2
+        """,
+        id,
+        tenant_id,
+    )
+    if not appt:
+        raise HTTPException(status_code=404, detail="Turno no encontrado")
+
+    # Acumulado previo del turno (mismo libro que usa Nova: accounting_transactions)
+    prev_paid = await db.pool.fetchval(
+        """
+        SELECT COALESCE(SUM(amount), 0)
+        FROM accounting_transactions
+        WHERE tenant_id = $1 AND appointment_id = $2
+          AND transaction_type = 'payment' AND status = 'completed'
+        """,
+        tenant_id,
+        id,
+    )
+    total_paid = float(prev_paid or 0) + amount
+    price = float(appt["billing_amount"] or 0)
+    if price > 0:
+        new_status = "paid" if total_paid >= price else "partial"
+    else:
+        # Sin precio de referencia: el cobro cierra el mostrador
+        new_status = "paid"
+
+    await db.pool.execute(
+        """
+        INSERT INTO accounting_transactions
+            (id, tenant_id, patient_id, appointment_id, transaction_type,
+             amount, payment_method, description, status)
+        VALUES ($1, $2, $3, $4, 'payment', $5, $6, $7, 'completed')
+        """,
+        str(uuid.uuid4()),
+        tenant_id,
+        appt["patient_id"],
+        id,
+        amount,
+        method,
+        (data.get("notes") or "").strip()
+        or f"Cobro en mostrador — {appt['appointment_type']}",
+    )
+    await db.pool.execute(
+        """
+        UPDATE appointments SET payment_status = $1, updated_at = NOW()
+        WHERE id = $2 AND tenant_id = $3
+        """,
+        new_status,
+        id,
+        tenant_id,
+    )
+    logger.info(
+        "CT-3 cobro mostrador: apt=%s monto=%s metodo=%s total_pagado=%s estado=%s",
+        id,
+        amount,
+        method,
+        total_paid,
+        new_status,
+    )
+    return {
+        "payment_status": new_status,
+        "amount_registered": amount,
+        "total_paid": total_paid,
+        "billing_amount": price if price > 0 else None,
+        "remaining": max(0.0, price - total_paid) if price > 0 else None,
+    }
+
+
 @router.put(
     "/appointments/{id}/billing",
     tags=["Turnos"],
