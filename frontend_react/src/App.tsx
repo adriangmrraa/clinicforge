@@ -11,6 +11,7 @@ const AgendaView = lazy(() => import('./views/AgendaView'));
 const PatientsView = lazy(() => import('./views/PatientsView'));
 const PatientDetail = lazy(() => import('./views/PatientDetail'));
 const ProfessionalAnalyticsView = lazy(() => import('./views/ProfessionalAnalyticsView'));
+const LaboratorioView = lazy(() => import('./views/LaboratorioView'));
 const ChatsView = lazy(() => import('./views/ChatsView'));
 const TreatmentsView = lazy(() => import('./views/TreatmentsView'));
 const LoginView = lazy(() => import('./views/LoginView'));
@@ -86,6 +87,7 @@ function App() {
                         <TreatmentsView />
                       </ProtectedRoute>
                     } />
+                    <Route path="laboratorio" element={<LaboratorioView />} />
                     <Route path="perfil" element={<ProfileView />} />
                     <Route path="aprobaciones" element={
                       <ProtectedRoute allowedRoles={['ceo']}>
