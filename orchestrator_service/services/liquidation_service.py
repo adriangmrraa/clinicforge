@@ -387,13 +387,17 @@ class LiquidationService:
         Returns { generated_count, skipped_count, liquidations: [...] }.
         """
         # 1. Get list of active professionals
+        # FIX 2026-07-11 (Carlos: "generar no genera nada"): el INNER JOIN a
+        # users exigía que el profesional tuviera LOGIN en la plataforma — en
+        # la clínica real la mayoría no lo tiene, así que el bulk los salteaba
+        # EN SILENCIO y terminaba "0 generadas, 0 errores". La liquidación es
+        # un artefacto administrativo: se genera para TODO profesional activo;
+        # el acceso al portal es un tema aparte.
         professionals = await pool.fetch(
             """
             SELECT p.id, p.first_name, p.last_name
             FROM professionals p
-            INNER JOIN users u ON p.user_id = u.id
             WHERE p.tenant_id = $1 AND p.is_active = true
-              AND u.role IN ('professional', 'ceo')
             ORDER BY p.id
             """,
             tenant_id,
@@ -403,6 +407,21 @@ class LiquidationService:
         errors = []
         generated_count = 0
         skipped_count = 0
+
+        if not professionals:
+            # Nunca terminar "0 generadas, 0 errores" sin explicación
+            return {
+                "generated_count": 0,
+                "skipped_count": 0,
+                "liquidations": [],
+                "errors": [
+                    {
+                        "professional_id": None,
+                        "professional_name": "—",
+                        "error": "No hay profesionales activos en la clínica.",
+                    }
+                ],
+            }
 
         for prof in professionals:
             try:
