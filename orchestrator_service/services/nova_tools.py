@@ -5601,8 +5601,9 @@ async def _agendar_turno(args: Dict, tenant_id: int) -> str:
         """
         INSERT INTO appointments
             (id, tenant_id, patient_id, appointment_datetime, duration_minutes,
-             appointment_type, professional_id, notes, status, source)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'scheduled', 'nova')
+             appointment_type, professional_id, notes, status, source, billing_amount)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'scheduled', 'nova',
+                (SELECT NULLIF(base_price, 0) FROM treatment_types WHERE tenant_id = $2 AND code = $6 LIMIT 1))
         """,
         appt_id,
         tenant_id,
@@ -5895,10 +5896,10 @@ async def _registrar_pago(args: Dict, tenant_id: int, user_role: str) -> str:
     except ValueError:
         return "ID de turno inválido."
 
-    # Verify appointment exists
+    # Verify appointment exists (+ billing actual para no pisar el precio congelado)
     appt = await db.pool.fetchrow(
         """
-        SELECT a.id, a.appointment_type,
+        SELECT a.id, a.appointment_type, a.billing_amount,
                p.first_name || ' ' || COALESCE(p.last_name, '') AS patient_name
         FROM appointments a
         JOIN patients p ON p.id = a.patient_id
@@ -5910,15 +5911,35 @@ async def _registrar_pago(args: Dict, tenant_id: int, user_role: str) -> str:
     if not appt:
         return "No encontré ese turno."
 
+    # M1 (2026-07-11): el precio del turno viene CONGELADO desde que se agenda.
+    # Antes este UPDATE hacía billing_amount = monto pagado + 'paid' incondicional:
+    # un pago de $10k convertía un tratamiento de $600k en "facturado $10k, pagado".
+    # Ahora el pago NUNCA pisa un precio ya cargado: si cubre el total → paid;
+    # si es menor → partial. El monto exacto del pago queda registrado en
+    # accounting_transactions (abajo), así que no se pierde información.
+    _price = float(appt["billing_amount"] or 0)
+    _paid_amt = float(amount)
+    if _price <= 0:
+        # Turno sin precio (histórico/catálogo en $0): comportamiento anterior
+        new_billing = Decimal(str(amount))
+        new_status = "paid"
+    elif _paid_amt >= _price:
+        new_billing = appt["billing_amount"]
+        new_status = "paid"
+    else:
+        new_billing = appt["billing_amount"]
+        new_status = "partial"
+
     # Update appointment billing
     await db.pool.execute(
         """
         UPDATE appointments
-        SET billing_amount = $1, payment_status = 'paid',
-            billing_notes = $2, updated_at = NOW()
-        WHERE id = $3 AND tenant_id = $4
+        SET billing_amount = $1, payment_status = $2,
+            billing_notes = COALESCE($3, billing_notes), updated_at = NOW()
+        WHERE id = $4 AND tenant_id = $5
         """,
-        Decimal(str(amount)),
+        new_billing,
+        new_status,
         args.get("notes"),
         appt_uuid,
         tenant_id,

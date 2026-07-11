@@ -5485,8 +5485,10 @@ async def book_appointment(
                         )
                     await _conn.execute(
                         """
-                        INSERT INTO appointments (id, tenant_id, patient_id, professional_id, appointment_datetime, duration_minutes, appointment_type, status, source, sena_expires_at, created_at)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, 'scheduled', 'ai', $8, NOW())
+                        INSERT INTO appointments (id, tenant_id, patient_id, professional_id, appointment_datetime, duration_minutes, appointment_type, status, source, sena_expires_at, billing_amount, created_at)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, 'scheduled', 'ai', $8,
+                                (SELECT NULLIF(base_price, 0) FROM treatment_types WHERE tenant_id = $2 AND code = $7 LIMIT 1),
+                                NOW())
                     """,
                         apt_id,
                         tenant_id,
