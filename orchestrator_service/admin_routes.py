@@ -9390,6 +9390,163 @@ async def approve_payment_manually(
     return {"status": "approved", "appointment_id": id}
 
 
+@router.get(
+    "/appointments/{id}/billing-context",
+    tags=["Turnos"],
+    summary="Contexto de cobro del turno: cobertura, coseguro y monto sugerido",
+)
+async def get_appointment_billing_context(
+    id: str,
+    user_data=Depends(verify_admin_token),
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """
+    Modelo de dos libros (PLAN_MOTOR_DINERO, OK Carlos 2026-07-11): clasifica
+    el turno AL LEER (presupuesto / particular / obra social con o sin
+    coseguro / sin precio) y sugiere el monto a cobrar. Solo lectura.
+    """
+    row = await db.pool.fetchrow(
+        """
+        SELECT a.billing_amount, a.appointment_type, a.payment_status,
+               a.plan_item_id,
+               p.insurance_provider,
+               tt.name AS treatment_name,
+               NULLIF(tt.base_price, 0) AS catalog_price
+        FROM appointments a
+        JOIN patients p ON p.id = a.patient_id AND p.tenant_id = a.tenant_id
+        LEFT JOIN treatment_types tt
+            ON tt.code = a.appointment_type AND tt.tenant_id = a.tenant_id
+        WHERE a.id = $1 AND a.tenant_id = $2
+        """,
+        id,
+        tenant_id,
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Turno no encontrado")
+
+    frozen_price = (
+        float(row["billing_amount"]) if row["billing_amount"] is not None else None
+    )
+    catalog_price = (
+        float(row["catalog_price"]) if row["catalog_price"] is not None else None
+    )
+    base_price = frozen_price if frozen_price and frozen_price > 0 else catalog_price
+
+    ctx = {
+        "treatment_code": row["appointment_type"],
+        "treatment_name": row["treatment_name"] or row["appointment_type"],
+        "payment_status": row["payment_status"] or "pending",
+        "frozen_price": frozen_price,
+        "catalog_price": catalog_price,
+        "patient_insurance": (row["insurance_provider"] or "").strip() or None,
+        "matched_provider": None,
+        "covers": None,
+        "copay_amount": None,
+        "copay_percent": None,
+        "suggested_amount": base_price,
+        "origin": "particular",
+        "origin_label": "Particular",
+    }
+
+    # Turno atado a un presupuesto: la plata exacta vive en el plan
+    if row["plan_item_id"]:
+        ctx["origin"] = "plan"
+        ctx["origin_label"] = "Presupuesto"
+        return ctx
+
+    prov_raw = ctx["patient_insurance"]
+    if not prov_raw or prov_raw.lower() in (
+        "particular",
+        "sin obra social",
+        "ninguna",
+        "no",
+    ):
+        if base_price is None:
+            ctx["origin"] = "sin_precio"
+            ctx["origin_label"] = "Sin precio cargado"
+            ctx["suggested_amount"] = None
+        return ctx
+
+    # Matching difuso compartido con el semáforo (lazy: evita import circular)
+    from main import _match_insurance_provider_row
+
+    tip = None
+    try:
+        tip = await _match_insurance_provider_row(tenant_id, prov_raw)
+    except Exception as exc:
+        logger.warning("billing-context: matching OS falló para %r: %s", prov_raw, exc)
+
+    if not tip:
+        ctx["origin"] = "os_desconocida"
+        ctx["origin_label"] = f"Obra social sin identificar ({prov_raw})"
+        if base_price is None:
+            ctx["suggested_amount"] = None
+        return ctx
+
+    ctx["matched_provider"] = {
+        "name": tip.get("provider_name"),
+        "status": tip.get("status"),
+    }
+
+    if tip.get("status") in ("rejected", "external_derivation"):
+        ctx["origin_label"] = f"Particular ({tip.get('provider_name')}: no se atiende por OS)"
+        return ctx
+
+    coverage = tip.get("coverage_by_treatment") or {}
+    if isinstance(coverage, str):
+        try:
+            coverage = json.loads(coverage)
+        except (json.JSONDecodeError, ValueError):
+            coverage = {}
+
+    entry = coverage.get(row["appointment_type"]) if isinstance(coverage, dict) else None
+    if not isinstance(entry, dict):
+        entry = {} if entry else None
+
+    if entry is None:
+        ctx["covers"] = False
+        ctx["origin"] = "os_no_cubre"
+        ctx["origin_label"] = (
+            f"{tip.get('provider_name')} no cubre este tratamiento — particular"
+        )
+        return ctx
+
+    ctx["covers"] = True
+    copay_amount = entry.get("copay_amount")
+    copay_percent = entry.get("copay_percent")
+    if copay_percent in (None, ""):
+        copay_percent = tip.get("default_copay_percent")
+    try:
+        copay_amount = float(copay_amount) if copay_amount not in (None, "") else None
+    except (TypeError, ValueError):
+        copay_amount = None
+    try:
+        copay_percent = (
+            float(copay_percent) if copay_percent not in (None, "") else None
+        )
+    except (TypeError, ValueError):
+        copay_percent = None
+
+    ctx["copay_amount"] = copay_amount
+    ctx["copay_percent"] = copay_percent
+
+    if copay_amount and copay_amount > 0:
+        ctx["suggested_amount"] = copay_amount
+        ctx["origin"] = "coseguro"
+        ctx["origin_label"] = f"Coseguro {tip.get('provider_name')}"
+    elif copay_percent and copay_percent > 0 and base_price:
+        ctx["suggested_amount"] = round(base_price * copay_percent / 100.0, 2)
+        ctx["origin"] = "coseguro_pct"
+        ctx["origin_label"] = (
+            f"Coseguro {tip.get('provider_name')} ({copay_percent:g}%)"
+        )
+    else:
+        ctx["suggested_amount"] = 0.0
+        ctx["origin"] = "covered_full"
+        ctx["origin_label"] = f"Cubierto por {tip.get('provider_name')}"
+    return ctx
+
+
 @router.put(
     "/appointments/{id}/billing",
     tags=["Turnos"],
