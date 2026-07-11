@@ -1,5 +1,10 @@
 {
   "lab": {
+    "search_patient": "Search patient, work or lab…",
+    "stat_active": "in progress",
+    "stat_overdue": "overdue",
+    "stat_to_notify": "to notify",
+    "stat_placed30": "seated (30 days)",
     "from_blocked": "From the blocked list",
     "use_candidate": "Use",
     "candidate_hint": "Detected via the Laboratory label in the blocked list — tap Use, add the email and save.",

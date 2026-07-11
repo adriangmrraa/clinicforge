@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-    FlaskConical, Plus, AlertTriangle, RefreshCw, X, ChevronRight,
+    FlaskConical, Plus, RefreshCw, X, ChevronRight,
     CheckCircle2, Building2, Pencil,
 } from 'lucide-react';
 import api from '../api/axios';
@@ -103,6 +103,8 @@ export default function LaboratorioView() {
     const [filterProf, setFilterProf] = useState<number | ''>('');
     const [onlyOverdue, setOnlyOverdue] = useState(false);
     const [showCancelled, setShowCancelled] = useState(false);
+    // Pulido UI (pedido Carlos): búsqueda por paciente, en vivo y sin servidor
+    const [searchQ, setSearchQ] = useState('');
 
     const [caseModal, setCaseModal] = useState<Partial<LabCaseRow> | null>(null);
     const [labsModal, setLabsModal] = useState(false);
@@ -219,12 +221,39 @@ export default function LaboratorioView() {
     };
 
     const columns = useMemo(() => {
-        const visible = cases.filter(c => showCancelled || c.status !== 'cancelado');
+        const q = searchQ.trim().toLowerCase();
+        const visible = cases.filter(
+            c =>
+                (showCancelled || c.status !== 'cancelado') &&
+                (!q ||
+                    c.patient_name.toLowerCase().includes(q) ||
+                    c.work_type.toLowerCase().includes(q) ||
+                    (c.lab_name || '').toLowerCase().includes(q))
+        );
         return STATUS_ORDER.map(key => ({
             key,
             items: visible.filter(c => c.status === key),
         }));
-    }, [cases, showCancelled]);
+    }, [cases, showCancelled, searchQ]);
+
+    // Resumen de lo cargado (pedido Carlos: "lo que se ha cargado y demás")
+    const stats = useMemo(() => {
+        const active = cases.filter(
+            c => !['colocado', 'cancelado'].includes(c.status)
+        ).length;
+        const toNotify = cases.filter(
+            c => c.status === 'recibido' && !c.patient_notified_at
+        ).length;
+        const cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() - 30);
+        const placed30 = cases.filter(
+            c =>
+                c.status === 'colocado' &&
+                c.placed_at &&
+                new Date(c.placed_at + 'T00:00:00') >= cutoff
+        ).length;
+        return { active, toNotify, placed30 };
+    }, [cases]);
 
     const cancelledItems = useMemo(
         () => cases.filter(c => c.status === 'cancelado'),
@@ -240,15 +269,30 @@ export default function LaboratorioView() {
                     title={t('lab.title')}
                     subtitle={t('lab.subtitle')}
                     icon={<FlaskConical size={22} />}
-                    action={
-                        overdueCount > 0 ? (
-                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-red-500/15 text-red-400 border border-red-500/25">
-                                <AlertTriangle size={13} />
-                                {overdueCount} {t('lab.overdue_count')}
-                            </span>
-                        ) : undefined
-                    }
                 />
+
+                {/* Resumen de lo cargado */}
+                <div className="flex flex-wrap items-center gap-2">
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-blue-500/10 text-blue-300 border border-blue-500/20">
+                        🔬 {stats.active} {t('lab.stat_active')}
+                    </span>
+                    <button
+                        onClick={() => setOnlyOverdue(v => !v)}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
+                            onlyOverdue
+                                ? 'bg-red-500/25 text-red-300 border-red-500/40'
+                                : 'bg-red-500/10 text-red-400 border-red-500/20 hover:bg-red-500/20'
+                        }`}
+                    >
+                        ⚠ {overdueCount} {t('lab.stat_overdue')}
+                    </button>
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-violet-500/10 text-violet-300 border border-violet-500/20">
+                        📲 {stats.toNotify} {t('lab.stat_to_notify')}
+                    </span>
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                        ✅ {stats.placed30} {t('lab.stat_placed30')}
+                    </span>
+                </div>
 
                 {/* Toolbar */}
                 <div className="flex flex-wrap items-center gap-2.5">
@@ -264,6 +308,12 @@ export default function LaboratorioView() {
                     >
                         <Building2 size={15} /> {t('lab.manage_labs')}
                     </button>
+                    <input
+                        value={searchQ}
+                        onChange={e => setSearchQ(e.target.value)}
+                        placeholder={t('lab.search_patient')}
+                        className="flex-1 min-w-[170px] max-w-[280px] px-3 py-2.5 bg-white/[0.04] border border-white/[0.08] rounded-xl text-sm text-white placeholder-white/25 focus:border-blue-500/40 focus:outline-none"
+                    />
                     <select
                         value={filterLab}
                         onChange={e => setFilterLab(e.target.value ? Number(e.target.value) : '')}
@@ -272,28 +322,6 @@ export default function LaboratorioView() {
                         <option value="">{t('lab.lab')}: {t('lab.all')}</option>
                         {activeLabs.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
                     </select>
-                    <select
-                        value={filterProf}
-                        onChange={e => setFilterProf(e.target.value ? Number(e.target.value) : '')}
-                        className="bg-white/[0.04] border border-white/[0.08] text-white text-sm rounded-lg px-3 py-2.5 focus:outline-none"
-                    >
-                        <option value="">{t('lab.professional')}: {t('lab.all')}</option>
-                        {professionals.map(p => (
-                            <option key={p.id} value={p.id}>
-                                {`${p.first_name} ${p.last_name || ''}`.trim()}
-                            </option>
-                        ))}
-                    </select>
-                    <button
-                        onClick={() => setOnlyOverdue(v => !v)}
-                        className={`px-3 py-2.5 rounded-lg text-xs font-semibold border transition-colors ${
-                            onlyOverdue
-                                ? 'bg-red-500/15 text-red-400 border-red-500/30'
-                                : 'bg-white/[0.04] text-white/50 border-white/[0.08] hover:text-white'
-                        }`}
-                    >
-                        {t('lab.only_overdue')}
-                    </button>
                     <button
                         onClick={fetchCases}
                         className="p-2.5 rounded-lg bg-white/[0.04] border border-white/[0.08] text-white/50 hover:text-white transition-colors"
@@ -301,6 +329,37 @@ export default function LaboratorioView() {
                     >
                         <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
                     </button>
+                </div>
+
+                {/* Profesionales como pills (mismo patrón que Estrategia) */}
+                <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                        onClick={() => setFilterProf('')}
+                        className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                            filterProf === ''
+                                ? 'bg-white text-[#0a0e1a] border-white'
+                                : 'bg-white/[0.04] text-white/60 border-white/[0.08] hover:text-white hover:bg-white/[0.08]'
+                        }`}
+                    >
+                        {t('lab.all')}
+                    </button>
+                    {professionals.map(p => {
+                        const name = `${p.first_name} ${p.last_name || ''}`.trim();
+                        const active = filterProf === p.id;
+                        return (
+                            <button
+                                key={p.id}
+                                onClick={() => setFilterProf(active ? '' : p.id)}
+                                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                                    active
+                                        ? 'bg-blue-500/20 text-blue-300 border-blue-500/40'
+                                        : 'bg-white/[0.04] text-white/60 border-white/[0.08] hover:text-white hover:bg-white/[0.08]'
+                                }`}
+                            >
+                                {name}
+                            </button>
+                        );
+                    })}
                 </div>
 
                 {error && (
@@ -353,17 +412,30 @@ export default function LaboratorioView() {
                                                 <p className="text-xs text-white/50 truncate">
                                                     {c.work_type}
                                                     {c.tooth_numbers ? ` · ${c.tooth_numbers}` : ''}
+                                                    {c.shade ? ` · ${c.shade}` : ''}
                                                 </p>
                                             </button>
-                                            <button
-                                                onClick={() => setCaseModal(c)}
-                                                className="text-white/25 hover:text-white/60 shrink-0"
-                                                title={t('lab.edit')}
-                                            >
-                                                <Pencil size={13} />
-                                            </button>
+                                            <div className="flex flex-col items-end gap-1 shrink-0">
+                                                <button
+                                                    onClick={() => setCaseModal(c)}
+                                                    className="text-white/25 hover:text-white/60"
+                                                    title={t('lab.edit')}
+                                                >
+                                                    <Pencil size={13} />
+                                                </button>
+                                                {c.cost != null && c.cost > 0 && (
+                                                    <span className="text-[10px] text-white/35 tabular-nums">
+                                                        ${Number(c.cost).toLocaleString('es-AR')}
+                                                    </span>
+                                                )}
+                                            </div>
                                         </div>
                                         <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                                            {c.professional_name && c.professional_name.trim() && (
+                                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-300/80">
+                                                    {c.professional_name.trim().split(' ')[0]}
+                                                </span>
+                                            )}
                                             {c.lab_name && (
                                                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/[0.06] text-white/50">
                                                     {c.lab_name}

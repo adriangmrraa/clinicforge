@@ -1,5 +1,10 @@
 {
   "lab": {
+    "search_patient": "Rechercher patient, travail ou labo…",
+    "stat_active": "en cours",
+    "stat_overdue": "en retard",
+    "stat_to_notify": "à prévenir",
+    "stat_placed30": "posés (30 jours)",
     "from_blocked": "Depuis la liste de blocage",
     "use_candidate": "Utiliser",
     "candidate_hint": "Détectés via l'étiquette Laboratoire — touchez Utiliser, ajoutez l'email et enregistrez.",
