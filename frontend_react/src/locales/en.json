@@ -1,5 +1,12 @@
 {
   "lab": {
+    "send_to_lab": "Send to lab",
+    "notify_patient": "Notify patient (WhatsApp)",
+    "notified": "Notified",
+    "chase_lab": "Chase lab (email)",
+    "chased": "Chased",
+    "notice_sent": "WhatsApp sent to patient",
+    "email_sent": "Chase email sent to lab",
     "title": "Laboratory",
     "subtitle": "Lab cases: states and due dates",
     "new_case": "New case",

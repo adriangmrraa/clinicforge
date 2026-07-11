@@ -1,5 +1,12 @@
 {
   "lab": {
+    "send_to_lab": "Enviar a laboratorio",
+    "notify_patient": "Avisar al paciente (WhatsApp)",
+    "notified": "Avisado",
+    "chase_lab": "Reclamar al lab (email)",
+    "chased": "Reclamado",
+    "notice_sent": "WhatsApp enviado al paciente",
+    "email_sent": "Reclamo enviado al laboratorio",
     "title": "Laboratorio",
     "subtitle": "Trabajos de laboratorio: estados y vencimientos",
     "new_case": "Nuevo trabajo",

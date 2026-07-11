@@ -441,6 +441,9 @@ class LabCase(Base):
     cost = Column(DECIMAL(12, 2), nullable=True)
     lab_paid = Column(Boolean, nullable=False, server_default=text("false"))
     notes = Column(Text, nullable=True)
+    # L2 (migración 073): sellos de las acciones manuales
+    patient_notified_at = Column(DateTime(timezone=True), nullable=True)
+    lab_chased_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

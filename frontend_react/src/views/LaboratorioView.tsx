@@ -47,6 +47,8 @@ interface LabCaseRow {
     notes: string | null;
     is_overdue: boolean;
     origin_appointment_id: string | null;
+    patient_notified_at?: string | null;
+    lab_chased_at?: string | null;
 }
 
 interface ProfessionalOpt {
@@ -163,6 +165,35 @@ export default function LaboratorioView() {
         }
     };
 
+    // L2: acciones manuales (nada automático sin control)
+    const [notice, setNotice] = useState<string | null>(null);
+    useEffect(() => {
+        if (notice) {
+            const t2 = setTimeout(() => setNotice(null), 4000);
+            return () => clearTimeout(t2);
+        }
+    }, [notice]);
+
+    const notifyPatient = async (c: LabCaseRow) => {
+        try {
+            await api.post(`/admin/lab-cases/${c.id}/notify-patient`);
+            setNotice(t('lab.notice_sent'));
+            fetchCases();
+        } catch (e: any) {
+            setError(e?.response?.data?.detail || 'Error al enviar el WhatsApp');
+        }
+    };
+
+    const chaseLab = async (c: LabCaseRow) => {
+        try {
+            await api.post(`/admin/lab-cases/${c.id}/chase-lab`);
+            setNotice(t('lab.email_sent'));
+            fetchCases();
+        } catch (e: any) {
+            setError(e?.response?.data?.detail || 'Error al enviar el email');
+        }
+    };
+
     const columns = useMemo(() => {
         const visible = cases.filter(c => showCancelled || c.status !== 'cancelado');
         return STATUS_ORDER.map(key => ({
@@ -252,6 +283,11 @@ export default function LaboratorioView() {
                     <div className="px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/25 text-red-400 text-sm flex items-center justify-between">
                         {error}
                         <button onClick={() => setError(null)}><X size={14} /></button>
+                    </div>
+                )}
+                {notice && (
+                    <div className="px-4 py-3 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 text-sm">
+                        ✓ {notice}
                     </div>
                 )}
 
@@ -354,6 +390,36 @@ export default function LaboratorioView() {
                                                 </button>
                                             ) : null}
                                         </div>
+                                        {/* L2: avisar al paciente que llegó su trabajo */}
+                                        {c.status === 'recibido' && (
+                                            <button
+                                                onClick={() => notifyPatient(c)}
+                                                className={`w-full mt-1.5 px-2 py-1.5 text-[11px] font-semibold rounded-lg border transition-colors ${
+                                                    c.patient_notified_at
+                                                        ? 'bg-white/[0.03] text-white/35 border-white/[0.06]'
+                                                        : 'bg-violet-500/15 text-violet-300 border-violet-500/25 hover:bg-violet-500/25'
+                                                }`}
+                                            >
+                                                📲 {c.patient_notified_at
+                                                    ? `${t('lab.notified')} ✓`
+                                                    : t('lab.notify_patient')}
+                                            </button>
+                                        )}
+                                        {/* L2: reclamar al laboratorio un trabajo vencido */}
+                                        {c.is_overdue && (
+                                            <button
+                                                onClick={() => chaseLab(c)}
+                                                className={`w-full mt-1.5 px-2 py-1.5 text-[11px] font-semibold rounded-lg border transition-colors ${
+                                                    c.lab_chased_at
+                                                        ? 'bg-white/[0.03] text-white/35 border-white/[0.06]'
+                                                        : 'bg-red-500/15 text-red-400 border-red-500/25 hover:bg-red-500/25'
+                                                }`}
+                                            >
+                                                📧 {c.lab_chased_at
+                                                    ? `${t('lab.chased')} ${fmtDate(c.lab_chased_at.slice(0, 10))}`
+                                                    : t('lab.chase_lab')}
+                                            </button>
+                                        )}
                                     </div>
                                 ))}
                             </div>

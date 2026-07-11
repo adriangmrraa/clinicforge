@@ -12,6 +12,7 @@ Ver scratch/PLAN_LABORATORIO.md.
 Sovereignty Protocol: TODA query filtra por tenant_id.
 """
 
+import asyncio
 import logging
 from datetime import date
 from typing import Any, Dict
@@ -342,3 +343,177 @@ async def update_lab_case(
         *params,
     )
     return dict(row)
+
+
+# ---------------------------------------------------------------------------
+# L2 — Acciones manuales (regla Carlos: nada automático sin control)
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/lab-cases/{case_id}/notify-patient",
+    dependencies=[Depends(verify_admin_token)],
+    tags=["Laboratorio"],
+)
+async def notify_patient_case(
+    case_id: int,
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """
+    L2: botón "Avisar al paciente" — WhatsApp de que llegó su trabajo.
+    Espeja el patrón del feedback post-consulta: ResponseSender si hay
+    conversación (queda en el chat), fallback YCloud directo.
+    """
+    row = await db.pool.fetchrow(
+        """
+        SELECT lc.id, lc.work_type,
+               p.first_name, p.phone_number, p.guardian_phone
+        FROM lab_cases lc
+        JOIN patients p ON p.id = lc.patient_id AND p.tenant_id = lc.tenant_id
+        WHERE lc.id = $1 AND lc.tenant_id = $2
+        """,
+        case_id,
+        tenant_id,
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Trabajo no encontrado")
+
+    phone = (row["phone_number"] or "").strip()
+    # Menores -M{N}: el WhatsApp real es el del padre/madre
+    if "-M" in phone and (row["guardian_phone"] or "").strip():
+        phone = row["guardian_phone"].strip()
+    if not phone or phone.startswith("SIN-TEL"):
+        raise HTTPException(
+            status_code=400, detail="El paciente no tiene teléfono válido"
+        )
+
+    first_name = (row["first_name"] or "").strip() or "paciente"
+    work = (row["work_type"] or "trabajo").lower()
+    message = (
+        f"¡Hola {first_name}! 😊 Te avisamos que ya llegó tu {work} del "
+        "laboratorio. Escribinos por acá así coordinamos el turno de colocación."
+    )
+
+    sent_ok = False
+    try:
+        conv = await db.pool.fetchrow(
+            "SELECT id, provider, channel, external_account_id, external_chatwoot_id "
+            "FROM chat_conversations WHERE tenant_id = $1 AND external_user_id = $2 "
+            "ORDER BY updated_at DESC LIMIT 1",
+            tenant_id,
+            phone,
+        )
+        if conv:
+            from services.response_sender import ResponseSender
+
+            await ResponseSender.send_sequence(
+                tenant_id=tenant_id,
+                external_user_id=phone,
+                conversation_id=str(conv["id"]),
+                provider=conv.get("provider") or "ycloud",
+                channel=conv.get("channel") or "whatsapp",
+                account_id=str(conv.get("external_account_id") or ""),
+                cw_conv_id=str(conv.get("external_chatwoot_id") or ""),
+                messages_text=message,
+            )
+            sent_ok = True
+        else:
+            from core.credentials import (
+                get_tenant_credential,
+                YCLOUD_API_KEY,
+                YCLOUD_WHATSAPP_NUMBER,
+            )
+            from ycloud_client import YCloudClient
+
+            api_key = await get_tenant_credential(tenant_id, YCLOUD_API_KEY)
+            biz_num = await get_tenant_credential(tenant_id, YCLOUD_WHATSAPP_NUMBER)
+            if api_key:
+                yc = YCloudClient(api_key=api_key, business_number=biz_num)
+                await yc.send_text_message(to=phone, text=message)
+                sent_ok = True
+    except Exception as exc:
+        logger.error("notify-patient lab_case %s: %s", case_id, exc, exc_info=True)
+
+    if not sent_ok:
+        raise HTTPException(
+            status_code=502,
+            detail="No se pudo enviar el WhatsApp (sin conversación ni YCloud configurado)",
+        )
+    await db.pool.execute(
+        "UPDATE lab_cases SET patient_notified_at = NOW(), updated_at = NOW() "
+        "WHERE id = $1 AND tenant_id = $2",
+        case_id,
+        tenant_id,
+    )
+    logger.info("L2 aviso-paciente enviado: lab_case=%s tenant=%s", case_id, tenant_id)
+    return {"sent": True}
+
+
+@router.post(
+    "/lab-cases/{case_id}/chase-lab",
+    dependencies=[Depends(verify_admin_token)],
+    tags=["Laboratorio"],
+)
+async def chase_lab_case(
+    case_id: int,
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """L2: botón "Reclamar al lab" — email pidiendo estado de un trabajo vencido."""
+    row = await db.pool.fetchrow(
+        """
+        SELECT lc.work_type, lc.tooth_numbers, lc.sent_at, lc.promised_at,
+               p.first_name || ' ' || COALESCE(p.last_name, '') AS patient_name,
+               l.name AS lab_name, l.email AS lab_email,
+               t.clinic_name
+        FROM lab_cases lc
+        JOIN patients p ON p.id = lc.patient_id AND p.tenant_id = lc.tenant_id
+        LEFT JOIN labs l ON l.id = lc.lab_id AND l.tenant_id = lc.tenant_id
+        JOIN tenants t ON t.id = lc.tenant_id
+        WHERE lc.id = $1 AND lc.tenant_id = $2
+        """,
+        case_id,
+        tenant_id,
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Trabajo no encontrado")
+    lab_email = (row["lab_email"] or "").strip()
+    if not lab_email:
+        raise HTTPException(
+            status_code=400,
+            detail="El laboratorio no tiene email cargado (Laboratorios → editar)",
+        )
+
+    clinic = row["clinic_name"] or "la clínica"
+    piezas = f" — piezas {row['tooth_numbers']}" if row["tooth_numbers"] else ""
+    subject = f"Consulta de estado — {row['work_type']} ({clinic})"
+    html = f"""
+    <div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#222">
+      <p>Hola {row['lab_name'] or ''},</p>
+      <p>Les escribimos de <b>{clinic}</b> por el siguiente trabajo:</p>
+      <ul>
+        <li><b>Trabajo:</b> {row['work_type']}{piezas}</li>
+        <li><b>Paciente:</b> {row['patient_name']}</li>
+        <li><b>Enviado:</b> {row['sent_at'] or '—'}</li>
+        <li><b>Fecha prometida:</b> {row['promised_at'] or '—'}</li>
+      </ul>
+      <p>¿Nos confirman el estado y la fecha estimada de entrega?</p>
+      <p>¡Gracias!<br>{clinic}</p>
+    </div>
+    """
+
+    from email_service import EmailService
+
+    sent = await asyncio.to_thread(EmailService().send_html, [lab_email], subject, html)
+    if not sent:
+        raise HTTPException(
+            status_code=502,
+            detail="No se pudo enviar el email (SMTP no configurado o falló)",
+        )
+    await db.pool.execute(
+        "UPDATE lab_cases SET lab_chased_at = NOW(), updated_at = NOW() "
+        "WHERE id = $1 AND tenant_id = $2",
+        case_id,
+        tenant_id,
+    )
+    logger.info("L2 reclamo-lab enviado: lab_case=%s a=%s", case_id, lab_email)
+    return {"sent": True}
