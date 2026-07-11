@@ -97,10 +97,18 @@ async def list_blocked_lab_candidates(
     (match por dígitos del teléfono) se ofrecen para importar con un click
     — solo falta completar el email.
     """
+    # OJO esquema real (mig 067): la tabla NO tiene phone_number — tiene
+    # phone_digits (normalizado, solo dígitos) + phone_display (como lo
+    # cargaron). El primer intento consultaba phone_number → UndefinedColumn
+    # → 500 silencioso y la sección nunca aparecía (bug real 2026-07-11).
     rows = await db.pool.fetch(
         """
-        SELECT b.phone_number,
-               COALESCE(NULLIF(b.contact_name, ''), b.phone_number) AS name
+        SELECT COALESCE(NULLIF(b.phone_display, ''), b.phone_digits) AS phone_number,
+               COALESCE(
+                   NULLIF(b.contact_name, ''),
+                   NULLIF(b.phone_display, ''),
+                   b.phone_digits
+               ) AS name
         FROM blocked_phone_numbers b
         WHERE b.tenant_id = $1
           AND b.is_active = true
@@ -110,7 +118,7 @@ async def list_blocked_lab_candidates(
                 WHERE l.tenant_id = b.tenant_id
                   AND regexp_replace(COALESCE(l.phone, ''), '[^0-9]', '', 'g') <> ''
                   AND regexp_replace(COALESCE(l.phone, ''), '[^0-9]', '', 'g')
-                      = regexp_replace(b.phone_number, '[^0-9]', '', 'g')
+                      = b.phone_digits
           )
         ORDER BY name
         """,
