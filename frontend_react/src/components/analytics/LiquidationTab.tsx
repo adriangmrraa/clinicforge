@@ -107,32 +107,38 @@ const LiquidationTab: React.FC<LiquidationTabProps> = ({
       setHasPersistentData(liquidations.length > 0);
 
       if (liquidations.length > 0) {
-        // Transform liquidation_records into the LiquidationResponse shape
-        const transformed: LiquidationProfessional[] = liquidations.map((l: any) => ({
-          id: l.professional_id,
-          name: l.professional_name,
-          total_billed: l.total_billed || 0,
-          total_paid: l.total_paid || 0,
-          total_pending: l.total_pending || 0,
-          commission_pct: l.commission_pct || 0,
-          commission_amount: l.commission_amount || 0,
-          payout_amount: l.payout_amount || 0,
-          status: l.status,
-          sessions: [],
-          patients: 0,
-          appointments: 0,
-          treatment_groups: [],
-        }));
+        // Transform liquidation_records into the LiquidationResponse shape.
+        // OJO: la forma que consumen ProfessionalAccordion/LiquidationSummary
+        // es la del tipo (summary.billed, totals.billed) — la version anterior
+        // emitia campos planos (total_billed) tipados via `any`, sin `summary`
+        // -> summary.billed crasheaba TODA la pantalla al togglear el boton
+        // "Datos en tiempo real" (bug real 2026-07-10).
+        const transformed: LiquidationProfessional[] = liquidations.map(
+          (l: any): LiquidationProfessional => ({
+            id: l.professional_id,
+            name: l.professional_name || '—',
+            specialty: '',
+            summary: {
+              billed: Number(l.total_billed) || 0,
+              paid: Number(l.total_paid) || 0,
+              pending: Number(l.total_pending) || 0,
+              // el snapshot no guarda conteos de turnos/pacientes
+              appointments: 0,
+              patients: 0,
+            },
+            treatment_groups: [],
+          })
+        );
 
-        const totals = liquidations.reduce(
-          (acc: any, l: any) => ({
-            total_billed: (acc.total_billed || 0) + (l.total_billed || 0),
-            total_paid: (acc.total_paid || 0) + (l.total_paid || 0),
-            total_pending: (acc.total_pending || 0) + (l.total_pending || 0),
-            total_commission: (acc.total_commission || 0) + (l.commission_amount || 0),
-            total_payout: (acc.total_payout || 0) + (l.payout_amount || 0),
+        const totals = transformed.reduce(
+          (acc, p) => ({
+            billed: acc.billed + p.summary.billed,
+            paid: acc.paid + p.summary.paid,
+            pending: acc.pending + p.summary.pending,
+            appointments: 0,
+            patients: 0,
           }),
-          {}
+          { billed: 0, paid: 0, pending: 0, appointments: 0, patients: 0 }
         );
 
         // period: el modo persistente no lo traía y ExportCSVButton lee data.period.start
