@@ -2208,6 +2208,7 @@
     "period_this_year": "This year"
   },
   "liquidation": {
+    "generate_for_period": "Generate for this period",
     "period_history": "Period history",
     "period_open": "Open",
     "period_closed": "Closed",

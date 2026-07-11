@@ -523,8 +523,28 @@ export default function LiquidationManager({ periodStart, periodEnd, formatCurre
         <GlassCard>
           <div className="p-8 text-center text-white/30">
             <FileText size={32} className="mx-auto mb-3 opacity-50" />
-            <p className="text-sm">{t('liquidation.no_liquidations')}</p>
+            {/* Con el período visible + botón acá mismo: Carlos preguntó
+                "¿por qué no aparecen?" — la lista muestra liquidaciones
+                GENERADAS, no movimientos; sin Generar siempre está vacía */}
+            <p className="text-sm">
+              {t('liquidation.no_liquidations')}{' '}
+              <span className="text-white/50">
+                ({periodCardLabel(periodStart, periodEnd)})
+              </span>
+            </p>
             <p className="text-xs mt-1">{t('liquidation.no_liquidations_desc')}</p>
+            <button
+              onClick={handleGenerateBulk}
+              disabled={generating}
+              className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/80 text-white rounded-xl text-sm font-medium transition-colors disabled:opacity-50"
+            >
+              {generating ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <RefreshCw size={14} />
+              )}
+              {t('liquidation.generate_for_period')}
+            </button>
           </div>
         </GlassCard>
       )}

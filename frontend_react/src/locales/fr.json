@@ -1989,6 +1989,7 @@
     "period_this_year": "Cette année"
   },
   "liquidation": {
+    "generate_for_period": "Générer pour cette période",
     "period_history": "Historique par période",
     "period_open": "Ouverte",
     "period_closed": "Clôturée",
