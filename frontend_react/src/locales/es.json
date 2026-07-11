@@ -2443,6 +2443,7 @@
     "no_liquidations_desc": "Generá liquidaciones para ver los datos aquí",
     "generating": "Generando liquidaciones...",
     "generated_success": "Liquidaciones generadas correctamente",
+    "generate_failed_for": "Falló la generación para",
     "already_exists": "liquidaciones ya existían",
     "new_generated": "nuevas generadas",
     "confirm_approve": "¿Aprobar esta liquidación?",

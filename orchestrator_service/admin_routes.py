@@ -18928,8 +18928,18 @@ async def send_liquidation_email_endpoint(
                 detail=f"Error enviando email: {str(e)}",
             )
 
-        # 6. Log email send in audit trail
-        existing_notes = record.get("notes") or {}
+        # 6. Log email send in audit trail (notes es JSONB sin codec en el pool:
+        # llega como str y se escribe con json.dumps + ::jsonb)
+        _raw_notes = record.get("notes")
+        if isinstance(_raw_notes, dict):
+            existing_notes = _raw_notes
+        else:
+            try:
+                existing_notes = json.loads(_raw_notes) if _raw_notes else {}
+                if not isinstance(existing_notes, dict):
+                    existing_notes = {}
+            except (json.JSONDecodeError, ValueError, TypeError):
+                existing_notes = {}
         audit_trail = existing_notes.get("audit_trail", [])
         audit_trail.append(
             {
@@ -18943,10 +18953,10 @@ async def send_liquidation_email_endpoint(
         await db.pool.execute(
             """
             UPDATE liquidation_records
-            SET notes = $1
+            SET notes = $1::jsonb
             WHERE id = $2 AND tenant_id = $3
             """,
-            existing_notes,
+            json.dumps(existing_notes),
             liquidation_id,
             resolved_tenant_id,
         )

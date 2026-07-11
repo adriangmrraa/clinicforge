@@ -1999,6 +1999,7 @@
     "no_liquidations_desc": "Générez des liquidations pour voir les données ici",
     "generating": "Génération des liquidations...",
     "generated_success": "Liquidations générées avec succès",
+    "generate_failed_for": "Échec de la génération pour",
     "already_exists": "liquidations existaient déjà",
     "new_generated": "nouvelles générées",
     "confirm_approve": "Approuver cette liquidation?",

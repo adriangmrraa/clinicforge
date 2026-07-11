@@ -14,6 +14,24 @@ from datetime import datetime, date
 from decimal import Decimal
 from typing import Optional
 from fastapi import HTTPException
+import json
+
+
+def _notes_dict(value) -> dict:
+    """liquidation_records.notes es JSONB, pero el pool asyncpg NO tiene codec
+    JSON registrado (db.py solo registra pgvector): las LECTURAS llegan como
+    str y las ESCRITURAS deben ir con json.dumps + cast ::jsonb. Este helper
+    hace la lectura defensiva (str/dict/None → dict) — sin él, .get() sobre el
+    str reventaba Aprobar/Pagar con AttributeError (auditoría 2026-07-10)."""
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str) and value.strip():
+        try:
+            parsed = json.loads(value)
+            return parsed if isinstance(parsed, dict) else {}
+        except (json.JSONDecodeError, ValueError):
+            return {}
+    return {}
 
 logger = logging.getLogger(__name__)
 
@@ -314,20 +332,21 @@ class LiquidationService:
             }
         ]
 
-        # Update the placeholder row with real data
+        # Update the placeholder row with real data.
+        # FIX 2026-07-10 (auditoría): la versión anterior era INEJECUTABLE desde
+        # siempre — el SQL referenciaba $1 y $5..$13 pero se pasaban 13 args con
+        # $2/$3/$4 sin usar (PostgreSQL 42P18 en el Parse) y notes=$12 recibía un
+        # dict sin codec JSONB (DataError). El bulk se tragaba la excepción →
+        # todas las liquidaciones quedaban como placeholders en $0.
         record = await pool.fetchrow(
             """
             UPDATE liquidation_records SET
-                total_billed = $5, total_paid = $6, total_pending = $7,
-                commission_pct = $8, commission_amount = $9, payout_amount = $10,
-                generated_by = $11, notes = $12
-            WHERE id = $13 AND tenant_id = $1
+                total_billed = $1, total_paid = $2, total_pending = $3,
+                commission_pct = $4, commission_amount = $5, payout_amount = $6,
+                generated_by = $7, notes = $8::jsonb
+            WHERE id = $9 AND tenant_id = $10
             RETURNING *
             """,
-            tenant_id,
-            professional_id,
-            period_start,
-            period_end,
             float(total_billed),
             float(total_paid),
             float(total_pending),
@@ -335,8 +354,9 @@ class LiquidationService:
             float(commission_amount),
             float(payout_amount),
             generated_by_email,
-            {"audit_trail": audit_trail},
+            json.dumps({"audit_trail": audit_trail}),
             placeholder_id,
+            tenant_id,
         )
 
         logger.info(
@@ -380,6 +400,7 @@ class LiquidationService:
         )
 
         results = []
+        errors = []
         generated_count = 0
         skipped_count = 0
 
@@ -406,7 +427,7 @@ class LiquidationService:
 
                 # More reliable check: look at audit_trail for 'generated' action
                 # If the record was just created by us, it's new
-                notes = record.get("notes") or {}
+                notes = _notes_dict(record.get("notes"))
                 audit_trail = notes.get("audit_trail", [])
                 # If there's only one audit entry and it's 'generated', it's new
                 is_new = (
@@ -435,12 +456,41 @@ class LiquidationService:
                     e,
                     exc_info=True,
                 )
+                # El error ya no se traga en silencio: se reporta en la respuesta
+                errors.append(
+                    {
+                        "professional_id": prof["id"],
+                        "professional_name": f"{prof['first_name']} {prof['last_name']}".strip(),
+                        "error": str(e),
+                    }
+                )
+                # Limpieza best-effort: no dejar el placeholder huérfano en $0
+                # que esta corrida acaba de crear (los recalculados viejos tienen
+                # created_at anterior y no se tocan).
+                try:
+                    await pool.execute(
+                        """
+                        DELETE FROM liquidation_records
+                        WHERE tenant_id = $1 AND professional_id = $2
+                          AND period_start = $3 AND period_end = $4
+                          AND status = 'generated' AND total_billed = 0
+                          AND commission_amount = 0
+                          AND created_at > NOW() - INTERVAL '10 minutes'
+                        """,
+                        tenant_id,
+                        prof["id"],
+                        period_start,
+                        period_end,
+                    )
+                except Exception:
+                    pass
                 # Continue with next professional
 
         return {
             "generated_count": generated_count,
             "skipped_count": skipped_count,
             "liquidations": results,
+            "errors": errors,
         }
 
     # ------------------------------------------------------------------
@@ -711,7 +761,7 @@ class LiquidationService:
                 else None,
                 "paid_at": record.get("paid_at").isoformat() if record.get("paid_at") else None,
                 "generated_by": record["generated_by"],
-                "notes": record.get("notes") or {},
+                "notes": _notes_dict(record.get("notes")),
                 "created_at": record.get("created_at").isoformat()
                 if record.get("created_at")
                 else None,
@@ -892,8 +942,8 @@ class LiquidationService:
         if ts_field:
             updates[ts_field] = now
 
-        # 4. Append audit trail entry
-        existing_notes = record["notes"] or {}
+        # 4. Append audit trail entry (notes llega como str sin codec JSONB)
+        existing_notes = _notes_dict(record["notes"])
         audit_trail = existing_notes.get("audit_trail", [])
         audit_entry = {
             "action": "status_change",
@@ -914,8 +964,13 @@ class LiquidationService:
         param_idx = 1
 
         for key, value in updates.items():
-            set_parts.append(f"{key} = ${param_idx}")
-            values.append(value)
+            if key == "notes":
+                # JSONB sin codec en el pool: serializar + cast explícito
+                set_parts.append(f"{key} = ${param_idx}::jsonb")
+                values.append(json.dumps(value))
+            else:
+                set_parts.append(f"{key} = ${param_idx}")
+                values.append(value)
             param_idx += 1
 
         values.append(liquidation_id)
@@ -968,10 +1023,10 @@ class LiquidationService:
                     await pool.execute(
                         """
                         UPDATE liquidation_records
-                        SET notes = $1
+                        SET notes = $1::jsonb
                         WHERE id = $2 AND tenant_id = $3
                         """,
-                        existing_notes,
+                        json.dumps(existing_notes),
                         liquidation_id,
                         tenant_id,
                     )
@@ -1179,7 +1234,7 @@ class LiquidationService:
             )
 
         auto_paid = False
-        current_notes = record["notes"] or {}
+        current_notes = _notes_dict(record["notes"])
         if total_payouts + amount >= payout_amount and record["status"] != "paid":
             now = datetime.utcnow()
             audit_trail = current_notes.get("audit_trail", [])
@@ -1198,11 +1253,11 @@ class LiquidationService:
             await pool.execute(
                 """
                 UPDATE liquidation_records
-                SET status = 'paid', paid_at = $1, notes = $2
+                SET status = 'paid', paid_at = $1, notes = $2::jsonb
                 WHERE id = $3 AND tenant_id = $4
                 """,
                 now,
-                current_notes,
+                json.dumps(current_notes),
                 liquidation_id,
                 tenant_id,
             )
@@ -1224,10 +1279,10 @@ class LiquidationService:
         await pool.execute(
             """
             UPDATE liquidation_records
-            SET notes = $1
+            SET notes = $1::jsonb
             WHERE id = $2 AND tenant_id = $3
             """,
-            current_notes,
+            json.dumps(current_notes),
             liquidation_id,
             tenant_id,
         )

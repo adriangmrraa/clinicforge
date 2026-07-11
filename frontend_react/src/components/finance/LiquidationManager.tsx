@@ -147,11 +147,18 @@ export default function LiquidationManager({ periodStart, periodEnd, formatCurre
         period_start: periodStart,
         period_end: periodEnd,
       });
-      const { generated_count, skipped_count } = res.data;
+      const { generated_count, skipped_count, errors } = res.data;
       let msg = '';
       if (generated_count > 0) msg += `${generated_count} ${t('liquidation.new_generated')}`;
       if (skipped_count > 0) msg += (msg ? '. ' : '') + `${skipped_count} ${t('liquidation.already_exists')}`;
-      showToast('success', msg || t('liquidation.generated_success'));
+      // El backend ahora reporta los profesionales que fallaron (antes se
+      // tragaba el error y mostraba éxito con filas en $0)
+      if (errors && errors.length > 0) {
+        const nombres = errors.map((e: { professional_name: string }) => e.professional_name).join(', ');
+        showToast('error', `${t('liquidation.generate_failed_for', 'Falló la generación para')}: ${nombres}`);
+      } else {
+        showToast('success', msg || t('liquidation.generated_success'));
+      }
       fetchLiquidations();
     } catch (err: any) {
       console.error('Error generating liquidations:', err);

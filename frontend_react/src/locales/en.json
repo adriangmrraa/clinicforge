@@ -2218,6 +2218,7 @@
     "no_liquidations_desc": "Generate liquidations to see data here",
     "generating": "Generating liquidations...",
     "generated_success": "Liquidations generated successfully",
+    "generate_failed_for": "Generation failed for",
     "already_exists": "liquidations already existed",
     "new_generated": "new generated",
     "confirm_approve": "Approve this liquidation?",
