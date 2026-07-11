@@ -409,6 +409,9 @@
     "tag_high_ticket": "High Ticket"
   },
   "agenda": {
+    "billing_ctx_use": "Use",
+    "billing_ctx_os_rest": "Insurance pays later:",
+    "billing_ctx_no_debt": "Not patient debt — covered by insurance",
     "google_block": "Google Calendar block",
     "no_name": "No name",
     "title": "Agenda",

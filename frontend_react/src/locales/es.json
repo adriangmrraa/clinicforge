@@ -417,6 +417,9 @@
     "tag_high_ticket": "Ticket alto"
   },
   "agenda": {
+    "billing_ctx_use": "Usar",
+    "billing_ctx_os_rest": "Después paga la obra social:",
+    "billing_ctx_no_debt": "No es deuda del paciente — lo cubre la obra social",
     "google_block": "Bloqueo de Google Calendar",
     "no_name": "Sin nombre",
     "title": "Agenda",

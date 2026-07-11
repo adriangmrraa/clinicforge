@@ -403,6 +403,9 @@
     "tag_high_ticket": "Ticket élevé"
   },
   "agenda": {
+    "billing_ctx_use": "Utiliser",
+    "billing_ctx_os_rest": "La mutuelle paie ensuite :",
+    "billing_ctx_no_debt": "Pas une dette du patient — couvert par la mutuelle",
     "google_block": "Blocage Google Calendar",
     "no_name": "Sans nom",
     "title": "Agenda",

@@ -80,6 +80,23 @@ export default function AppointmentForm({
     const [billingSaving, setBillingSaving] = useState(false);
     const [billingSuccess, setBillingSuccess] = useState<string | null>(null);
 
+    // CT-2 (modelo de dos libros): contexto de cobro calculado por el backend —
+    // cobertura del paciente, coseguro y monto sugerido. Solo lectura.
+    const [billingContext, setBillingContext] = useState<any | null>(null);
+    const billingCtxAppliedRef = useRef(false);
+
+    // CT-2: traer el contexto de cobro al abrir un turno existente
+    useEffect(() => {
+        if (!isOpen || !isEditing || !initialData?.id) {
+            setBillingContext(null);
+            billingCtxAppliedRef.current = false;
+            return;
+        }
+        api.get(`/admin/appointments/${initialData.id}/billing-context`)
+            .then((res) => setBillingContext(res.data))
+            .catch(() => setBillingContext(null));
+    }, [isOpen, isEditing, initialData?.id]);
+
     // Datos del paciente editables desde el turno (impacta en la ficha del paciente).
     // Se cargan COMPLETOS y se reenvían completos al guardar para NO pisar campos.
     const [patientData, setPatientData] = useState({
@@ -178,6 +195,29 @@ export default function AppointmentForm({
 
     // Full appointment data (fetched fresh when modal opens, includes billing + receipt)
     const [fullAppointment, setFullAppointment] = useState<any>(null);
+
+    // CT-2: precarga inteligente — corrige la precarga "ciega" de catálogo
+    // cuando el paciente tiene OS (ej: consulta $60k pero coseguro $30k).
+    // Solo pisa valores "naive" (vacío / catálogo / congelado), NUNCA un monto
+    // tipeado a mano distinto. Corre una sola vez, cuando el turno ya cargó.
+    useEffect(() => {
+        if (!billingContext || billingCtxAppliedRef.current) return;
+        if (isEditing && !fullAppointment) return; // esperar la carga del turno
+        const sugg = Number(billingContext.suggested_amount);
+        if (!sugg || sugg <= 0) {
+            billingCtxAppliedRef.current = true;
+            return;
+        }
+        const cur = Number(billingData.billing_amount) || 0;
+        const catalogo = Number(billingContext.catalog_price) || 0;
+        const frozen = Number(billingContext.frozen_price) || 0;
+        const isNaive = cur === 0 || cur === catalogo || cur === frozen;
+        if (isNaive && cur !== sugg) {
+            setBillingData(prev => ({ ...prev, billing_amount: String(sugg) }));
+        }
+        billingCtxAppliedRef.current = true;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [billingContext, fullAppointment, billingData.billing_amount]);
 
     // Initialize form data + fetch full appointment for billing/receipt
     useEffect(() => {
@@ -928,6 +968,78 @@ export default function AppointmentForm({
                                 </div>
                             ) : (
                                 <>
+                                    {/* CT-2: chip de contexto de cobro (cobertura/coseguro) */}
+                                    {billingContext && billingContext.origin !== 'plan' && (
+                                        <div
+                                            className={`rounded-xl border p-3 flex items-start gap-2.5 ${
+                                                billingContext.origin?.startsWith('coseguro')
+                                                    ? 'border-violet-500/25 bg-violet-500/[0.08]'
+                                                    : billingContext.origin === 'covered_full'
+                                                    ? 'border-emerald-500/25 bg-emerald-500/[0.08]'
+                                                    : billingContext.origin === 'particular'
+                                                    ? 'border-white/[0.08] bg-white/[0.03]'
+                                                    : 'border-amber-500/25 bg-amber-500/[0.08]'
+                                            }`}
+                                        >
+                                            <Info
+                                                size={16}
+                                                className={`flex-shrink-0 mt-0.5 ${
+                                                    billingContext.origin?.startsWith('coseguro')
+                                                        ? 'text-violet-400'
+                                                        : billingContext.origin === 'covered_full'
+                                                        ? 'text-emerald-400'
+                                                        : billingContext.origin === 'particular'
+                                                        ? 'text-white/40'
+                                                        : 'text-amber-400'
+                                                }`}
+                                            />
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-sm font-semibold text-white/90">
+                                                    {billingContext.origin_label}
+                                                </p>
+                                                {/* Los 3 bolsillos: valor total y lo que paga la OS después */}
+                                                {billingContext.covers === true &&
+                                                    Number(billingContext.suggested_amount) > 0 &&
+                                                    (Number(billingContext.frozen_price) || Number(billingContext.catalog_price)) >
+                                                        Number(billingContext.suggested_amount) && (
+                                                        <p className="text-xs text-white/40 mt-0.5">
+                                                            {t('agenda.billing_ctx_os_rest')} $
+                                                            {(
+                                                                (Number(billingContext.frozen_price) ||
+                                                                    Number(billingContext.catalog_price)) -
+                                                                Number(billingContext.suggested_amount)
+                                                            ).toLocaleString('es-AR')}
+                                                        </p>
+                                                    )}
+                                                {billingContext.origin === 'covered_full' && (
+                                                    <p className="text-xs text-white/40 mt-0.5">
+                                                        {t('agenda.billing_ctx_no_debt')}
+                                                    </p>
+                                                )}
+                                            </div>
+                                            {Number(billingContext.suggested_amount) > 0 &&
+                                                Number(billingData.billing_amount) !==
+                                                    Number(billingContext.suggested_amount) && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            setBillingData(prev => ({
+                                                                ...prev,
+                                                                billing_amount: String(
+                                                                    billingContext.suggested_amount
+                                                                ),
+                                                            }))
+                                                        }
+                                                        className="shrink-0 px-2.5 py-1 text-xs font-semibold rounded-lg bg-white/[0.08] text-white/80 hover:bg-white/[0.14] border border-white/[0.1] transition-colors"
+                                                    >
+                                                        {t('agenda.billing_ctx_use')} $
+                                                        {Number(
+                                                            billingContext.suggested_amount
+                                                        ).toLocaleString('es-AR')}
+                                                    </button>
+                                                )}
+                                        </div>
+                                    )}
                                     <div className="grid grid-cols-2 gap-4">
                                         <div className="space-y-1">
                                             <label className="text-xs font-semibold text-white/50">{t('agenda.billing_amount')}</label>
