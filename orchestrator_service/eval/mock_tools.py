@@ -152,93 +152,60 @@ def execute(name: str, args: dict) -> str:
     if name == "check_availability":
         canon, cfg = _match_insurance(args.get("insurance_provider", ""))
         delay = cfg["delay_days"] if (cfg and cfg["mode"] == "delayed") else 0
-        wanted = (args.get("interpreted_date") or "").strip()
+        s1, s2 = _slots(delay)
         note = ""
         if delay:
             first_ok = date.today() + timedelta(days=delay)
             note = (
-                f"SYSTEM_NOTE: por la modalidad de {canon}, hay disponibilidad "
-                f"a partir del {first_ok.strftime('%d/%m')}. "
+                f"SYSTEM_NOTE: disponibilidad para {canon} a partir del "
+                f"{first_ok.strftime('%d/%m')}.\n"
             )
-            if wanted:
-                try:
-                    w = date.fromisoformat(wanted)
-                    if w < first_ok:
-                        return (
-                            note
-                            + "No ofrecer fechas anteriores. Opciones válidas:\n"
-                            + "\n".join(
-                                f"{i+1}) {_fmt(s)} — {h} hs"
-                                for i, (s, h) in enumerate(zip(_slots(delay), ["10:00", "11:15"]))
-                            )
-                        )
-                except ValueError:
-                    pass
-        s1, s2 = _slots(delay)
         return (
             note
-            + "OPCIONES DISPONIBLES (elegí y ofrecé máximo 2):\n"
+            + "DISPONIBLE:\n"
             + f"1) {_fmt(s1)} — 10:00 hs\n"
-            + f"2) {_fmt(s2)} — 11:15 hs\n"
-            + "Sede: Córdoba (incluir dirección solo al confirmar)."
+            + f"2) {_fmt(s2)} — 11:15 hs"
         )
 
     if name == "confirm_slot":
-        return (
-            f"RESERVADO por 30 minutos: {args.get('slot_datetime', '')}. "
-            "Pedí ahora nombre completo y DNI para confirmar."
-        )
+        return f"RESERVADO 30 min: {args.get('slot_datetime', '')}."
 
     if name == "book_appointment":
         return (
-            "TURNO CONFIRMADO ✔ "
+            "TURNO CONFIRMADO: "
             f"{args.get('slot_datetime', '')} — {args.get('treatment_code', 'consulta')}. "
-            "Sede Córdoba, Av. Ejemplo 123. Seña: $30.000 por transferencia para sostener el turno."
+            "Sede Córdoba, Av. Ejemplo 123."
         )
 
     if name == "check_insurance_coverage":
+        # SOLO DATOS — sin dictar frases: el prompt ya sabe qué decir con esto.
         canon, cfg = _match_insurance(args.get("provider_name", ""))
         if not cfg:
-            return (
-                "SIN CONVENIO DIRECTO con esa cobertura. La atención es particular "
-                "($60.000 la consulta) y se entregan recibos para gestionar reintegro."
+            return json.dumps(
+                {"cobertura": args.get("provider_name", ""), "convenio": False},
+                ensure_ascii=False,
             )
         if cfg["status"] == "rejected":
-            return (
-                f"{canon}: SIN CONVENIO. Atención particular ($60.000) con recibo "
-                "para reintegro si corresponde."
-            )
-        out = f"{canon}: CON CONVENIO. Coseguro: ${cfg['copay']:,}".replace(",", ".")
+            return json.dumps({"cobertura": canon, "convenio": False}, ensure_ascii=False)
+        data = {"cobertura": canon, "convenio": True, "coseguro": cfg["copay"]}
         if cfg["mode"] == "delayed":
             first_ok = date.today() + timedelta(days=cfg["delay_days"])
-            out += (
-                f". Modalidad: turnos a partir del {first_ok.strftime('%d/%m')} "
-                f"(+{cfg['delay_days']} días). No ofrecer fechas anteriores ni "
-                "atribuir la demora a la obra social."
-            )
-        else:
-            out += ". Modalidad: turnos con disponibilidad normal."
-        return out
+            data["turnos_desde"] = first_ok.strftime("%d/%m/%Y")
+        return json.dumps(data, ensure_ascii=False)
 
     if name == "triage_urgency":
+        # SOLO el nivel — la conducta ante cada nivel la define el prompt.
         text = (args.get("symptoms") or "").lower()
         hard = any(k in text for k in ["sangr", "hincha", "inflam", "no puedo comer", "golpe", "se me cay", "fiebre"])
         pain = any(k in text for k in ["dolor", "duele", "molestia"])
         if hard or (pain and any(k in text for k in ["mucho", "muchísimo", "fuerte", "no dorm", "insoport"])):
-            return (
-                "NIVEL: EMERGENCY. Acción: derivar YA con derivhumano(motivo) y "
-                "contener; NO seguir ofreciendo turnos lejanos."
-            )
+            return "NIVEL: EMERGENCY"
         if pain:
-            return "NIVEL: HIGH. Priorizar turno cercano y ofrecer derivación si pide inmediatez."
-        return "NIVEL: NORMAL."
+            return "NIVEL: HIGH"
+        return "NIVEL: NORMAL"
 
     if name == "derivhumano":
-        return (
-            "DERIVADO ✔ El equipo fue notificado por email con el motivo: "
-            f"{args.get('motivo', '')}. Respondé con UNA frase de contención "
-            "(ya avisamos al equipo, te contactan a la brevedad) y nada más."
-        )
+        return "OK — equipo notificado por email."
 
     if name == "list_my_appointments":
         prox = _next_weekday(date.today() + timedelta(days=3))

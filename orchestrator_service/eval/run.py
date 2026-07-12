@@ -162,9 +162,13 @@ async def main() -> int:
     ap.add_argument("--temperature", type=float, default=0.0)
     ap.add_argument("--show-response", action="store_true", help="Imprimir la respuesta completa")
     ap.add_argument("--show-prompt", action="store_true", help="Volcar el system prompt y salir")
-    # T1 (2026-07-12): herramientas SIMULADAS activadas por defecto — el banco
-    # deja de correr al agente "desenchufado". --no-tools = modo viejo (comparar).
-    ap.add_argument("--no-tools", action="store_true", help="Correr SIN herramientas simuladas (modo pre-T1)")
+    # T1.b (2026-07-12): herramientas SIMULADAS por caso (opt-in con "tools":
+    # true en cases.jsonl). La v1 default-ON duplicó el costo (cada iteración
+    # re-envía el prompt de ~54k tokens) y derrumbó la nota a 51% en casos que
+    # nunca necesitaron herramientas. --tools-all fuerza ON global (experimentos);
+    # --no-tools fuerza OFF global.
+    ap.add_argument("--no-tools", action="store_true", help="Forzar SIN herramientas en todos los casos")
+    ap.add_argument("--tools-all", action="store_true", help="Forzar herramientas en TODOS los casos (caro)")
     ap.add_argument("--show-tools", action="store_true", help="Imprimir cada llamada a herramienta simulada")
     args = ap.parse_args()
 
@@ -214,16 +218,22 @@ async def main() -> int:
             print("No hay casos que coincidan con el filtro.", file=sys.stderr)
             return 1
 
-        tools = None
-        if not args.no_tools:
-            from eval.mock_tools import tool_schemas
+        from eval.mock_tools import tool_schemas
 
-            tools = tool_schemas()
+        _schemas = tool_schemas()
 
+        def tools_for(case: dict):
+            if args.no_tools:
+                return None
+            if args.tools_all or case.get("tools"):
+                return _schemas
+            return None
+
+        n_tool_cases = sum(1 for c in cases if tools_for(c))
         print("=" * 72)
         print(f"BANCO DE PRUEBAS — clínica: {inputs['clinic_name']} (tenant {args.tenant})")
         print(f"Modelo bajo prueba: {mc['model']}   |   Juez: {args.judge_model}   |   Casos: {len(cases)}")
-        print(f"Herramientas simuladas: {'SÍ (T1)' if tools else 'no (modo pre-T1)'}")
+        print(f"Herramientas simuladas: {n_tool_cases}/{len(cases)} casos (opt-in por caso)")
         print("=" * 72)
 
         results = []
@@ -246,6 +256,7 @@ async def main() -> int:
             messages.append({"role": "user", "content": c.get("user", "")})
 
             tool_trace: list[str] = []
+            tools = tools_for(c)
             try:
                 if tools:
                     answer, _pt, _ct, tool_trace = await _run_agent_turn(
