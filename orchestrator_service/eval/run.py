@@ -68,16 +68,65 @@ async def _resolve_model(pool, tenant_id: int, override: str | None) -> dict:
     return {"model": model, "api_key": os.getenv("OPENAI_API_KEY", ""), "base_url": None}
 
 
-async def _complete(client, model, messages, temperature):
+async def _complete(client, model, messages, temperature, tools=None):
     """chat.completions.create robusto ante modelos que no aceptan temperature."""
+    kwargs = {"model": model, "messages": messages}
+    if tools:
+        kwargs["tools"] = tools
     try:
-        return await client.chat.completions.create(
-            model=model, messages=messages, temperature=temperature
-        )
+        return await client.chat.completions.create(temperature=temperature, **kwargs)
     except Exception as e:
         if "temperature" in str(e).lower():
-            return await client.chat.completions.create(model=model, messages=messages)
+            return await client.chat.completions.create(**kwargs)
         raise
+
+
+async def _run_agent_turn(client, model, messages, temperature, tools, show_tools=False):
+    """T1: mini-loop de agente con herramientas SIMULADAS (eval/mock_tools).
+
+    Espeja el AgentExecutor de prod (max_iterations=4): el modelo puede llamar
+    herramientas de juguete deterministas y recién después responder. Devuelve
+    (respuesta_final, prompt_tokens, completion_tokens, [llamadas]).
+    """
+    from eval.mock_tools import execute_tool_call
+
+    pt = ct = 0
+    calls: list[str] = []
+    msgs = list(messages)
+    for _ in range(5):
+        resp = await _complete(client, model, msgs, temperature, tools=tools)
+        if getattr(resp, "usage", None):
+            pt += resp.usage.prompt_tokens or 0
+            ct += resp.usage.completion_tokens or 0
+        msg = resp.choices[0].message
+        tool_calls = getattr(msg, "tool_calls", None)
+        if not tool_calls:
+            return (msg.content or ""), pt, ct, calls
+        # Registrar la respuesta del asistente CON sus tool_calls y ejecutar mocks
+        msgs.append(
+            {
+                "role": "assistant",
+                "content": msg.content or None,
+                "tool_calls": [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments or "{}",
+                        },
+                    }
+                    for tc in tool_calls
+                ],
+            }
+        )
+        for tc in tool_calls:
+            result = execute_tool_call(tc)
+            calls.append(f"{tc.function.name}({(tc.function.arguments or '')[:80]})")
+            if show_tools:
+                print(f"      🔧 {tc.function.name} -> {result[:110]}")
+            msgs.append({"role": "tool", "tool_call_id": tc.id, "content": result})
+    return "", pt, ct, calls  # se quedó sin iteraciones
 
 
 def _load_cases(cases_file: Path) -> list[dict]:
@@ -113,6 +162,10 @@ async def main() -> int:
     ap.add_argument("--temperature", type=float, default=0.0)
     ap.add_argument("--show-response", action="store_true", help="Imprimir la respuesta completa")
     ap.add_argument("--show-prompt", action="store_true", help="Volcar el system prompt y salir")
+    # T1 (2026-07-12): herramientas SIMULADAS activadas por defecto — el banco
+    # deja de correr al agente "desenchufado". --no-tools = modo viejo (comparar).
+    ap.add_argument("--no-tools", action="store_true", help="Correr SIN herramientas simuladas (modo pre-T1)")
+    ap.add_argument("--show-tools", action="store_true", help="Imprimir cada llamada a herramienta simulada")
     args = ap.parse_args()
 
     dsn = os.getenv("POSTGRES_DSN") or os.getenv("DATABASE_URL")
@@ -161,9 +214,16 @@ async def main() -> int:
             print("No hay casos que coincidan con el filtro.", file=sys.stderr)
             return 1
 
+        tools = None
+        if not args.no_tools:
+            from eval.mock_tools import tool_schemas
+
+            tools = tool_schemas()
+
         print("=" * 72)
         print(f"BANCO DE PRUEBAS — clínica: {inputs['clinic_name']} (tenant {args.tenant})")
         print(f"Modelo bajo prueba: {mc['model']}   |   Juez: {args.judge_model}   |   Casos: {len(cases)}")
+        print(f"Herramientas simuladas: {'SÍ (T1)' if tools else 'no (modo pre-T1)'}")
         print("=" * 72)
 
         results = []
@@ -185,12 +245,21 @@ async def main() -> int:
             messages += _history_to_messages(c.get("history"))
             messages.append({"role": "user", "content": c.get("user", "")})
 
+            tool_trace: list[str] = []
             try:
-                resp = await _complete(client, mc["model"], messages, args.temperature)
-                answer = resp.choices[0].message.content or ""
-                if getattr(resp, "usage", None):
-                    tot_pt += resp.usage.prompt_tokens or 0
-                    tot_ct += resp.usage.completion_tokens or 0
+                if tools:
+                    answer, _pt, _ct, tool_trace = await _run_agent_turn(
+                        client, mc["model"], messages, args.temperature, tools,
+                        show_tools=args.show_tools,
+                    )
+                    tot_pt += _pt
+                    tot_ct += _ct
+                else:
+                    resp = await _complete(client, mc["model"], messages, args.temperature)
+                    answer = resp.choices[0].message.content or ""
+                    if getattr(resp, "usage", None):
+                        tot_pt += resp.usage.prompt_tokens or 0
+                        tot_ct += resp.usage.completion_tokens or 0
             except Exception as e:
                 answer = ""
                 print(f"\n[{c.get('id')}] ERROR llamando al modelo: {e}")
@@ -215,6 +284,8 @@ async def main() -> int:
                     print(f"      X  {cr['criterio']}  ->  {cr['razon']}")
             if args.show_response or not verdict["pasa"]:
                 print(f"    respuesta: {answer[:300]}")
+                if tool_trace:
+                    print(f"    herramientas: {', '.join(tool_trace)}")
 
         # ---- Resumen ----
         passed = sum(1 for _, v, _ in results if v["pasa"])
