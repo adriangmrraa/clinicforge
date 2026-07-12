@@ -32,6 +32,16 @@ INSURANCE_FIXTURE = {
 
 _DIAS = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
 
+# Contexto por-caso (lo setea run.py antes de cada turno). Permite que un caso
+# fuerce "sin disponibilidad cercana" (avail_days) para reproducir el caso Mirta
+# sin depender de una obra social con demora.
+_CTX: dict = {}
+
+
+def set_context(ctx) -> None:
+    global _CTX
+    _CTX = ctx or {}
+
 
 def _fmt(d: date) -> str:
     return f"{_DIAS[d.weekday()]} {d.strftime('%d/%m')}"
@@ -152,13 +162,27 @@ def execute(name: str, args: dict) -> str:
     if name == "check_availability":
         canon, cfg = _match_insurance(args.get("insurance_provider", ""))
         delay = cfg["delay_days"] if (cfg and cfg["mode"] == "delayed") else 0
+        # Override por-caso: fuerza que el turno mas cercano este a +N dias
+        # (caso Mirta: agenda llena, sin OS). Gana el mayor entre demora OS y override.
+        override = _CTX.get("avail_days")
+        if override is not None:
+            try:
+                delay = max(delay, int(override))
+            except (TypeError, ValueError):
+                pass
         s1, s2 = _slots(delay)
         note = ""
-        if delay:
-            first_ok = date.today() + timedelta(days=delay)
+        if cfg and cfg["mode"] == "delayed":
+            first_ok = date.today() + timedelta(days=cfg["delay_days"])
             note = (
                 f"SYSTEM_NOTE: disponibilidad para {canon} a partir del "
                 f"{first_ok.strftime('%d/%m')}.\n"
+            )
+        elif delay >= 5:
+            # Sin OS pero agenda sin cupos cercanos: avisar el turno mas cercano real
+            note = (
+                f"SYSTEM_NOTE: el turno mas cercano disponible es {_fmt(s1)} "
+                f"(a +{delay} dias de hoy).\n"
             )
         return (
             note

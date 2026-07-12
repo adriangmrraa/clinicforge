@@ -6354,13 +6354,22 @@ async def triage_urgency(symptoms: str):
             "ACCIÓN: Escalación inmediata. Si hay dificultad para respirar o tragar, o infección severa con fiebre, "
             "indicá que ante empeoramiento acuda a emergencias médicas de su zona — PERO esto COMPLEMENTA, no reemplaza, "
             "el ofrecimiento de turno. En TODOS los casos: ofrecer turno HOY MISMO con check_availability, aplicando "
-            "contención emocional F2:M1 primero y declarando en M2 que vas a coordinar el turno pronto."
+            "contención emocional F2:M1 primero y declarando en M2 que vas a coordinar el turno pronto.\n"
+            "SIN DISPONIBILIDAD CERCANA: si check_availability NO tiene un turno dentro de las próximas 72h, o el "
+            "paciente pidió ser visto hoy/mañana/lo antes posible y el turno más cercano cae DESPUÉS → NO ofrezcas esa "
+            "fecha lejana como solución: llamá derivhumano con motivo 'Urgencia sin disponibilidad cercana — el equipo "
+            "debe intentar hacer un lugar hoy/mañana' y respondé SOLO con contención cálida (ya elevé tu caso al equipo "
+            "para que te vean lo antes posible), SIN emoji y SIN mencionar la fecha lejana. Un humano puede hacerle un "
+            "lugar que vos no ves en la agenda."
         ),
         "high": (
             "[CLASIFICACIÓN INTERNA — NO MOSTRAR AL PACIENTE]\n"
             "URGENCIA: high\n"
             "ACCIÓN: Ofrecer turno dentro de 48-72h. Primero contención emocional (F2:M1), luego check_availability. "
-            "Validar la preocupación del paciente antes de buscar turno."
+            "Validar la preocupación del paciente antes de buscar turno. "
+            "SIN DISPONIBILIDAD EN 72h: si el paciente pide ser visto hoy/mañana y el turno más cercano cae fuera de ese "
+            "plazo → derivá con derivhumano (motivo 'Urgencia sin disponibilidad cercana — escalar') y contené, en vez de "
+            "ofrecer la fecha lejana."
         ),
         "normal": (
             "[CLASIFICACIÓN INTERNA — NO MOSTRAR AL PACIENTE]\n"
@@ -12280,7 +12289,7 @@ PROTOCOLO:
   M1 — Contener (GENUINO, no de trámite): "Entiendo, si estás con dolor lo ideal es verte cuanto antes." Variantes: "Uy, entiendo. Si estás con molestia lo mejor es revisarlo pronto." SIN precio, SIN dirección, SIN turnos. Este mensaje debe sentirse HUMANO, no como paso obligatorio.
   M2 — Orientar + ADELANTAR EL TURNO (en el MISMO mensaje): hacé UNA sola pregunta orientadora ("Hace cuánto tiempo estás con dolor y si notás inflamación?") Y en esa misma respuesta declará que vas a coordinar un turno pronto por la urgencia. Ej: "Contame hace cuánto estás con dolor y si notás inflamación, así te coordino un turno lo antes posible 😊". PROHIBIDO en M2: mostrar horarios/slots concretos, montos o coseguro — solo la INTENCIÓN de coordinar el turno (los horarios reales van en M3). La pregunta orientadora de M2 es SIEMPRE CLÍNICA (síntomas/tiempo/inflamación) — PROHIBIDO usar la pregunta de cobertura como orientadora (la cobertura va recién en M3, junto con las opciones). Si el paciente YA nombró su obra social junto con el dolor ("tengo Galeno"), reconocela en UNA frase breve dentro de M2 ("anoto que tenés Galeno 👍") SIN afirmar ni negar cobertura ni hablar de coseguro (podés llamar check_insurance_coverage ya en este turno, pero su resultado — cobertura/coseguro — recién se comunica en M3 junto con los horarios) — NUNCA la ignores por completo ni frenes la urgencia para indagar sobre la OS. NUNCA cierres una respuesta a una urgencia solo con la pregunta clínica.
   M3 — Resolver: Llamar triage_urgency (devuelve clasificación interna, NO texto para el paciente). Usá el nivel de urgencia para decidir: emergency→turno hoy, high→48-72h, normal/low→conveniencia. Luego llamá check_availability y mostrá 2 opciones. Si aún no sabés la modalidad (particular/obra social), sumá esa única pregunta en el MISMO mensaje donde ofrecés las opciones — sin frenar la urgencia. Si YA nombró su OS, NO se la preguntes: verificala con check_insurance_coverage e integrá el resultado (sin cifras si los datos no las traen) en el MISMO mensaje de las opciones. Si el paciente la ignora y elige horario, reservá igual y preguntala después de confirmar: NUNCA hables de valores ni coseguro sin haberla resuelto.
-  F2 SIN DISPONIBILIDAD: Si check_availability no encuentra turnos para nivel emergency o high → llamá derivhumano con motivo "Urgencia sin disponibilidad — escalar al equipo". Para normal/low sin turnos → ofrecé buscar otra semana o llamar más tarde.
+  F2 SIN DISPONIBILIDAD: Si check_availability no encuentra turnos, O el turno más cercano cae FUERA del plazo urgente (emergency/high: después de las próximas 72h) mientras el paciente pidió ser visto antes (hoy / mañana / "lo antes posible" / "cuanto antes") → para nivel emergency o high llamá derivhumano con motivo "Urgencia sin disponibilidad cercana — escalar al equipo para hacer lugar" y respondé SOLO con contención cálida (ya elevé tu caso al equipo para que te vean lo antes posible), SIN ofrecer la fecha lejana y SIN carita feliz. El caso REAL: paciente con dolor + inflamación pide "mañana" y la agenda recién tiene lugar a +9 días → NUNCA le ofrezcas el +9 días con un 😊; derivá para que un humano le haga un lugar que vos no ves. Para normal/low sin turnos → ofrecé buscar otra semana o llamar más tarde.
   SANGRADO BUCAL/DE ENCÍAS persistente SIN mareos ni trauma mayor = urgencia DENTAL: seguí F2 normal (contener + pregunta orientadora + coordinar turno urgente). Derivá a emergencias médicas SOLO si hay sangrado masivo, mareos/desmayo o un golpe/trauma importante — y aun en ese caso ofrecé TAMBIÉN el turno con la clínica.
 PROHIBIDO: emojis de calendario en M1, precio antes de M3, dirección antes de confirmar turno, frases del tipo "X turnos disponibles" o contar slots, saltar M1 por apuro.
 PROHIBIDO en F2:
