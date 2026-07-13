@@ -4993,6 +4993,37 @@ async def book_appointment(
         logger.info(
             f"📅 BOOK PATIENT: existing={existing_patient['id'] if existing_patient else 'NEW'} phone={phone} is_third_party={is_third_party} is_minor={is_minor}"
         )
+
+        # ═══ IDEMPOTENCIA / HONRAR LA RESERVA (caso Graciela) ═══
+        # Si el paciente OBJETIVO ya tiene un turno que se solapa con este horario, NO
+        # entrar al bucle de profesionales: el chequeo de conflicto del bucle filtra por
+        # professional_id, así que ese turno PROPIO marcaría al profesional como "ocupado"
+        # y devolvería un FALSO "se ocupó" → loop (el bot agenda y después se contradice).
+        # Chequeo idéntico al guard de duplicado, pero ANTES del bucle: honra la reserva
+        # existente en vez de re-ofrecer. Fail-open: si el chequeo falla, no bloquea.
+        if existing_patient:
+            try:
+                _already_booked = await db.pool.fetchval(
+                    """SELECT COUNT(*) FROM appointments
+                    WHERE tenant_id = $1 AND patient_id = $2
+                    AND status IN ('scheduled', 'confirmed')
+                    AND appointment_datetime < $4
+                    AND (appointment_datetime + interval '1 minute' * COALESCE(duration_minutes, 60)) > $3""",
+                    tenant_id, existing_patient["id"], apt_datetime, end_apt,
+                )
+                if _already_booked and _already_booked > 0:
+                    await _track_book_error(tenant_id, chat_phone, "DUPLICATE", msg="idempotent: patient already has an overlapping appointment")
+                    await _reset_unavail_streak(tenant_id, chat_phone)
+                    logger.info(
+                        f"📅 BOOK IDEMPOTENT: patient={existing_patient['id']} ya tiene turno en {apt_datetime} — honrando la reserva, no re-ofrezco"
+                    )
+                    return _format_book_error("DUPLICATE",
+                        msg="Ese turno YA está agendado a nombre del paciente (mismo día y horario): está todo confirmado, no hace falta reservarlo de nuevo. Si querés cambiar el día u horario, decímelo y te lo reprogramo.",
+                        action="El turno ya existe. Confirmalo cálidamente en UNA línea (sin caritas). NO digas que 'se ocupó', NO ofrezcas otros horarios y NO vuelvas a llamar book_appointment. Si el paciente quiere otro horario, usá reschedule_appointment."
+                    )
+            except Exception as _idem_err:
+                logger.warning(f"[BOOK] Idempotency pre-check failed (continuing): {_idem_err}")
+
         # Validación temprana para pacientes nuevos: fallar antes de buscar profesionales
         if not existing_patient:
             if is_art:
@@ -5265,26 +5296,10 @@ async def book_appointment(
                 track_msg="no target professional available"
             )
 
-        # Patient duplicate guard: block ONLY if time overlaps with existing appointment (DLD-59)
-        if existing_patient:
-            try:
-                existing_same_day = await db.pool.fetchval(
-                    """SELECT COUNT(*) FROM appointments
-                    WHERE tenant_id = $1 AND patient_id = $2
-                    AND status IN ('scheduled', 'confirmed')
-                    AND appointment_datetime < $4
-                    AND (appointment_datetime + interval '1 minute' * COALESCE(duration_minutes, 60)) > $3""",
-                    tenant_id, existing_patient["id"], apt_datetime, end_apt
-                )
-                if existing_same_day and existing_same_day > 0:
-                    await _track_book_error(tenant_id, chat_phone, "DUPLICATE", msg="patient already has appointment at this time")
-                    return _format_book_error("DUPLICATE",
-                        msg="Ya tenés un turno agendado en ese horario. Si querés cambiar el horario, pedime que lo reprograme en lugar de agendar uno nuevo.",
-                        action="Use list_my_appointments; do NOT retry"
-                    )
-            except Exception as e:
-                logger.warning(f"[BOOK] Same-day check failed (continuing): {e}")
-                # Fail-open: don't block booking if the check fails
+        # Patient duplicate guard (DLD-59): ahora se evalúa ANTES del bucle de
+        # profesionales (bloque "IDEMPOTENCIA / HONRAR LA RESERVA", caso Graciela).
+        # Se movió arriba porque el turno propio del paciente hacía que el chequeo de
+        # conflicto del bucle devolviera un FALSO "se ocupó". No repetir el chequeo acá.
 
         # 3b. CHAIR CONSTRAINT — check total concurrent appointments doesn't exceed max_chairs
         try:
