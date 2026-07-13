@@ -4493,6 +4493,24 @@ async def book_appointment(
             lead_professional_id = lead_data.get("professional_id")
         except Exception as e:
             logger.warning(f"📅 BOOK: Failed to retrieve insurance from lead_context: {e}")
+    elif is_minor:
+        # Fix B (2026-07-13): el profesional DERIVADO (ej. ortodoncia → ortodoncista) lo
+        # define el TRATAMIENTO, no el interlocutor → también aplica al agendar para un MENOR.
+        # Sin esto, is_third_party (que incluye is_minor) descartaba lead_professional_id y el
+        # turno del hijo caía en el profesional prioritario equivocado (o fallaba si ese día no
+        # atiende). ⛔ NO leemos el seguro acá: el seguro SÍ es del interlocutor, no del menor.
+        # El narrow posterior (usa lead_professional_id) es SOFT: si el prof no está entre los
+        # candidatos, no vacía la lista (fallback intacto).
+        try:
+            from services.lead_context import get as lead_ctx_get
+            _lead_data_minor = await lead_ctx_get(tenant_id, chat_phone)
+            lead_professional_id = _lead_data_minor.get("professional_id")
+            if lead_professional_id:
+                logger.info(
+                    f"📅 BOOK MINOR: usando professional_id={lead_professional_id} derivado de la oferta (definido por el tratamiento)"
+                )
+        except Exception as e:
+            logger.warning(f"📅 BOOK MINOR: Failed to retrieve professional_id from lead_context: {e}")
 
     guardian_phone_value = None
     if is_art:
