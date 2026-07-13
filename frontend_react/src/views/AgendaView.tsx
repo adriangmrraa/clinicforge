@@ -314,7 +314,10 @@ export default function AgendaView() {
       if (now - professionalsCache.current.fetchedAt > CACHE_TTL || now - patientsCache.current.fetchedAt > CACHE_TTL) {
         const [professionalsRes, patientsRes] = await Promise.all([
           api.get('/admin/professionals'),
-          api.get('/admin/patients'),
+          // limit=5000: el default del endpoint es 200 y el buscador de pacientes del
+          // modal de turno filtra del lado del cliente → con >200 pacientes los últimos
+          // no cargaban y "Sin resultados" era falso (caso Carlos: buscar "mora").
+          api.get('/admin/patients?limit=5000'),
         ]);
         fetchedProfessionals = professionalsRes.data.filter((p: Professional) => p.is_active);
         fetchedPatients = patientsRes.data;
