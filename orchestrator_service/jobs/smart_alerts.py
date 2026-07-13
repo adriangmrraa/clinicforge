@@ -19,9 +19,22 @@ from datetime import datetime, date, timedelta, timezone
 
 from .scheduler import scheduler
 
-# Fixed UTC-3 offset — Argentina has no DST since 2009.
-# Used to convert UTC datetimes from the DB to local time for alert messages.
+# Offset fijo UTC-3 — Argentina no tiene horario de verano desde 2009.
+# Se usa para convertir los datetime UTC de la base a hora local en las alertas.
 ARG_TZ = timezone(timedelta(hours=-3))
+
+
+def _hoy_arg() -> date:
+    """Fecha de HOY en Argentina (no la del servidor).
+
+    El contenedor corre en UTC: a la noche argentina (ej. 22:00 = 01:00 UTC del
+    día siguiente) _hoy_arg() YA devuelve el día de mañana. Eso hacía que el
+    aviso "turnos sin confirmar para mañana" saltara +2 días (caso Carlos: el 12
+    a la noche avisaba para el 14 en vez del 13). Siempre calcular el día de la
+    clínica con la zona horaria argentina.
+    """
+    return datetime.now(ARG_TZ).date()
+
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +108,7 @@ async def _check_unconfirmed_tomorrow(tenant_id: int):
     from db import db
     from services.telegram_notifier import send_proactive_message
 
-    tomorrow = date.today() + timedelta(days=1)
+    tomorrow = _hoy_arg() + timedelta(days=1)
     alert_key = f"unconfirmed_{tomorrow.isoformat()}"
 
     if await _alert_already_sent(tenant_id, alert_key):
@@ -128,7 +141,7 @@ async def _check_no_shows_today(tenant_id: int):
     from db import db
     from services.telegram_notifier import send_proactive_message
 
-    today = date.today()
+    today = _hoy_arg()
     alert_key = f"noshows_{today.isoformat()}"
 
     if await _alert_already_sent(tenant_id, alert_key):
@@ -169,7 +182,7 @@ async def _check_recurring_no_show_patients(tenant_id: int):
     from db import db
     from services.telegram_notifier import send_proactive_message
 
-    cutoff = date.today() - timedelta(days=60)
+    cutoff = _hoy_arg() - timedelta(days=60)
 
     recurring = await db.fetch(
         """SELECT p.id as patient_id, p.first_name, p.last_name, COUNT(*) as ns_count
@@ -259,8 +272,8 @@ async def _check_overdue_payments(tenant_id: int):
     from db import db
     from services.telegram_notifier import send_proactive_message
 
-    iso_week = date.today().isocalendar()[1]
-    iso_year = date.today().isocalendar()[0]
+    iso_week = _hoy_arg().isocalendar()[1]
+    iso_year = _hoy_arg().isocalendar()[0]
     alert_key = f"overdue_weekly_{iso_year}_{iso_week}"
 
     if await _alert_already_sent(tenant_id, alert_key):
