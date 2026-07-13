@@ -2969,6 +2969,14 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                         _is_research = _detect_research_intent(user_msg) or _detect_period_change(user_msg)
                         logger.info(f"🔒 STATE_GUARD EVAL | state={prev_state_str} msg={user_msg[:80]!r} selection={_is_selection} research={_is_research}")
                         if _is_selection:
+                            # El paciente eligió claro → resetear el contador anti-loop "¿1 o 2?".
+                            try:
+                                from services.relay import get_redis as _gr_ro2
+                                _r_ro2 = _gr_ro2()
+                                if _r_ro2:
+                                    await _r_ro2.delete(f"reoffer_1o2:{tenant_id}:{phone}")
+                            except Exception:
+                                pass
                             # Build a detailed hint including the actual offered slots
                             _last_offered_slots = prev_state.get("last_offered_slots") or []
                             if _last_offered_slots:
@@ -3020,8 +3028,23 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                                 f"🔒 STATE_GUARD: Re-search intent detected, injecting rejection hint. prev_state={prev_state_str}"
                             )
                         else:
-                            # No clear selection or rejection — could be a lateral question or ambiguous response
-                            # Build slots reminder so the LLM can re-offer after answering
+                            # No clear selection or rejection — pregunta lateral o respuesta ambigua.
+                            # FRENO DETERMINISTA DEL LOOP "¿1 o 2?" (caso prod ortodoncia): cada vez que
+                            # el paciente contesta algo que no es una elección clara, el bot respondía y
+                            # RE-PREGUNTABA "¿el 1 o el 2?". Si eso pasa 2+ veces seguidas es un loop que
+                            # frustra y gasta mensajes (Meta cobra por mensaje). Contador en Redis: al 2º
+                            # re-ofrecimiento seguido el bot deja de re-preguntar y toma la iniciativa.
+                            _reoffer_n = 1
+                            try:
+                                from services.relay import get_redis as _gr_ro
+                                _r_ro = _gr_ro()
+                                if _r_ro:
+                                    _ro_key = f"reoffer_1o2:{tenant_id}:{phone}"
+                                    _reoffer_n = int(await _r_ro.incr(_ro_key))
+                                    await _r_ro.expire(_ro_key, 900)
+                            except Exception:
+                                _reoffer_n = 1
+
                             _last_offered_amb = prev_state.get("last_offered_slots") or []
                             _slots_reminder = ""
                             if _last_offered_amb:
@@ -3030,19 +3053,50 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                                     _rem_lines.append(f"  {_ri}️⃣ {_rs.get('date_display', _rs.get('date', ''))} — {_rs.get('time', '')} hs")
                                 _slots_reminder = "\n" + "\n".join(_rem_lines)
 
-                            state_hint = (
-                                f"\n\n[STATE_HINT: El paciente tiene opciones de turno PENDIENTES de respuesta:{_slots_reminder}\n\n"
-                                "El paciente parece estar haciendo una pregunta lateral o un comentario NO relacionado con la selección de turno.\n"
-                                "INSTRUCCIONES:\n"
-                                "1. Respondé la pregunta o comentario del paciente normalmente.\n"
-                                "2. DESPUÉS de responder, recordale las opciones pendientes de forma natural.\n"
-                                "   Ejemplo: 'Y respecto al turno, ¿te queda mejor el 1️⃣ o el 2️⃣?'\n"
-                                "3. NO pierdas el contexto del turno — el paciente NO canceló la búsqueda.\n"
-                                "4. Si es ambiguo si acepta o rechaza los turnos, preguntá: '¿Querés alguna de estas opciones o preferís otro día?']"
-                            )
-                            logger.info(
-                                f"🔒 STATE_GUARD: No clear intent detected, injecting clarification hint. prev_state={prev_state_str}, user_msg={user_msg[:50]}..."
-                            )
+                            if not _last_offered_amb:
+                                # OFFERED_SLOTS pero SIN slots cargados (o reprogramación sin búsqueda
+                                # todavía): PROHIBIDO decir "¿1 o 2?" — esas opciones NO existen y el
+                                # paciente no entiende (caso prod Denis: reprogramaba, dijo "la semana que
+                                # viene" y el bot preguntó "¿el 1 o el 2?" sin haber ofrecido nada).
+                                state_hint = (
+                                    "\n\n[STATE_HINT: NO hay opciones de turno ofrecidas ahora mismo (la lista está vacía).\n"
+                                    "⛔ PROHIBIDO decir '¿el 1 o el 2?' o referirte a opciones numeradas — NO existen y confunden al paciente.\n"
+                                    "INSTRUCCIONES:\n"
+                                    "1. Respondé lo que dijo el paciente en UNA línea.\n"
+                                    "2. Si dio una preferencia de día/horario, o está reprogramando y dijo cuándo ('la semana que viene', 'el jueves', 'a la tarde') → llamá check_availability con esa preferencia y ofrecé opciones concretas.\n"
+                                    "3. Si NO dio ninguna preferencia → preguntale UNA sola vez qué día y horario le viene bien.]"
+                                )
+                                logger.info(
+                                    f"🔒 STATE_GUARD: OFFERED_SLOTS sin slots — evito '¿1 o 2?' y ruteo a búsqueda. prev_state={prev_state_str}"
+                                )
+                            elif _reoffer_n >= 2:
+                                # LOOP detectado: PROHIBIDO re-preguntar "¿1 o 2?" otra vez.
+                                state_hint = (
+                                    f"\n\n[STATE_HINT: El paciente YA dio {_reoffer_n} vueltas sin elegir claramente entre las opciones:{_slots_reminder}\n\n"
+                                    "⛔ CORTACIRCUITO ANTI-LOOP (CRÍTICO — caso prod): venís repitiendo '¿el 1 o el 2?' y el paciente no define. Es un LOOP que frustra y gasta mensajes. PROHIBIDO volver a preguntar '¿el 1 o el 2?'.\n"
+                                    "INSTRUCCIONES:\n"
+                                    "1. Respondé lo que preguntó (si preguntó algo), en UNA línea.\n"
+                                    "2. TOMÁ LA INICIATIVA: si mostró CUALQUIER intención de querer el turno ('esta semana', 'sí', 'dale', 'necesito', 'quiero', 'esta semana tendría') → AGENDÁ la Opción 1 directamente: confirmá 'Te agendo el [Opción 1 con su fecha y hora exactas]' y pedí nombre y DNI. NO preguntes cuál quiere.\n"
+                                    "3. SOLO si el paciente NO muestra ninguna intención de avanzar, ofrecé UNA salida cálida ('cuando lo tengas decidido me avisás y te lo agendo 😊') SIN insistir.\n"
+                                    "4. ⛔ Repetí las fechas EXACTAS como las ofreciste — NUNCA digas 'esta semana' si los turnos NO son de esta semana (eso es mentira y confunde).]"
+                                )
+                                logger.info(
+                                    f"🔒 STATE_GUARD: ANTI-LOOP 1o2 disparado (n={_reoffer_n}) — tomar iniciativa. prev_state={prev_state_str}"
+                                )
+                            else:
+                                state_hint = (
+                                    f"\n\n[STATE_HINT: El paciente tiene opciones de turno PENDIENTES de respuesta:{_slots_reminder}\n\n"
+                                    "El paciente parece estar haciendo una pregunta lateral o un comentario NO relacionado con la selección de turno.\n"
+                                    "INSTRUCCIONES:\n"
+                                    "1. Respondé la pregunta o comentario del paciente normalmente.\n"
+                                    "2. DESPUÉS de responder, recordale las opciones pendientes de forma natural, con las fechas EXACTAS (⛔ NO digas 'esta semana' si los turnos NO caen esta semana).\n"
+                                    "   Ejemplo: 'Y respecto al turno, ¿te queda mejor el 1️⃣ o el 2️⃣?'\n"
+                                    "3. NO pierdas el contexto del turno — el paciente NO canceló la búsqueda.\n"
+                                    "4. Si es ambiguo si acepta o rechaza los turnos, preguntá: '¿Querés alguna de estas opciones o preferís otro día?']"
+                                )
+                                logger.info(
+                                    f"🔒 STATE_GUARD: No clear intent detected, injecting clarification hint (n={_reoffer_n}). prev_state={prev_state_str}, user_msg={user_msg[:50]}..."
+                                )
                     elif prev_state_str == "SLOT_LOCKED":
                         _slot = prev_state.get("last_locked_slot") or {}
                         _slot_details = ""
