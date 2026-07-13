@@ -4535,8 +4535,19 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
     # --- SAFETY STRIP: remove any leaked internal tags before sending ---
     if response_text:
         import re as _re_safety
-        # Strip bracket tags like [CONSULTA_PREVIA_REQUISITOS:...], [INTERNAL_*:...], [BOOK_HINT:...], [SYSTEM_NOTE: ...]
-        response_text = _re_safety.sub(r"\[(?:CONSULTA_PREVIA_REQUISITOS|INTERNAL_\w+|BOOK_HINT|ACTION_HINT|SYSTEM_NOTE)[:\s\-][^\]]*\]", "", response_text).strip()
+        # Triage interno (triage_urgency): si el modelo eco el bloque de clasificación,
+        # sacar las líneas URGENCIA:/ACCIÓN: — SOLO si aparece el header (evita falsos
+        # positivos con texto legítimo). El header en sí lo saca el regex de brackets de abajo.
+        if _re_safety.search(r"\[CLASIFICACI[ÓO]N INTERNA", response_text, _re_safety.IGNORECASE):
+            response_text = _re_safety.sub(r"(?im)^\s*(?:URGENCIA|ACCI[ÓO]N)\s*:.*$", "", response_text)
+        # Strip bracket tags internos. Auditoría 2026-07-13 (tras el caso "[un silencio]"):
+        # el separador ahora es OPCIONAL (caza los que NO llevan ":", ej. [INTERNAL_SEÑA_DATA],
+        # [INTERNAL_BOOKING_CONTEXT]), admite la barra de cierre (/) y suma los nombres que
+        # faltaban (BOOK_ERROR, ACTION pelado, STATE_HINT, CLASIFICACIÓN). Cubre ambos motores.
+        response_text = _re_safety.sub(
+            r"\[/?(?:CONSULTA_PREVIA_REQUISITOS|INTERNAL_\w+|BOOK_HINT|BOOK_ERROR|ACTION_HINT|ACTION|STATE_HINT|SYSTEM_NOTE|CLASIFICACI[ÓO]N)(?:[:\s\-][^\]]*)?\]",
+            "", response_text,
+        ).strip()
         # AG-03: nunca filtrar al paciente las directivas internas crudas del gate de turnos
         response_text = _re_safety.sub(
             r"(?im)^.*\b(?:BOOKING_ALREADY_EXISTS|BOOKING_ALREADY_IN_PROGRESS|AVAILABILITY_BLOCKED)\b.*$",
