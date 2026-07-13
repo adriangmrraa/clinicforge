@@ -262,7 +262,10 @@ async def main() -> int:
                     # Contexto por-caso para las herramientas simuladas (ej:
                     # mock_availability_days para reproducir "sin turno cercano").
                     from eval import mock_tools as _mt
-                    _mt.set_context({"avail_days": c.get("mock_availability_days")})
+                    _mt.set_context({
+                        "avail_days": c.get("mock_availability_days"),
+                        "book_fails": c.get("mock_book_fails"),
+                    })
                     answer, _pt, _ct, tool_trace = await _run_agent_turn(
                         client, mc["model"], messages, args.temperature, tools,
                         show_tools=args.show_tools,

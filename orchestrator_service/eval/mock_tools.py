@@ -195,6 +195,15 @@ def execute(name: str, args: dict) -> str:
         return f"RESERVADO 30 min: {args.get('slot_datetime', '')}."
 
     if name == "book_appointment":
+        # Simular el bug offer!=bookable (caso Graciela): la reserva falla con
+        # UNAVAILABLE aunque check_availability haya ofrecido el slot. Sirve para
+        # testear el CORTACIRCUITO ANTI-LOOP (derivar tras 2 "se ocupó").
+        if _CTX.get("book_fails"):
+            return (
+                "[BOOK_ERROR:UNAVAILABLE:RECOVERABLE] Ese horario se ocupó recién. "
+                "La PRIMERA vez ofrecé otros; si esto ya pasó 2+ veces seguidas es un "
+                "LOOP: NO sigas re-ofreciendo, llamá derivhumano para reserva manual."
+            )
         return (
             "TURNO CONFIRMADO: "
             f"{args.get('slot_datetime', '')} — {args.get('treatment_code', 'consulta')}. "
