@@ -6778,7 +6778,9 @@ async def reschedule_appointment(original_date: str, new_date_time: str, interpr
             except Exception as _id_err:
                 logger.warning(f"[RESCHEDULE] Failed to parse interpreted_date='{interpreted_date}': {_id_err}, falling back to new_date_time")
 
-        # B2: slot_offer validation — WARNING ONLY, never blocks the reschedule
+        # B2: slot_offer validation — AHORA BLOQUEA (fix 2026-07-13, caso prod Natalia): antes era
+        # solo warning y el bot reprogramaba a una hora que nunca ofreció (inventaba "14:00").
+        # Ahora exige que el slot nuevo haya salido de una oferta real (mismo criterio que book R1).
         # Safety guard: if we still don't have a valid new_dt, ask for the date
         if new_dt is None:
             return (
@@ -6809,23 +6811,40 @@ async def reschedule_appointment(original_date: str, new_date_time: str, interpr
                 _offer_key_rv = f"slot_offer:{tenant_id}:{phone}"
                 _offer_raw_rv = await _r_rv.get(_offer_key_rv)
                 if _offer_raw_rv is None:
-                    logger.info(f"[RESCHEDULE] slot_offer key missing (expired or never set) — continuing")
-                else:
-                    _offered_slots_rv = json.loads(
-                        _offer_raw_rv.decode() if isinstance(_offer_raw_rv, bytes) else _offer_raw_rv
+                    # No se ofreció NINGÚN horario para reprogramar → NO reprogrames a una hora
+                    # inventada. Obligá a ofrecer opciones reales primero (mismo freno que book R1).
+                    logger.warning(f"[RESCHEDULE] slot_offer key missing para {phone} — bloqueo reprogramación a slot no ofrecido")
+                    return (
+                        "⛔ Todavía no le ofreciste horarios concretos para reprogramar, así que NO puedo reprogramar a una hora inventada. "
+                        "PRIMERO llamá check_availability pasando el treatment_name del turno (para acotar al profesional correcto) y la fecha/preferencia del paciente, "
+                        "y ofrecele 2 opciones REALES para que elija. Recién cuando el paciente elija UNA de esas opciones, reprogramá con esa fecha y hora exactas."
                     )
-                    _req_date_rv = new_dt.strftime("%Y-%m-%d")
-                    _req_time_rv = new_dt.strftime("%H:%M")
-                    _slot_match_rv = any(
-                        s.get("date") == _req_date_rv and s.get("time") == _req_time_rv
-                        for s in _offered_slots_rv
+                _offered_slots_rv = json.loads(
+                    _offer_raw_rv.decode() if isinstance(_offer_raw_rv, bytes) else _offer_raw_rv
+                )
+                _req_date_rv = new_dt.strftime("%Y-%m-%d")
+                _req_time_rv = new_dt.strftime("%H:%M")
+                _slot_match_rv = any(
+                    s.get("date") == _req_date_rv and s.get("time") == _req_time_rv
+                    for s in _offered_slots_rv
+                )
+                if not _slot_match_rv:
+                    # El horario pedido NO salió de la oferta real → bloquear (caso prod Natalia:
+                    # el bot inventó "14:00" que nunca ofreció).
+                    logger.warning(
+                        f"[RESCHEDULE] SLOT_NO_OFRECIDO: {_req_date_rv} {_req_time_rv} no está en los ofrecidos {_offered_slots_rv} — bloqueo"
                     )
-                    if not _slot_match_rv:
-                        logger.warning(
-                            f"[RESCHEDULE] WARNING: target slot {_req_date_rv} {_req_time_rv} was not in offered slots: {_offered_slots_rv} — proceeding anyway"
-                        )
+                    _opts_text_rv = ", ".join(
+                        f"{s.get('date')} {s.get('time')}" for s in _offered_slots_rv
+                    )
+                    return (
+                        f"⛔ El horario {_req_date_rv} {_req_time_rv} NO fue ofrecido al paciente, así que no puedo reprogramar a esa hora inventada. "
+                        f"Las opciones que SÍ ofreciste son: {_opts_text_rv}. Pedile al paciente que elija una de ESAS. "
+                        "Si quiere otra fecha/horario, llamá check_availability de nuevo (con el treatment_name del turno) y ofrecé 2 opciones reales antes de reprogramar."
+                    )
+            # Si Redis está caído, se saltea la validación (fail-open) para no bloquear reprogramaciones legítimas.
         except Exception as _rv_err:
-            logger.warning(f"[RESCHEDULE] slot_offer check failed (non-blocking): {_rv_err}")
+            logger.warning(f"[RESCHEDULE] slot_offer check failed (fail-open): {_rv_err}")
 
         # Use p_id directly if resolved via context, otherwise phone digits
         if p_id:
