@@ -4594,19 +4594,56 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
     # cuando el paciente solo agradece/se despide tras un cierre ya hecho
     # (regla CIERRE DE CORTESÍA). Red de seguridad: case-insensitive; si viene
     # embebido junto a texto real, se quita el token y se envía solo el resto.
+    # ⛔ El regex atrapa CUALQUIER corchete que contenga "silencio" (ej. "[un
+    # silencio]", "[silencio total]") — el modelo a veces deforma el marcador y
+    # ANTES se filtraba tal cual al paciente (caso prod: le mandó "[un silencio]"
+    # en vez de contestarle). NUNCA debe llegar un marcador de silencio al chat.
     if response_text:
         import re as _sil_re_mod
-        _sil_pat = _sil_re_mod.compile(r"\[\s*silencio\s*\]", _sil_re_mod.IGNORECASE)
+        _sil_pat = _sil_re_mod.compile(r"\[[^\[\]]*silencio[^\[\]]*\]", _sil_re_mod.IGNORECASE)
         if _sil_pat.search(response_text):
             _sil_rest = _sil_pat.sub("", response_text).strip()
             # Si solo quedan restos de puntuación, es silencio total.
             if not _sil_rest.strip(" .,;:!¡¿?…-*"):
                 _sil_rest = ""
-            if not _sil_rest:
-                logger.info(f"🔇 [SILENCIO] — cierre de cortesía para {external_user_id}: no se envía respuesta")
-            else:
+            if _sil_rest:
                 logger.info("🔇 [SILENCIO] embebido en texto — se envía solo el resto")
-            response_text = _sil_rest
+                response_text = _sil_rest
+            else:
+                # Silencio total. Pero ¿el paciente SOLO agradeció? Si su mensaje trae una
+                # PREGUNTA, un pedido o reabre con "hola", el [SILENCIO] es un MISFIRE del
+                # modelo (la regla del prompt lo prohíbe). NO dejamos al paciente colgado:
+                # avisamos a la clínica para que un humano lo tome (caso prod: preguntó la
+                # dirección de su turno de hoy y el bot se quería callar).
+                _last_user = " ".join(messages).strip().lower()
+                _courtesy_words = (
+                    "gracias", "ok", "oka", "dale", "genial", "buenísimo", "buenisimo",
+                    "perfecto", "igualmente", "saludos", "de nada", "estamos comunicados",
+                    "listo", "joya", "bárbaro", "barbaro", "chau", "nos vemos", "hasta luego",
+                    "👍", "🙏", "🙌",
+                )
+                _looks_courtesy = (
+                    "?" not in _last_user
+                    and len(_last_user.split()) <= 6
+                    and not _last_user.startswith(("hola", "buenas", "buen dia", "buen día"))
+                    and any(w in _last_user for w in _courtesy_words)
+                )
+                if _looks_courtesy:
+                    logger.info(f"🔇 [SILENCIO] — cierre de cortesía para {external_user_id}: no se envía respuesta")
+                else:
+                    logger.warning(
+                        f"🚨 SILENCIO MISFIRE: el modelo intentó callarse ante un mensaje que NO es cortesía "
+                        f"({_last_user[:80]!r}) — flag + aviso a la clínica en vez de dejar colgado a {external_user_id}"
+                    )
+                    try:
+                        await _flag_agent_failure_and_alert(
+                            pool=pool, tenant_id=tenant_id, conversation_id=conversation_id,
+                            phone=external_user_id, row=row,
+                            reason=f"El bot intentó responder [SILENCIO] ante un mensaje que requería respuesta: {_last_user[:200]}",
+                        )
+                    except Exception as _mf_err:
+                        logger.warning(f"silencio-misfire flag/alert failed (non-blocking): {_mf_err}")
+                response_text = ""
 
     # --- SEND RESPONSE ---
     from response_sender import ResponseSender
