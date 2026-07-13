@@ -222,15 +222,40 @@ async def _book_unavailable(
 
 
 async def _reset_unavail_streak(tenant_id: int, chat_phone: str) -> None:
-    """Resetea el contador de 'se ocupó' cuando una reserva sale bien."""
+    """Resetea los contadores de 'se ocupó' y 'oferta stale' cuando una reserva sale bien."""
     try:
         from services.relay import get_redis as _gr
 
         _r = _gr()
         if _r:
             await _r.delete(f"book_unavail_streak:{tenant_id}:{chat_phone}")
+            await _r.delete(f"book_softfail_streak:{tenant_id}:{chat_phone}")
     except Exception:
         pass
+
+
+async def _softfail_streak(tenant_id: int, chat_phone: str) -> int:
+    """Contador determinista de rechazos pre-vuelo NO atribuibles al paciente
+    (EXPIRED = oferta vencida, NOT_OFFERED = slot no coincide con la oferta).
+
+    Fix A (2026-07-13) dejó de inflar booking_attempts con estos códigos para no
+    derivar de más — pero eso removió el único backstop determinista si el modelo
+    mini queda en loop (re-intenta el mismo horario sin correr check_availability).
+    Este contador (Redis, TTL de un mismo agendamiento) fuerza la derivación al 3er
+    rechazo seguido, SIN depender del LLM. Se resetea en reserva exitosa
+    (_reset_unavail_streak). Independiente del streak de UNAVAILABLE ('se ocupó' real)."""
+    try:
+        from services.relay import get_redis as _gr
+
+        _r = _gr()
+        if _r:
+            _key = f"book_softfail_streak:{tenant_id}:{chat_phone}"
+            _n = int(await _r.incr(_key))
+            await _r.expire(_key, BOOK_UNAVAIL_STREAK_TTL)
+            return _n
+    except Exception:
+        pass
+    return 1
 
 
 
@@ -4753,6 +4778,13 @@ async def book_appointment(
                         f"📅 BOOK R1: slot_offer key missing for {chat_phone} — availability expired"
                     )
                     await _track_book_error(tenant_id, chat_phone, "EXPIRED")
+                    if await _softfail_streak(tenant_id, chat_phone) >= 3:
+                        return _format_book_error("EXPIRED",
+                            msg="3er intento seguido sin poder confirmar (la oferta venció repetidamente).",
+                            action=("DERIVÁ YA: llamá derivhumano (motivo 'No se pudo confirmar el turno "
+                                    "tras varios intentos — reservar manualmente') y respondé cálido UNA vez, "
+                                    "SIN caritas: 'Te lo estamos reservando y el equipo te lo confirma a la "
+                                    "brevedad'. NO vuelvas a ofrecer horarios."))
                     return (
                         _format_book_error("EXPIRED",
                             action="Fresh check_availability; if 2nd EXPIRED, escalate to derivhumano"
@@ -4776,6 +4808,12 @@ async def book_appointment(
                             f"{s.get('date')} {s.get('time')}" for s in _offered_slots
                         )
                         await _track_book_error(tenant_id, chat_phone, "NOT_OFFERED", msg=f"slot {_req_date} {_req_time} not offered")
+                        if await _softfail_streak(tenant_id, chat_phone) >= 3:
+                            return _format_book_error("NOT_OFFERED",
+                                msg="3er intento seguido con un horario que no fue ofrecido.",
+                                action=("DERIVÁ YA: llamá derivhumano (motivo 'El paciente insiste con un "
+                                        "horario no disponible — coordinar manualmente') y respondé cálido "
+                                        "UNA vez sin ofrecer más horarios."))
                         return (
                             _format_book_error("NOT_OFFERED",
                                 msg=f"El horario {_req_date} {_req_time} no fue ofrecido al paciente. Las opciones válidas son: {_opts_text}. Pedile al paciente que elija una de esas opciones.",
