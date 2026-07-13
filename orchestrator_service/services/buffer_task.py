@@ -3053,7 +3053,23 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                                     _rem_lines.append(f"  {_ri}️⃣ {_rs.get('date_display', _rs.get('date', ''))} — {_rs.get('time', '')} hs")
                                 _slots_reminder = "\n" + "\n".join(_rem_lines)
 
-                            if _reoffer_n >= 2:
+                            if not _last_offered_amb:
+                                # OFFERED_SLOTS pero SIN slots cargados (o reprogramación sin búsqueda
+                                # todavía): PROHIBIDO decir "¿1 o 2?" — esas opciones NO existen y el
+                                # paciente no entiende (caso prod Denis: reprogramaba, dijo "la semana que
+                                # viene" y el bot preguntó "¿el 1 o el 2?" sin haber ofrecido nada).
+                                state_hint = (
+                                    "\n\n[STATE_HINT: NO hay opciones de turno ofrecidas ahora mismo (la lista está vacía).\n"
+                                    "⛔ PROHIBIDO decir '¿el 1 o el 2?' o referirte a opciones numeradas — NO existen y confunden al paciente.\n"
+                                    "INSTRUCCIONES:\n"
+                                    "1. Respondé lo que dijo el paciente en UNA línea.\n"
+                                    "2. Si dio una preferencia de día/horario, o está reprogramando y dijo cuándo ('la semana que viene', 'el jueves', 'a la tarde') → llamá check_availability con esa preferencia y ofrecé opciones concretas.\n"
+                                    "3. Si NO dio ninguna preferencia → preguntale UNA sola vez qué día y horario le viene bien.]"
+                                )
+                                logger.info(
+                                    f"🔒 STATE_GUARD: OFFERED_SLOTS sin slots — evito '¿1 o 2?' y ruteo a búsqueda. prev_state={prev_state_str}"
+                                )
+                            elif _reoffer_n >= 2:
                                 # LOOP detectado: PROHIBIDO re-preguntar "¿1 o 2?" otra vez.
                                 state_hint = (
                                     f"\n\n[STATE_HINT: El paciente YA dio {_reoffer_n} vueltas sin elegir claramente entre las opciones:{_slots_reminder}\n\n"
