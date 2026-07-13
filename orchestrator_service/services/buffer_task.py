@@ -3009,13 +3009,25 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                             logger.info(
                                 f"🔒 STATE_GUARD: Injecting hint for slot selection with {len(_last_offered_slots)} slots. prev_state={prev_state_str}"
                             )
-                        elif _detect_research_intent(user_msg):
-                            # User is rejecting offered slots and asking for different date/time
-                            # This is OK — the LLM SHOULD call check_availability with the new preference
+                        elif _is_research:
+                            # RECHAZA los slots o pide otra fecha/día/PERÍODO — incluye cambio de MES
+                            # ("para agosto", "el mes que viene"). Antes la condición era solo
+                            # _detect_research_intent y el cambio de mes caía en la rama ambigua → el freno
+                            # anti-loop podía agendar el turno de ESTA semana por error (hallazgo de la
+                            # revisión adversarial 2026-07-13). Reseteo el contador anti-loop "¿1 o 2?":
+                            # una re-búsqueda arranca una ronda nueva.
+                            try:
+                                from services.relay import get_redis as _gr_ro3
+                                _r_ro3 = _gr_ro3()
+                                if _r_ro3:
+                                    await _r_ro3.delete(f"reoffer_1o2:{tenant_id}:{phone}")
+                            except Exception:
+                                pass
                             state_hint = (
-                                "\n\n[STATE_HINT: El paciente ya tenía opciones de turno ofrecidas pero las RECHAZÓ o pidió otro día/horario.\n\n"
+                                "\n\n[STATE_HINT: El paciente ya tenía opciones de turno ofrecidas pero las RECHAZÓ o pidió otro día/horario/PERÍODO.\n\n"
                                 "INSTRUCCIONES CRÍTICAS:\n"
                                 "- DEBES llamar check_availability con la nueva preferencia de fecha/horario que indica el paciente.\n"
+                                "- ⛔ Si pide otro MES o período ('para agosto', 'el mes que viene', 'a fin de mes', 'la segunda quincena') → usá ese período como interpreted_date con search_mode='month'. NUNCA le agendes un turno de esta semana si pidió otro mes.\n"
                                 "- Si el paciente dice un día específico ('el viernes', 'mañana', 'la semana que viene') → usá ese día como interpreted_date.\n"
                                 "- Si el paciente dice un horario específico ('a las 10', 'por la tarde') → pasá specific_time o time_preference.\n"
                                 "- Si rechazó un día de la semana ('el lunes no puedo') → pasá exclude_days con ese día en TODAS las búsquedas siguientes.\n"
@@ -3076,9 +3088,10 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                                     "⛔ CORTACIRCUITO ANTI-LOOP (CRÍTICO — caso prod): venís repitiendo '¿el 1 o el 2?' y el paciente no define. Es un LOOP que frustra y gasta mensajes. PROHIBIDO volver a preguntar '¿el 1 o el 2?'.\n"
                                     "INSTRUCCIONES:\n"
                                     "1. Respondé lo que preguntó (si preguntó algo), en UNA línea.\n"
-                                    "2. TOMÁ LA INICIATIVA: si mostró CUALQUIER intención de querer el turno ('esta semana', 'sí', 'dale', 'necesito', 'quiero', 'esta semana tendría') → AGENDÁ la Opción 1 directamente: confirmá 'Te agendo el [Opción 1 con su fecha y hora exactas]' y pedí nombre y DNI. NO preguntes cuál quiere.\n"
-                                    "3. SOLO si el paciente NO muestra ninguna intención de avanzar, ofrecé UNA salida cálida ('cuando lo tengas decidido me avisás y te lo agendo 😊') SIN insistir.\n"
-                                    "4. ⛔ Repetí las fechas EXACTAS como las ofreciste — NUNCA digas 'esta semana' si los turnos NO son de esta semana (eso es mentira y confunde).]"
+                                    "2. ⛔ EXCEPCIÓN: si el paciente pidió OTRO mes, fecha o período ('mejor para agosto', 'el mes que viene', 'a fin de mes') → NO agendes la Opción 1: llamá check_availability para ESE período y ofrecé opciones nuevas. Nunca le impongas un turno de esta semana si pidió otra fecha.\n"
+                                    "3. TOMÁ LA INICIATIVA: si mostró intención de querer el turno SIN pedir otra fecha ('sí', 'dale', 'necesito', 'quiero', 'lo antes posible') → AGENDÁ la Opción 1 directamente: confirmá 'Te agendo el [Opción 1 con su fecha y hora exactas]' y pedí nombre y DNI. NO preguntes cuál quiere.\n"
+                                    "4. SOLO si el paciente NO muestra ninguna intención de avanzar, ofrecé UNA salida cálida ('cuando lo tengas decidido me avisás y te lo agendo 😊') SIN insistir.\n"
+                                    "5. ⛔ Repetí las fechas EXACTAS como las ofreciste — NUNCA digas 'esta semana' si los turnos NO son de esta semana; si querés aclarar que no hay lugar cerca, decilo con amabilidad ('para esta semana ya no me quedan lugares, pero tengo a partir del [fecha] 😊').]"
                                 )
                                 logger.info(
                                     f"🔒 STATE_GUARD: ANTI-LOOP 1o2 disparado (n={_reoffer_n}) — tomar iniciativa. prev_state={prev_state_str}"
@@ -3089,10 +3102,9 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                                     "El paciente parece estar haciendo una pregunta lateral o un comentario NO relacionado con la selección de turno.\n"
                                     "INSTRUCCIONES:\n"
                                     "1. Respondé la pregunta o comentario del paciente normalmente.\n"
-                                    "2. DESPUÉS de responder, recordale las opciones pendientes de forma natural, con las fechas EXACTAS (⛔ NO digas 'esta semana' si los turnos NO caen esta semana).\n"
-                                    "   Ejemplo: 'Y respecto al turno, ¿te queda mejor el 1️⃣ o el 2️⃣?'\n"
-                                    "3. NO pierdas el contexto del turno — el paciente NO canceló la búsqueda.\n"
-                                    "4. Si es ambiguo si acepta o rechaza los turnos, preguntá: '¿Querés alguna de estas opciones o preferís otro día?']"
+                                    "2. DESPUÉS de responder, recordale las opciones de forma natural y ⛔ VARIÁ cómo lo preguntás — NO repitas siempre '¿el 1 o el 2?' (bombardea al paciente): alterná ('¿te sirve alguno de esos horarios?', '¿con cuál nos quedamos?', '¿cuál te viene mejor?', 'quedan esos dos, decime cuál preferís'). Usá las fechas EXACTAS.\n"
+                                    "3. ⛔ Si los turnos NO son de esta semana, decilo con AMABILIDAD y NUNCA afirmes 'esta semana' si no es cierto: 'Para esta semana ya no me quedan lugares, pero a partir de la próxima tengo estas opciones 😊'.\n"
+                                    "4. NO pierdas el contexto del turno — el paciente NO canceló la búsqueda. Si es ambiguo si acepta o rechaza, preguntá con calidez: '¿Querés alguna de estas o preferís que busque otro día?']"
                                 )
                                 logger.info(
                                     f"🔒 STATE_GUARD: No clear intent detected, injecting clarification hint (n={_reoffer_n}). prev_state={prev_state_str}, user_msg={user_msg[:50]}..."
