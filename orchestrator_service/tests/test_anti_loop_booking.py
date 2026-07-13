@@ -155,5 +155,71 @@ class TestBookErrorConstants(unittest.TestCase):
         self.assertIn("BOOKING_ERROR_CODES.get", body, "Function must use BOOKING_ERROR_CODES dict")
 
 
+class TestBookAttemptDecrementCodes(unittest.TestCase):
+    """Fix 2026-07-13 (casos prod Juan/Gisela: 'carga los datos pero al agendar deriva').
+
+    EXPIRED (oferta vencida) y NOT_OFFERED (el slot elegido no coincide con la oferta)
+    NO son intentos reales de reserva: instruyen 're-corré check_availability'. Deben
+    des-contar el contador booking_attempts para no disparar el falso 'No se pudo agendar
+    después de 3 intentos'. El freno REAL de 'se ocupó' (streak de 2 UNAVAILABLE) debe
+    seguir intacto.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        main_path = os.path.join(PROJECT_ROOT, "main.py")
+        with open(main_path, "r", encoding="utf-8") as f:
+            cls.source = f.read()
+
+    def _decrement_condition(self):
+        """Extrae la condición de des-cuento dentro de _track_book_error."""
+        import re
+
+        m = re.search(
+            r"async def _track_book_error\(.*?if code in \(([^)]*)\):",
+            self.source,
+            re.DOTALL,
+        )
+        return m.group(1) if m else None
+
+    def test_decrement_includes_stale_codes(self):
+        """El des-cuento debe cubrir UNAVAILABLE + EXPIRED + NOT_OFFERED."""
+        cond = self._decrement_condition()
+        self.assertIsNotNone(
+            cond,
+            "No se encontró la condición 'if code in (...)' en _track_book_error "
+            "(¿se revirtió el fix del contador?)",
+        )
+        for code in ("UNAVAILABLE", "EXPIRED", "NOT_OFFERED"):
+            self.assertIn(
+                code,
+                cond,
+                f"El des-cuento del contador booking_attempts debe incluir {code}",
+            )
+
+    def test_chairs_full_not_decremented(self):
+        """CHAIRS_FULL NO se des-cuenta (es un límite real de sillones, no oferta stale)."""
+        cond = self._decrement_condition()
+        self.assertIsNotNone(cond)
+        self.assertNotIn(
+            "CHAIRS_FULL",
+            cond,
+            "CHAIRS_FULL no debe des-contar: es un conflicto real de capacidad",
+        )
+
+    def test_unavailable_streak_intact(self):
+        """El freno determinista de 'se ocupó' real (2 UNAVAILABLE) sigue existiendo."""
+        self.assertIn(
+            "_book_unavailable",
+            self.source,
+            "El helper de escalación por 'se ocupó' desapareció",
+        )
+        self.assertIn(
+            "book_unavail_streak",
+            self.source,
+            "El contador de streak UNAVAILABLE en Redis desapareció",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
