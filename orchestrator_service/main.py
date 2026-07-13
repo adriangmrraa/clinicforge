@@ -105,9 +105,9 @@ ERROR_CATEGORY_SYSTEM_ERROR = "SYSTEM_ERROR"
 # v8.2 — Booking error protocol: every book_appointment failure returns [BOOK_ERROR:CODE]
 # v8.3 — Extended with category tuples (code -> (message, category))
 BOOKING_ERROR_CODES = {
-    "UNAVAILABLE": ("Ese horario se ocupó recién; ofrecele al paciente otros horarios cercanos (NO derivar)", ERROR_CATEGORY_RECOVERABLE),
+    "UNAVAILABLE": ("Ese horario se ocupó recién. La PRIMERA vez: ofrecele UN set de horarios cercanos (una sola vez). Pero si esto YA pasó 2+ veces seguidas en este mismo agendamiento (el paciente elige tus opciones y ninguna se confirma) es un LOOP: NO sigas re-ofreciendo — llamá derivhumano para que el equipo le reserve el turno manualmente.", ERROR_CATEGORY_RECOVERABLE),
     "EXPIRED": ("La reserva temporal venció", ERROR_CATEGORY_RECOVERABLE),
-    "CHAIRS_FULL": ("A esa hora ya se completó la agenda; ofrecele horarios cercanos (NO derivar)", ERROR_CATEGORY_RECOVERABLE),
+    "CHAIRS_FULL": ("A esa hora ya se completó la agenda; ofrecele horarios cercanos una vez. Si ya falló 2+ veces seguidas, derivá para reserva manual.", ERROR_CATEGORY_RECOVERABLE),
     "DUPLICATE": ("Ya tenés un turno para ese día y horario", ERROR_CATEGORY_BUSINESS_RULE),
     "PAST": ("No se puede reservar en el pasado", ERROR_CATEGORY_INPUT_ERROR),
     "HOLIDAY": ("Ese día es feriado", ERROR_CATEGORY_RECOVERABLE),
@@ -13280,12 +13280,12 @@ FORMATO CANÓNICO PARA TOOLS:
 • treatment_reason: Nombre exacto de 'list_services'.
 
 RE-INTENTO INTELIGENTE (BOOKING FAILURES):
-• Si book_appointment devuelve ❌, ⚠️, o [BOOK_ERROR:...] por turno ocupado o conflicto:
-  1) Llamá check_availability DE NUEVO para ese día (la disponibilidad pudo cambiar).
-  2) Presentá las nuevas opciones al paciente.
-  3) NO adivinés horarios. NO iterés hora por hora.
+• Si book_appointment devuelve ❌, ⚠️, o [BOOK_ERROR:...] por turno ocupado o conflicto ("se ocupó" / UNAVAILABLE / CHAIRS_FULL):
+  1) La PRIMERA vez: llamá check_availability DE NUEVO para ese día y presentá las nuevas opciones. NO adivinés horarios ni iterés hora por hora.
+  2) ⛔ CORTACIRCUITO ANTI-LOOP (CRÍTICO — caso Graciela): si el paciente ELIGE un horario de tus opciones y al confirmarlo vuelve a fallar, y esto ya pasó 2 VECES en este mismo agendamiento → PARÁ de re-ofrecer: estás en un loop de "se ocupó" que frustra al paciente. Llamá derivhumano (motivo: "No se pudo confirmar el turno por conflicto de agenda — reservar manualmente") y respondé UNA sola vez, cálido y SIN caritas: "Te lo estamos reservando y el equipo te lo confirma a la brevedad 🙌". PROHIBIDO mandar "se ocupó, te paso otras opciones" una tercera vez.
+  3) Contar TODO fallo de confirmación (incluido "se ocupó"/UNAVAILABLE) para ese límite de 2 — un slot que se ofreció y no se pudo confirmar ES un intento fallido.
 • Si falla por datos incorrectos (DNI inválido, nombre vacío): pedí SOLO el dato que falló, no todos de nuevo.
-• Máximo 2 reintentos automáticos. Al 3er fallo → llamá derivhumano("No pude agendar tras 2 intentos").
+• Máximo 2 reintentos automáticos. Al 3er fallo (por CUALQUIER causa, incluido "se ocupó") → derivhumano("No pude agendar tras 2 intentos — reservar manualmente").
 
 ## FALLBACK INTELIGENTE (HORARIOS NO DISPONIBLES)
 • Horario específico no disponible → ofrecer alternativas concretas vía check_availability:
