@@ -8397,12 +8397,95 @@ async def _reprogramar_turno(args: Dict, tenant_id: int) -> str:
 
     _tz = await get_tenant_tz(tenant_id)
     new_dt = _parse_datetime_str(f"{new_date} {new_time}", tz=_tz)
-    # Capture old datetime for audit log
+    # Capture old datetime + profesional/duración para audit log y validación
     _old = await db.pool.fetchrow(
-        "SELECT appointment_datetime, status FROM appointments WHERE id = $1 AND tenant_id = $2",
+        "SELECT appointment_datetime, status, professional_id, COALESCE(duration_minutes, 60) AS duration_minutes FROM appointments WHERE id = $1 AND tenant_id = $2",
         appt_uuid,
         tenant_id,
     )
+    if not _old:
+        return "No encontre ese turno."
+
+    # ── VALIDACIÓN (fix 2026-07-13, caso Denis por el lado de Nova): antes reprogramaba a
+    # CUALQUIER fecha/hora sin chequear feriado, agenda del profesional ni colisión → se
+    # podía mover un turno a un día que el profesional no atiende o pisar otro turno. Mismo
+    # blindaje que _agendar_turno. Si no hay profesional asignado no se puede validar → se deja pasar.
+    _prof_id = _old["professional_id"]
+    if _prof_id:
+        import logging as _lg2
+
+        from services.holiday_service import is_holiday as check_is_holiday
+
+        # 1) Feriado / bloqueo del profesional en la nueva fecha
+        try:
+            _is_blocked, _blk_name, _ = await check_is_holiday(
+                db.pool, tenant_id, new_dt.date(), professional_id=_prof_id
+            )
+            if _is_blocked:
+                return f"No se puede reprogramar a esa fecha: {_blk_name}. Elegí otra fecha."
+        except Exception as _blk_err:
+            _lg2.getLogger("nova_tools").warning(
+                f"_reprogramar_turno: holiday check failed (non-blocking): {_blk_err}"
+            )
+        # 2) Horario de atención del profesional (día habilitado + hora dentro de sus slots)
+        try:
+            _prof_wh = await db.pool.fetchval(
+                "SELECT working_hours FROM professionals WHERE id = $1 AND tenant_id = $2",
+                _prof_id,
+                tenant_id,
+            )
+            if _prof_wh:
+                if isinstance(_prof_wh, str):
+                    _prof_wh = json.loads(_prof_wh)
+                _day_name_en = new_dt.strftime("%A").lower()
+                _day_cfg = (
+                    _prof_wh.get(_day_name_en, {})
+                    if isinstance(_prof_wh, dict)
+                    else {}
+                )
+                if not _day_cfg.get("enabled") or not _day_cfg.get("slots"):
+                    return "El profesional no atiende ese día. Elegí otro día."
+                _appt_time = new_dt.time()
+                _within = False
+                for _slot in _day_cfg["slots"]:
+                    _s = datetime.strptime(_slot["start"], "%H:%M").time()
+                    _e = datetime.strptime(_slot["end"], "%H:%M").time()
+                    if _s <= _appt_time < _e:
+                        _within = True
+                        break
+                if not _within:
+                    return f"El horario {new_time} está fuera del horario de atención del profesional. Elegí otro horario."
+        except Exception as _wh_err:
+            _lg2.getLogger("nova_tools").warning(
+                f"_reprogramar_turno: working_hours check failed (non-blocking): {_wh_err}"
+            )
+        # 3) Colisión con otro turno del mismo profesional (excluyendo este mismo turno)
+        try:
+            _dur = int(_old["duration_minutes"] or 60)
+            _end_dt = new_dt + timedelta(minutes=_dur)
+            _conflict = await db.pool.fetchval(
+                """
+                SELECT EXISTS(
+                    SELECT 1 FROM appointments
+                    WHERE tenant_id = $1 AND professional_id = $2 AND id != $3
+                      AND status IN ('scheduled', 'confirmed')
+                      AND appointment_datetime < $5
+                      AND (appointment_datetime + interval '1 minute' * COALESCE(duration_minutes, 60)) > $4
+                )
+                """,
+                tenant_id,
+                _prof_id,
+                appt_uuid,
+                new_dt,
+                _end_dt,
+            )
+            if _conflict:
+                return "El profesional ya tiene otro turno en ese horario. Elegí otro horario."
+        except Exception as _cf_err:
+            _lg2.getLogger("nova_tools").warning(
+                f"_reprogramar_turno: conflict check failed (non-blocking): {_cf_err}"
+            )
+
     result = await db.pool.execute(
         "UPDATE appointments SET appointment_datetime = $1, status = 'scheduled', reminder_sent = false, reminder_sent_at = NULL, updated_at = NOW() WHERE id = $2 AND tenant_id = $3",
         new_dt,

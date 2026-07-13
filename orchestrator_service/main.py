@@ -1492,7 +1492,11 @@ async def _get_slots_for_extra_day(
                 wh = {}
         if not isinstance(wh, dict):
             wh = {}
-        day_config = wh.get(day_name_en, {})
+        # Default {enabled:False} (no {}): si al profesional le FALTA la clave de ese día,
+        # se trata como NO atiende (marca el día ocupado abajo), igual que el día-semilla
+        # (main ~3160). Antes con {} caía en None y no lo marcaba busy → se ofrecía en días
+        # que no atiende (bug del "día extra" de la búsqueda multi-día).
+        day_config = wh.get(day_name_en, {"enabled": False, "slots": []})
         if day_config.get("enabled") and day_config.get("slots"):
             check_time = datetime.combine(target_date, datetime.min.time()).replace(
                 hour=8, minute=0
@@ -5170,8 +5174,24 @@ async def book_appointment(
                 "sunday",
             ]
             day_config = wh.get(days_en[day_idx], {"enabled": False, "slots": []})
-            # Solo exigir horario laboral si el profesional tiene ese día configurado; si no, considerarlo disponible (igual que check_availability)
-            if day_config.get("enabled") and day_config.get("slots"):
+            # Respetá la agenda del profesional (fix 2026-07-13, caso Denis/Elizabeth por
+            # el lado de book): si el profesional TIENE working_hours propio y ese día NO
+            # está habilitado, o la hora cae fuera de sus slots → descartá el candidato.
+            # Antes solo validaba la HORA en días habilitados y dejaba pasar los DESHABILITADOS
+            # → se podía agendar en un día que el profesional no atiende (R1 no cubre si Redis
+            # está caído o el slot se ofreció para otro profesional). Sin working_hours propio
+            # → se respeta el horario del tenant (backward-compat).
+            if wh:
+                if not (isinstance(day_config, dict) and day_config.get("enabled")):
+                    logger.info(
+                        f"📅 BOOK: prof {cand['id']} NO atiende {days_en[day_idx]} — se descarta el candidato"
+                    )
+                    continue
+                if day_config.get("slots") and not is_time_in_working_hours(
+                    apt_datetime.strftime("%H:%M"), day_config
+                ):
+                    continue
+            elif day_config.get("enabled") and day_config.get("slots"):
                 if not is_time_in_working_hours(
                     apt_datetime.strftime("%H:%M"), day_config
                 ):
@@ -6879,7 +6899,9 @@ async def reschedule_appointment(original_date: str, new_date_time: str, interpr
         # validaba feriados/cierres pero NO la agenda regular del profesional. Espeja check_availability.
         try:
             _rs_prof_wh = await db.pool.fetchval(
-                "SELECT working_hours FROM professionals WHERE id = $1", apt["professional_id"]
+                "SELECT working_hours FROM professionals WHERE id = $1 AND tenant_id = $2",
+                apt["professional_id"],
+                tenant_id,
             )
             if isinstance(_rs_prof_wh, str):
                 _rs_prof_wh = json.loads(_rs_prof_wh) if _rs_prof_wh.strip() else {}
@@ -12738,6 +12760,7 @@ PASO 3b: PACIENTE CON TURNO EXISTENTE — Si el paciente YA TIENE un turno agend
     → Si el paciente NO tiene preferencia o te pide que propongas vos (ej: "decime qué tenés", "para cuándo puede ser", "lo que tengas", "cualquiera", "buscame vos", "el que sea", "vos decime") → NO repitas la pregunta: llamá check_availability buscando lo más cercano y ofrecé 2 opciones.
     → En ESTE caso (sin preferencia, le ofreciste 2 opciones): NUNCA llamar reschedule_appointment hasta que elija una. (Distinto de cuando el paciente pidió un slot concreto que está LIBRE → ahí R1 reprograma directo: pedir un slot concreto CUENTA como elección.)
     PASO R1 — BUSCAR DISPONIBILIDAD: Una vez que tenés la nueva fecha/hora deseada:
+    → ⛔ SCOPING POR PROFESIONAL (OBLIGATORIO — causa raíz del reagendamiento a un día inválido): al reprogramar, SIEMPRE pasá a check_availability el treatment_name del turno que se está reprogramando (y professional_name si lo conocés). Ese turno YA tiene un profesional asignado, y ese profesional puede NO atender todos los días de la clínica. Si llamás check_availability SIN treatment_name, la búsqueda usa la agenda de TODOS los profesionales juntos y te devuelve días en los que el profesional de ESTE turno no atiende → terminás ofreciendo (y reprogramando) a un día inválido que el sistema después rechaza, y el paciente entra en loop. El treatment_name figura en el contexto del turno (list_my_appointments / PRÓXIMO TURNO).
     → Si el paciente pidió una hora/día específico → llamá check_availability con esa fecha exacta primero (search_mode="exact").
     → Si ese slot está libre → REPROGRAMÁ DIRECTAMENTE con reschedule_appointment. NO preguntes "¿querés que te lo reprograme?" — es obvio que sí.
     → Si ese slot está ocupado → llamá check_availability con opciones cercanas (mismo día si es posible, search_mode="week" si no) y mostrá las 2 opciones disponibles SIN PREGUNTAR si querés buscar. NUNCA digas "no hay disponible ¿querés que busque algo cercano?" — buscá directamente y mostrá.
