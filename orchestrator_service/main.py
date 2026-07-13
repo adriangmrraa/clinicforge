@@ -174,6 +174,58 @@ async def _track_book_error(tenant_id: int, phone: str, code: str, msg: str = ""
         pass
 
 
+# CORTACIRCUITO DETERMINISTA del loop "se ocupó" (análisis 2026-07-12, caso
+# Graciela): el freno por prompt NO es confiable (el modelo mini no cuenta bien
+# entre turnos — el banco lo confirmó). Este contador en Redis fuerza la
+# derivación tras 2 UNAVAILABLE seguidos, desde el CÓDIGO, sin depender del LLM.
+BOOK_UNAVAIL_STREAK_TTL = 900  # 15 min: ventana de un mismo agendamiento
+
+
+async def _book_unavailable(
+    tenant_id: int, chat_phone: str, msg: str = "", action: str = "", track_msg: str = ""
+) -> str:
+    """UNAVAILABLE con escalación automática: al 2º 'se ocupó' seguido en la misma
+    conversación, en vez de re-ofrecer, instruye derivhumano + reserva manual."""
+    await _track_book_error(tenant_id, chat_phone, "UNAVAILABLE", msg=track_msg or msg)
+    streak = 1
+    try:
+        from services.relay import get_redis as _gr
+
+        _r = _gr()
+        if _r:
+            _key = f"book_unavail_streak:{tenant_id}:{chat_phone}"
+            streak = int(await _r.incr(_key))
+            await _r.expire(_key, BOOK_UNAVAIL_STREAK_TTL)
+    except Exception:
+        streak = 1
+    if streak >= 2:
+        return _format_book_error(
+            "UNAVAILABLE",
+            msg="LOOP DE AGENDA DETECTADO: es el 2º horario que el paciente eligió y no se pudo confirmar. NO re-ofrezcas otra vez.",
+            action=(
+                "DERIVÁ YA: llamá derivhumano (motivo 'No se pudo confirmar el turno por "
+                "conflicto de agenda — reservar manualmente') y respondé UNA sola vez, cálido y "
+                "SIN caritas: 'Te lo estamos reservando y el equipo te lo confirma a la brevedad'. "
+                "PROHIBIDO volver a ofrecer horarios."
+            ),
+        )
+    return _format_book_error(
+        "UNAVAILABLE", msg=msg, action=action or "Pick next slot; do NOT re-offer this slot"
+    )
+
+
+async def _reset_unavail_streak(tenant_id: int, chat_phone: str) -> None:
+    """Resetea el contador de 'se ocupó' cuando una reserva sale bien."""
+    try:
+        from services.relay import get_redis as _gr
+
+        _r = _gr()
+        if _r:
+            await _r.delete(f"book_unavail_streak:{tenant_id}:{chat_phone}")
+    except Exception:
+        pass
+
+
 
 
 def get_active_tz():
@@ -5208,10 +5260,9 @@ async def book_appointment(
             logger.info(
                 f"book_appointment: sin disponibilidad phone={phone} tenant={tenant_id} datetime={apt_datetime} tratamiento={treatment_code} (paciente no creado por spec)"
             )
-            await _track_book_error(tenant_id, chat_phone, "UNAVAILABLE", msg="no target professional available")
-            return _format_book_error("UNAVAILABLE",
+            return await _book_unavailable(tenant_id, chat_phone,
                 msg=f"Lo siento, no hay disponibilidad a las {apt_datetime.strftime('%H:%M')} para el tratamiento de {final_duration} min. ¿Probamos otro horario?",
-                action="Pick next slot; do NOT re-offer this slot"
+                track_msg="no target professional available"
             )
 
         # Patient duplicate guard: block ONLY if time overlaps with existing appointment (DLD-59)
@@ -5416,10 +5467,9 @@ async def book_appointment(
                         # DLD-74: usar chat_phone (no phone) — phone se muta para menores/ART
                         if _holder_str != chat_phone:
                             logger.warning("Soft-lock conflict: slot reserved by %s, requester %s", _holder_str, chat_phone)
-                            await _track_book_error(tenant_id, chat_phone, "UNAVAILABLE", msg="soft-lock conflict")
-                            return _format_book_error("UNAVAILABLE",
+                            return await _book_unavailable(tenant_id, chat_phone,
                                 msg="Ese turno acaba de ser reservado por otro paciente. Volvamos a buscar disponibilidad.",
-                                action="Pick next slot; do NOT re-offer this slot"
+                                track_msg="soft-lock conflict"
                             )
                         else:
                             _patient_lock_key = _lk
@@ -5478,10 +5528,9 @@ async def book_appointment(
                         logger.warning(
                             f"🔒 R2 advisory lock contention: prof={target_prof['id']} datetime={apt_datetime}"
                         )
-                        await _track_book_error(tenant_id, chat_phone, "UNAVAILABLE", msg="advisory lock contention")
-                        return _format_book_error("UNAVAILABLE",
+                        return await _book_unavailable(tenant_id, chat_phone,
                             msg="Ese horario fue tomado por otro paciente justo ahora. Te ofrezco otra opción cercana, ¿te parece?",
-                            action="Pick next slot; do NOT re-offer this slot"
+                            track_msg="advisory lock contention"
                         )
                     await _conn.execute(
                         """
@@ -5625,6 +5674,9 @@ async def book_appointment(
                 )
         except Exception:
             pass  # Non-blocking
+
+        # Reserva exitosa → resetear el contador anti-loop de "se ocupó"
+        await _reset_unavail_streak(tenant_id, chat_phone)
 
         # Limpiar soft lock si existe (booking exitoso)
         try:

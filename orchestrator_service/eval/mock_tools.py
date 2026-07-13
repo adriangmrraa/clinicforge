@@ -196,13 +196,24 @@ def execute(name: str, args: dict) -> str:
 
     if name == "book_appointment":
         # Simular el bug offer!=bookable (caso Graciela): la reserva falla con
-        # UNAVAILABLE aunque check_availability haya ofrecido el slot. Sirve para
-        # testear el CORTACIRCUITO ANTI-LOOP (derivar tras 2 "se ocupó").
-        if _CTX.get("book_fails"):
+        # UNAVAILABLE aunque check_availability haya ofrecido el slot.
+        _bf = _CTX.get("book_fails")
+        if _bf == "escalate":
+            # 2º "se ocupó" seguido: el book_appointment REAL devuelve el mensaje
+            # de ESCALACIÓN del cortacircuito determinista. Testea que el bot
+            # derive ante ese mensaje explícito.
+            return (
+                "[BOOK_ERROR:UNAVAILABLE:RECOVERABLE] LOOP DE AGENDA DETECTADO: es el 2º "
+                "horario que el paciente eligió y no se pudo confirmar. NO re-ofrezcas otra vez. "
+                "[ACTION:DERIVÁ YA: llamá derivhumano (motivo 'No se pudo confirmar el turno por "
+                "conflicto de agenda — reservar manualmente') y respondé UNA sola vez, cálido y sin "
+                "caritas: 'Te lo estamos reservando y el equipo te lo confirma a la brevedad'. "
+                "PROHIBIDO volver a ofrecer horarios.]"
+            )
+        if _bf:
             return (
                 "[BOOK_ERROR:UNAVAILABLE:RECOVERABLE] Ese horario se ocupó recién. "
-                "La PRIMERA vez ofrecé otros; si esto ya pasó 2+ veces seguidas es un "
-                "LOOP: NO sigas re-ofreciendo, llamá derivhumano para reserva manual."
+                "Ofrecé otros horarios cercanos una vez."
             )
         return (
             "TURNO CONFIRMADO: "
