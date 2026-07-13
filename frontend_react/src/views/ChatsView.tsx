@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, Fragment } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   MessageCircle, Send, Calendar, User, Activity,
@@ -1153,6 +1153,32 @@ export default function ChatsView() {
     } catch { return ''; }
   };
 
+  // ¿Dos fechas caen el MISMO día local? (para el separador de fecha del chat)
+  const sameLocalDay = (a: string | null | undefined, b: string | null | undefined) => {
+    if (!a || !b) return false;
+    const da = new Date(a), db = new Date(b);
+    if (isNaN(da.getTime()) || isNaN(db.getTime())) return false;
+    return da.toDateString() === db.toDateString();
+  };
+
+  // Etiqueta del separador de fecha entre mensajes: "Hoy" / "Ayer" / día de semana / fecha.
+  const formatDateSeparator = (dateStr: string | null | undefined) => {
+    if (!dateStr) return '';
+    try {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return '';
+      const startOf = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+      const diffDays = Math.round((startOf(new Date()) - startOf(d)) / 86400000);
+      if (diffDays === 0) return 'Hoy';
+      if (diffDays === 1) return 'Ayer';
+      if (diffDays > 1 && diffDays < 7) {
+        const wd = d.toLocaleDateString('es-AR', { weekday: 'long' });
+        return wd.charAt(0).toUpperCase() + wd.slice(1);
+      }
+      return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    } catch { return ''; }
+  };
+
   const formatTimeSummary = (dateStr: string | null | undefined) => {
     if (!dateStr) return '';
     try {
@@ -1857,9 +1883,19 @@ export default function ChatsView() {
 
                 {selectedSession && (() => {
                   const platform = getPlatformConfig('whatsapp');
-                  return (messages || []).map((message) => (
+                  return (messages || []).map((message, _mi) => {
+                    const _prevMsg = _mi > 0 ? (messages || [])[_mi - 1] : null;
+                    const _showDate = !_prevMsg || !sameLocalDay(message.created_at, _prevMsg.created_at);
+                    return (
+                    <Fragment key={message.id}>
+                      {_showDate && (
+                        <div className="flex justify-center my-2">
+                          <span className="text-[11px] text-white/40 bg-white/[0.05] border border-white/[0.06] rounded-full px-3 py-0.5">
+                            {formatDateSeparator(message.created_at)}
+                          </span>
+                        </div>
+                      )}
                     <div
-                      key={message.id}
                       className={`flex ${message.role === 'user' ? 'justify-start' : 'justify-end'}`}
                     >
                       <div
@@ -1888,7 +1924,9 @@ export default function ChatsView() {
                         </p>
                       </div>
                     </div>
-                  ));
+                    </Fragment>
+                    );
+                  });
                 })()}
 
                 {selectedChatwoot && (() => {
