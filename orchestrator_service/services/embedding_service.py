@@ -372,6 +372,15 @@ async def format_faqs_with_rag(tenant_id: int, user_message: str, static_faqs: l
     # Try semantic search first
     if await check_pgvector_available() and user_message:
         relevant_faqs = await search_similar_faqs(tenant_id, user_message)
+        if not relevant_faqs:
+            # AHORRO DE TOKENS r2 (2026-07-12): antes, si NADA superaba el umbral
+            # estricto (0.55, alto para español), se volcaban las 20 FAQs COMPLETAS
+            # en CADA mensaje — y la mayoría (agendar, urgencia, saludo) no matchea
+            # ninguna FAQ. Ahora reintento relajado por las 3 mas parecidas; si ni
+            # eso, no se inyectan FAQs (abajo).
+            relevant_faqs = await search_similar_faqs(
+                tenant_id, user_message, top_k=3, threshold=0.30
+            )
         if relevant_faqs:
             # Log retrieved FAQs for debugging FAQ priority issues
             logger.info(
@@ -397,11 +406,18 @@ async def format_faqs_with_rag(tenant_id: int, user_message: str, static_faqs: l
                 lines.append("")
             lines.append("═══════════════════════════════════════════════")
             return "\n".join(lines)
+        # pgvector corrió y NINGUNA FAQ es relevante (ni con umbral relajado) →
+        # NO inyectar FAQs: ninguna aplica y el prompt ya cubre los flujos.
+        # (Esto elimina el volcado de 20 FAQs que se disparaba en la mayoría
+        #  de los mensajes — el mayor ahorro de tokens por mensaje.)
+        logger.info("📚 RAG: 0 FAQs relevantes tras búsqueda semántica — no se inyectan FAQs (ahorro de tokens)")
+        return ""
 
-    # Fallback: static FAQs (original behavior)
+    # Fallback SOLO si pgvector NO está disponible (sin búsqueda semántica
+    # posible): static acotado a 8 (antes 20) para no reventar el prompt.
     if not static_faqs:
         return ""
-    logger.info(f"📚 RAG fallback: injecting {min(len(static_faqs), 20)} static FAQs (no pgvector or no relevant matches)")
+    logger.info(f"📚 RAG fallback (sin pgvector): injecting {min(len(static_faqs), 8)} static FAQs")
     lines = [
         "═══════════════════════════════════════════════",
         "FAQs DISPONIBLES — VOZ OFICIAL DE LA DOCTORA",
@@ -413,7 +429,7 @@ async def format_faqs_with_rag(tenant_id: int, user_message: str, static_faqs: l
         "Para todo lo demás, respondé con la RESPUESTA OFICIAL tal cual, sin parafrasear.",
         "",
     ]
-    for i, faq in enumerate(static_faqs[:20], 1):
+    for i, faq in enumerate(static_faqs[:8], 1):
         cat = faq.get("category", "General") or "General"
         q = faq.get("question", "")
         a = faq.get("answer", "")
