@@ -4642,27 +4642,38 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                             break
                 except Exception:
                     _last_bot = ""
-                _bot_offered = bool(_last_bot) and (
-                    _last_bot.rstrip().endswith("?")
-                    or any(sig in _last_bot for sig in (
-                        "te paso turnos", "te coordino", "querés que te reserve",
-                        "queres que te reserve", "te reservo", "obra social o particular",
-                        "obra social o te atender", "qué día", "que dia", "qué horario",
-                        "que horario", "cuál te queda", "cual te queda",
-                    ))
+                # ¿El bot ofreció AVANZAR (coordinar/reservar/turnos/cobertura)? — señales
+                # explícitas, NO un genérico "?" (un cierre cortés "¿algo más?" NO es oferta y
+                # NO debe disparar la red — corrección re-revisión 2026-07-13). Incluye
+                # "coordinar"/"te ayudo a coordinar" (caso prod El: el bot ofreció "te ayudo a
+                # coordinar un turno" y no se detectaba).
+                _advance_signals = (
+                    "te paso turnos", "paso turnos", "te coordino", "coordinar",
+                    "querés que te reserve", "queres que te reserve", "te reservo", "te reservamos",
+                    "obra social o particular", "obra social o te atender",
+                    "qué día", "que dia", "qué horario", "que horario",
+                    "cuál te queda", "cual te queda", "te ayudo a coordinar", "te ayudo a",
                 )
-                _courtesy_words = (
-                    "gracias", "ok", "oka", "dale", "genial", "buenísimo", "buenisimo",
-                    "perfecto", "igualmente", "saludos", "de nada", "estamos comunicados",
-                    "listo", "joya", "bárbaro", "barbaro", "chau", "nos vemos", "hasta luego",
-                    "👍", "🙏", "🙌",
+                _bot_offered_advance = bool(_last_bot) and any(s in _last_bot for s in _advance_signals)
+                # Afirmativos de ACEPTACIÓN (seguir el flujo) vs puro agradecimiento/despedida.
+                _accept_words = (
+                    "ok", "oka", "dale", "genial", "buenísimo", "buenisimo", "perfecto",
+                    "listo", "joya", "bárbaro", "barbaro", "de una", "sí dale", "sí", "si dale", "bueno",
                 )
+                _pure_courtesy = (
+                    "gracias", "igualmente", "saludos", "de nada", "estamos comunicados",
+                    "chau", "nos vemos", "hasta luego", "👍", "🙏", "🙌",
+                )
+                _user_accepts = any(w in _last_user for w in _accept_words)
+                # MISFIRE de silencio SOLO si: el bot ofreció avanzar Y el paciente ACEPTÓ
+                # (no un simple "gracias"). Así NO alertamos de más en cierres corteses legítimos.
+                _silence_misfire = _bot_offered_advance and _user_accepts
                 _looks_courtesy = (
                     "?" not in _last_user
                     and len(_last_user.split()) <= 6
                     and not _last_user.startswith(("hola", "buenas", "buen dia", "buen día"))
-                    and any(w in _last_user for w in _courtesy_words)
-                    and not _bot_offered
+                    and any(w in _last_user for w in (_accept_words + _pure_courtesy))
+                    and not _silence_misfire
                 )
                 if _looks_courtesy:
                     logger.info(f"🔇 [SILENCIO] — cierre de cortesía para {external_user_id}: no se envía respuesta")
