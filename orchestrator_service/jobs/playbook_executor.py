@@ -796,11 +796,11 @@ def _parse_jsonb_field(value):
 
 def _format_pre_instructions(instructions: dict, treatment_name: str) -> list[str]:
     """Format pre-treatment instructions as separate message bubbles."""
+    # Fix (caso prod 2026-07-13, "Rehabilitación Compleja"): antes el intro se agregaba
+    # SIEMPRE al principio, así que si el tratamiento NO tenía ninguna instrucción cargada,
+    # el paciente recibía "Te dejo las instrucciones pre-tratamiento para X:" y nada más.
+    # Ahora armamos primero el CONTENIDO; el intro se antepone solo si hay algo que mandar.
     bubbles = []
-
-    # Intro bubble
-    intro = f"Te dejo las instrucciones pre-tratamiento para {treatment_name}:"
-    bubbles.append(intro)
 
     # What to bring
     bring = instructions.get("what_to_bring") or []
@@ -836,7 +836,12 @@ def _format_pre_instructions(instructions: dict, treatment_name: str) -> list[st
     if days:
         bubbles.append(f"⏰ Preparación: comenzar {days} día(s) antes del turno.")
 
-    return bubbles
+    # Si NO hay ningún contenido cargado, NO mandamos el encabezado solo (evita
+    # "Te dejo las instrucciones..." sin nada abajo).
+    if not bubbles:
+        return []
+    intro = f"Te dejo las instrucciones pre-tratamiento para {treatment_name}:"
+    return [intro] + bubbles
 
 
 def _format_post_instructions(instructions, treatment_name: str) -> list[str]:

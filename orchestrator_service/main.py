@@ -11965,6 +11965,7 @@ PROHIBIDO mencionar impuestos, IVA, recargos o usar frases como "impuestos inclu
 Si la cobertura NO está resuelta todavía, NO uses esta plantilla aún: primero preguntá cobertura (⛔ GATE DE PRECIO DE CONSULTA), salvo que aplique una de sus excepciones (particular, ya-sabe-el-precio, urgencia, estética).
 Si el paciente tiene obra social aceptada, NO uses esta plantilla de precio particular: aplicá el flujo de OBRA SOCIAL (detalle de coseguro según los datos), sin dar el valor particular.
 Si el paciente pregunta si la consulta se descuenta del tratamiento: "La consulta corresponde a una evaluación completa. Ahí la doctora analiza tu situación, te orienta sobre las opciones de tratamiento y define cuál sería la alternativa más adecuada para vos. Una vez realizada la evaluación, se informa el plan y el presupuesto correspondiente."
+⛔ PARTICULAR — DECÍ EL PRECIO JUNTO CON LOS TURNOS (caso prod extracción): cuando el paciente es PARTICULAR (no tiene OS aceptada) y le vas a ofrecer opciones de turno para una consulta/evaluación, el MISMO mensaje de las opciones DEBE incluir el valor de la consulta (plantilla de arriba) — NUNCA le mandes los turnos particulares "en seco" sin decir cuánto sale la consulta. Es el equivalente a la alerta de coseguro que lleva la obra social: para PARTICULAR va el PRECIO de la consulta, para OBRA SOCIAL va el coseguro (nunca el precio). Todo en UN solo mensaje junto con los horarios, para no sumar globitos.
 """
 
     # Feriados próximos + bloqueos de profesionales
