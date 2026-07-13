@@ -125,9 +125,10 @@ async def _check_unconfirmed_tomorrow(tenant_id: int):
         await send_proactive_message(
             tenant_id,
             f"⚠️ <b>Turnos sin confirmar para mañana</b>\n\n"
-            f"▸ <b>{count}</b> turno{'s' if count != 1 else ''} en estado pendiente para "
-            f"{tomorrow.strftime('%d/%m')}\n\n"
-            f"<i>¿Querés que los confirme todos?</i>",
+            f"▸ <b>{count}</b> turno{'s' if count != 1 else ''} sin confirmar para "
+            f"{tomorrow.strftime('%d/%m')} — <b>requieren revisión</b>.\n\n"
+            f"<i>Conviene confirmarlos con el paciente, o liberar el lugar si no va a venir "
+            f"para dárselo a otro. ¿Querés que te los confirme?</i>",
         )
         await _mark_alert_sent(tenant_id, alert_key, ttl=86400)
         logger.info(f"Alert unconfirmed_tomorrow sent: tenant={tenant_id}, count={count}")
