@@ -6873,6 +6873,40 @@ async def reschedule_appointment(original_date: str, new_date_time: str, interpr
                     f"{_rh_g_hours['start']} a {_rh_g_hours['end']}. Elegí un horario dentro de ese rango."
                 )
 
+        # ⛔ VALIDAR QUE EL PROFESIONAL DEL TURNO ATIENDA EL NUEVO DÍA/HORA (caso prod Denis:
+        # el bot reprogramó a JUEVES 10:00 pero Elizabeth atiende martes/miércoles/viernes,
+        # sin pasar por check_availability → booking de un día inválido). reschedule_appointment
+        # validaba feriados/cierres pero NO la agenda regular del profesional. Espeja check_availability.
+        try:
+            _rs_prof_wh = await db.pool.fetchval(
+                "SELECT working_hours FROM professionals WHERE id = $1", apt["professional_id"]
+            )
+            if isinstance(_rs_prof_wh, str):
+                _rs_prof_wh = json.loads(_rs_prof_wh) if _rs_prof_wh.strip() else {}
+            if _rs_prof_wh and isinstance(_rs_prof_wh, dict):
+                _rs_days_en = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+                _rs_day_en = _rs_days_en[new_dt.weekday()]
+                _rs_day_cfg = _rs_prof_wh.get(_rs_day_en)
+                if not (isinstance(_rs_day_cfg, dict) and _rs_day_cfg.get("enabled")):
+                    logger.info(
+                        f"[RESCHEDULE] día {_rs_day_en} NO habilitado para prof {apt['professional_id']} — rechazo el reagendamiento a un día que no atiende"
+                    )
+                    return (
+                        "Ese día no hay turnos disponibles para este turno (el profesional no atiende ese día). "
+                        "Ofrecele al paciente las opciones REALES: llamá check_availability con su preferencia y presentale "
+                        "los horarios disponibles para que elija. ⛔ NUNCA reprogrames a un día/horario que no salió de check_availability."
+                    )
+                if _rs_day_cfg.get("slots") and not is_time_in_working_hours(new_dt.strftime("%H:%M"), _rs_day_cfg):
+                    logger.info(
+                        f"[RESCHEDULE] hora {new_dt.strftime('%H:%M')} fuera del horario de {_rs_day_en} para prof {apt['professional_id']}"
+                    )
+                    return (
+                        "A esa hora no hay atención ese día. Llamá check_availability con la preferencia del paciente "
+                        "y ofrecele los horarios REALES disponibles para que elija — no reprogrames a un horario inventado."
+                    )
+        except Exception as _rs_wh_err:
+            logger.warning(f"[RESCHEDULE] validación de horario del profesional (no-fatal): {_rs_wh_err}")
+
         apt_dur = apt["duration_minutes"] or 60
         overlap = await db.pool.fetchval(
             """
