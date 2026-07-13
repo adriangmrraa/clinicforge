@@ -167,7 +167,14 @@ async def _track_book_error(tenant_id: int, phone: str, code: str, msg: str = ""
         # Un fallo por slot ocupado / race / conflicto de agenda (UNAVAILABLE) NO es
         # atribuible al paciente: des-contamos el intento para no derivar de más por
         # max_attempts (F5/F6). El increment ocurrió al entrar a book_appointment.
-        if code == "UNAVAILABLE":
+        # EXPIRED (oferta vencida) y NOT_OFFERED (el slot elegido no coincide con la oferta
+        # guardada) TAMPOCO son intentos reales de reserva: instruyen "re-corré
+        # check_availability", no "se intentó y falló". Antes inflaban el contador de 3
+        # intentos y derivaban de más a un paciente cuyo slot seguía siendo reservable tras
+        # un check fresco (casos prod Juan/Gisela — "carga los datos pero al agendar deriva",
+        # 2026-07-13). El loop REAL de "se ocupó" sigue frenado por el streak _book_unavailable
+        # (2 UNAVAILABLE seguidos) — esto NO lo toca.
+        if code in ("UNAVAILABLE", "EXPIRED", "NOT_OFFERED"):
             from services.conversation_state import decrement_booking_attempts as _ba_dec
             await _ba_dec(tenant_id, phone)
     except Exception:
