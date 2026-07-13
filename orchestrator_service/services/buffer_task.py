@@ -4629,6 +4629,28 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                 # avisamos a la clínica para que un humano lo tome (caso prod: preguntó la
                 # dirección de su turno de hoy y el bot se quería callar).
                 _last_user = " ".join(messages).strip().lower()
+                # Fix C (2026-07-13): ¿el ÚLTIMO mensaje del BOT fue una oferta/pregunta ACTIVA?
+                # Si sí, un afirmativo corto del paciente ("perfecto", "dale", "listo") es una
+                # ACEPTACIÓN, no cortesía → el [SILENCIO] es un MISFIRE aunque el mensaje parezca
+                # cortés. Antes se clasificaba como cortesía y el paciente quedaba colgado en pleno
+                # flujo (bot ofrece coordinar / pregunta cobertura → paciente "perfecto" → silencio).
+                _last_bot = ""
+                try:
+                    for _m in reversed(db_history_dicts):
+                        if _m.get("role") == "assistant" and (_m.get("content") or "").strip():
+                            _last_bot = _m["content"].strip().lower()
+                            break
+                except Exception:
+                    _last_bot = ""
+                _bot_offered = bool(_last_bot) and (
+                    _last_bot.rstrip().endswith("?")
+                    or any(sig in _last_bot for sig in (
+                        "te paso turnos", "te coordino", "querés que te reserve",
+                        "queres que te reserve", "te reservo", "obra social o particular",
+                        "obra social o te atender", "qué día", "que dia", "qué horario",
+                        "que horario", "cuál te queda", "cual te queda",
+                    ))
+                )
                 _courtesy_words = (
                     "gracias", "ok", "oka", "dale", "genial", "buenísimo", "buenisimo",
                     "perfecto", "igualmente", "saludos", "de nada", "estamos comunicados",
@@ -4640,6 +4662,7 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                     and len(_last_user.split()) <= 6
                     and not _last_user.startswith(("hola", "buenas", "buen dia", "buen día"))
                     and any(w in _last_user for w in _courtesy_words)
+                    and not _bot_offered
                 )
                 if _looks_courtesy:
                     logger.info(f"🔇 [SILENCIO] — cierre de cortesía para {external_user_id}: no se envía respuesta")
