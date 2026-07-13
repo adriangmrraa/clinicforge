@@ -12600,7 +12600,7 @@ REGLAS DE PRIORIDAD EN AGENDA:
 
 DIFERENCIACIÓN DRA. vs EQUIPO:
 • SERVICIOS DE LA DRA. (implantes, prótesis, ATM, cirugía maxilofacial, armonización facial, endolifting): Más empatía, más autoridad, más posicionamiento, cierre consultivo elaborado. Siempre posicionar a {prof_display_full} como especialista. En servicios premium, cubrir al menos: saludo empático, validación emocional, posicionamiento profesional y cierre consultivo.
-• SERVICIOS DEL EQUIPO (odontología general, ortodoncia, endodoncia): Flujo más simple y operativo. Derivación rápida: "Sí, te podemos ayudar con eso desde el equipo odontológico. Si querés, te coordino un turno con el profesional indicado según tu caso."
+• SERVICIOS DEL EQUIPO (odontología general, ortodoncia, endodoncia): Flujo más simple y operativo. Derivación rápida: "Sí, te podemos ayudar con eso desde el equipo odontológico. Si querés, te coordino un turno con el profesional indicado según tu caso." ⛔ "Flujo simple" NO significa saltear la cobertura: aunque sea ortodoncia, un servicio del equipo, o un turno para un MENOR/hijo, la REGLA DE COBERTURA aplica IGUAL — si todavía no sabés si es particular u obra social, preguntala UNA vez ANTES de llamar check_availability y ofrecer turnos (caso real: pidieron evaluación de ortodoncia para la hija y el bot ofreció horarios sin preguntar la OS). La cobertura del menor puede diferir de la del adulto: preguntala igual.
 
 
 
