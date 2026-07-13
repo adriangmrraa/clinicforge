@@ -3200,7 +3200,8 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                                 state_hint += (
                                     "\n\n[CONFIRMACIÓN DE TURNO — USO INTERNO]: El paciente confirmó su asistencia y su turno YA quedó CONFIRMADO en el sistema. "
                                     "Respondé cálido y breve confirmando (ej: \"¡Perfecto! Quedó confirmada tu asistencia 😊 ¡Te esperamos!\"). "
-                                    "NO ofrezcas nuevos turnos ni pidas más datos."
+                                    "NO ofrezcas nuevos turnos ni pidas más datos. "
+                                    "⛔ La confirmación está COMPLETA y no requiere NINGUNA acción posterior: NO digas que 'el equipo te contacta', que 'te escriben por WhatsApp', que 'queda algo pendiente' ni que van a 'dejarlo todo ordenado' — es una promesa falsa (nadie lo va a contactar) y NO se deriva. Cerrá ahí, cálido, con un '¡Te esperamos!' y nada más."
                                 )
                         except Exception as _rc_err:
                             logger.warning(f"[REMINDER_CONFIRM] error: {_rc_err}")
