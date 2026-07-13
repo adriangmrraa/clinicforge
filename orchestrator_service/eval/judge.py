@@ -14,7 +14,7 @@ from typing import Any
 
 
 _JUDGE_SYSTEM = """Sos un evaluador de un asistente de WhatsApp de una clínica dental (agente "Paula", del equipo de "Clínica Dra. Laura Delgado", habla en español rioplatense con voseo).
-Te doy: el contexto previo y el mensaje del paciente, la respuesta del asistente, y una lista de CRITERIOS.
+Te doy: el contexto previo y el mensaje del paciente, la respuesta del asistente, las HERRAMIENTAS que ejecutó, y una lista de CRITERIOS.
 Para CADA criterio, decidí si la respuesta lo cumple (PASA) o no (FALLA), con una razón corta.
 
 REGLAS DE INTERPRETACIÓN (respetalas para NO marcar falsos errores):
@@ -22,6 +22,7 @@ REGLAS DE INTERPRETACIÓN (respetalas para NO marcar falsos errores):
 - Voseo rioplatense incluye "tenés, querés, contás, atendés, pasame, atenderías, agendás". "Contás" y "atenderías" SON voseo correcto, NO tuteo. Solo es tuteo (incorrecto) si usa "tú / tienes / quieres / puedes / contigo".
 - Preguntar la cobertura ("¿tenés obra social o te atendés de forma particular?") ANTES de dar precios u ofrecer turnos es el comportamiento CORRECTO y CUENTA como "avanzar hacia el turno".
 - Si la respuesta es "[SILENCIO]", significa que el asistente decidió no responder (comportamiento válido ante un simple agradecimiento).
+- `herramientas_llamadas` es la lista de herramientas que el asistente EJECUTÓ en este turno. Si un criterio se refiere a EJECUTAR/LLAMAR una herramienta (ej.: derivar al equipo = `derivhumano`; consultar disponibilidad = `check_availability`; reservar = `confirm_slot`/`book_appointment`; verificar cobertura = `check_insurance_coverage`), verificalo CONTRA ESA LISTA, no contra el texto: si la herramienta aparece en `herramientas_llamadas`, el criterio se cumple AUNQUE el texto al paciente no la nombre (de hecho el asistente NO debe nombrar herramientas internas al paciente). A la inversa: si el criterio pide llamar una herramienta y NO está en la lista, FALLA.
 
 Sé literal con el resto: si el criterio dice "no debe X" y la respuesta hace X, FALLA.
 Respondé SOLO con JSON válido, sin texto extra:
@@ -54,9 +55,15 @@ def _hard_checks(case: dict, response_text: str) -> list[dict[str, Any]]:
 
 
 async def judge_case(
-    client, judge_model: str, case: dict, response_text: str
+    client, judge_model: str, case: dict, response_text: str,
+    tool_trace: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Devuelve {pasa: bool, criterios: [...], error: str|None}."""
+    """Devuelve {pasa: bool, criterios: [...], error: str|None}.
+
+    tool_trace: nombres/args de las herramientas que el agente ejecutó en el turno.
+    Se le pasa al juez para que pueda evaluar criterios sobre LLAMAR herramientas
+    (ej. derivhumano), que NO son visibles en el texto de la respuesta.
+    """
     criterios: list[dict[str, Any]] = _hard_checks(case, response_text)
 
     espera = case.get("espera", []) or []
@@ -68,6 +75,7 @@ async def judge_case(
                 "historial": case.get("history", []) or [],
                 "mensaje_paciente": case.get("user", ""),
                 "respuesta_asistente": response_text or "",
+                "herramientas_llamadas": tool_trace or [],
                 "criterios": espera,
             },
             ensure_ascii=False,

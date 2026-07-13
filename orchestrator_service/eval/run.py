@@ -290,7 +290,7 @@ async def main() -> int:
                 else:
                     verdict = {"pasa": False, "criterios": [{"criterio": "no debía quedarse en silencio", "pasa": False, "razon": "el bot devolvió [SILENCIO] cuando debía responder"}], "error": None}
             else:
-                verdict = await judge_case(client, args.judge_model, c, answer)
+                verdict = await judge_case(client, args.judge_model, c, answer, tool_trace=tool_trace)
             results.append((c, verdict, answer))
 
             mark = "PASA " if verdict["pasa"] else "FALLA"
