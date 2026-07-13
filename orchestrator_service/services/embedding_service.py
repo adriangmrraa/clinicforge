@@ -396,6 +396,9 @@ async def format_faqs_with_rag(tenant_id: int, user_message: str, static_faqs: l
                 "amplio y todavía no recibió la presentación (ai_response_template), usá",
                 "get_service_details PRIMERO — ver REGLA DE PRIMERA MENCIÓN en el prompt.",
                 "Para todo lo demás, respondé con la RESPUESTA OFICIAL tal cual, sin parafrasear.",
+            "⛔ EXCEPCIÓN GATE DE PRECIO: si una FAQ es sobre el PRECIO/valor de la consulta y todavía no",
+            "resolviste la cobertura del paciente → NO respondas con el monto: aplicá el GATE DE PRECIO",
+            "(preguntá cobertura) primero. El gate le gana a esta regla de FAQ.",
                 "",
             ]
             for i, faq in enumerate(relevant_faqs, 1):
