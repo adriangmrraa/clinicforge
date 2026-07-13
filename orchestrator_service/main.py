@@ -6807,13 +6807,20 @@ async def reschedule_appointment(original_date: str, new_date_time: str, interpr
         try:
             from services.relay import get_redis as _get_redis_resched_validate
             _r_rv = _get_redis_resched_validate()
-            if _r_rv:
-                _offer_key_rv = f"slot_offer:{tenant_id}:{phone}"
-                _offer_raw_rv = await _r_rv.get(_offer_key_rv)
+            # Fix (revisión adversarial 2026-07-13): el slot_offer se ESCRIBE con el teléfono del
+            # CHAT (current_customer_phone.get(), igual que check_availability:3761 y book R1:4723).
+            # Leerlo con el `phone` de la FICHA (DB) rompía a los pacientes importados/creados a mano
+            # (formato distinto → la key NUNCA matcheaba → el freno bloqueaba SIEMPRE = loop infinito).
+            # Uso el chat phone, con fallback al de la ficha por si el offer quedó bajo otra normalización.
+            _chat_phone_rv = current_customer_phone.get() or phone
+            if _r_rv and _chat_phone_rv:
+                _offer_raw_rv = await _r_rv.get(f"slot_offer:{tenant_id}:{_chat_phone_rv}")
+                if _offer_raw_rv is None and phone and phone != _chat_phone_rv:
+                    _offer_raw_rv = await _r_rv.get(f"slot_offer:{tenant_id}:{phone}")
                 if _offer_raw_rv is None:
                     # No se ofreció NINGÚN horario para reprogramar → NO reprogrames a una hora
                     # inventada. Obligá a ofrecer opciones reales primero (mismo freno que book R1).
-                    logger.warning(f"[RESCHEDULE] slot_offer key missing para {phone} — bloqueo reprogramación a slot no ofrecido")
+                    logger.warning(f"[RESCHEDULE] slot_offer key missing (chat={_chat_phone_rv} ficha={phone}) — bloqueo reprogramación a slot no ofrecido")
                     return (
                         "⛔ Todavía no le ofreciste horarios concretos para reprogramar, así que NO puedo reprogramar a una hora inventada. "
                         "PRIMERO llamá check_availability pasando el treatment_name del turno (para acotar al profesional correcto) y la fecha/preferencia del paciente, "
@@ -6842,7 +6849,10 @@ async def reschedule_appointment(original_date: str, new_date_time: str, interpr
                         f"Las opciones que SÍ ofreciste son: {_opts_text_rv}. Pedile al paciente que elija una de ESAS. "
                         "Si quiere otra fecha/horario, llamá check_availability de nuevo (con el treatment_name del turno) y ofrecé 2 opciones reales antes de reprogramar."
                     )
-            # Si Redis está caído, se saltea la validación (fail-open) para no bloquear reprogramaciones legítimas.
+            else:
+                # Sin Redis (o sin chat phone) NO bloqueamos → fail-open para no romper reprogramaciones
+                # legítimas; solo dejamos traza (antes este skip era silencioso).
+                logger.warning("[RESCHEDULE] freno slot_offer saltado (Redis no disponible o sin chat phone) — fail-open, no validé que el slot fue ofrecido")
         except Exception as _rv_err:
             logger.warning(f"[RESCHEDULE] slot_offer check failed (fail-open): {_rv_err}")
 
