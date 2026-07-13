@@ -302,6 +302,7 @@ def _detect_research_intent(msg: str) -> bool:
             r"\bla\s+semana\s+que\s+viene\b",     # "la semana que viene"
             r"\bsemana\s+próxima\b",              # "semana próxima"
             r"\bsemana\s+proxima\b",              # "semana proxima" (no accent)
+            r"\bpr[oó]xima\s+semana\b",           # "próxima semana", "la próxima semana", "para la próxima semana" (adjetivo ANTES del sustantivo — faltaba; caso prod Vero: pedía "próxima semana" y el bot re-ofrecía los mismos slots de esta semana)
             r"\bsemana\s+siguiente\b",            # "(la) semana siguiente"
             r"\bsiguiente\s+semana\b",            # "(la) siguiente semana"
             r"\bla\s+que\s+sigue\b",              # "la que sigue"
