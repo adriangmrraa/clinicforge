@@ -944,6 +944,9 @@ class AccountingTransaction(Base):
         UUID(as_uuid=True), ForeignKey("appointments.id", ondelete="SET NULL")
     )
     transaction_type = Column(String(50), nullable=False)
+    # Subtipo de cobro (motor de dinero L1). transaction_type sigue siendo
+    # 'payment'; payment_kind distingue seña/coseguro/resto/ajuste/pago. NULL = legacy.
+    payment_kind = Column(String(20))
     transaction_date = Column(Date, nullable=False, default=func.current_date())
     amount = Column(Numeric(12, 2), nullable=False)
     currency = Column(String(3), default="ARS")

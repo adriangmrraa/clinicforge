@@ -9595,6 +9595,8 @@ async def register_appointment_payment(
     if amount <= 0:
         raise HTTPException(status_code=400, detail="Monto inválido")
     method = (data.get("method") or "cash").strip()[:30]
+    # Subtipo de cobro (motor de dinero L1): seña/coseguro/resto/ajuste/pago.
+    pkind = (data.get("payment_kind") or "pago").strip()[:20]
 
     appt = await db.pool.fetchrow(
         """

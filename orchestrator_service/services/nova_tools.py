@@ -5919,11 +5919,27 @@ async def _registrar_pago(args: Dict, tenant_id: int, user_role: str) -> str:
     # accounting_transactions (abajo), así que no se pierde información.
     _price = float(appt["billing_amount"] or 0)
     _paid_amt = float(amount)
+
+    # 💰 L1 — Cobrado = Σ eventos del libro, no sólo este pago. Antes Nova
+    # comparaba SOLO el pago actual contra el precio: una seña previa + un
+    # segundo cobro quedaban "partial" para siempre. Ahora suma lo ya
+    # registrado en accounting_transactions y decide sobre el TOTAL.
+    _prev_paid = await db.pool.fetchval(
+        """
+        SELECT COALESCE(SUM(amount), 0)
+        FROM accounting_transactions
+        WHERE tenant_id = $1 AND appointment_id = $2
+          AND transaction_type = 'payment' AND status = 'completed'
+        """,
+        tenant_id,
+        appt_uuid,
+    )
+    _total_paid = float(_prev_paid or 0) + _paid_amt
     if _price <= 0:
         # Turno sin precio (histórico/catálogo en $0): comportamiento anterior
         new_billing = Decimal(str(amount))
         new_status = "paid"
-    elif _paid_amt >= _price:
+    elif _total_paid >= _price:
         new_billing = appt["billing_amount"]
         new_status = "paid"
     else:
@@ -5945,13 +5961,14 @@ async def _registrar_pago(args: Dict, tenant_id: int, user_role: str) -> str:
         tenant_id,
     )
 
-    # Also create accounting transaction
+    # Also create accounting transaction (evento en el libro único, L1)
+    _pkind = (args.get("payment_kind") or "pago").strip()[:20]
     await db.pool.execute(
         """
         INSERT INTO accounting_transactions
             (id, tenant_id, patient_id, appointment_id, transaction_type,
-             amount, payment_method, description, status)
-        SELECT $1, $2, a.patient_id, $3, 'payment', $4, $5, $6, 'completed'
+             payment_kind, amount, payment_method, description, status)
+        SELECT $1, $2, a.patient_id, $3, 'payment', $7, $4, $5, $6, 'completed'
         FROM appointments a WHERE a.id = $3
         """,
         uuid.uuid4(),
@@ -5960,6 +5977,7 @@ async def _registrar_pago(args: Dict, tenant_id: int, user_role: str) -> str:
         Decimal(str(amount)),
         method,
         f"Pago registrado via Nova — {appt['appointment_type']}",
+        _pkind,
     )
 
     method_labels = {

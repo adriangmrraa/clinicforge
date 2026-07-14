@@ -9265,9 +9265,9 @@ async def verify_payment_receipt(
                     await db.pool.execute(
                         """
                         INSERT INTO accounting_transactions
-                            (tenant_id, patient_id, transaction_type, transaction_date,
-                             amount, payment_method, description, status)
-                        VALUES ($1, $2, 'payment', NOW(), $3, 'transfer', $4, 'completed')
+                            (tenant_id, patient_id, transaction_type, payment_kind,
+                             transaction_date, amount, payment_method, description, status)
+                        VALUES ($1, $2, 'payment', 'plan', NOW(), $3, 'transfer', $4, 'completed')
                         """,
                         tenant_id,
                         apt["patient_id"],
@@ -9316,6 +9316,37 @@ async def verify_payment_receipt(
                     amount_value or expected_amount,
                     int(amount_overpaid),
                 )
+
+                # 💰 L1 — Libro único de eventos: la seña del turno escribe su
+                # movimiento en accounting_transactions (antes era invisible ahí,
+                # sólo quedaba en payment_receipt_data → riesgo de doble cobro).
+                # Guarda de idempotencia: sólo si el turno NO estaba ya pagado
+                # (evita duplicar el evento si el paciente reenvía el comprobante).
+                if not already_paid:
+                    try:
+                        await db.pool.execute(
+                            """
+                            INSERT INTO accounting_transactions
+                                (tenant_id, patient_id, appointment_id, transaction_type,
+                                 payment_kind, transaction_date, amount, payment_method,
+                                 description, status, recorded_by)
+                            VALUES ($1, $2, $3, 'payment', 'sena', NOW(), $4, 'transfer',
+                                    $5, 'completed', 'IA')
+                            """,
+                            tenant_id,
+                            apt["patient_id"],
+                            str(apt["id"]),
+                            amount_value or expected_amount,
+                            "Seña verificada por IA",
+                        )
+                        logger.info(
+                            f"💰 L1: evento seña registrado en libro apt_id={apt['id']} "
+                            f"amount=${amount_value or expected_amount} kind=sena"
+                        )
+                    except Exception as sena_evt_err:
+                        logger.warning(
+                            f"💰 L1: accounting_transactions insert (seña) falló (no fatal): {sena_evt_err}"
+                        )
 
                 # Also register in treatment_plan_payments if active plan exists
                 try:
