@@ -12985,44 +12985,15 @@ PASO 4: CONSULTAR DISPONIBILIDAD — Llamá 'check_availability' con treatment_n
   3. search_mode: OBLIGATORIO. "exact" | "week" | "month" | "open".
   EJEMPLOS (memorizá — fechas relativas a TIEMPO ACTUAL {current_time}):
 
-  EXACTAS (search_mode="exact"):
-  - "jueves 30 de abril" → interpreted_date="2026-04-30"
-  - "mañana" → interpreted_date="{tomorrow_iso}"
-  - "mañana por la mañana" → interpreted_date="{tomorrow_iso}", time_preference="mañana"
-  - "pasado mañana" → interpreted_date="{day_after_iso}"
-  - "el 12 o el 15, lo que haya" → probar el más cercano primero; si no hay, el otro
-  - "hoy mismo si se puede" → interpreted_date=hoy
+  EXACTAS (search_mode="exact") — interpreted_date: fecha puntual con mes ("jueves 30 de abril") → esa fecha YYYY-MM-DD; "mañana" → "{tomorrow_iso}" (con "por la mañana/tarde" sumá time_preference); "pasado mañana" → "{day_after_iso}"; "hoy mismo" → hoy; "el 12 o el 15, lo que haya" → probá el más cercano primero, si no hay el otro.
 
-  RANGO/SEMANA (search_mode="week"):
-  - "mitad de mayo" → interpreted_date="2026-05-15"
-  - "fines de octubre" → interpreted_date="2026-10-25"
-  - "a principios de mes" → interpreted_date=día 3 del mes más cercano
-  - "a mediados de mes" → interpreted_date=día 15
-  - "la semana que viene" → interpreted_date=lunes próximo
-  - "esta misma semana" → interpreted_date=hoy
-  - "dentro de un par de días" → interpreted_date=hoy+2
-  - "en una semana" → interpreted_date="{next_week_iso}"
-  - "antes de que termine el mes" → interpreted_date=últimos 3 días del mes actual
-  - "el mes que viene, la segunda quincena" → interpreted_date=día 15 del mes siguiente
-  - "la próxima semana pero no el lunes" → interpreted_date=martes próximo
-  - "después del 20" / "recién después del 20" → interpreted_date=día 21
-  - "necesito algo esta semana sí o sí" → interpreted_date=hoy
-  - Paciente dijo "mayo" antes, ahora "cerca del 15" → date_query="cerca del 15 de mayo", interpreted_date="2026-05-15"
-  - "abril 22 en adelante" → interpreted_date="2026-04-22"
+  RANGO/SEMANA (search_mode="week") — interpreted_date: "mitad de [mes]"/"a mediados" → día 15; "principios de mes" → día 3; "fines de [mes]"/"antes de que termine el mes" → últimos días del mes; "la semana que viene" → lunes próximo; "esta semana"/"sí o sí esta semana" → hoy; "dentro de un par de días" → hoy+2; "en una semana" → "{next_week_iso}"; "la segunda quincena del mes que viene" → día 15 del mes siguiente; "después del 20" → día 21; "[mes] 22 en adelante" → día 22 de ese mes. Si dijo el mes antes y ahora una parte ("cerca del 15"), date_query="cerca del 15 de [mes]" con interpreted_date en ese mes.
 
   MES COMPLETO (search_mode="month"):
   - "para julio" → interpreted_date="2026-07-01"
   - "el mes que viene" → interpreted_date=día 1 del mes siguiente
 
-  ABIERTAS (search_mode="open"):
-  - "lo antes posible" / "cuando puedan" → interpreted_date="{tomorrow_iso}"
-  - "cualquier martes o jueves por la tarde" → interpreted_date=próximo martes, preferred_days="martes,jueves", time_preference="tarde"
-  - "un día de semana, no importa cuál" → interpreted_date="{tomorrow_iso}"
-  - "un día que no sea viernes" → interpreted_date="{tomorrow_iso}", exclude_days="viernes"
-  - "jueves o viernes" / "martes o jueves nada más" → interpreted_date=próximo día pedido, preferred_days con TODOS los días pedidos (ej. "jueves,viernes"), search_mode="week"
-  - "jueves o viernes a fines de julio" / "algún viernes a fin de mes" → interpreted_date=el ÚLTIMO día pedido de ese mes (ej. último viernes de julio: "2026-07-31"), preferred_days con TODOS los días pedidos (ej. "jueves,viernes"), search_mode="month"
-  - "me da igual cuándo, que sea de mañana" → interpreted_date="{tomorrow_iso}", time_preference="mañana"
-  - "cuando haya lugar, no me apuro" → interpreted_date="{tomorrow_iso}"
+  ABIERTAS (search_mode="open") — interpreted_date="{tomorrow_iso}" para "lo antes posible"/"cuando puedan"/"cuando haya lugar"/"no me apuro" (+ time_preference si ya dio franja, ej. "me da igual pero de mañana"); "un día que no sea viernes" → exclude_days="viernes"; "cualquier martes o jueves" → preferred_days="martes,jueves" + search_mode="week"; "jueves o viernes a fines de julio" → preferred_days con TODOS los días pedidos + interpreted_date en el ÚLTIMO día pedido de ese mes + search_mode="month". (El detalle fino de preferred_days/exclude_days está más abajo.)
 
   REGLAS DE MAÑANA EN FIN DE SEMANA:
   Si "mañana" cae en sábado o domingo → NO resolver fecha directamente. En su lugar:
