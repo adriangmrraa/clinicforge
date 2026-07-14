@@ -11273,6 +11273,21 @@ def _format_insurance_providers(
         "obra social no sirve."
     )
 
+    lines.append("")
+    lines.append(
+        "⛔ DESPUÉS de ese ofrecimiento, LEÉ la respuesta del paciente y elegí UN solo camino "
+        "(NUNCA mezcles despedida con avance): "
+        "(a) SI ACEPTA o pide los turnos (\"dale\", \"sí\", \"pasame\", \"bueno\", \"cuándo hay\") → "
+        "AVANZÁ normal con el agendamiento (check_availability y el flujo de turno). ⛔ PROHIBIDO "
+        "tirarle un mensaje de despedida o de \"tomalo con calma\" cuando en realidad quiere avanzar. "
+        "(b) SI SE ECHA PARA ATRÁS, duda o corta (\"no\", \"lo pienso\", \"después veo\", \"dejame "
+        "verlo\", \"gracias\") → NO insistas ni repitas el ofrecimiento: cerrá cálido y SIN presión, "
+        "dejando la puerta abierta. Ejemplo: \"Dale, tomalo con calma 😊 Cuando quieras avanzar "
+        "escribinos y coordinamos. ¡Que estés bien!\" "
+        "⛔ En TODO este ida y vuelta, el precio PARTICULAR de la consulta NUNCA se filtra a un "
+        "paciente con obra social."
+    )
+
     return "\n".join(lines)
 
 
