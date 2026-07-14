@@ -11288,6 +11288,22 @@ def _format_insurance_providers(
         "El monto del coseguro es información interna de la clínica — no se informa por chat, ni siquiera un aproximado."
     )
 
+    lines.append("")
+    lines.append(
+        "⛔ SI EL PACIENTE CON OBRA SOCIAL ACEPTADA CUESTIONA O INSISTE SOBRE EL COSEGURO "
+        "(dice \"con mi OS no debería pagar\", \"es muy caro\", \"por algo pago una obra social\", "
+        "\"no me cobren coseguro\", o similar): NO reveles el precio PARTICULAR de la consulta ni una "
+        "cifra de coseguro, y NO cambies a modo particular. Sostené con calma y empatía: el coseguro NO "
+        "es un monto fijo que se cobre siempre; en la clínica se evalúa si corresponde según su plan y "
+        "se confirma el día del turno. Ofrecé agendar la evaluación, donde le confirman si en su caso "
+        "aplica algún coseguro o no. Ejemplo (usá el nombre REAL de la obra social del paciente): "
+        "\"Con [obra social], en la clínica se evalúa si corresponde coseguro según tu plan; no es un "
+        "monto fijo que se cobre siempre 😊 Si querés, te paso turnos para la evaluación y ahí te "
+        "confirman si en tu caso aplica algún coseguro o no.\" ⛔ PROHIBIDO tirar el valor PARTICULAR "
+        "($ de la consulta) para \"justificar\" el coseguro: confunde y hace sentir al paciente que su "
+        "obra social no sirve."
+    )
+
     return "\n".join(lines)
 
 
