@@ -90,20 +90,30 @@ async def _process_execution(pool, execution: dict, now: datetime):
     ok, reason = await _preflight_check(pool, execution, step, now)
     if not ok:
         if reason == "schedule_window":
-            # Defer to next valid window
-            next_morning = now.replace(hour=execution["schedule_hour_min"], minute=0, second=0)
-            if next_morning <= now:
-                next_morning += timedelta(days=1)
+            # Defer to next valid window — EN HORA DE ARGENTINA, guardado en UTC.
+            # Antes hacía now.replace(hour=...) sobre UTC → caía de madrugada local
+            # (ej. schedule_hour_min=7 → 07:00 UTC = 04:00 ART: el mensaje de las 4 AM).
+            _ar = _AR_TZ_SCHED or timezone.utc
+            _local = now.astimezone(_ar)
+            _next_local = _local.replace(
+                hour=execution["schedule_hour_min"], minute=0, second=0, microsecond=0
+            )
+            if _next_local <= _local:
+                _next_local += timedelta(days=1)
+            next_morning = _next_local.astimezone(timezone.utc)
             await pool.execute(
                 "UPDATE automation_executions SET next_step_at = $1, updated_at = NOW() WHERE id = $2",
                 next_morning, exec_id,
             )
             logger.info(f"⏰ Execution {exec_id} deferred to {next_morning} (outside schedule)")
         elif reason == "daily_cap":
-            # Defer to tomorrow morning
-            tomorrow = (now + timedelta(days=1)).replace(
-                hour=execution["schedule_hour_min"], minute=0, second=0
+            # Defer to tomorrow morning — EN HORA DE ARGENTINA, guardado en UTC.
+            _ar = _AR_TZ_SCHED or timezone.utc
+            _local = now.astimezone(_ar)
+            _tomorrow_local = (_local + timedelta(days=1)).replace(
+                hour=execution["schedule_hour_min"], minute=0, second=0, microsecond=0
             )
+            tomorrow = _tomorrow_local.astimezone(timezone.utc)
             await pool.execute(
                 "UPDATE automation_executions SET next_step_at = $1, messages_sent_today = 0, updated_at = NOW() WHERE id = $2",
                 tomorrow, exec_id,
@@ -185,8 +195,11 @@ async def _preflight_check(pool, execution: dict, step: dict, now: datetime):
     tenant_id = execution["tenant_id"]
     phone = execution["phone_number"]
 
-    # 1. Schedule window
-    current_hour = now.hour
+    # 1. Schedule window — EN HORA DE ARGENTINA. El server corre en UTC; comparar
+    #    now.hour (UTC) contra una ventana local (9–20) mandaba mensajes de
+    #    madrugada: 04:00 ART = 07:00 UTC caía dentro de la ventana y se enviaba.
+    _ar = _AR_TZ_SCHED or timezone.utc
+    current_hour = now.astimezone(_ar).hour
     hour_min = step.get("schedule_hour_min") or execution["schedule_hour_min"]
     hour_max = step.get("schedule_hour_max") or execution["schedule_hour_max"]
     if current_hour < hour_min or current_hour >= hour_max:
