@@ -1253,7 +1253,35 @@ class LiquidationService:
                 f"Invalid payment method: {payment_method}. Must be one of {valid_methods}"
             )
 
-        # 2. Insert payout
+        # 2. Saldo PREVIO (SIN este pago) + validación de SOBREPAGO **ANTES** de insertar.
+        #    Fix plata 2026-07-14: antes se insertaba el pago PRIMERO y el SUM de abajo lo
+        #    incluía, así `remaining` quedaba negativo ante un sobrepago y el freno
+        #    "and remaining > 0" NUNCA saltaba → el sobrepago pasaba callado; y como el INSERT
+        #    ya estaba hecho (sin transacción), el reintento tras el error DUPLICABA el pago.
+        #    Ahora: total previo → validar → RECIÉN insertar si pasa (nada queda cargado si falla).
+        prev_total = float(
+            await pool.fetchval(
+                """
+                SELECT COALESCE(SUM(amount), 0)
+                FROM professional_payouts
+                WHERE liquidation_id = $1
+                """,
+                liquidation_id,
+            )
+        )
+        payout_amount = float(record["payout_amount"])
+        remaining = payout_amount - prev_total
+        if amount > remaining + 0.01:  # tolerancia de centavos (float)
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"El monto del pago (${amount:.2f}) excede "
+                    f"el saldo restante (${remaining:.2f}). "
+                    f"Total a pagar: ${payout_amount:.2f}, ya pagado: ${prev_total:.2f}."
+                ),
+            )
+
+        # 3. Insertar el pago (recién ahora, ya validado)
         payout = await pool.fetchrow(
             """
             INSERT INTO professional_payouts (
@@ -1272,35 +1300,12 @@ class LiquidationService:
             reference_number,
             notes,
         )
+        total_payouts = prev_total + amount
 
-        # 3. Recalculate total payouts
-        total_payouts = await pool.fetchval(
-            """
-            SELECT COALESCE(SUM(amount), 0)
-            FROM professional_payouts
-            WHERE liquidation_id = $1
-            """,
-            liquidation_id,
-        )
-        total_payouts = float(total_payouts)
-        payout_amount = float(record["payout_amount"])
-
-        # 4. Auto-update status to 'paid' if fully covered
-        #    Prevent overpayment: new payout cannot exceed remaining balance
-        remaining = payout_amount - total_payouts
-        if amount > remaining and remaining > 0:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    f"El monto del pago (${amount:.2f}) excede "
-                    f"el saldo restante (${remaining:.2f}). "
-                    f"Total a pagar: ${payout_amount:.2f}, ya pagado: ${total_payouts:.2f}."
-                ),
-            )
-
+        # 4. Auto-marcar 'paid' si el total (previo + este pago) cubre lo adeudado
         auto_paid = False
         current_notes = _notes_dict(record["notes"])
-        if total_payouts + amount >= payout_amount and record["status"] != "paid":
+        if total_payouts >= payout_amount and record["status"] != "paid":
             now = datetime.utcnow()
             audit_trail = current_notes.get("audit_trail", [])
             audit_trail.append(
