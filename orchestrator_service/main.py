@@ -4951,7 +4951,13 @@ async def book_appointment(
 
         treatment_code = None
         treatment_display_name = ""
-        if t_data and (final_duration is None or final_duration == 30):
+        if t_data:
+            # SIEMPRE derivar la duración del tratamiento (la MISMA base que usó
+            # check_availability para ofrecer el slot), ignorando la duration_minutes que
+            # pase el LLM. Si difieren, book reserva un bloque distinto al ofrecido y el
+            # chequeo de colisión da un FALSO "se ocupó" contra el turno vecino de la agenda
+            # → deriva de más aunque el paciente ya haya dado sus datos y el día ofrecido
+            # (caso prod Lucas: limpieza con Laura, 13:15 ofrecido pero book lo veía ocupado).
             # High-ticket: book consultation duration, not treatment duration
             _book_is_ht = t_data.get("is_high_ticket", False)
             if _book_is_ht:
@@ -5336,6 +5342,25 @@ async def book_appointment(
             logger.info(
                 f"📅 BOOK CONFLICT CHECK: prof={cand['first_name']} (id={cand['id']}) conflict={conflict} at {apt_datetime.strftime('%H:%M')}-{end_apt.strftime('%H:%M')}"
             )
+            # DIAG (2026-07-13, caso Lucas): si hay conflicto de agenda, logueá EXACTAMENTE
+            # con qué turno choca — así distinguimos un choque REAL de un falso "se ocupó"
+            # (descalce de duración u oferta) sin depender de adivinar.
+            if conflict and calendar_provider != "google":
+                try:
+                    _conf_rows = await db.pool.fetch(
+                        """SELECT appointment_datetime, COALESCE(duration_minutes,60) AS dur, status, patient_id
+                           FROM appointments
+                           WHERE tenant_id = $1 AND professional_id = $2 AND status IN ('scheduled','confirmed')
+                           AND (appointment_datetime < $4 AND (appointment_datetime + interval '1 minute' * COALESCE(duration_minutes,60)) > $3)
+                           ORDER BY appointment_datetime LIMIT 3""",
+                        tenant_id, cand["id"], apt_datetime, end_apt,
+                    )
+                    for _cr in _conf_rows:
+                        logger.info(
+                            f"📅 BOOK CONFLICT DETALLE: pedido {apt_datetime.strftime('%H:%M')} (+{final_duration}min) choca con turno existente {_cr['appointment_datetime'].strftime('%d/%m %H:%M')} (+{_cr['dur']}min) status={_cr['status']} patient={_cr['patient_id']}"
+                        )
+                except Exception as _cd_err:
+                    logger.warning(f"BOOK CONFLICT DETALLE query failed (non-blocking): {_cd_err}")
             # DLD-74: chequear soft-lock en Redis antes de aceptar el candidato
             if not conflict:
                 try:
