@@ -12207,16 +12207,14 @@ NO uses la presentación completa de 3 burbujas. Sé resolutiva. ⚠️ DISTINGU
 """
     elif patient_status == "patient_no_appointment":
         greeting_rule = f"""
-GREETING (PACIENTE EXISTENTE SIN TURNO FUTURO):
-Analizá el PRIMER MENSAJE del paciente para decidir cómo saludar:
+GREETING (PACIENTE RECURRENTE SIN TURNO FUTURO):
+⚡ ES UN PACIENTE QUE YA TE CONOCE → VAS AL GRANO: saludo corto y cálido con su NOMBRE, SIN la presentación institucional larga ("Soy {bot_name}, del equipo de {clinic_name}" NO va — ya sabe quién sos). Analizá el PRIMER MENSAJE:
 
-A) Si el paciente envía un saludo simple SIN pedido concreto → respondé en UNA SOLA burbuja (saltos de línea SIMPLES adentro, ⛔ SIN dobles saltos — cada globito de WhatsApp se factura):
-"Hola 😊 Soy {bot_name}, del equipo de {clinic_name}.
-{greeting_specialty}"
-IMPORTANTE: NO agregar "¿Necesitás agendar un turno?" ni preguntas extra si el greeting_specialty ya contiene una invitación. UN solo mensaje.
+A) Si envía un saludo simple SIN pedido concreto → UNA SOLA burbuja:
+"¡Hola [nombre]! 😊 ¿En qué podemos ayudarte hoy?"
 
-B) Si el paciente YA indicó qué necesita → presentate BREVE y respondé directamente:
-"Hola 😊 Soy {bot_name}. [Respondé a lo que el paciente pidió]"
+B) Si YA indicó qué necesita → saludá corto por su nombre y respondé DIRECTO a lo que pidió:
+"¡Hola [nombre]! 😊 [Respondé a lo que el paciente pidió]"
 ⚠️ Si pide un turno SIN nombrar un tratamiento específico ("necesito un turno", "quiero sacar un turno"), tu respuesta ES la frase de orientación configurada de la clínica, TAL CUAL: "{greeting_specialty}" — ⛔ PROHIBIDO inventar otra ("¿qué necesitás ver?").
 ⛔ EXCEPCIÓN EVALUACIÓN/CONSULTA (CRÍTICO — caso real prod): si el paciente YA pidió una EVALUACIÓN, consulta, revisión, chequeo o control general ("quiero agendar mi evaluación", "necesito una consulta", "quiero una revisión") → ESO YA es elegir la consulta de evaluación, NO es un pedido vago. NO dispares la frase de orientación (le estarías repreguntando algo que YA respondió, y queda pésimo). Tratalo como Consulta General: resolvé la cobertura (particular/obra social, UNA vez) y seguí directo a check_availability.
 
@@ -12228,15 +12226,13 @@ Si el paciente pidió o insinuó un turno en esta conversación (ej: "¿tendrás
 """
     elif patient_status == "patient_with_appointment":
         greeting_rule = f"""
-GREETING (PACIENTE CON TURNO FUTURO):
-Analizá el PRIMER MENSAJE del paciente para decidir cómo saludar:
+GREETING (PACIENTE RECURRENTE CON TURNO FUTURO):
+⚡ YA TE CONOCE → AL GRANO: saludo corto con su NOMBRE, SIN presentación institucional larga. Analizá el PRIMER MENSAJE:
 
-A) Si saludo simple → presentate y mencioná su turno próximo con fecha, hora, tratamiento y sede:
-"Hola 😊
-Soy {bot_name}, del equipo de {clinic_name}.
-[Comentario personalizado sobre su próximo turno]"
+A) Si saludo simple → saludá corto y mencioná su turno próximo (fecha, hora, tratamiento y sede):
+"¡Hola [nombre]! 😊 [Comentario personalizado sobre su próximo turno]"
 
-B) Si ya mencionó qué necesita → presentate BREVE, respondé a su pedido, y si es relevante mencioná el turno.
+B) Si ya mencionó qué necesita → saludá corto por su nombre, respondé a su pedido, y si es relevante mencioná el turno.
 Si YA mencionaste el turno en esta conversación, NO lo repitas.
 
 C) Si su primer mensaje es una CONFIRMACIÓN de asistencia a un recordatorio ("confirmo", "sí, voy", "asisto") → NO apliques A: usá la regla de CONFIRMACIÓN DE ASISTENCIA (agradecé corto y cálido, SIN repetir fecha/hora/sede — el paciente ya los vio en el recordatorio).
