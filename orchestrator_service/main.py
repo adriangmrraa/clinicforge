@@ -11209,8 +11209,12 @@ def _format_insurance_providers(
         # disponible internamente (cobro en mostrador / liquidación), pero NO se
         # inyecta al prompt del agente para que no lo pueda cotizar por chat.
         default_copay_str = ""
-        copay_notes = p.get("copay_notes") or ""
-        copay_notes_str = f" ({copay_notes})" if copay_notes else ""
+        # COSEGURO INTERNO (fix banco 2026-07-14): las NOTAS del coseguro
+        # (copay_notes) suelen tener el MONTO cargado en el panel (ej. "$20.000")
+        # y se inyectaban al prompt → el bot las repetía cuando preguntaban por esa
+        # OS. Igual que el %, NO se inyectan al agente. El valor sigue disponible
+        # internamente (billing-context / secretaría lee la base directa).
+        copay_notes_str = ""
         # Scheduling constraint (migración scheduling_mode/scheduling_delay_days)
         _sched_mode = p.get("scheduling_mode") or "immediate"
         _sched_delay = p.get("scheduling_delay_days") or 0
