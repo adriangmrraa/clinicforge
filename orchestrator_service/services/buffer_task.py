@@ -166,6 +166,20 @@ def _detect_selection_intent(msg: str) -> bool:
     """
     import re
 
+    # APLAZO GUARD (caso prod Agustín 2026-07-13): "te confirmo mañana", "confirmo después",
+    # "me comunico con mi obra social a ver...", "me fijo / lo consulto / lo pienso" NO son
+    # selección de turno — son un APLAZO. Sin esto, el patrón \bconfirmo\b de abajo los tomaba
+    # como "confirmo el turno" → el STATE_GUARD inyectaba el hint de reservar y el bot AGENDABA
+    # en vez de CONTENER al paciente que pidió tiempo. Va ANTES del match de selección.
+    _low = (msg or "").lower()
+    if (
+        re.search(r"\bconfirmo\s+(ma[ñn]ana|luego|despu[eé]s|m[aá]s\s+tarde|apenas)\b", _low)
+        or re.search(r"\bte\s+(confirmo|aviso|escribo|digo|contesto|respondo)\s+(ma[ñn]ana|luego|despu[eé]s|m[aá]s\s+tarde|apenas|cuando)\b", _low)
+        or re.search(r"\b(me\s+fijo|lo\s+consulto|lo\s+pienso|lo\s+veo|despu[eé]s\s+veo|me\s+lo\s+pienso)\b", _low)
+        or re.search(r"\bcomunico\s+con\s+mi\s+obra\s+social\b", _low)
+    ):
+        return False
+
     global _SELECTION_INTENT_PATTERN
     if _SELECTION_INTENT_PATTERN is None:
         # Patterns for selecting an offered slot
