@@ -2133,7 +2133,11 @@ class ProfessionalPayout(Base):
     tenant_id = Column(
         Integer, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
     )
+    # La columna física es 'liquidation_record_id' (migración 001/020); el atributo Python
+    # queda 'liquidation_id' por compat pero mapea a la columna real (evita "column does
+    # not exist" si algún día se usa el ORM). Las queries raw ya usan liquidation_record_id.
     liquidation_id = Column(
+        "liquidation_record_id",
         Integer,
         ForeignKey("liquidation_records.id", ondelete="CASCADE"),
         nullable=False,

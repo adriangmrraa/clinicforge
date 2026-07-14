@@ -1055,7 +1055,7 @@ class LiquidationService:
             existing_payouts = await pool.fetchval(
                 """
                 SELECT COUNT(*) FROM professional_payouts
-                WHERE liquidation_id = $1
+                WHERE liquidation_record_id = $1
                 """,
                 liquidation_id,
             )
@@ -1065,7 +1065,7 @@ class LiquidationService:
                     await pool.execute(
                         """
                         INSERT INTO professional_payouts (
-                            tenant_id, liquidation_id, professional_id,
+                            tenant_id, liquidation_record_id, professional_id,
                             amount, payment_method, payment_date,
                             reference_number, notes
                         ) VALUES ($1, $2, $3, $4, 'transfer', CURRENT_DATE, 'auto-paid', $5)
@@ -1264,7 +1264,7 @@ class LiquidationService:
                 """
                 SELECT COALESCE(SUM(amount), 0)
                 FROM professional_payouts
-                WHERE liquidation_id = $1
+                WHERE liquidation_record_id = $1
                 """,
                 liquidation_id,
             )
@@ -1285,7 +1285,7 @@ class LiquidationService:
         payout = await pool.fetchrow(
             """
             INSERT INTO professional_payouts (
-                tenant_id, liquidation_id, professional_id,
+                tenant_id, liquidation_record_id, professional_id,
                 amount, payment_method, payment_date,
                 reference_number, notes
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)

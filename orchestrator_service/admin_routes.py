@@ -18455,11 +18455,11 @@ async def get_liquidation_payouts(
 
         payouts = await db.pool.fetch(
             """
-            SELECT id, liquidation_id, professional_id, amount,
+            SELECT id, liquidation_record_id AS liquidation_id, professional_id, amount,
                    payment_method, payment_date, reference_number,
                    notes, created_at
             FROM professional_payouts
-            WHERE liquidation_id = $1 AND tenant_id = $2
+            WHERE liquidation_record_id = $1 AND tenant_id = $2
             ORDER BY payment_date DESC
             """,
             liquidation_id,
