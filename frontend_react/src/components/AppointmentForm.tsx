@@ -98,9 +98,14 @@ export default function AppointmentForm({
         setQuickPaySaving(true);
         setQuickPayMsg(null);
         try {
+            // L2: clasificar el cobro según el origen que ya resolvió billing-context.
+            // Coseguro → evento 'coseguro' (impacta al profesional del turno por su %);
+            // resto → 'pago' genérico. Así el libro distingue OS de particular.
+            const pkind = billingContext?.origin?.startsWith('coseguro') ? 'coseguro' : 'pago';
             const res = await api.post(`/admin/appointments/${initialData.id}/payments`, {
                 amount: amt,
                 method: quickPay.method,
+                payment_kind: pkind,
             });
             setBillingData(prev => ({
                 ...prev,

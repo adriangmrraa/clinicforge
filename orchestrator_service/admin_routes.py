@@ -9594,9 +9594,11 @@ async def register_appointment_payment(
         amount = 0
     if amount <= 0:
         raise HTTPException(status_code=400, detail="Monto inválido")
-    method = (data.get("method") or "cash").strip()[:30]
-    # Subtipo de cobro (motor de dinero L1): seña/coseguro/resto/ajuste/pago.
+    # Subtipo de cobro (motor de dinero L1/L2): seña/coseguro/resto/ajuste/pago.
     pkind = (data.get("payment_kind") or "pago").strip()[:20]
+    # Un coseguro se cobra por obra social: método por defecto 'insurance'.
+    default_method = "insurance" if pkind == "coseguro" else "cash"
+    method = (data.get("method") or default_method).strip()[:30]
 
     appt = await db.pool.fetchrow(
         """
@@ -9629,21 +9631,28 @@ async def register_appointment_payment(
         # Sin precio de referencia: el cobro cierra el mostrador
         new_status = "paid"
 
+    # L2: el coseguro es el COPAGO que paga el paciente (lo que la OS no cubre)
+    # → es cobrado real de la clínica y lo paga el paciente. Lo registramos en
+    # patient_paid_amount; payment_kind='coseguro' lo distingue del particular.
+    patient_paid = amount if pkind == "coseguro" else 0
     await db.pool.execute(
         """
         INSERT INTO accounting_transactions
             (id, tenant_id, patient_id, appointment_id, transaction_type,
-             amount, payment_method, description, status)
-        VALUES ($1, $2, $3, $4, 'payment', $5, $6, $7, 'completed')
+             payment_kind, amount, payment_method, description, status,
+             patient_paid_amount)
+        VALUES ($1, $2, $3, $4, 'payment', $5, $6, $7, $8, 'completed', $9)
         """,
         str(uuid.uuid4()),
         tenant_id,
         appt["patient_id"],
         id,
+        pkind,
         amount,
         method,
         (data.get("notes") or "").strip()
         or f"Cobro en mostrador — {appt['appointment_type']}",
+        patient_paid,
     )
     await db.pool.execute(
         """
