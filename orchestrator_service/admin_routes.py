@@ -8753,7 +8753,7 @@ async def create_appointment_manual(
                 id, tenant_id, patient_id, professional_id, appointment_datetime,
                 duration_minutes, appointment_type, status, urgency_level, source, notes, billing_amount, created_at
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'scheduled', 'normal', 'manual', $8,
-                      (SELECT NULLIF(base_price, 0) FROM treatment_types WHERE tenant_id = $2 AND code = $7 LIMIT 1),
+                      (SELECT NULLIF(base_price, 0) FROM treatment_types WHERE tenant_id = $2 AND code = $7::text LIMIT 1),
                       NOW())
         """,
             new_id,

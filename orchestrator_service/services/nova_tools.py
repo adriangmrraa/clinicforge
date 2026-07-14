@@ -5603,7 +5603,7 @@ async def _agendar_turno(args: Dict, tenant_id: int) -> str:
             (id, tenant_id, patient_id, appointment_datetime, duration_minutes,
              appointment_type, professional_id, notes, status, source, billing_amount)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'scheduled', 'nova',
-                (SELECT NULLIF(base_price, 0) FROM treatment_types WHERE tenant_id = $2 AND code = $6 LIMIT 1))
+                (SELECT NULLIF(base_price, 0) FROM treatment_types WHERE tenant_id = $2 AND code = $6::text LIMIT 1))
         """,
         appt_id,
         tenant_id,
