@@ -12122,7 +12122,7 @@ Si el paciente pregunta si la consulta se descuenta del tratamiento: "La consult
     greeting_rule = ""
     if not is_greeting_pending:
         # Patient was already greeted in this session — skip institutional greeting
-        greeting_rule = "\nNOTA: El paciente ya fue saludado en esta sesión. NO repitas el saludo institucional. Respondé directamente a su consulta.\n"
+        greeting_rule = "\nNOTA: El paciente ya fue saludado hace poco (últimos 7 días). NO repitas la PRESENTACIÓN institucional (no vuelvas a presentarte con tu nombre y el de la clínica). PERO si el paciente TE SALUDA ('hola', 'buenas', 'buen día', 'buenas tardes'), devolvé SIEMPRE un saludo corto y cálido ('¡Hola! 😊' o 'Hola, ¿cómo estás? 😊') ANTES de responder su consulta — NUNCA arranques seco con la respuesta (queda frío). Si no saluda, respondé directo pero cordial. Nunca dejes un saludo del paciente sin devolverlo.\n"
     elif patient_status == "new_lead":
         greeting_rule = f"""
 GREETING (PRIMERA INTERACCIÓN CON LEAD NUEVO):
