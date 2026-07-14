@@ -166,18 +166,29 @@ def _detect_selection_intent(msg: str) -> bool:
     """
     import re
 
-    # APLAZO GUARD (caso prod Agustín 2026-07-13): "te confirmo mañana", "confirmo después",
-    # "me comunico con mi obra social a ver...", "me fijo / lo consulto / lo pienso" NO son
-    # selección de turno — son un APLAZO. Sin esto, el patrón \bconfirmo\b de abajo los tomaba
-    # como "confirmo el turno" → el STATE_GUARD inyectaba el hint de reservar y el bot AGENDABA
-    # en vez de CONTENER al paciente que pidió tiempo. Va ANTES del match de selección.
+    # APLAZO GUARD (caso prod Agustín 2026-07-13): un aplazo NO es selección de turno. El
+    # paciente pide tiempo / va a decidir DESPUÉS ("te confirmo mañana", "más tarde te confirmo",
+    # "te confirmo en un rato", "mañana lo evalúo y te digo", "lo consulto con mi OS y aviso").
+    # Sin esto, el patrón \bconfirmo\b de abajo tomaba "te confirmo mañana" como "confirmo el
+    # turno" → el STATE_GUARD forzaba reservar y el bot AGENDABA (cualquiera) en vez de CONTENER.
+    # Robusto: (1) verbos de aplazo INEQUÍVOCOS (evaluar/consultar/pensar/hablar/averiguar) =
+    # aplazo con o sin tiempo; (2) verbo de confirmación/respuesta AMBIGUO + referencia a FUTURO
+    # (en cualquier orden) = aplazo. NO toca selecciones reales ("el lunes 20", "la 1", "confirmo",
+    # "confirmo el turno del jueves", "a las 15", "1").
     _low = (msg or "").lower()
-    if (
-        re.search(r"\bconfirmo\s+(ma[ñn]ana|luego|despu[eé]s|m[aá]s\s+tarde|apenas)\b", _low)
-        or re.search(r"\bte\s+(confirmo|aviso|escribo|digo|contesto|respondo)\s+(ma[ñn]ana|luego|despu[eé]s|m[aá]s\s+tarde|apenas|cuando)\b", _low)
-        or re.search(r"\b(me\s+fijo|lo\s+consulto|lo\s+pienso|lo\s+veo|despu[eé]s\s+veo|me\s+lo\s+pienso)\b", _low)
-        or re.search(r"\bcomunico\s+con\s+mi\s+obra\s+social\b", _low)
-    ):
+    _defer_verb = re.search(
+        r"\b(me\s+fijo|me\s+lo\s+pienso|lo\s+pienso|lo\s+consulto|consulto\s+con|lo\s+eval[uú]|"
+        r"lo\s+veo|despu[eé]s\s+veo|lo\s+decido|lo\s+hablo|hablo\s+con|averiguo|pregunto|"
+        r"lo\s+tengo\s+que\s+(ver|pensar|consultar|hablar|evaluar|decidir)|"
+        r"necesito\s+(pensarlo|verlo|consultarlo|evaluarlo)|d[eé]jame\s+(verlo|pensarlo|consultarlo|ver|pensar|consultar)|"
+        r"dame\s+(un\s+rato|unas\s+horas|un\s+d[ií]a|tiempo|un\s+tiempo)|"
+        r"comunico\s+con\s+mi\s+obra\s+social|consulto\s+con\s+mi\s+obra\s+social)\b", _low)
+    _has_future = re.search(
+        r"\b(ma[ñn]ana|luego|despu[eé]s|m[aá]s\s+tarde|en\s+un\s+rato|un\s+ratito|"
+        r"unas\s+horas|un\s+rato|esta\s+tarde|esta\s+noche|a\s+la\s+(tarde|noche)|"
+        r"apenas|cuando\s+(pueda|sepa|hable|averig[üu]e|confirme|consulte|pregunte))\b", _low)
+    _confirm_verb = re.search(r"\b(te\s+)?(confirmo|aviso|escribo|digo|contesto|respondo|paso|cuento)\b", _low)
+    if _defer_verb or (_has_future and _confirm_verb):
         return False
 
     global _SELECTION_INTENT_PATTERN
