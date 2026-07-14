@@ -5659,7 +5659,7 @@ async def book_appointment(
                         """
                         INSERT INTO appointments (id, tenant_id, patient_id, professional_id, appointment_datetime, duration_minutes, appointment_type, status, source, sena_expires_at, billing_amount, created_at)
                         VALUES ($1, $2, $3, $4, $5, $6, $7, 'scheduled', 'ai', $8,
-                                (SELECT NULLIF(base_price, 0) FROM treatment_types WHERE tenant_id = $2 AND code = $7 LIMIT 1),
+                                (SELECT NULLIF(base_price, 0) FROM treatment_types WHERE tenant_id = $2 AND code = $9 LIMIT 1),
                                 NOW())
                     """,
                         apt_id,
@@ -5670,6 +5670,12 @@ async def book_appointment(
                         final_duration,
                         treatment_code,
                         _sena_expires_at,
+                        # $9: MISMO treatment_code que $7, pero como parámetro APARTE. Antes se
+                        # reusaba $7 tanto para appointment_type (varchar) como para code=$7 (text)
+                        # → asyncpg deducía tipos inconsistentes (AmbiguousParameterError) → el
+                        # INSERT crasheaba SIEMPRE y se enmascaraba como "se ocupó" → derivaba con
+                        # los datos ya cargados (casos prod Juan/Gisela/Lucas, 2026-07-13).
+                        treatment_code,
                     )
         except asyncpg.UniqueViolationError as _uniq_err:
             # Database-level double-booking protection triggered.
