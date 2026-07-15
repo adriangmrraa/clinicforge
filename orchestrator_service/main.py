@@ -2926,6 +2926,58 @@ async def check_availability(
         auto_advance_reason = ""
         _working_holiday_hours: dict | None = None  # Custom hours if working holiday
 
+        # ── PASO 2: respaldo por-día en tratamientos COMPARTIDOS ──
+        # Si el paciente está LIMITADO a día(s) que el profesional forzado por derivación
+        # (ej. Eli) NO atiende, y el tratamiento lo comparte otra profesional (ej. Laura) que
+        # SÍ atiende ese día, se cambia el titular a esa otra DE PUNTA A PUNTA (oferta y reserva
+        # quedan con el mismo profesional → sin turnos huérfanos). Solo tratamientos compartidos;
+        # el filtro treatment_type_professionals sigue siendo el portón (nunca un no-asignado).
+        _p2_backup_ids: list = []
+        if (
+            derivation_filter_prof_id
+            and treatment_name
+            and not clean_name
+            and not forced_prof_id
+            and len(active_professionals) == 1
+        ):
+            _P2_DAYS_EN = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
+            _p2_fwh = active_professionals[0].get("working_hours")
+            if isinstance(_p2_fwh, str):
+                try:
+                    _p2_fwh = json.loads(_p2_fwh) if _p2_fwh else {}
+                except Exception:
+                    _p2_fwh = {}
+            if isinstance(_p2_fwh, dict) and _p2_fwh:
+                _p2_forced_open = {
+                    i for i, en in enumerate(_P2_DAYS_EN) if (_p2_fwh.get(en) or {}).get("enabled", True)
+                }
+                _p2_daymap = {
+                    "lunes": 0, "martes": 1, "miércoles": 2, "miercoles": 2,
+                    "jueves": 3, "viernes": 4, "sábado": 5, "sabado": 5, "domingo": 6,
+                }
+                # ¿el paciente está limitado a día(s) que el forzado NO atiende?
+                _p2_constrained = False
+                if preferred_days and preferred_days.strip():
+                    _p2_req = {
+                        _p2_daymap[d.strip().lower()]
+                        for d in preferred_days.split(",")
+                        if d.strip().lower() in _p2_daymap
+                    }
+                    # limitado solo si NINGÚN día pedido lo atiende el forzado
+                    _p2_constrained = bool(_p2_req) and _p2_req.isdisjoint(_p2_forced_open)
+                elif search_mode == "exact" and target_date is not None:
+                    _p2_constrained = target_date.weekday() not in _p2_forced_open
+                if _p2_constrained:
+                    _p2_t = await resolve_canonical_treatment(tenant_id, treatment_name)
+                    if _p2_t:
+                        _p2_rows = await db.pool.fetch(
+                            "SELECT professional_id FROM treatment_type_professionals WHERE tenant_id=$1 AND treatment_type_id=$2",
+                            tenant_id,
+                            _p2_t["id"],
+                        )
+                        _p2_ids = {r["professional_id"] for r in _p2_rows}
+                        _p2_backup_ids = [pid for pid in _p2_ids if pid != derivation_filter_prof_id]
+
         for _advance in range(21):  # Buscar hasta 3 semanas adelante
             day_idx = target_date.weekday()
             day_name_en = days_en[day_idx]
@@ -2987,6 +3039,38 @@ async def check_availability(
                     wh = {}
                 day_config = wh.get(day_name_en, {})
                 if day_config and not day_config.get("enabled", True):
+                    # PASO 2: antes de saltar el día, ¿una profesional que COMPARTE el
+                    # tratamiento SÍ atiende hoy? (solo si el paciente está limitado a este día).
+                    _p2_switched = False
+                    for _p2_bid in _p2_backup_ids:
+                        _p2_brow = await db.pool.fetchrow(
+                            "SELECT id, first_name, last_name, google_calendar_id, working_hours, is_priority_professional "
+                            "FROM professionals WHERE id=$1 AND tenant_id=$2 AND is_active=true",
+                            _p2_bid,
+                            tenant_id,
+                        )
+                        if not _p2_brow:
+                            continue
+                        _p2_bwh = _p2_brow["working_hours"]
+                        if isinstance(_p2_bwh, str):
+                            try:
+                                _p2_bwh = json.loads(_p2_bwh) if _p2_bwh else {}
+                            except Exception:
+                                _p2_bwh = {}
+                        if not isinstance(_p2_bwh, dict):
+                            _p2_bwh = {}
+                        if (_p2_bwh.get(day_name_en) or {}).get("enabled", True):
+                            # la de respaldo SÍ atiende este día → cambiar titular de punta a punta
+                            derivation_filter_prof_id = _p2_bid
+                            active_professionals = [_p2_brow]
+                            _p2_backup_ids = []
+                            logger.info(
+                                f"📅 PASO2 respaldo por-día: {prof['first_name']} no atiende {dias_es.get(day_name_en, day_name_en)} → cambio a prof_id={_p2_bid} que sí atiende ese día"
+                            )
+                            _p2_switched = True
+                            break
+                    if _p2_switched:
+                        break  # día válido con la profesional de respaldo
                     prof_closed = True
                     prof_closed_reason = f"El/la Dr/a. {prof['first_name']} no atiende los {dias_es.get(day_name_en, day_name_en)}"
                 else:
