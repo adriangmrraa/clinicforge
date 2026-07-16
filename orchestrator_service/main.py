@@ -6016,16 +6016,28 @@ async def book_appointment(
         # Generate anamnesis URL for the patient (not the interlocutor)
         import uuid as uuid_mod_book
 
-        patient_anamnesis_token = await db.pool.fetchval(
-            "SELECT anamnesis_token FROM patients WHERE id = $1", patient_id
-        )
-        if not patient_anamnesis_token:
-            patient_anamnesis_token = str(uuid_mod_book.uuid4())
-            await db.pool.execute(
-                "UPDATE patients SET anamnesis_token = $1 WHERE id = $2",
-                patient_anamnesis_token,
-                patient_id,
+        # Fix C (Vector A del race del Caso 1): el turno YA se commiteó (INSERT arriba). Este
+        # bloque post-commit generaba el token de anamnesis SIN try/except: un blip de BD acá
+        # subía al catch-all del final y devolvía "UNAVAILABLE" (se ocupó ese horario) aunque el
+        # turno ya estaba agendado → falso negativo + handoff manual innecesario (caso Lorena).
+        # Lo envolvemos: si falla, el turno queda confirmado igual y solo se omite el link.
+        patient_anamnesis_token = None
+        try:
+            patient_anamnesis_token = await db.pool.fetchval(
+                "SELECT anamnesis_token FROM patients WHERE id = $1", patient_id
             )
+            if not patient_anamnesis_token:
+                patient_anamnesis_token = str(uuid_mod_book.uuid4())
+                await db.pool.execute(
+                    "UPDATE patients SET anamnesis_token = $1 WHERE id = $2",
+                    patient_anamnesis_token,
+                    patient_id,
+                )
+        except Exception as _tok_err:
+            logger.warning(
+                f"anamnesis-token post-commit falló (el turno YA quedó agendado, sigo sin link): {_tok_err}"
+            )
+            patient_anamnesis_token = None
         frontend_url = (
             os.getenv("FRONTEND_URL", "http://localhost:4173")
             .split(",")[0]
@@ -6041,14 +6053,15 @@ async def book_appointment(
         # existentes). El smart-send vivía solo en el prompt, pero el tool-result inyectaba el
         # link como "INSTRUCCIÓN OBLIGATORIA" sin condición y lo pisaba. Mismo criterio que
         # usa buffer_task (medical_history.anamnesis_completed_at en el JSONB de patients).
-        _skip_anamnesis_link = False
+        # Si el token falló (Fix C) → sin link. Si ya completó la ficha → tampoco.
+        _skip_anamnesis_link = not patient_anamnesis_token
         try:
             _mh_anam = await db.pool.fetchval(
                 "SELECT medical_history FROM patients WHERE id = $1", patient_id
             )
             if isinstance(_mh_anam, str):
                 _mh_anam = json.loads(_mh_anam) if _mh_anam else {}
-            _skip_anamnesis_link = bool(
+            _skip_anamnesis_link = _skip_anamnesis_link or bool(
                 _mh_anam and isinstance(_mh_anam, dict) and _mh_anam.get("anamnesis_completed_at")
             )
         except Exception as _anam_err:
@@ -12595,7 +12608,7 @@ PROTOCOLO:
 PROHIBIDO: Justificar, decir "no es lo habitual", ofrecer turno con otro profesional sin escalar, minimizar la experiencia del paciente.
 
 === F2: URGENCIA / DOLOR ===
-TRIGGER: "me duele", "dolor", "urgencia", "urgente", "emergencia", "inflamación", "se me cayó", "se me partió"
+TRIGGER: "me duele", "dolor", "molestia", "me molesta", "urgencia", "urgente", "emergencia", "inflamación", "se me cayó", "se me partió", "post-operatorio / me operé y me molesta". ⚠️ "molestia"/"me molesta" cuenta como dolor: aunque el paciente lo enmarque como pedido de turno ("necesito turno, tengo una molestia"), PRIMERO aplicá F2 (contené), no lo mandes directo a agendar/precio.
 PRIORIDAD: F2 SIEMPRE tiene prioridad sobre Regla Cero, Proactividad y el orden estricto de la REGLA DE COBERTURA (en F2 la pregunta de cobertura va integrada en M3, no antes). Si hay dolor/urgencia, ejecutá F2 COMPLETO aunque el paciente también mencione fecha o pida turno en el mismo mensaje.
 PROTOCOLO:
   M1 — Contener (GENUINO, no de trámite): "Entiendo, si estás con dolor lo ideal es verte cuanto antes." Variantes: "Uy, entiendo. Si estás con molestia lo mejor es revisarlo pronto." SIN precio, SIN dirección, SIN turnos. Este mensaje debe sentirse HUMANO, no como paso obligatorio.
@@ -13247,6 +13260,10 @@ Cuando YA CONFIRMASTE un turno con book_appointment en esta conversación:
    "reagendá", "reprogramá", "mover el turno", o similar con intención CLARA.
 5. Si el paciente dice algo ambiguo como "sí", "dale", "ok":
    → NO interpretes como solicitud de nuevo turno. Respondé amablemente.
+6. ⛔ "QUIERE ALGO ANTES" (ya tiene turno y pide adelantarlo: "¿no hay antes?", "si sale algo antes teneme en cuenta", "necesito algo más temprano"):
+   → NUNCA re-ofrezcas fechas nuevas ni llames check_availability: el buscador solo mira hacia ADELANTE y termina ofreciendo fechas PEORES —o diciendo "ya no hay lugar" para un día en que el paciente YA tiene turno— y eso lo marea (caso Luis). Su turno NO se toca: sigue reservado.
+   → CON DOLOR / MOLESTIA / URGENCIA: confirmá que su turno del [día] a las [hora] SIGUE reservado, decile que como está con dolor ya le pediste al equipo evaluar un SOBRETURNO antes, y llamá derivhumano (motivo: "Paciente con dolor/molestia, turno el [día] — quiere adelantarlo, evaluar sobreturno"). Ej: "Tu turno del [día] a las [hora] queda reservado 😊 Como estás con molestia, ya le pedí al equipo que vea si pueden adelantarte con un sobreturno. Apenas puedan, te avisan."
+   → SIN DOLOR (solo prefiere antes, sin urgencia): confirmá su turno + "si se libera un lugar antes, te aviso 😊". NO derivés (no vale molestar al equipo por una preferencia sin dolor).
 
 === SECUENCIA POST-BOOKING (MÁXIMO 3 MENSAJES — CORTOS Y NATURALES) ===
 Después de que book_appointment confirme el turno, respondé en MÁXIMO 3 mensajes (cada globito de WhatsApp se factura: agrupá por tema). DENTRO de cada mensaje usá saltos de línea SIMPLES; el doble salto de línea va SOLO entre un mensaje y el siguiente. Que suene como WhatsApp, no como formulario.
