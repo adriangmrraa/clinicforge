@@ -2505,6 +2505,40 @@ async def check_availability(
                             logger.info(
                                 f"📅 check_availability: patient has assigned_professional_id={forced_prof_id} → filtering to that professional"
                             )
+                        else:
+                            # Fix (caso Amelia 2026-07-16): SIN profesional asignado, un CONTROL /
+                            # consulta genérica debe ir con el profesional del ÚLTIMO turno (el que le
+                            # hace el tratamiento en curso), NO con "cualquiera que tenga lugar antes"
+                            # (antes ofrecía los slots de otro profesional — le dio los de Eli en vez
+                            # de Laura). Solo para pedidos GENÉRICOS (control/consulta/evaluación o sin
+                            # tratamiento): así NO forzamos un profesional en algo que quizás no hace
+                            # (ortodoncia=Eli, etc.) — ahí deja que el ruteo por tratamiento decida.
+                            _tn_ca = (treatment_name or "").strip().lower()
+                            _is_generic_ctrl = (not _tn_ca) or any(
+                                k in _tn_ca for k in ("consulta", "control", "evaluac", "revis", "seguimiento", "urgenc")
+                            )
+                            if _is_generic_ctrl:
+                                try:
+                                    _last_prof = await db.pool.fetchval(
+                                        """
+                                        SELECT professional_id FROM appointments
+                                        WHERE tenant_id = $1 AND patient_id = $2
+                                          AND professional_id IS NOT NULL
+                                          AND status IN ('scheduled', 'confirmed', 'completed')
+                                        ORDER BY appointment_datetime DESC LIMIT 1
+                                        """,
+                                        tenant_id,
+                                        patient_row["id"],
+                                    )
+                                    if _last_prof:
+                                        forced_prof_id = int(_last_prof)
+                                        logger.info(
+                                            f"📅 check_availability: sin profesional asignado + pedido genérico → "
+                                            f"uso el profesional del ÚLTIMO turno (id={forced_prof_id}) para el control "
+                                            f"(regla: el control va con el mismo profesional del tratamiento en curso)"
+                                        )
+                                except Exception as _lp_err:
+                                    logger.debug(f"last-professional fallback skipped: {_lp_err}")
                         unpaid_count = int(patient_row["unpaid_past_apts"] or 0)
                         unpaid_total = float(patient_row["unpaid_total"] or 0)
                         if unpaid_count > 0:
