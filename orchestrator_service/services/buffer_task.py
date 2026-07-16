@@ -4143,17 +4143,26 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                 )
                 response_text = ""  # Reset so the solo retry loop handles it
 
-        # [DADOS] fix — corto-circuito de archivos-sin-texto: si el paciente mandó SOLO
-        # adjuntos sin texto real, NO invoques al modelo (largaba basura tipo "[DADOS]" y
-        # quemaba ~66k tokens en una respuesta inútil). Los archivos YA se guardaron en la
-        # ficha arriba; acá solo acusamos recibo. has_recent_media lo setea el bloque de adjuntos.
+        # [DADOS] fix v2 — corto-circuito de archivos-sin-texto, SOLO cuando no hay
+        # contexto de PAGO (regresión caso Lucas 2026-07-16: mandó el comprobante REAL de
+        # la seña sin texto y el v1 respondía el acuse genérico SIN invocar al modelo →
+        # verify_payment_receipt nunca corría y la seña quedaba sin enlazar). Ahora: si el
+        # paciente tiene seña/plan pendiente O la imagen se clasificó como comprobante →
+        # DEJAR PASAR al modelo (la lógica de comprobante decide). El corto-circuito queda
+        # para el caso [DADOS] original: archivos sueltos SIN pago en juego.
         try:
             _raw_user_text = "\n".join(messages).strip() if isinstance(messages, list) else str(messages or "").strip()
         except Exception:
             _raw_user_text = ""
-        if not response_text and has_recent_media and len(_raw_user_text) < 3:
+        try:
+            _pay_ctx = bool(has_pending_payment) or bool(is_classified_payment)
+        except NameError:
+            _pay_ctx = False  # variables solo existen en la rama de adjuntos de paciente
+        if not response_text and has_recent_media and len(_raw_user_text) < 3 and not _pay_ctx:
             response_text = "¡Recibí tus archivos! 📎 Los sumé a tu ficha. ¿Necesitás algo más?"
-            logger.info("📎 Archivos-sin-texto: acuse directo, sin invocar al modelo (ahorro de tokens)")
+            logger.info("📎 Archivos-sin-texto SIN contexto de pago: acuse directo, sin invocar al modelo")
+        elif not response_text and has_recent_media and len(_raw_user_text) < 3 and _pay_ctx:
+            logger.info("📎 Archivos-sin-texto CON contexto de pago: va al modelo (posible comprobante)")
 
         # Solo retry loop — skip if multi-agent already produced a response
         response = {}  # Guard: multi-agent may skip this loop, prevent UnboundLocalError on response.get() below
