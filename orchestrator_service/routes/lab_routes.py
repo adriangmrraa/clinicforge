@@ -47,6 +47,25 @@ STATUS_DATE_STAMP = {
 }
 
 
+async def _validate_tenant_refs(tenant_id: int, lab_id, professional_id):
+    """Sovereignty (fix cross-tenant 2026-07-16): lab_id y professional_id, si vienen,
+    deben pertenecer al tenant. Antes iban directo al INSERT/UPDATE y se podía
+    referenciar un laboratorio o profesional de OTRA clínica."""
+    if lab_id:
+        ok = await db.pool.fetchval(
+            "SELECT 1 FROM labs WHERE id = $1 AND tenant_id = $2", int(lab_id), tenant_id
+        )
+        if not ok:
+            raise HTTPException(status_code=404, detail="Laboratorio no encontrado")
+    if professional_id:
+        ok = await db.pool.fetchval(
+            "SELECT 1 FROM professionals WHERE id = $1 AND tenant_id = $2",
+            int(professional_id), tenant_id,
+        )
+        if not ok:
+            raise HTTPException(status_code=404, detail="Profesional no encontrado")
+
+
 def _parse_date(value):
     """'YYYY-MM-DD' → date; None/'' → None. Lanza 400 si el formato es inválido."""
     if value in (None, ""):
@@ -289,6 +308,10 @@ async def create_lab_case(
     )
     if not owner_ok:
         raise HTTPException(status_code=404, detail="Paciente no encontrado")
+    # Sovereignty (fix cross-tenant 2026-07-16): lab_id y professional_id también deben
+    # ser del tenant — antes iban directo al INSERT y se podía referenciar un lab o
+    # profesional de OTRA clínica.
+    await _validate_tenant_refs(tenant_id, data.get("lab_id"), data.get("professional_id"))
 
     status = data.get("status") or "pendiente_envio"
     if status not in VALID_STATUSES:
@@ -365,6 +388,9 @@ async def update_lab_case(
         if col in data:
             val = (str(data.get(col) or "").strip()) or None
             _set(col, val)
+    if "lab_id" in data or "professional_id" in data:
+        # Sovereignty (fix cross-tenant 2026-07-16): validar que las referencias sean del tenant.
+        await _validate_tenant_refs(tenant_id, data.get("lab_id"), data.get("professional_id"))
     for col in ("lab_id", "professional_id"):
         if col in data:
             _set(col, data.get(col) or None)
