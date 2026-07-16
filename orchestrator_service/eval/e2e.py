@@ -53,7 +53,10 @@ async def _invoke_tool(tool, **kwargs):
 
 
 async def _cleanup(db):
-    """Borra TODO lo del teléfono de prueba: turnos, paciente(s) (incluye menores -M) y estado."""
+    """Borra TODO lo del teléfono de prueba (turnos, audit, paciente(s) incl. menores -M) y estado.
+    Match por DÍGITOS: el teléfono se guarda normalizado, y los menores se cazan por guardian_phone
+    (su phone_number es 'padre-M1', que no matchea por dígitos). El teléfono de prueba es falso →
+    no puede pisar un paciente real."""
     try:
         from services.conversation_state import reset as _reset
         await _reset(TEST_TENANT, TEST_PHONE)
@@ -61,14 +64,21 @@ async def _cleanup(db):
         pass
     try:
         rows = await db.pool.fetch(
-            "SELECT id FROM patients WHERE tenant_id = $1 "
-            "AND (phone_number = $2 OR phone_number LIKE $2 || '-M%')",
+            "SELECT id FROM patients WHERE tenant_id = $1 AND ("
+            " regexp_replace(COALESCE(phone_number,''),'[^0-9]','','g') = regexp_replace($2,'[^0-9]','','g')"
+            " OR regexp_replace(COALESCE(guardian_phone,''),'[^0-9]','','g') = regexp_replace($2,'[^0-9]','','g'))",
             TEST_TENANT, TEST_PHONE,
         )
         ids = [r["id"] for r in rows]
         if ids:
-            await db.pool.execute("DELETE FROM appointments WHERE patient_id = ANY($1::int[])", ids)
+            await db.pool.execute(
+                "DELETE FROM appointment_audit_log WHERE tenant_id=$1 AND appointment_id IN "
+                "(SELECT id FROM appointments WHERE tenant_id=$1 AND patient_id = ANY($2::int[]))",
+                TEST_TENANT, ids,
+            )
+            await db.pool.execute("DELETE FROM appointments WHERE tenant_id=$1 AND patient_id = ANY($2::int[])", TEST_TENANT, ids)
             await db.pool.execute("DELETE FROM patients WHERE id = ANY($1::int[])", ids)
+            print(f"   🧹 limpieza: {len(ids)} paciente(s) de prueba + sus turnos borrados")
     except Exception as e:
         print(f"   ⚠️  limpieza parcial (revisar a mano el teléfono {TEST_PHONE}): {e}")
 
@@ -148,8 +158,89 @@ async def scenario_dados(db, book_appointment, set_ctx):
     return results
 
 
+# ----------------------------------------------------------------------------
+# ESCENARIO B — Agendado REAL + Fix #1 "quiere-antes" (el bug de Luis), encadenados.
+# Handshake correcto (mapeo 2026-07-16): check_availability PRIMERO siembra la key
+# slot_offer en Redis; recién ahí book_appointment(slot_index=1) puede confirmar.
+# ----------------------------------------------------------------------------
+async def scenario_agendado_y_quiere_antes(db, book_appointment, set_ctx):
+    from services.conversation_state import set_state, reset
+    from main import check_availability
+    import datetime as _dt
+
+    results = []
+    await reset(TEST_TENANT, TEST_PHONE)
+    set_ctx(TEST_TENANT, TEST_PHONE)
+
+    # 1) Un tratamiento agendable REAL del tenant.
+    trow = await db.pool.fetchrow(
+        "SELECT code, name FROM treatment_types WHERE tenant_id=$1 AND is_active=true "
+        "AND is_available_for_booking=true ORDER BY id ASC LIMIT 1",
+        TEST_TENANT,
+    )
+    if not trow:
+        results.append(("preparación: hay un tratamiento agendable", False, "no hay treatment_types agendables en el tenant"))
+        return results
+    tname = trow["name"]
+    tomorrow = (_dt.datetime.now() + _dt.timedelta(days=1)).strftime("%Y-%m-%d")
+
+    # 2) check_availability (siembra el slot_offer). search_mode="open" = lo antes posible.
+    r_avail = str(await _invoke_tool(
+        check_availability,
+        date_query="lo antes posible", interpreted_date=tomorrow,
+        search_mode="open", treatment_name=tname,
+    ))
+    _low = r_avail.lower()
+    ofrecio = (":" in r_avail) and ("no ten" not in _low) and ("cerrad" not in _low) and ("no hay" not in _low)
+    if not ofrecio:
+        results.append(("check_availability ofreció turnos reales", False,
+                        f"la clínica de pruebas no tiene disponibilidad ahora (no es bug del bot): {r_avail[:160]}"))
+        await reset(TEST_TENANT, TEST_PHONE)
+        return results
+    results.append(("check_availability ofreció turnos reales", True, ""))
+
+    # 3) Agendar la opción 1 (consume el slot_offer → handshake correcto).
+    r_book = str(await _invoke_tool(
+        book_appointment,
+        treatment_reason=tname, slot_index=1, interpreted_date=tomorrow,
+        first_name="TestE2E", last_name="Paciente", dni="99999999",
+    ))
+    agendado_ok = "Turno confirmado" in r_book
+    results.append(("book_appointment agendó de verdad (handshake ok)", agendado_ok, r_book[:160]))
+    if not agendado_ok:
+        await reset(TEST_TENANT, TEST_PHONE)
+        return results
+
+    # 4) Verificar en la BASE que el turno quedó.
+    apt = await db.pool.fetchrow(
+        "SELECT a.id FROM appointments a JOIN patients p ON p.id=a.patient_id AND p.tenant_id=a.tenant_id "
+        "WHERE a.tenant_id=$1 AND a.status='scheduled' AND a.appointment_datetime>=NOW() "
+        "AND regexp_replace(COALESCE(p.phone_number,''),'[^0-9]','','g')=regexp_replace($2,'[^0-9]','','g') "
+        "ORDER BY a.created_at DESC LIMIT 1",
+        TEST_TENANT, TEST_PHONE,
+    )
+    results.append(("el turno quedó guardado en la base", apt is not None,
+                    f"apt: {apt['id'] if apt else 'NO ENCONTRADO'}"))
+    if apt:
+        # Forzar BOOKED con el apt_id real (por si quedó PAYMENT_PENDING; ambos disparan el gate).
+        await set_state(TEST_TENANT, TEST_PHONE, "BOOKED", last_booked_appointment_id=str(apt["id"]))
+
+    # 5) FIX #1 — quiere-antes: con el turno agendado, "más temprano" NO debe re-ofrecer.
+    r_antes = str(await _invoke_tool(
+        check_availability,
+        date_query="hola, no hay algo más temprano? me lo podés adelantar",
+        interpreted_date=tomorrow, search_mode="exact", treatment_name=tname,
+    ))
+    bloqueo_ok = ("SYSTEM_NOTE" in r_antes) or ("QUIERE ALGO ANTES" in r_antes)
+    results.append(("quiere-antes (fix #1): bloquea el re-ofrecimiento", bloqueo_ok, r_antes[:160]))
+
+    await reset(TEST_TENANT, TEST_PHONE)
+    return results
+
+
 SCENARIOS = {
     "hijo": scenario_hijo_no_duplicado,
+    "agendado": scenario_agendado_y_quiere_antes,
     "dados": scenario_dados,
 }
 
