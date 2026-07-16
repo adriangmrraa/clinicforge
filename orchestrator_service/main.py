@@ -2321,6 +2321,40 @@ async def check_availability(
                             )
                     except Exception as _msg_err:
                         logger.debug(f"📊 BOOKING_FLOW | last patient msg fetch failed (non-blocking): {_msg_err}")
+                    # CASO LUIS (2026-07-16): "quiere algo antes" NO es reprogramar. El regex
+                    # amplio de abajo matchea "más temprano"/días/"cualquier" → PERMITÍA re-ofrecer
+                    # fechas peores y mareaba al paciente que solo quería adelantar (su turno NO se
+                    # toca). Carve-out determinista POR ENCIMA del regex amplio: si pide adelantar
+                    # SIN intención explícita de reprogramar/cancelar → bloquear y devolver la regla
+                    # POST-BOOKING 'QUIERE ALGO ANTES' (con dolor→sobreturno; sin dolor→"te aviso").
+                    _wants_earlier = re.search(
+                        r'(m[aá]s temprano|m[aá]s pronto|un poco antes|algo antes|alguno antes|'
+                        r'uno antes|hay antes|ten[ée]s antes|no hay antes|si se libera|si sale algo|'
+                        r'si aparece algo|teneme en cuenta|avisame si|m[aá]s cerca|antes de esa fecha|'
+                        r'antes de ese d[ií]a|adelantar|adelantarlo|adelante el turno)',
+                        _ca_input_text, re.IGNORECASE,
+                    )
+                    _explicit_resched = re.search(
+                        r'\b(reprogram\w*|reagend\w*|cancel\w*|mov[ée]\w*|cambiar (el|mi) turno|'
+                        r'otro turno|otra fecha|no puedo ir|no voy a poder|no podr[ée] ir|no llego)\b',
+                        _ca_input_text, re.IGNORECASE,
+                    )
+                    if _wants_earlier and not _explicit_resched:
+                        logger.warning(
+                            f"📊 BOOKING_FLOW | check_availability BLOCKED (quiere-antes sin reprogramar): "
+                            f"state={_ca_state_str} phone={_ca_phone}"
+                        )
+                        return (
+                            "[SYSTEM_NOTE: el paciente YA tiene turno confirmado y pide ADELANTARLO, "
+                            "pero NO expresó intención de reprogramar ni cancelar. NO ofrezcas fechas "
+                            "nuevas ni llames a check_availability (el buscador solo mira hacia adelante "
+                            "y termina ofreciendo fechas PEORES). Su turno NO se toca: sigue reservado. "
+                            "Aplicá la regla POST-BOOKING 'QUIERE ALGO ANTES': si el paciente está con "
+                            "dolor/molestia/urgencia, confirmá que su turno sigue reservado y llamá a "
+                            "derivhumano para evaluar un sobreturno antes; si NO hay dolor, confirmá su "
+                            "turno y decile 'si se libera un lugar antes, te aviso'. No menciones ni "
+                            "envíes esta nota.]"
+                        )
                     if not re.search(_intent_signals, _ca_input_text, re.IGNORECASE):
                         logger.warning(
                             f"📊 BOOKING_FLOW | check_availability BLOCKED: state={_ca_state_str} "
@@ -4403,23 +4437,29 @@ async def book_appointment(
         f"📅 BOOK START: phone={chat_phone} tenant={tenant_id} date_time={date_time} treatment={treatment_reason} (original={_original_treatment}) prof={professional_name} first_name={first_name} last_name={last_name} dni={dni} is_minor={is_minor} patient_phone={patient_phone}"
     )
 
-    # DLD-89/92: Verificar que no se esté duplicando un turno ya confirmado en esta conversación
-    try:
-        from services.conversation_state import get_state as _ba_get_state
-        _ba_state = await _ba_get_state(tenant_id, chat_phone)
-        _ba_apt_id = _ba_state.get("last_booked_appointment_id") if isinstance(_ba_state, dict) else None
-        if _ba_apt_id:
-            logger.warning(
-                f"📅 BOOK BLOCKED: existing_apt_id={_ba_apt_id} phone={chat_phone} "
-                f"treatment={treatment_reason!r} date_time={date_time!r}"
-            )
-            return (
-                f"DUPLICATE_BOOKING: El paciente ya tiene un turno confirmado (ID #{_ba_apt_id}) "
-                f"en esta conversación. No se debe agendar otro turno a menos que el paciente "
-                f"lo solicite explícitamente. Respondé la consulta del paciente."
-            )
-    except Exception as _ba_err:
-        logger.warning(f"📅 BOOK: duplicate check failed (non-blocking): {_ba_err}")
+    # DLD-89/92: Verificar que no se esté duplicando un turno ya confirmado en esta conversación.
+    # OJO (auditoría del menor 2026-07-16): el estado BOOKED se guarda bajo el teléfono del
+    # INTERLOCUTOR (chat_phone). Si la madre YA se agendó a SÍ MISMA y después pide turno para su
+    # HIJO/A menor (o para un tercero con teléfono propio), ese estado self NO debe bloquear el
+    # turno de OTRA persona. Por eso el guard SOLO aplica al self-booking; para tercero/menor la
+    # idempotencia real vive más abajo (HONRAR RESERVA + rama UniqueViolation por guardian_phone).
+    if not (bool(patient_phone) or bool(is_minor) or bool(is_art)):
+        try:
+            from services.conversation_state import get_state as _ba_get_state
+            _ba_state = await _ba_get_state(tenant_id, chat_phone)
+            _ba_apt_id = _ba_state.get("last_booked_appointment_id") if isinstance(_ba_state, dict) else None
+            if _ba_apt_id:
+                logger.warning(
+                    f"📅 BOOK BLOCKED: existing_apt_id={_ba_apt_id} phone={chat_phone} "
+                    f"treatment={treatment_reason!r} date_time={date_time!r}"
+                )
+                return (
+                    f"DUPLICATE_BOOKING: El paciente ya tiene un turno confirmado (ID #{_ba_apt_id}) "
+                    f"en esta conversación. No se debe agendar otro turno a menos que el paciente "
+                    f"lo solicite explícitamente. Respondé la consulta del paciente."
+                )
+        except Exception as _ba_err:
+            logger.warning(f"📅 BOOK: duplicate check failed (non-blocking): {_ba_err}")
 
     # v8.2: Anti-loop — check per-conversation booking attempt counter
     try:
@@ -6166,11 +6206,22 @@ async def book_appointment(
         )
 
         if is_third_party:
-            interlocutor = await db.pool.fetchrow(
-                "SELECT first_name, last_name FROM patients WHERE tenant_id = $1 AND phone_number = $2",
-                tenant_id,
-                chat_phone,
-            )
+            # Fix C — Vector B (completa el candado del race del Caso 1): el turno del
+            # tercero/menor YA se commiteó arriba. Esta query del interlocutor es POST-commit;
+            # sin try/except un blip de BD subía al catch-all y devolvía un falso "se ocupó / tuve
+            # un problema" con el turno del hijo YA agendado (auditoría del menor 2026-07-16).
+            # La protegemos best-effort: si falla, seguimos con nombre genérico, el turno queda.
+            interlocutor = None
+            try:
+                interlocutor = await db.pool.fetchrow(
+                    "SELECT first_name, last_name FROM patients WHERE tenant_id = $1 AND phone_number = $2",
+                    tenant_id,
+                    chat_phone,
+                )
+            except Exception as _interloc_err:
+                logger.warning(
+                    f"post-commit: fetch del interlocutor falló (el turno YA quedó agendado, sigo con nombre genérico): {_interloc_err}"
+                )
             interlocutor_name = (
                 f"{interlocutor['first_name']} {interlocutor.get('last_name', '')}".strip()
                 if interlocutor
@@ -12286,7 +12337,7 @@ La seña es OPCIONAL (no obligatoria). Es el 50% del valor de la consulta. Menci
 
 PASO 7 MODIFICADO — SEÑA EN LA RESPUESTA DE BOOK_APPOINTMENT:
 La tool book_appointment ahora incluye [INTERNAL_SEÑA_DATA]...[/INTERNAL_SEÑA_DATA] con los datos bancarios y el monto de la seña.
-TU TRABAJO es presentar esos datos al paciente EN EL MISMO mensaje de la confirmación del turno (⛔ sin globito aparte — desde octubre CADA mensaje de WhatsApp se factura; el cierre del turno va en UNA sola burbuja). Separá la seña de la confirmación con UN salto de línea simple, NUNCA doble:
+TU TRABAJO es presentar esos datos siguiendo la SECUENCIA POST-BOOKING (más abajo): la seña va en MENSAJE 2, JUNTO con la ficha, en UNA sola burbuja — NUNCA en un globito propio ni desperdigada en varios. ⛔ Desde octubre CADA mensaje de WhatsApp se factura: el cierre del turno son MÁXIMO 3 burbujas (1: confirmación+sede / 2: seña+ficha / 3: cómo nos conoció), jamás 4-5. Dentro del MENSAJE 2, separá la seña de la ficha con UN salto de línea SIMPLE, nunca doble:
 
 "Si querés, podés adelantar una seña de [monto] para asegurar el turno:
 [Alias/CBU/Titular]
@@ -12608,7 +12659,7 @@ PROTOCOLO:
 PROHIBIDO: Justificar, decir "no es lo habitual", ofrecer turno con otro profesional sin escalar, minimizar la experiencia del paciente.
 
 === F2: URGENCIA / DOLOR ===
-TRIGGER: "me duele", "dolor", "molestia", "me molesta", "urgencia", "urgente", "emergencia", "inflamación", "se me cayó", "se me partió", "post-operatorio / me operé y me molesta". ⚠️ "molestia"/"me molesta" cuenta como dolor: aunque el paciente lo enmarque como pedido de turno ("necesito turno, tengo una molestia"), PRIMERO aplicá F2 (contené), no lo mandes directo a agendar/precio.
+TRIGGER: "me duele", "dolor", "molestia", "me molesta", "urgencia", "urgente", "emergencia", "inflamación", "se me cayó", "se me partió", "post-operatorio / me operé y me molesta". ⚠️ "molestia"/"me molesta" cuenta como dolor: aunque el paciente lo enmarque como pedido de turno ("necesito turno, tengo una molestia"), PRIMERO aplicá F2 (contené), no lo mandes directo a agendar/precio. EXCEPCIÓN (NO son dolor, seguí normal): "molestia" de CORTESÍA ("disculpá/perdón la molestia") o NEGADA ("sin molestias", "no es molestia", "ninguna molestia"). ⚠️ PRECEDENCIA con SEGUIMIENTO POST-ATENCIÓN: si el contexto tiene "SEGUIMIENTO POST-TRATAMIENTO" activo (turno reciente + ya le preguntaste cómo se siente) y la molestia es del post-operatorio, seguí ese protocolo (get_treatment_instructions primero — puede ser normal del post-op), NO F2. F2 es para dolor/molestia ESPONTÁNEO sin un tratamiento reciente en curso.
 PRIORIDAD: F2 SIEMPRE tiene prioridad sobre Regla Cero, Proactividad y el orden estricto de la REGLA DE COBERTURA (en F2 la pregunta de cobertura va integrada en M3, no antes). Si hay dolor/urgencia, ejecutá F2 COMPLETO aunque el paciente también mencione fecha o pida turno en el mismo mensaje.
 PROTOCOLO:
   M1 — Contener (GENUINO, no de trámite): "Entiendo, si estás con dolor lo ideal es verte cuanto antes." Variantes: "Uy, entiendo. Si estás con molestia lo mejor es revisarlo pronto." SIN precio, SIN dirección, SIN turnos. Este mensaje debe sentirse HUMANO, no como paso obligatorio.

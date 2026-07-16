@@ -2387,30 +2387,51 @@ async def process_buffer_task(
         except Exception:
             pass  # Conservative fallback: greet if check fails
 
-        # A1 (gate de precio): si la cobertura NO está resuelta —no hay "Obra Social registrada"
-        # en el contexto (lead nuevo, o paciente existente sin OS)— inyectamos un aviso fresco para
-        # que el bot PREGUNTE la cobertura antes de asumir "particular". Es el error de los casos
-        # Lorena/Luis: el modelo larga "la consulta sería de forma particular + reintegro" sin
-        # preguntar (la plantilla está escrita ~6 veces y el mini agarra el patrón más frecuente).
-        # La inyección fresca al final del contexto tiene mucha más adherencia que la regla lejana.
-        # Es CONDICIONAL: si el paciente ya dijo su cobertura en el chat, el LLM la ve en el historial
-        # y no re-pregunta. El caso OS-registrada ya lo cubre el blindaje de arriba (por eso el skip).
-        if not (patient_context and ("Obra Social registrada" in patient_context or "issn" in patient_context.lower() or "instituto de seguridad" in patient_context.lower())):
+        # A1 (gate de precio) — v2 con las correcciones de la auditoría adversarial (2026-07-16):
+        # Inyecta un aviso fresco para que el bot PREGUNTE la cobertura antes de asumir "particular"
+        # (error de los casos Lorena/Luis: la plantilla "particular + reintegro" está escrita ~6 veces
+        # y el mini agarra el patrón frecuente). La inyección fresca y cercana tiene mucha más adherencia.
+        # DOS CORRECCIONES de la auditoría:
+        #  • Match ISSN por LÍMITE DE PALABRA (\bissn\b): antes "issn" como substring matcheaba apellidos
+        #    ("Meissner"/"Reissner") y apagaba el gate a un particular.
+        #  • Si se agenda para un HIJO/A MENOR, la "Obra Social registrada" del contexto es la del
+        #    INTERLOCUTOR (la madre), NO la del que se atiende → el gate DEBE preguntar igual la cobertura
+        #    del menor (era el agujero EXACTO del Caso 1: madre con OSDE agenda para la hija).
+        _a1_issn_ctx = bool(patient_context) and (
+            bool(re.search(r"\bissn\b", patient_context, re.IGNORECASE))
+            or "instituto de seguridad" in (patient_context or "").lower()
+        )
+        _a1_minor_booking = bool(patient_context) and (
+            "[INTERNAL_BOOKING_CONTEXT]" in patient_context or "HIJO/A MENOR" in patient_context
+        )
+        _a1_cov_known = bool(patient_context) and (
+            "Obra Social registrada" in patient_context or _a1_issn_ctx
+        )
+        if _a1_minor_booking or not _a1_cov_known:
             _cov_gate = (
-                "⛔ COBERTURA NO RESUELTA: no sabés si el paciente es particular o tiene obra social. "
-                "Si pide turno/precio y TODAVÍA no dijo su cobertura (ni 'particular' ni nombró una OS "
+                "⛔ COBERTURA NO RESUELTA: no sabés si la persona que se atiende es particular o tiene "
+                "obra social. "
+                + (
+                    "⚠️ Estás agendando para un HIJO/A MENOR: la 'Obra Social registrada' del contexto es "
+                    "la del INTERLOCUTOR (quien escribe), NO la del menor — preguntá la cobertura DEL MENOR "
+                    "y NO le apliques a él el coseguro de la OS del interlocutor. "
+                    if _a1_minor_booking
+                    else ""
+                )
+                + "Si pide turno/precio y TODAVÍA no sabés su cobertura (ni 'particular' ni una OS nombrada "
                 "en el chat), tu PRIMER movimiento es preguntar '¿Contás con alguna obra social o te "
                 "atenderías de forma particular?'. ⛔ PROHIBIDO la plantilla 'la consulta sería de forma "
-                "particular / te damos el comprobante para el reintegro' hasta que (a) el paciente diga "
-                "EXPLÍCITAMENTE que es particular, o (b) nombre una OS y la verifiques con check_insurance_coverage."
+                "particular / te damos el comprobante para el reintegro' hasta que (a) diga EXPLÍCITAMENTE "
+                "que es particular, o (b) nombre una OS y la verifiques con check_insurance_coverage."
             )
             patient_context = (patient_context + "\n" + _cov_gate) if patient_context else _cov_gate
 
-        # ISSN (candado de adherencia, mismo patrón que A1): las reglas de ISSN están en el prompt
-        # pero muy abajo y el mini las dropea (casos issn-precio/cirugía/número). Cuando la cobertura
-        # es ISSN, inyectamos un resumen fresco y cercano — mucha más adherencia que la regla lejana.
-        # Solo dispara si hay ISSN en el contexto → cero costo/riesgo si no aplica.
-        if patient_context and ("issn" in patient_context.lower() or "instituto de seguridad" in patient_context.lower()):
+        # ISSN (candado de adherencia) — v2: usa el match por LÍMITE DE PALABRA de arriba (_a1_issn_ctx)
+        # y se GATEA por tenant. El bloque CIMO es específico del tenant 1 (Neuquén); sin el gate por
+        # tenant se filtraba a OTRAS clínicas del SaaS (fuga cross-tenant, viola Sovereignty Protocol §1)
+        # y un apellido tipo "Meissner" (contiene "issn") disparaba reglas ISSN inventadas a un particular.
+        # Auditoría adversarial 2026-07-16.
+        if _a1_issn_ctx and str(tenant_id) == "1":
             patient_context += (
                 "\n⛔ ISSN (respondé VOS, NO llames derivhumano por una consulta de cobertura/cirugía ISSN): "
                 "la cirugía maxilofacial se coordina con CIMO (pasá su teléfono si figura); TODO el resto de "
@@ -2420,6 +2441,35 @@ async def process_buffer_task(
                 "Si pregunta el PRECIO/valor de la consulta: dáselo con su encuadre y SIEMPRE mencioná que "
                 "entregás el comprobante/recibo para gestionar el reintegro con la obra social."
             )
+
+        # Molestia/dolor (caso Luis, parte a): candado fresco para que el bot CONTENGA (F2) antes
+        # de saltar a agendar/precio cuando el paciente reporta dolor/molestia. Fix D vive en el
+        # prompt (lejano) y el mini lo dropea; la inyección fresca cercana tiene mucha más adherencia.
+        # SEGURO Y CONDICIONAL: solo si el ÚLTIMO mensaje menciona dolor/molestia (no una negación
+        # "sin molestias") Y NO hay SEGUIMIENTO POST-TRATAMIENTO activo (ahí manda ESE protocolo, no F2).
+        try:
+            _last_user_l = ""
+            for _m in reversed(messages or []):
+                if isinstance(_m, dict) and _m.get("role") == "user":
+                    _last_user_l = str(_m.get("content", "")).lower()
+                    break
+            # Señal FUERTE de dolor (casi nunca es cortesía): dispara directo.
+            _strong_pain = any(k in _last_user_l for k in ("duele", "dolor", "no aguanto", "inflam", "hinch", "sangr", "flemón", "flemon", "absceso"))
+            # "molestia" es AMBIGUA (cortesía/negación) → solo cuenta si NO es cortesía ni negación.
+            _molestia = ("molestia" in _last_user_l or "me molesta" in _last_user_l)
+            _courtesy = any(k in _last_user_l for k in ("disculpa la molestia", "disculpá la molestia", "disculpe la molestia", "perdon la molestia", "perdón la molestia", "perdona la molestia"))
+            _pain_neg = any(k in _last_user_l for k in ("sin dolor", "sin molestia", "no me duele", "no tengo dolor", "no tengo molestia"))
+            _has_followup = bool(patient_context and "SEGUIMIENTO POST-TRATAMIENTO" in patient_context)
+            if not _has_followup and not _pain_neg and (_strong_pain or (_molestia and not _courtesy)):
+                _pain_note = (
+                    "⛔ EL PACIENTE MENCIONA DOLOR/MOLESTIA: aplicá F2 (URGENCIA/DOLOR) — PRIMERO contené "
+                    "con empatía GENUINA (sin precio, sin dirección, sin turnos), después UNA pregunta "
+                    "orientadora clínica y el ofrecimiento de coordinar un turno pronto. NO saltes directo "
+                    "a agendar ni al precio, aunque lo enmarque como pedido de turno."
+                )
+                patient_context = (patient_context + "\n" + _pain_note) if patient_context else _pain_note
+        except Exception as _pain_err:
+            logger.debug(f"pain-gate injection skipped (non-fatal): {_pain_err}")
 
         system_prompt = build_system_prompt(
             clinic_name=clinic_name,
