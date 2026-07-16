@@ -3962,25 +3962,24 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                                     "Si la verificación es exitosa → confirmá el pago. Si falla → explicá qué falló."
                                 )
                         else:
-                            # Not classified - use legacy behavior with pending payment check
-                            if has_pending_plan:
-                                media_context += (
-                                    "PROBABLE COMPROBANTE DE PAGO: El paciente tiene un plan de tratamiento con saldo pendiente y acaba de enviar una imagen/documento. "
-                                    "Es MUY probable que sea un comprobante de transferencia bancaria para abonar una cuota del plan. "
-                                    "ACCIÓN OBLIGATORIA: Usá 'verify_payment_receipt' para verificar el comprobante. "
-                                    "Pasá la descripción de la imagen del CONTEXTO VISUAL como 'receipt_description' y el monto que detectes como 'amount_detected'. "
-                                    "NO digas 'ya lo guardé en tu ficha'. Decí 'Recibí tu comprobante, voy a verificarlo' y ejecutá la tool. "
-                                    "Si la verificación es exitosa → confirmá el pago al plan. Si falla → explicá qué falló."
-                                )
-                            else:
-                                media_context += (
-                                    "PROBABLE COMPROBANTE DE PAGO: El paciente tiene un turno con seña pendiente y acaba de enviar una imagen/documento. "
-                                    "Es MUY probable que sea un comprobante de transferencia bancaria. "
-                                    "ACCIÓN OBLIGATORIA: Usá 'verify_payment_receipt' para verificar el comprobante. "
-                                    "Pasá la descripción de la imagen del CONTEXTO VISUAL como 'receipt_description' y el monto que detectes como 'amount_detected'. "
-                                    "NO digas 'ya lo guardé en tu ficha'. Decí 'Recibí tu comprobante, voy a verificarlo' y ejecutá la tool. "
-                                    "Si la verificación es exitosa → confirmá el pago. Si falla → explicá qué falló."
-                                )
+                            # Fix (caso Facundo 2026-07-16): imagen NO clasificada (ni médica ni
+                            # comprobante) de un paciente con seña/plan pendiente. ANTES esta rama
+                            # ASUMÍA comprobante y forzaba verify_payment_receipt → una RADIOGRAFÍA
+                            # (o cualquier estudio/foto) se trataba como comprobante ("recibí tu
+                            # comprobante, no pude verificarlo") + mail espurio de "pago fallido" a la
+                            # clínica. AHORA: comportamiento SEGURO (archivar en ficha, sin diagnosticar)
+                            # + una línea de desambiguación para no perder un comprobante real sin
+                            # caption. Un comprobante DE VERDAD lo marca is_classified_payment (rama
+                            # de arriba, por la descripción de visión), así que no se pierde ninguno.
+                            media_context += (
+                                "Responde confirmando que recibiste el archivo y que ya lo guardaste en su ficha médica para que la Dra. lo vea. "
+                                "⛔ PROHIBIDO describir, comentar, interpretar o diagnosticar el contenido de la imagen o radiografía: "
+                                "NO digas qué se observa ni menciones dientes, implantes, mucosa, encía, hueso, caries, lesiones, etc. "
+                                "El CONTEXTO VISUAL es SOLO para tu registro interno, NUNCA para relatárselo al paciente. "
+                                "Limitate a confirmar la recepción y a decir que la doctora lo evalúa en la consulta. Tono amable y profesional. "
+                                "⚠️ NO asumas que es un comprobante de pago (podría ser un estudio, una radiografía o una foto cualquiera). "
+                                "Si (y SOLO si) el paciente aclara que ESO era un comprobante de pago, recién ahí usá 'verify_payment_receipt'."
+                            )
                     else:
                         # No pending payment for THIS person
                         if is_classified_payment:
