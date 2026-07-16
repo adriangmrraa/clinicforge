@@ -2514,8 +2514,13 @@ async def check_availability(
                             # tratamiento): así NO forzamos un profesional en algo que quizás no hace
                             # (ortodoncia=Eli, etc.) — ahí deja que el ruteo por tratamiento decida.
                             _tn_ca = (treatment_name or "").strip().lower()
-                            _is_generic_ctrl = (not _tn_ca) or any(
-                                k in _tn_ca for k in ("consulta", "control", "evaluac", "revis", "seguimiento", "urgenc")
+                            # "ortodonc" excluido a propósito: "Ortodoncia"/"Control Ortodoncia" son
+                            # de la ortodoncista (Eli) — nunca forzar ahí al profesional del último
+                            # turno (que puede ser Laura por una limpieza previa).
+                            _is_generic_ctrl = ("ortodonc" not in _tn_ca) and (
+                                (not _tn_ca) or any(
+                                    k in _tn_ca for k in ("consulta", "control", "evaluac", "revis", "seguimiento", "urgenc")
+                                )
                             )
                             if _is_generic_ctrl:
                                 try:
