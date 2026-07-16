@@ -137,15 +137,19 @@ async def scenario_hijo_no_duplicado(db, book_appointment, set_ctx):
 # (Espejo de la lógica de buffer_task.py — determinista, sin BD.)
 # ----------------------------------------------------------------------------
 async def scenario_dados(db, book_appointment, set_ctx):
-    def _is_files_only(raw_text: str, has_media: bool) -> bool:
-        return bool(has_media) and len((raw_text or "").strip()) < 3
+    # Espejo de la lógica v2 de buffer_task: el corto-circuito SOLO aplica sin contexto
+    # de pago (caso Lucas: un comprobante sin texto DEBE ir al modelo → verify_payment).
+    def _is_files_only(raw_text: str, has_media: bool, pay_ctx: bool = False) -> bool:
+        return bool(has_media) and len((raw_text or "").strip()) < 3 and not pay_ctx
 
     def _is_garbage(text: str) -> bool:
         return (text or "").strip().upper() in _GARBAGE_PLACEHOLDERS
 
     results = [
-        ("archivos sin texto → corto-circuito (no invoca al modelo)",
-         _is_files_only("", True) is True, "msg vacío + media"),
+        ("archivos sin texto SIN pago pendiente → corto-circuito",
+         _is_files_only("", True, pay_ctx=False) is True, "msg vacío + media, sin pago"),
+        ("comprobante sin texto CON pago pendiente → va al MODELO (caso Lucas)",
+         _is_files_only("", True, pay_ctx=True) is False, "la seña debe verificarse"),
         ("archivo CON texto real → NO corto-circuito (va al modelo)",
          _is_files_only("hola quiero un turno", True) is False, "media + texto"),
         ("'[DADOS]' → lo caza la red de seguridad",
