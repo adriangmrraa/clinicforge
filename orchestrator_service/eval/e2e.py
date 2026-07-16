@@ -200,8 +200,11 @@ async def scenario_agendado_y_quiere_antes(db, book_appointment, set_ctx):
     results.append(("check_availability ofreció turnos reales", True, ""))
 
     # 3) Agendar la opción 1 (consume el slot_offer → handshake correcto).
+    # date_time es posicional obligatorio; con slot_index=1 el datetime real sale de la
+    # oferta guardada en Redis (Priority 0), así que este valor es solo fallback.
     r_book = str(await _invoke_tool(
         book_appointment,
+        date_time="10:00",
         treatment_reason=tname, slot_index=1, interpreted_date=tomorrow,
         first_name="TestE2E", last_name="Paciente", dni="99999999",
     ))
@@ -281,17 +284,23 @@ async def scenario_profesional_ultimo_turno(db, book_appointment, set_ctx):
     manana = (_dt.datetime.now() + _dt.timedelta(days=1)).strftime("%Y-%m-%d")
 
     # D.1 — control genérico → SOLO turnos del profesional del último turno.
+    # OJO: las opciones NO nombran al profesional en el texto (regla del prompt) →
+    # se verifica por el ESTADO interno: last_offered_slots guarda el professional
+    # de cada slot ofrecido (lo escribe check_availability al setear OFFERED_SLOTS).
     r1 = str(await _invoke_tool(
         check_availability,
         date_query="quiero un control, lo antes posible", interpreted_date=manana,
         search_mode="open", treatment_name="consulta",
     ))
-    _hay_target = target["first_name"].lower() in r1.lower()
-    _hay_otro = any(o.lower() in r1.lower() for o in otros)
-    ok1 = _hay_target and not _hay_otro
+    from services.conversation_state import get_state as _gs_prof
+    _st = await _gs_prof(TEST_TENANT, TEST_PHONE)
+    _slots_prof = [(s.get("professional") or "") for s in (_st.get("last_offered_slots") or [])]
+    ok1 = bool(_slots_prof) and all(
+        target["first_name"].lower() in p.lower() for p in _slots_prof
+    ) and not any(o.lower() in p.lower() for p in _slots_prof for o in otros)
     results.append((
         f"control genérico → ofrece SOLO a {target['first_name']} (prof del último turno)",
-        ok1, f"target={_hay_target} otros={_hay_otro} resp: {r1[:140]}",
+        ok1, f"profesionales de los slots ofrecidos={_slots_prof} resp: {r1[:100]}",
     ))
 
     # D.2 — ortodoncia NO se fuerza al último profesional (exclusión).
