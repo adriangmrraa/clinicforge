@@ -2387,6 +2387,25 @@ async def process_buffer_task(
         except Exception:
             pass  # Conservative fallback: greet if check fails
 
+        # A1 (gate de precio): si la cobertura NO está resuelta —no hay "Obra Social registrada"
+        # en el contexto (lead nuevo, o paciente existente sin OS)— inyectamos un aviso fresco para
+        # que el bot PREGUNTE la cobertura antes de asumir "particular". Es el error de los casos
+        # Lorena/Luis: el modelo larga "la consulta sería de forma particular + reintegro" sin
+        # preguntar (la plantilla está escrita ~6 veces y el mini agarra el patrón más frecuente).
+        # La inyección fresca al final del contexto tiene mucha más adherencia que la regla lejana.
+        # Es CONDICIONAL: si el paciente ya dijo su cobertura en el chat, el LLM la ve en el historial
+        # y no re-pregunta. El caso OS-registrada ya lo cubre el blindaje de arriba (por eso el skip).
+        if not (patient_context and "Obra Social registrada" in patient_context):
+            _cov_gate = (
+                "⛔ COBERTURA NO RESUELTA: no sabés si el paciente es particular o tiene obra social. "
+                "Si pide turno/precio y TODAVÍA no dijo su cobertura (ni 'particular' ni nombró una OS "
+                "en el chat), tu PRIMER movimiento es preguntar '¿Contás con alguna obra social o te "
+                "atenderías de forma particular?'. ⛔ PROHIBIDO la plantilla 'la consulta sería de forma "
+                "particular / te damos el comprobante para el reintegro' hasta que (a) el paciente diga "
+                "EXPLÍCITAMENTE que es particular, o (b) nombre una OS y la verifiques con check_insurance_coverage."
+            )
+            patient_context = (patient_context + "\n" + _cov_gate) if patient_context else _cov_gate
+
         system_prompt = build_system_prompt(
             clinic_name=clinic_name,
             current_time=current_time_str,

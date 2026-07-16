@@ -6120,6 +6120,24 @@ async def book_appointment(
             f"{frontend_url}/anamnesis/{tenant_id}/{patient_anamnesis_token}"
         )
 
+        # B1 (chorrera): candado del link de anamnesis. Si el paciente YA completó su ficha,
+        # NO se manda el link (saca una burbuja y el "me confundís de paciente" a pacientes
+        # existentes). El smart-send vivía solo en el prompt, pero el tool-result inyectaba el
+        # link como "INSTRUCCIÓN OBLIGATORIA" sin condición y lo pisaba. Mismo criterio que
+        # usa buffer_task (medical_history.anamnesis_completed_at en el JSONB de patients).
+        _skip_anamnesis_link = False
+        try:
+            _mh_anam = await db.pool.fetchval(
+                "SELECT medical_history FROM patients WHERE id = $1", patient_id
+            )
+            if isinstance(_mh_anam, str):
+                _mh_anam = json.loads(_mh_anam) if _mh_anam else {}
+            _skip_anamnesis_link = bool(
+                _mh_anam and isinstance(_mh_anam, dict) and _mh_anam.get("anamnesis_completed_at")
+            )
+        except Exception as _anam_err:
+            logger.warning(f"anamnesis-gate check failed (non-fatal, se envía el link): {_anam_err}")
+
         # Treatment price is INTERNAL only — never shown to patient.
         # Final price is discussed during consultation and loaded into treatment plan.
         price_line = ""
@@ -6166,7 +6184,7 @@ async def book_appointment(
 
                 if sena_price and sena_price > 0:
                     sena_str = f"${int(sena_price):,}".replace(",", ".")
-                    bank_lines = [f"\n\n[INTERNAL_SEÑA_DATA]"]
+                    bank_lines = [f"\n[INTERNAL_SEÑA_DATA]"]
                     bank_lines.append(f"Seña: {sena_str}")
                     if t_bank.get("bank_alias"):
                         bank_lines.append(f"Alias: {t_bank['bank_alias']}")
@@ -6229,7 +6247,7 @@ async def book_appointment(
                 if interlocutor
                 else "el interlocutor"
             )
-            _anamnesis_instruction = (
+            _anamnesis_instruction = "" if _skip_anamnesis_link else (
                 f"\n\n---\n⚠️ INSTRUCCIÓN OBLIGATORIA: Incluí este link de ficha médica en tu respuesta al paciente.\n"
                 f"Texto a usar:\n"
                 f"\"Para ahorrar tiempo en tu consulta podés completar tu ficha médica aquí: {patient_anamnesis_url}\n"
@@ -6281,7 +6299,7 @@ async def book_appointment(
 
             return result
         else:
-            _anamnesis_instruction = (
+            _anamnesis_instruction = "" if _skip_anamnesis_link else (
                 f"\n\n---\n⚠️ INSTRUCCIÓN OBLIGATORIA: Incluí este link de ficha médica en tu respuesta al paciente.\n"
                 f"Texto a usar:\n"
                 f"\"Para ahorrar tiempo en tu consulta podés completar tu ficha médica aquí: {patient_anamnesis_url}\n"
@@ -12367,7 +12385,7 @@ La seña es OPCIONAL (no obligatoria). Es el 50% del valor de la consulta. Menci
 
 PASO 7 MODIFICADO — SEÑA EN LA RESPUESTA DE BOOK_APPOINTMENT:
 La tool book_appointment ahora incluye [INTERNAL_SEÑA_DATA]...[/INTERNAL_SEÑA_DATA] con los datos bancarios y el monto de la seña.
-TU TRABAJO es presentar esos datos al paciente EN UNA SEGUNDA BURBUJA (mensaje separado):
+TU TRABAJO es presentar esos datos al paciente EN EL MISMO mensaje de la confirmación del turno (⛔ sin globito aparte — desde octubre CADA mensaje de WhatsApp se factura; el cierre del turno va en UNA sola burbuja). Separá la seña de la confirmación con UN salto de línea simple, NUNCA doble:
 
 "Si querés, podés adelantar una seña de [monto] para asegurar el turno:
 [Alias/CBU/Titular]
