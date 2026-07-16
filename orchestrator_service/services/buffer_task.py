@@ -4440,8 +4440,17 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                         input_t = token_cb.prompt_tokens
                         output_t = token_cb.completion_tokens
                         total_t = token_cb.total_tokens
+                        # A1 (medición): el callback SUMA los prompt_tokens de las N iteraciones
+                        # del AgentExecutor — cada round-trip reenvía el prompt entero. El "in"
+                        # NO es el tamaño del prompt: es N × prompt. Revelamos N, el promedio real
+                        # por llamada, y los tokens que OpenAI ya sirve de caché (facturados con
+                        # descuento del 50-90%). Esto disuelve el "~200k por mensaje" = 3-4 × ~60k.
+                        n_calls = getattr(token_cb, "successful_requests", 0) or 1
+                        avg_prompt = input_t // n_calls
+                        cached_t = getattr(token_cb, "prompt_tokens_cached", 0) or 0
                         logger.info(
-                            f"📊 Token source: callback | in={input_t} out={output_t} total={total_t}"
+                            f"📊 Token source: callback | in={input_t} (={n_calls} round-trips × ~{avg_prompt}/llamada) "
+                            f"out={output_t} total={total_t} cached={cached_t}"
                         )
                     else:
                         # Estimate: ~1 token per 4 chars (conservative for Spanish)
