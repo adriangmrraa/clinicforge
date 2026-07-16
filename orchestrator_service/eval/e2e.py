@@ -238,9 +238,81 @@ async def scenario_agendado_y_quiere_antes(db, book_appointment, set_ctx):
     return results
 
 
+# ----------------------------------------------------------------------------
+# ESCENARIO D — Fix Amelia: control genérico → profesional del ÚLTIMO turno.
+# Paciente SIN assigned_professional_id con un turno PASADO con Laura pide un
+# "control": las opciones deben ser SOLO de Laura (antes: del primero con lugar).
+# Contraste: pedir "Ortodoncia" NO debe forzar a Laura (exclusión).
+# ----------------------------------------------------------------------------
+async def scenario_profesional_ultimo_turno(db, book_appointment, set_ctx):
+    from main import check_availability
+    from services.conversation_state import reset
+    import datetime as _dt, uuid as _uuid
+
+    results = []
+    await reset(TEST_TENANT, TEST_PHONE)
+    set_ctx(TEST_TENANT, TEST_PHONE)
+
+    profs = await db.pool.fetch(
+        "SELECT id, first_name FROM professionals WHERE tenant_id=$1 AND is_active=true ORDER BY id",
+        TEST_TENANT,
+    )
+    if len(profs) < 2:
+        return [("preparación: hacen falta ≥2 profesionales activos", False, f"hay {len(profs)}")]
+    target = profs[0]          # el principal (Laura en tenant 1)
+    otros = [p["first_name"] for p in profs[1:]]
+
+    # Paciente de prueba SIN profesional asignado + turno PASADO (completed) con el target.
+    pid = await db.pool.fetchval(
+        "INSERT INTO patients (tenant_id, phone_number, first_name, status, created_at) "
+        "VALUES ($1,$2,'TestProfE2E','active',NOW()) "
+        "ON CONFLICT (tenant_id, phone_number) WHERE phone_number IS NOT NULL "
+        "DO UPDATE SET first_name='TestProfE2E', assigned_professional_id=NULL RETURNING id",
+        TEST_TENANT, TEST_PHONE,
+    )
+    ayer = _dt.datetime.now() - _dt.timedelta(days=1)
+    await db.pool.execute(
+        "INSERT INTO appointments (id, tenant_id, patient_id, professional_id, appointment_datetime, "
+        "duration_minutes, appointment_type, status, source, created_at) "
+        "VALUES ($1,$2,$3,$4,$5,30,'CONSULTA','completed','ai',NOW())",
+        str(_uuid.uuid4()), TEST_TENANT, pid, target["id"], ayer,
+    )
+
+    manana = (_dt.datetime.now() + _dt.timedelta(days=1)).strftime("%Y-%m-%d")
+
+    # D.1 — control genérico → SOLO turnos del profesional del último turno.
+    r1 = str(await _invoke_tool(
+        check_availability,
+        date_query="quiero un control, lo antes posible", interpreted_date=manana,
+        search_mode="open", treatment_name="consulta",
+    ))
+    _hay_target = target["first_name"].lower() in r1.lower()
+    _hay_otro = any(o.lower() in r1.lower() for o in otros)
+    ok1 = _hay_target and not _hay_otro
+    results.append((
+        f"control genérico → ofrece SOLO a {target['first_name']} (prof del último turno)",
+        ok1, f"target={_hay_target} otros={_hay_otro} resp: {r1[:140]}",
+    ))
+
+    # D.2 — ortodoncia NO se fuerza al último profesional (exclusión).
+    await reset(TEST_TENANT, TEST_PHONE)
+    r2 = str(await _invoke_tool(
+        check_availability,
+        date_query="quiero ortodoncia", interpreted_date=manana,
+        search_mode="open", treatment_name="Ortodoncia",
+    ))
+    # Chequeo suave: no debe crashear; si hay opciones, no exigimos que sean del target.
+    ok2 = ("Error" not in r2[:30]) and len(r2) > 0
+    results.append(("ortodoncia: excluida del fallback (no crashea, rutea por tratamiento)", ok2, r2[:140]))
+
+    await reset(TEST_TENANT, TEST_PHONE)
+    return results
+
+
 SCENARIOS = {
     "hijo": scenario_hijo_no_duplicado,
     "agendado": scenario_agendado_y_quiere_antes,
+    "profesional": scenario_profesional_ultimo_turno,
     "dados": scenario_dados,
 }
 
