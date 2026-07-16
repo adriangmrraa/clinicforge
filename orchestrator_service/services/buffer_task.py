@@ -4144,6 +4144,18 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                 )
                 response_text = ""  # Reset so the solo retry loop handles it
 
+        # [DADOS] fix — corto-circuito de archivos-sin-texto: si el paciente mandó SOLO
+        # adjuntos sin texto real, NO invoques al modelo (largaba basura tipo "[DADOS]" y
+        # quemaba ~66k tokens en una respuesta inútil). Los archivos YA se guardaron en la
+        # ficha arriba; acá solo acusamos recibo. has_recent_media lo setea el bloque de adjuntos.
+        try:
+            _raw_user_text = "\n".join(messages).strip() if isinstance(messages, list) else str(messages or "").strip()
+        except Exception:
+            _raw_user_text = ""
+        if not response_text and has_recent_media and len(_raw_user_text) < 3:
+            response_text = "¡Recibí tus archivos! 📎 Los sumé a tu ficha. ¿Necesitás algo más?"
+            logger.info("📎 Archivos-sin-texto: acuse directo, sin invocar al modelo (ahorro de tokens)")
+
         # Solo retry loop — skip if multi-agent already produced a response
         response = {}  # Guard: multi-agent may skip this loop, prevent UnboundLocalError on response.get() below
         for attempt in range(max_retries):
@@ -4169,6 +4181,12 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                         }
                     )
                 response_text = response.get("output", "") or "[Sin respuesta]"
+                # [DADOS] safety-net: si el modelo devolvió SOLO un placeholder basura entre
+                # corchetes (alucinación del mini ante entradas raras), NO se lo mandamos al
+                # paciente. Lista exacta para no tocar marcadores legítimos ([SILENCIO], etc.).
+                if (response_text or "").strip().upper() in ("[DADOS]", "[DATOS]", "[DATA]", "[DADO]", "[...]", "[]", "[N/A]"):
+                    logger.warning(f"🚫 Placeholder basura del modelo suprimido: {response_text!r}")
+                    response_text = "¡Recibí tu mensaje! Si me mandaste un archivo ya quedó en tu ficha. ¿En qué te puedo ayudar? 😊"
                 # v8.2: Statement dedup — track and suppress identical agent messages
                 try:
                     if response_text and len(response_text.strip()) > 10:
