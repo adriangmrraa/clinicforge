@@ -2395,7 +2395,7 @@ async def process_buffer_task(
         # La inyección fresca al final del contexto tiene mucha más adherencia que la regla lejana.
         # Es CONDICIONAL: si el paciente ya dijo su cobertura en el chat, el LLM la ve en el historial
         # y no re-pregunta. El caso OS-registrada ya lo cubre el blindaje de arriba (por eso el skip).
-        if not (patient_context and "Obra Social registrada" in patient_context):
+        if not (patient_context and ("Obra Social registrada" in patient_context or "issn" in patient_context.lower() or "instituto de seguridad" in patient_context.lower())):
             _cov_gate = (
                 "⛔ COBERTURA NO RESUELTA: no sabés si el paciente es particular o tiene obra social. "
                 "Si pide turno/precio y TODAVÍA no dijo su cobertura (ni 'particular' ni nombró una OS "
@@ -2405,6 +2405,21 @@ async def process_buffer_task(
                 "EXPLÍCITAMENTE que es particular, o (b) nombre una OS y la verifiques con check_insurance_coverage."
             )
             patient_context = (patient_context + "\n" + _cov_gate) if patient_context else _cov_gate
+
+        # ISSN (candado de adherencia, mismo patrón que A1): las reglas de ISSN están en el prompt
+        # pero muy abajo y el mini las dropea (casos issn-precio/cirugía/número). Cuando la cobertura
+        # es ISSN, inyectamos un resumen fresco y cercano — mucha más adherencia que la regla lejana.
+        # Solo dispara si hay ISSN en el contexto → cero costo/riesgo si no aplica.
+        if patient_context and ("issn" in patient_context.lower() or "instituto de seguridad" in patient_context.lower()):
+            patient_context += (
+                "\n⛔ ISSN (respondé VOS, NO llames derivhumano por una consulta de cobertura/cirugía ISSN): "
+                "la cirugía maxilofacial se coordina con CIMO (pasá su teléfono si figura); TODO el resto de "
+                "tratamientos es PARTICULAR en el consultorio. Si pregunta si a ese número coordina el turno: "
+                "sí, ese número es de CIMO para la cirugía, y con la clínica CUALQUIER tratamiento ISSN es "
+                "particular — podés ofrecer (opcional) una consulta particular de evaluación en el consultorio. "
+                "Si pregunta el PRECIO/valor de la consulta: dáselo con su encuadre y SIEMPRE mencioná que "
+                "entregás el comprobante/recibo para gestionar el reintegro con la obra social."
+            )
 
         system_prompt = build_system_prompt(
             clinic_name=clinic_name,
