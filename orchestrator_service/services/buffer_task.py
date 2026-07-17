@@ -4757,6 +4757,44 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
             response_text,
         ).strip()
 
+    # --- CANDADO DE SALIDA: PACIENTE RECURRENTE CON COBERTURA REGISTRADA (determinista) ---
+    # Decisión 2026-07-17 (Carlos: "dejemos de tirar plata"): los candados de TEXTO para
+    # estas dos conductas no alcanzan — el mini pattern-matchea la plantilla del precio y
+    # la pregunta de cobertura (escritas mil veces en el prompt) y flip-flopea entre
+    # corridas. Esto es un STRIP de salida en CÓDIGO: no depende de la obediencia del
+    # modelo. Solo aplica a recurrentes con cobertura YA registrada — a nuevos no los toca.
+    try:
+        if (
+            response_text
+            and patient_context
+            and "HISTORIAL: Paciente recurrente" in patient_context
+            and "Obra Social registrada" in patient_context
+        ):
+            _last_txt = " ".join(messages).lower() if isinstance(messages, list) else str(messages or "").lower()
+            _asked_price = any(w in _last_txt for w in ("precio", "valor", "cuanto", "cuánto", "sale", "cuesta", "arancel"))
+            _before = response_text
+            # 1) NUNCA re-preguntar la cobertura ya resuelta (línea entera fuera).
+            response_text = re.sub(
+                r"(?im)^.*cont[aá]s con alguna obra social.*$\n?", "", response_text
+            ).strip()
+            # 2) El párrafo-plantilla del valor de la consulta, si NO preguntó precio.
+            if not _asked_price:
+                response_text = re.sub(
+                    r"(?is)la consulta de evaluaci[oó]n tiene un valor.*?presupuesto correspondiente\.?",
+                    "", response_text,
+                ).strip()
+            response_text = re.sub(r"\n{3,}", "\n\n", response_text).strip()
+            if _before != response_text:
+                logger.warning(
+                    f"🔒 CANDADO SALIDA recurrente: se recortó cobertura-re-preguntada/precio-no-pedido "
+                    f"({len(_before)}→{len(response_text)} chars) para {external_user_id}"
+                )
+            if not response_text:
+                # El strip vació la respuesta (era solo la plantilla) → pedido mínimo útil.
+                response_text = "Contame qué necesitás y te lo coordino 😊"
+    except Exception as _oc_err:
+        logger.warning(f"candado-salida-recurrente skipped (non-fatal): {_oc_err}")
+
     # --- AGENT FAILURE GUARD (blindaje "esto no puede pasar") ---
     # Si el motor cayó y quedó el fallback de error, NO lo mandamos como mensaje
     # robótico al paciente, PERO tampoco lo dejamos en silencio invisible:
