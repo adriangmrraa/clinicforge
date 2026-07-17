@@ -2483,7 +2483,9 @@ async def process_buffer_task(
                 "2) NO le des el VALOR de la consulta si no lo preguntó explícitamente — andá directo a resolver lo que pide. "
                 "3) NO repitas opciones de turno ya ofrecidas en esta charla: referite a ellas ('de las opciones que te pasé...') o directamente confirmá la que eligió. "
                 "4) Si menciona CONTINUAR/TERMINAR un tratamiento en curso ('tengo un implante a terminar', 'sigo con el tratamiento'): es CONTINUIDAD, no una evaluación nueva — NO cotices la consulta de evaluación; ofrecé turno con SU profesional de siempre y decí que los valores de su plan los maneja la clínica según su tratamiento. "
-                "5) Tono: como quien atiende a un cliente de años — cálido, directo y SIN interrogatorio."
+                "5) Si su cobertura registrada es PARTICULAR: directo al turno cuanto antes — sin re-preguntar cobertura ni discursos de precio (el valor solo si lo pide). "
+                "6) Si tiene una OBRA SOCIAL registrada: aplicá sus reglas EN SILENCIO (ya sabés cuál es) — NO le repitas 'sí, trabajamos con [OS]' ni le re-expliques el coseguro como si fuera nuevo; el coseguro va en UNA sola línea recién al confirmar el turno ('recordá que ese día se abona el coseguro de [monto/;se confirma en la clínica]'). "
+                "7) Tono: como quien atiende a un cliente de años — cálido, directo y SIN interrogatorio."
             )
 
         # Molestia/dolor (caso Luis, parte a): candado fresco para que el bot CONTENGA (F2) antes
