@@ -77,6 +77,10 @@ async def _cleanup(db):
                 TEST_TENANT, ids,
             )
             await db.pool.execute("DELETE FROM appointments WHERE tenant_id=$1 AND patient_id = ANY($2::int[])", TEST_TENANT, ids)
+            try:
+                await db.pool.execute("DELETE FROM lab_cases WHERE tenant_id=$1 AND patient_id = ANY($2::int[])", TEST_TENANT, ids)
+            except Exception:
+                pass  # la tabla puede no existir en entornos sin el módulo Laboratorio
             await db.pool.execute("DELETE FROM patients WHERE id = ANY($1::int[])", ids)
             print(f"   🧹 limpieza: {len(ids)} paciente(s) de prueba + sus turnos borrados")
     except Exception as e:
@@ -322,10 +326,60 @@ async def scenario_profesional_ultimo_turno(db, book_appointment, set_ctx):
     return results
 
 
+# ----------------------------------------------------------------------------
+# ESCENARIO E — Integración bot↔Laboratorio (tarea #1): check_lab_work_status
+# contra lab_cases REALES: cada estado devuelve la instrucción correcta y sin
+# trabajos NO inventa nada.
+# ----------------------------------------------------------------------------
+async def scenario_laboratorio(db, book_appointment, set_ctx):
+    from main import check_lab_work_status
+    from services.conversation_state import reset
+
+    results = []
+    await reset(TEST_TENANT, TEST_PHONE)
+    set_ctx(TEST_TENANT, TEST_PHONE)
+
+    pid = await db.pool.fetchval(
+        "INSERT INTO patients (tenant_id, phone_number, first_name, status, created_at) "
+        "VALUES ($1,$2,'TestLabE2E','active',NOW()) "
+        "ON CONFLICT (tenant_id, phone_number) WHERE phone_number IS NOT NULL "
+        "DO UPDATE SET first_name='TestLabE2E' RETURNING id",
+        TEST_TENANT, TEST_PHONE,
+    )
+
+    # E.1 — SIN trabajos → no inventa.
+    r0 = str(await _invoke_tool(check_lab_work_status))
+    results.append(("sin trabajos → SIN_TRABAJOS (no inventa estados)",
+                    "SIN_TRABAJOS" in r0, r0[:120]))
+
+    # E.2 — trabajo RECIBIDO → "ya llegó" + ofrecer colocación.
+    case_id = await db.pool.fetchval(
+        "INSERT INTO lab_cases (tenant_id, patient_id, work_type, status, received_at, created_at) "
+        "VALUES ($1,$2,'Corona','recibido',CURRENT_DATE,NOW()) RETURNING id",
+        TEST_TENANT, pid,
+    )
+    r1 = str(await _invoke_tool(check_lab_work_status))
+    results.append(("trabajo RECIBIDO → 'YA LLEGÓ' + ofrecer colocación",
+                    ("YA LLEGÓ" in r1) and ("check_availability" in r1), r1[:140]))
+
+    # E.3 — trabajo ENVIADO con fecha → 'EN EL LABORATORIO' + fecha estimada.
+    await db.pool.execute(
+        "UPDATE lab_cases SET status='enviado', promised_at=CURRENT_DATE + 7 WHERE id=$1 AND tenant_id=$2",
+        case_id, TEST_TENANT,
+    )
+    r2 = str(await _invoke_tool(check_lab_work_status))
+    results.append(("trabajo ENVIADO → 'EN EL LABORATORIO' + fecha SOLO estimada",
+                    ("EN EL LABORATORIO" in r2) and ("estimada" in r2.lower()), r2[:140]))
+
+    await reset(TEST_TENANT, TEST_PHONE)
+    return results
+
+
 SCENARIOS = {
     "hijo": scenario_hijo_no_duplicado,
     "agendado": scenario_agendado_y_quiere_antes,
     "profesional": scenario_profesional_ultimo_turno,
+    "lab": scenario_laboratorio,
     "dados": scenario_dados,
 }
 
