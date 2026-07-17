@@ -920,6 +920,34 @@ async def _flag_agent_failure_and_alert(pool, tenant_id, conversation_id, phone,
     except Exception as e:
         logger.warning(f"agent-failure: no pude marcar la conversacion: {e}")
 
+    # 2b) PENDIENTE URGENTE automático (pedido Carlos 2026-07-16: "Paula no entra al
+    # mail" — el email solo no alcanza; el canal de trabajo real es Pendientes).
+    # Vence en 2h, linkeado al chat, con dedupe (no duplica si ya hay uno abierto
+    # de esta conversación en las últimas 6h). Best-effort: nunca rompe el flujo.
+    try:
+        await pool.execute(
+            """
+            INSERT INTO clinic_pendings
+                (tenant_id, title, note, due_at, patient_id, conversation_id, created_by, source, priority)
+            SELECT $1, $2, $3, NOW() + INTERVAL '2 hours',
+                   (SELECT linked_patient_id FROM chat_conversations WHERE id = $4 AND tenant_id = $1),
+                   $4, 'sistema', 'bot_fallo', 'urgente'
+            WHERE NOT EXISTS (
+                SELECT 1 FROM clinic_pendings
+                WHERE tenant_id = $1 AND source = 'bot_fallo' AND status = 'abierto'
+                  AND conversation_id = $4
+                  AND created_at > NOW() - INTERVAL '6 hours'
+            )
+            """,
+            tenant_id,
+            f"⚠️ El bot no respondió: revisar chat ({phone})"[:200],
+            (reason or "")[:280],
+            conversation_id,
+        )
+        logger.info(f"📌 Pendiente urgente de bot-falló creado/deduplicado para {phone}")
+    except Exception as e:
+        logger.warning(f"agent-failure: pendiente urgente no creado (non-fatal): {e}")
+
     # 3) email a la clinica con rate-limit
     now = datetime.now(timezone.utc)
     if prev_at is not None:
