@@ -2449,8 +2449,10 @@ async def process_buffer_task(
                 + "Si pide turno/precio y TODAVÍA no sabés su cobertura (ni 'particular' ni una OS nombrada "
                 "en el chat), tu PRIMER movimiento es preguntar '¿Contás con alguna obra social o te "
                 "atenderías de forma particular?'. ⛔ PROHIBIDO la plantilla 'la consulta sería de forma "
-                "particular / te damos el comprobante para el reintegro' hasta que (a) diga EXPLÍCITAMENTE "
-                "que es particular, o (b) nombre una OS y la verifiques con check_insurance_coverage."
+                "particular / te damos el comprobante para el reintegro' Y TAMBIÉN dar el VALOR/monto de "
+                "la consulta (ni '$60.000' ni ningún número) hasta que (a) diga EXPLÍCITAMENTE "
+                "que es particular, o (b) nombre una OS y la verifiques con check_insurance_coverage. "
+                "Y NUNCA des el valor si el paciente NO lo preguntó — pidió un turno, no un precio."
             )
             patient_context = (patient_context + "\n" + _cov_gate) if patient_context else _cov_gate
 
@@ -2468,6 +2470,20 @@ async def process_buffer_task(
                 "particular — podés ofrecer (opcional) una consulta particular de evaluación en el consultorio. "
                 "Si pregunta el PRECIO/valor de la consulta: dáselo con su encuadre y SIEMPRE mencioná que "
                 "entregás el comprobante/recibo para gestionar el reintegro con la obra social."
+            )
+
+        # PACIENTE RECURRENTE (reglas Carlos, caso Myriam/Jerárquicos 2026-07-17): al que ya
+        # asistió NO se lo interroga — tenemos sus datos. El caso real: el bot le tiró "$60.000"
+        # a un "buen día un turno", re-confirmó la OS dos veces, repitió las mismas opciones tres
+        # veces e ignoró "tengo un implante a terminar". Inyección fresca (patrón A1).
+        if patient_context and "HISTORIAL: Paciente recurrente" in patient_context:
+            patient_context += (
+                "\n⛔ PACIENTE CONOCIDO (ya asistió — sus datos, OS e historial están arriba): "
+                "1) NO le vuelvas a pedir ni re-confirmar datos que YA figuran (nombre, DNI, obra social): usalos. "
+                "2) NO le des el VALOR de la consulta si no lo preguntó explícitamente — andá directo a resolver lo que pide. "
+                "3) NO repitas opciones de turno ya ofrecidas en esta charla: referite a ellas ('de las opciones que te pasé...') o directamente confirmá la que eligió. "
+                "4) Si menciona CONTINUAR/TERMINAR un tratamiento en curso ('tengo un implante a terminar', 'sigo con el tratamiento'): es CONTINUIDAD, no una evaluación nueva — NO cotices la consulta de evaluación; ofrecé turno con SU profesional de siempre y decí que los valores de su plan los maneja la clínica según su tratamiento. "
+                "5) Tono: como quien atiende a un cliente de años — cálido, directo y SIN interrogatorio."
             )
 
         # Molestia/dolor (caso Luis, parte a): candado fresco para que el bot CONTENGA (F2) antes
