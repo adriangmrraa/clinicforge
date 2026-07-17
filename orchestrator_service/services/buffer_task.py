@@ -1626,6 +1626,16 @@ async def process_buffer_task(
                         f"configurado / lo que devuelva check_insurance_coverage, o 'se confirma en la clínica'). "
                         f"El valor particular SOLO si pide EXPLÍCITAMENTE atenderse de forma particular."
                     )
+                else:
+                    # Refuerzo espejo para PARTICULAR registrado (caso banco Marta 2026-07-17):
+                    # sin esta línea, la pregunta canónica de cobertura (escrita mil veces en el
+                    # prompt) le gana a la ficha y el bot re-interroga a un particular conocido.
+                    identity_lines.append(
+                        "  ⛔ COBERTURA YA RESUELTA: este paciente es PARTICULAR (registrado en su ficha). "
+                        "NO le preguntes '¿contás con alguna obra social o te atenderías de forma particular?' — "
+                        "esa pregunta es SOLO para quien no tiene cobertura definida. Andá DIRECTO a resolver lo "
+                        "que pide (turno → check_availability con insurance_provider='Particular')."
+                    )
 
             # Assigned Professional (persistent patient→professional relationship)
             assigned_prof_id = patient_row.get("assigned_professional_id")
