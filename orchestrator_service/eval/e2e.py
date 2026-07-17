@@ -453,12 +453,62 @@ async def scenario_pendientes(db, book_appointment, set_ctx):
     return results
 
 
+# ----------------------------------------------------------------------------
+# ESCENARIO G — Ciclo de vida de la cobertura (regla Carlos): la OS se dice UNA
+# vez y queda GUARDADA en la ficha; "Particular" también se persiste.
+# ----------------------------------------------------------------------------
+async def scenario_cobertura(db, book_appointment, set_ctx):
+    from main import check_availability
+    from services.conversation_state import reset
+    import datetime as _dt
+
+    results = []
+    await reset(TEST_TENANT, TEST_PHONE)
+    set_ctx(TEST_TENANT, TEST_PHONE)
+
+    pid = await db.pool.fetchval(
+        "INSERT INTO patients (tenant_id, phone_number, first_name, status, created_at) "
+        "VALUES ($1,$2,'TestCobE2E','active',NOW()) "
+        "ON CONFLICT (tenant_id, phone_number) WHERE phone_number IS NOT NULL "
+        "DO UPDATE SET first_name='TestCobE2E', insurance_provider=NULL RETURNING id",
+        TEST_TENANT, TEST_PHONE,
+    )
+    manana = (_dt.datetime.now() + _dt.timedelta(days=1)).strftime("%Y-%m-%d")
+
+    # G.1 — el paciente dice su OS una vez (el LLM la pasa a check_availability) → ficha.
+    await _invoke_tool(
+        check_availability,
+        date_query="lo antes posible", interpreted_date=manana,
+        search_mode="open", treatment_name="consulta", insurance_provider="OSDE",
+    )
+    saved = await db.pool.fetchval(
+        "SELECT insurance_provider FROM patients WHERE id=$1 AND tenant_id=$2", pid, TEST_TENANT
+    )
+    results.append(("OS dicha UNA vez → queda GUARDADA en la ficha", saved == "OSDE", f"ficha={saved!r}"))
+
+    # G.2 — "Particular" también se persiste (para no re-interrogar al particular).
+    await reset(TEST_TENANT, TEST_PHONE)
+    await _invoke_tool(
+        check_availability,
+        date_query="lo antes posible", interpreted_date=manana,
+        search_mode="open", treatment_name="consulta", insurance_provider="Particular",
+    )
+    saved2 = await db.pool.fetchval(
+        "SELECT insurance_provider FROM patients WHERE id=$1 AND tenant_id=$2", pid, TEST_TENANT
+    )
+    results.append(("'Particular' también se persiste en la ficha", saved2 == "Particular", f"ficha={saved2!r}"))
+
+    await reset(TEST_TENANT, TEST_PHONE)
+    return results
+
+
 SCENARIOS = {
     "hijo": scenario_hijo_no_duplicado,
     "agendado": scenario_agendado_y_quiere_antes,
     "profesional": scenario_profesional_ultimo_turno,
     "lab": scenario_laboratorio,
     "pendientes": scenario_pendientes,
+    "cobertura": scenario_cobertura,
     "dados": scenario_dados,
 }
 
