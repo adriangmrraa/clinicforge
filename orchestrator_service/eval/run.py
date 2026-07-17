@@ -153,7 +153,7 @@ async def main() -> int:
     ap.add_argument("--tenant", type=int, default=int(os.getenv("EVAL_TENANT_ID", "1")))
     ap.add_argument("--model", default=None, help="Forzar un modelo (ej. deepseek-chat) para comparar")
     ap.add_argument("--judge-model", default=os.getenv("EVAL_JUDGE_MODEL", "gpt-5.4-mini"))
-    ap.add_argument("--categoria", default=None, help="Filtrar por categoría")
+    ap.add_argument("--categoria", default=None, help="Filtrar por categoría (o varias separadas por coma)")
     ap.add_argument("--case", default=None, help="Correr un solo caso por id")
     ap.add_argument("--cases-file", default=str(Path(__file__).parent / "cases.jsonl"))
     # temperature=0 para ESPEJAR PRODUCCIÓN (main.py crea el LLM con temperature=0):
@@ -211,7 +211,8 @@ async def main() -> int:
 
         cases = _load_cases(Path(args.cases_file))
         if args.categoria:
-            cases = [c for c in cases if c.get("categoria") == args.categoria]
+            _cats = {x.strip() for x in args.categoria.split(",") if x.strip()}
+            cases = [c for c in cases if c.get("categoria") in _cats]
         if args.case:
             cases = [c for c in cases if c.get("id") == args.case]
         if not cases:
