@@ -4,7 +4,7 @@ import {
   MessageCircle, Send, Calendar, User, Activity,
   Pause, Play, AlertCircle, Clock, ChevronLeft,
   Search, XCircle, Bell, Volume2, VolumeX,
-  Instagram, Facebook, Lock, ChevronRight, Paperclip, LinkIcon, CalendarCheck, Users, Star
+  Instagram, Facebook, Lock, ChevronRight, Paperclip, LinkIcon, CalendarCheck, Users, Star, Pin
 } from 'lucide-react';
 import api, { setTenantId } from '../api/axios';
 import * as chatsApi from '../api/chats';
@@ -151,6 +151,49 @@ export default function ChatsView() {
   const [reviewStats, setReviewStats] = useState<{ month_count: number; goal: number } | null>(null);
   const [reviewedPhones, setReviewedPhones] = useState<Set<string>>(new Set());
   const [showReviewConfirm, setShowReviewConfirm] = useState(false);
+  // Módulo Pendientes: botón 📌 del chat (crear pendiente asignado a ESTE contacto, sin cargar nada)
+  const [showPinModal, setShowPinModal] = useState(false);
+  const [pinTitle, setPinTitle] = useState('');
+  const [pinNote, setPinNote] = useState('');
+  const [pinDue, setPinDue] = useState<'today' | 'tomorrow' | '3days' | 'none'>('tomorrow');
+  const [pinPriority, setPinPriority] = useState<'urgente' | 'media' | 'tranqui'>('media');
+  const [pinSaving, setPinSaving] = useState(false);
+
+  const openPinModal = () => {
+    if (!selectedSession) return;
+    const who = selectedSession.patient_name || selectedSession.phone_number;
+    setPinTitle(`${t('pendientes.follow_up_with')} ${who}`);
+    setPinNote('');
+    setPinDue('tomorrow');
+    setPinPriority('media');
+    setShowPinModal(true);
+  };
+
+  const createPinnedTask = async () => {
+    if (!selectedSession || !pinTitle.trim()) return;
+    setPinSaving(true);
+    try {
+      let due: string | null = null;
+      const d = new Date();
+      if (pinDue === 'today') { d.setHours(18, 0, 0, 0); due = d.toISOString(); }
+      else if (pinDue === 'tomorrow') { d.setDate(d.getDate() + 1); d.setHours(9, 0, 0, 0); due = d.toISOString(); }
+      else if (pinDue === '3days') { d.setDate(d.getDate() + 3); d.setHours(9, 0, 0, 0); due = d.toISOString(); }
+      await api.post('/admin/pendings', {
+        title: pinTitle.trim(),
+        note: pinNote.trim() || null,
+        due_at: due,
+        chat_phone: selectedSession.phone_number,
+        priority: pinPriority,
+        source: 'chat',
+      });
+      setShowPinModal(false);
+      setShowToast({ id: Date.now().toString(), type: 'success', title: t('pendientes.created_ok'), message: pinTitle.trim() });
+    } catch {
+      setShowToast({ id: Date.now().toString(), type: 'error', title: t('pendientes.save_error'), message: '' });
+    } finally {
+      setPinSaving(false);
+    }
+  };
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -474,9 +517,11 @@ export default function ChatsView() {
   }, []);
 
   useEffect(() => {
-    if (selectedTenantId != null) fetchSessions(selectedTenantId, location.state?.selectPhone, navigate);
+    // Deep-link: state.selectPhone (toast de derivación) O ?phone= en la URL (pantalla Pendientes)
+    const urlPhone = new URLSearchParams(location.search).get('phone') || undefined;
+    if (selectedTenantId != null) fetchSessions(selectedTenantId, location.state?.selectPhone || urlPhone, navigate);
     else setSessions([]);
-  }, [selectedTenantId, location.state?.selectPhone, navigate]);
+  }, [selectedTenantId, location.state?.selectPhone, location.search, navigate]);
 
   useEffect(() => {
     const load = async () => {
@@ -1751,6 +1796,16 @@ export default function ChatsView() {
                       </span>
                     </button>
                   )}
+                  {selectedSession && (
+                    <button
+                      onClick={openPinModal}
+                      title={t('pendientes.pin_button')}
+                      className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold transition-all shadow-sm bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 border border-blue-500/20"
+                    >
+                      <Pin size={14} />
+                      <span className="hidden sm:inline">{t('pendientes.pin_button')}</span>
+                    </button>
+                  )}
                   {selectedChatwoot && (
                     <button
                       onClick={handleToggleChatwootLock}
@@ -1762,6 +1817,86 @@ export default function ChatsView() {
                   )}
                 </div>
               </div>
+
+              {/* 📌 Crear pendiente desde el chat (asignado a este contacto, cero carga manual) */}
+              {showPinModal && selectedSession && (
+                <div
+                  className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+                  onClick={() => setShowPinModal(false)}
+                >
+                  <div
+                    className="bg-[#0d1117] border border-white/[0.08] rounded-2xl w-full max-w-sm p-5"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <h3 className="text-white font-medium mb-3 flex items-center gap-2">
+                      <Pin size={16} className="text-blue-400" /> {t('pendientes.pin_button')}
+                    </h3>
+                    <input
+                      className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white text-sm focus:border-blue-500 outline-none placeholder-white/30 mb-2"
+                      value={pinTitle}
+                      onChange={(e) => setPinTitle(e.target.value)}
+                      maxLength={200}
+                      autoFocus
+                    />
+                    <textarea
+                      className="w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white text-sm focus:border-blue-500 outline-none placeholder-white/30 mb-3 min-h-[56px]"
+                      placeholder={t('pendientes.f_note')}
+                      value={pinNote}
+                      onChange={(e) => setPinNote(e.target.value)}
+                    />
+                    <div className="flex flex-wrap gap-1.5 mb-3">
+                      {([
+                        ['today', t('pendientes.preset_today')],
+                        ['tomorrow', t('pendientes.preset_tomorrow')],
+                        ['3days', t('pendientes.preset_3days')],
+                        ['none', t('pendientes.no_due')],
+                      ] as const).map(([key, label]) => (
+                        <button
+                          key={key}
+                          onClick={() => setPinDue(key)}
+                          className={`px-2.5 py-1 rounded-full text-[11px] border transition-all ${pinDue === key
+                            ? 'bg-blue-500/20 text-blue-300 border-blue-500/40'
+                            : 'bg-white/[0.04] text-white/50 border-white/[0.08] hover:bg-white/[0.08]'}`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 mb-4">
+                      {([
+                        ['urgente', '🔴', 'bg-red-500/15 text-red-300 border-red-500/40'],
+                        ['media', '🟡', 'bg-amber-500/15 text-amber-300 border-amber-500/40'],
+                        ['tranqui', '🟢', 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'],
+                      ] as const).map(([key, dot, activeCls]) => (
+                        <button
+                          key={key}
+                          onClick={() => setPinPriority(key)}
+                          className={`px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all ${pinPriority === key
+                            ? activeCls
+                            : 'bg-white/[0.04] text-white/40 border-white/[0.08] hover:bg-white/[0.08]'}`}
+                        >
+                          {dot} {t(`pendientes.priority_${key}`)}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <button
+                        onClick={() => setShowPinModal(false)}
+                        className="px-3 py-2 rounded-lg bg-white/[0.04] text-white/60 text-sm hover:bg-white/[0.1]"
+                      >
+                        {t('pendientes.close')}
+                      </button>
+                      <button
+                        onClick={() => void createPinnedTask()}
+                        disabled={pinSaving || !pinTitle.trim()}
+                        className="px-4 py-2 rounded-lg bg-white text-[#0a0e1a] text-sm font-medium hover:bg-white/90 disabled:opacity-40"
+                      >
+                        {pinSaving ? '…' : t('pendientes.save')}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Confirmación antes de mandar el pedido de reseña (evita envíos por error) */}
               {showReviewConfirm && selectedSession && (

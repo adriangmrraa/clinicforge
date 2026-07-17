@@ -2277,6 +2277,8 @@ class ClinicPending(Base):
     note = Column(Text, nullable=True)
     due_at = Column(DateTime(timezone=True), nullable=True)
     status = Column(String(12), nullable=False, server_default="abierto")
+    # urgente | media | tranqui (mig 076): derivaciones del bot=urgente, chats colgados=media
+    priority = Column(String(10), nullable=False, server_default="media")
     patient_id = Column(
         Integer, ForeignKey("patients.id", ondelete="SET NULL"), nullable=True
     )

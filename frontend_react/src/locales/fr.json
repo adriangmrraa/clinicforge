@@ -100,7 +100,21 @@
     "f_due": "Échéance (optionnelle)",
     "f_assigned": "Assigné à (optionnel)",
     "close": "Fermer",
-    "save": "Enregistrer"
+    "save": "Enregistrer",
+    "pin_button": "Tâche",
+    "follow_up_with": "Suivre le chat avec",
+    "reply_to": "Répondre à",
+    "preset_today": "Aujourd'hui 18 h",
+    "preset_tomorrow": "Demain 9 h",
+    "preset_3days": "Dans 3 jours",
+    "created_ok": "Tâche créée 📌",
+    "priority_urgente": "Urgent",
+    "priority_media": "Moyenne",
+    "priority_tranqui": "Tranquille",
+    "f_priority": "Priorité",
+    "change_priority": "Changer la priorité",
+    "from_bot": "Du bot",
+    "open_total": "Ouvertes"
   },
   "nav": {
     "pendientes": "Tâches",

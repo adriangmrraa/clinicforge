@@ -24,6 +24,7 @@ logger = logging.getLogger("orchestrator")
 router = APIRouter()
 
 VALID_STATUSES = ("abierto", "hecho", "cancelado")
+VALID_PRIORITIES = ("urgente", "media", "tranqui")
 VALID_BUCKETS = ("vencidas", "hoy", "proximas", "sin_fecha", "todas")
 
 
@@ -91,7 +92,7 @@ async def list_pendings(
         conditions.append("cp.due_at IS NULL")
     rows = await db.pool.fetch(
         f"""
-        SELECT cp.id, cp.title, cp.note, cp.due_at, cp.status, cp.assigned_to,
+        SELECT cp.id, cp.title, cp.note, cp.due_at, cp.status, cp.priority, cp.assigned_to,
                cp.created_by, cp.source, cp.done_at, cp.created_at,
                cp.patient_id, cp.conversation_id,
                (cp.status = 'abierto' AND cp.due_at IS NOT NULL AND cp.due_at < NOW()) AS is_overdue,
@@ -101,7 +102,7 @@ async def list_pendings(
         LEFT JOIN patients p ON p.id = cp.patient_id AND p.tenant_id = cp.tenant_id
         LEFT JOIN chat_conversations cc ON cc.id = cp.conversation_id AND cc.tenant_id = cp.tenant_id
         WHERE {" AND ".join(conditions)}
-        ORDER BY cp.due_at ASC NULLS LAST, cp.created_at DESC
+        ORDER BY CASE cp.priority WHEN 'urgente' THEN 0 WHEN 'media' THEN 1 ELSE 2 END, cp.due_at ASC NULLS LAST, cp.created_at DESC
         LIMIT 300
         """,
         *params,
@@ -187,12 +188,30 @@ async def create_pending(
     patient_id = data.get("patient_id") or None
     conversation_id = data.get("conversation_id") or None
     await _validate_refs(tenant_id, patient_id, conversation_id)
+    # Botón 📌 del chat (pedido Carlos: crear el pendiente SIN cargar nada a mano):
+    # el front manda solo chat_phone y acá resolvemos paciente + conversación por
+    # teléfono, SIEMPRE tenant-scoped (los resueltos son del tenant por la query misma).
+    chat_phone = (data.get("chat_phone") or "").strip() or None
+    if chat_phone:
+        if not patient_id:
+            patient_id = await db.pool.fetchval(
+                "SELECT id FROM patients WHERE tenant_id = $1 AND "
+                "regexp_replace(COALESCE(phone_number,''),'[^0-9]','','g') = regexp_replace($2,'[^0-9]','','g') LIMIT 1",
+                tenant_id, chat_phone,
+            )
+        if not conversation_id:
+            conversation_id = await db.pool.fetchval(
+                "SELECT id FROM chat_conversations WHERE tenant_id = $1 AND "
+                "regexp_replace(COALESCE(external_user_id,''),'[^0-9]','','g') = regexp_replace($2,'[^0-9]','','g') "
+                "ORDER BY updated_at DESC LIMIT 1",
+                tenant_id, chat_phone,
+            )
     row = await db.pool.fetchrow(
         """
         INSERT INTO clinic_pendings
             (tenant_id, title, note, due_at, patient_id, conversation_id,
-             assigned_to, created_by, source)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, 'staff', $8)
+             assigned_to, created_by, source, priority)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, 'staff', $8, $9)
         RETURNING id
         """,
         tenant_id,
@@ -203,6 +222,7 @@ async def create_pending(
         conversation_id,
         (data.get("assigned_to") or "").strip()[:120] or None,
         (data.get("source") or "manual").strip()[:40],
+        data.get("priority") if data.get("priority") in VALID_PRIORITIES else "media",
     )
     logger.info("pendiente creado: id=%s tenant=%s '%s'", row["id"], tenant_id, title[:50])
     return {"id": row["id"]}
@@ -247,6 +267,10 @@ async def update_pending(
         _set("note", (str(data.get("note") or "")).strip() or None)
     if "due_at" in data:
         _set("due_at", _parse_due(data.get("due_at")))
+    if "priority" in data:
+        if data.get("priority") not in VALID_PRIORITIES:
+            raise HTTPException(status_code=400, detail="Prioridad inválida")
+        _set("priority", data.get("priority"))
     if "assigned_to" in data:
         _set("assigned_to", (str(data.get("assigned_to") or "")).strip()[:120] or None)
 

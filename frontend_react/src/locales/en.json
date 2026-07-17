@@ -100,7 +100,21 @@
     "f_due": "Due date (optional)",
     "f_assigned": "Assigned to (optional)",
     "close": "Close",
-    "save": "Save"
+    "save": "Save",
+    "pin_button": "Task",
+    "follow_up_with": "Follow up with",
+    "reply_to": "Reply to",
+    "preset_today": "Today 6 pm",
+    "preset_tomorrow": "Tomorrow 9 am",
+    "preset_3days": "In 3 days",
+    "created_ok": "Task created 📌",
+    "priority_urgente": "Urgent",
+    "priority_media": "Medium",
+    "priority_tranqui": "Relaxed",
+    "f_priority": "Priority",
+    "change_priority": "Change priority",
+    "from_bot": "From bot",
+    "open_total": "Open"
   },
   "nav": {
     "pendientes": "Tasks",

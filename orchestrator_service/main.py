@@ -7808,11 +7808,11 @@ async def derivhumano(reason: str):
             await db.pool.execute(
                 """
                 INSERT INTO clinic_pendings
-                    (tenant_id, title, note, due_at, patient_id, conversation_id, created_by, source)
+                    (tenant_id, title, note, due_at, patient_id, conversation_id, created_by, source, priority)
                 SELECT $1, $2, $3, NOW() + INTERVAL '24 hours',
                        (SELECT id FROM patients WHERE tenant_id = $1 AND phone_number = $4 LIMIT 1),
                        (SELECT id FROM chat_conversations WHERE tenant_id = $1 AND external_user_id = $4 ORDER BY updated_at DESC LIMIT 1),
-                       'bot', 'derivhumano'
+                       'bot', 'derivhumano', 'urgente'
                 WHERE NOT EXISTS (
                     SELECT 1 FROM clinic_pendings
                     WHERE tenant_id = $1 AND source = 'derivhumano' AND status = 'abierto'

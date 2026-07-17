@@ -100,7 +100,21 @@
     "f_due": "Vencimiento (opcional)",
     "f_assigned": "Asignado a (opcional)",
     "close": "Cerrar",
-    "save": "Guardar"
+    "save": "Guardar",
+    "pin_button": "Pendiente",
+    "follow_up_with": "Seguir chat con",
+    "reply_to": "Responder a",
+    "preset_today": "Hoy 18 hs",
+    "preset_tomorrow": "Mañana 9 hs",
+    "preset_3days": "En 3 días",
+    "created_ok": "Pendiente creado 📌",
+    "priority_urgente": "Urgente",
+    "priority_media": "Media",
+    "priority_tranqui": "Tranqui",
+    "f_priority": "Prioridad",
+    "change_priority": "Cambiar prioridad",
+    "from_bot": "Del bot",
+    "open_total": "Abiertas"
   },
   "nav": {
     "pendientes": "Pendientes",
