@@ -3408,6 +3408,27 @@ async def request_review(
             detail="La ventana de 24hs de WhatsApp está cerrada. El paciente debe escribir primero.",
         )
 
+    # 3c) CANDADO ATÓMICO anti-doble-envío (mig 077 UNIQUE(tenant_id, phone)):
+    # reclamamos el cupo en review_requests ANTES de enviar. Si dos requests
+    # concurrentes (doble click / doble pestaña) llegan juntos, solo UNO gana el
+    # INSERT; el otro recibe 409 y no manda nada. El SELECT de arriba (paso pre-check)
+    # da el mensaje amable en el caso común; esto es el backstop race-safe real.
+    # Si el envío falla más abajo, revertimos el claim (DELETE) para permitir reintento.
+    _pid_claim = prow.get("id") if prow else None
+    _claim_id = await db.pool.fetchval(
+        "INSERT INTO review_requests (tenant_id, patient_id, phone, requested_at) "
+        "VALUES ($1, $2, $3, NOW()) "
+        "ON CONFLICT (tenant_id, phone) DO NOTHING RETURNING id",
+        payload.tenant_id,
+        _pid_claim,
+        payload.phone,
+    )
+    if _claim_id is None:
+        raise HTTPException(
+            status_code=409,
+            detail="Ya se le pidió una reseña a este contacto.",
+        )
+
     # 4) Armar el mensaje (marco altruista, personalizado)
     message = (
         f"{saludo} 😊 Fue un gusto atenderte.\n\n"
@@ -3459,6 +3480,11 @@ async def request_review(
             single_bubble=True,
         )
     except Exception as _send_err:
+        # Revertir el claim: el envío falló, el cupo debe quedar libre para reintentar.
+        try:
+            await db.pool.execute("DELETE FROM review_requests WHERE id = $1", _claim_id)
+        except Exception:
+            pass
         raise HTTPException(
             status_code=502, detail=f"No se pudo enviar el mensaje: {_send_err}"
         )
@@ -3479,20 +3505,20 @@ async def request_review(
         logger.warning(f"review-request: no pude verificar la entrega: {_verify_err}")
         _meta = {}
     if (_meta or {}).get("delivery_status") == "failed":
+        # Revertir el claim: no llegó → liberar el cupo para reintentar.
+        try:
+            await db.pool.execute("DELETE FROM review_requests WHERE id = $1", _claim_id)
+        except Exception:
+            pass
         raise HTTPException(
             status_code=502,
             detail="WhatsApp no aceptó el envío: el mensaje NO llegó al paciente. Revisá la conexión del número e intentá de nuevo.",
         )
 
-    # 6) Registrar el pedido + marcar al paciente (best-effort, no bloqueante)
+    # 6) Marcar al paciente (el registro en review_requests YA se hizo en el claim atómico
+    # del paso 3c — acá solo actualizamos patients.review_requested_at para el estado visual).
     _pid = prow.get("id") if prow else None
     try:
-        await db.pool.execute(
-            "INSERT INTO review_requests (tenant_id, patient_id, phone, requested_at) VALUES ($1, $2, $3, NOW())",
-            payload.tenant_id,
-            _pid,
-            payload.phone,
-        )
         # Marcamos por patient_id (confiable: el mismo id que muestra la lista de chats).
         # Solo caemos a match por telefono si no resolvimos el paciente.
         if _pid is not None:

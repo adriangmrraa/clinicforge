@@ -238,6 +238,8 @@ class ReviewRequest(Base):
 
     __table_args__ = (
         Index("ix_review_requests_tenant_at", "tenant_id", "requested_at"),
+        # Candado atómico anti-doble-envío (mig 077): 1 pedido por (tenant, teléfono).
+        UniqueConstraint("tenant_id", "phone", name="uq_review_requests_tenant_phone"),
     )
 
 
