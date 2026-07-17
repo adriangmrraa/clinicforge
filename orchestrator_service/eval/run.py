@@ -265,6 +265,7 @@ async def main() -> int:
                     _mt.set_context({
                         "avail_days": c.get("mock_availability_days"),
                         "book_fails": c.get("mock_book_fails"),
+                        "my_appointments": c.get("mock_my_appointments"),
                     })
                     answer, _pt, _ct, tool_trace = await _run_agent_turn(
                         client, mc["model"], messages, args.temperature, tools,

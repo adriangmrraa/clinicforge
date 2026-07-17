@@ -252,6 +252,11 @@ def execute(name: str, args: dict) -> str:
         return "OK — equipo notificado por email."
 
     if name == "list_my_appointments":
+        # Override por-caso (mock_my_appointments: "none"): casos patient_no_appointment
+        # — el default inventaba un turno fantasma que contradecía el caso y desviaba
+        # la conversación a "ya tenés un turno" (falso FALLA de los casos recurrentes).
+        if _CTX.get("my_appointments") == "none":
+            return "Sin turnos. ¿Agendamos?"
         prox = _next_weekday(date.today() + timedelta(days=3))
         return f"PRÓXIMO TURNO: {_fmt(prox)} 10:00 hs — Consulta. Sede Córdoba."
 
