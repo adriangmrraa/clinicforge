@@ -3454,6 +3454,9 @@ async def request_review(
             account_id=conv.get("external_account_id") or "",
             cw_conv_id=conv.get("external_chatwoot_id") or "",
             messages_text=message,
+            # Meta cobra POR MENSAJE: el pedido de reseña va ENTERO en un solo
+            # globito (antes salía en 4 por los párrafos).
+            single_bubble=True,
         )
     except Exception as _send_err:
         raise HTTPException(
@@ -3938,7 +3941,7 @@ async def get_tenants(
             status_code=403, detail="Solo el CEO puede gestionar clínicas."
         )
     rows = await db.pool.fetch(
-        "SELECT id, clinic_name, bot_phone_number, config, address, google_maps_url, working_hours, consultation_price, bank_cbu, bank_alias, bank_holder_name, derivation_email, logo_url, max_chairs, country_code, system_prompt_template, bot_name, payment_methods, financing_available, max_installments, installments_interest_free, financing_provider, financing_notes, cash_discount_percent, accepts_crypto, accepts_pregnant_patients, pregnancy_restricted_treatments, pregnancy_notes, accepts_pediatric, min_pediatric_age_years, pediatric_notes, high_risk_protocols, requires_anamnesis_before_booking, complaint_escalation_email, complaint_escalation_phone, expected_wait_time_minutes, revision_policy, review_platforms, complaint_handling_protocol, auto_send_review_link_after_followup, created_at, updated_at FROM tenants WHERE id = ANY($1::int[]) ORDER BY id ASC",
+        "SELECT id, clinic_name, bot_phone_number, config, address, google_maps_url, working_hours, consultation_price, bank_cbu, bank_alias, bank_holder_name, derivation_email, logo_url, max_chairs, country_code, system_prompt_template, bot_name, payment_methods, financing_available, max_installments, installments_interest_free, financing_provider, financing_notes, cash_discount_percent, accepts_crypto, accepts_pregnant_patients, pregnancy_restricted_treatments, pregnancy_notes, accepts_pediatric, min_pediatric_age_years, pediatric_notes, high_risk_protocols, requires_anamnesis_before_booking, complaint_escalation_email, complaint_escalation_phone, expected_wait_time_minutes, revision_policy, review_platforms, review_goal_monthly, complaint_handling_protocol, auto_send_review_link_after_followup, created_at, updated_at FROM tenants WHERE id = ANY($1::int[]) ORDER BY id ASC",
         allowed_ids,
     )
     result = []

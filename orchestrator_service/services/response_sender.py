@@ -23,12 +23,17 @@ class ResponseSender:
     """Clase unificada para enviar respuestas al usuario mediante burbujas (Bubble-by-bubble)."""
     
     @classmethod
-    async def send_sequence(cls, tenant_id: int, external_user_id: str, conversation_id: str, 
-                            provider: str, channel: str, account_id: str, cw_conv_id: str, 
-                            messages_text: str, media_urls: List[str] = None):
+    async def send_sequence(cls, tenant_id: int, external_user_id: str, conversation_id: str,
+                            provider: str, channel: str, account_id: str, cw_conv_id: str,
+                            messages_text: str, media_urls: List[str] = None,
+                            single_bubble: bool = False):
         """
         Envía una secuencia de mensajes (texto fragmentado en burbujas) y archivos multimedia previos.
         Aplica los retrasos (BUBBLE_DELAY_SECONDS) y typing indicators de forma robusta.
+
+        single_bubble=True manda TODO el texto en UN solo mensaje (sin fragmentar):
+        para envíos puntuales tipo pedido de reseña — Meta cobra POR MENSAJE, y un
+        texto con párrafos salía en 3-4 globitos facturables.
         """
         if media_urls is None:
             media_urls = []
@@ -68,7 +73,12 @@ class ResponseSender:
 
         # Fragmentar el texto en burbujas con un splitter mejorado (por párrafos o puntuación larga)
         max_len = await BufferManager.get_config(pool, provider, channel, tenant_id, "max_message_length", 350)
-        bot_bubbles = cls._split_into_bubbles(messages_text, max_len)
+        if single_bubble:
+            # WhatsApp banca hasta ~4096 chars por mensaje; el tope de 350 es para
+            # la conversación del bot, no para estos envíos únicos.
+            bot_bubbles = [messages_text.strip()] if messages_text.strip() else []
+        else:
+            bot_bubbles = cls._split_into_bubbles(messages_text, max_len)
         
         # Resolver physical paths for Chatwoot attachments
         path_mapping = {}
