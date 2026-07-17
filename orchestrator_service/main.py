@@ -6153,10 +6153,26 @@ async def book_appointment(
         # Build seña/bank info to include in response
         sena_block = ""
         try:
-            t_bank = await db.pool.fetchrow(
-                "SELECT bank_cbu, bank_alias, bank_holder_name, consultation_price FROM tenants WHERE id = $1",
+            # Regla Carlos (caso Myriam/Jerárquicos 2026-07-17): a un paciente HABITUAL
+            # (ya asistió: tiene al menos un turno completado) NO se le pide seña — la
+            # confirmación va con ubicación y listo, sin abrumar. La seña queda para
+            # pacientes nuevos / que nunca asistieron.
+            _es_habitual = await db.pool.fetchval(
+                "SELECT 1 FROM appointments WHERE tenant_id = $1 AND patient_id = $2 "
+                "AND status = 'completed' LIMIT 1",
                 tenant_id,
+                patient_id,
             )
+            if _es_habitual:
+                logger.info(
+                    "💰 SEÑA: paciente HABITUAL (turno completado previo) → sin seña (regla Carlos, confirmación+ubicación y listo)"
+                )
+                t_bank = None  # sena_block queda vacío: la rama de abajo no arma nada
+            else:
+                t_bank = await db.pool.fetchrow(
+                    "SELECT bank_cbu, bank_alias, bank_holder_name, consultation_price FROM tenants WHERE id = $1",
+                    tenant_id,
+                )
             logger.info(
                 f"💰 SEÑA DEBUG: tenant_id={tenant_id} bank_holder={t_bank.get('bank_holder_name') if t_bank else 'NO_TENANT'} tenant_price={t_bank.get('consultation_price') if t_bank else 'N/A'}"
             )
