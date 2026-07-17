@@ -283,6 +283,16 @@ async def main() -> int:
                 answer = ""
                 print(f"\n[{c.get('id')}] ERROR llamando al modelo: {e}")
 
+            # CANDADO DE SALIDA (espejo de buffer_task ~4760, decisión 2026-07-17):
+            # en prod la respuesta del modelo pasa por el strip determinista ANTES
+            # de llegar al paciente. El banco juzga lo que el paciente VE, así que
+            # se aplica acá también — la misma función que valida test_candado_salida.
+            from eval.test_candado_salida import candado_salida as _candado
+            _pre_candado = answer
+            answer = _candado(answer, c.get("patient_context", ""), c.get("user", ""))
+            if _pre_candado != answer:
+                print(f"    [candado-salida] recortó lo prohibido ({len(_pre_candado)}->{len(answer)} chars)")
+
             # [SILENCIO] = el agente decidió no responder (anti-loop de cortesía).
             # No lo mandamos al juez: lo evaluamos según lo que el caso espera.
             if (answer or "").strip().upper().startswith("[SILENCIO]"):
