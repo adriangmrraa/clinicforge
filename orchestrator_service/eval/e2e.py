@@ -81,6 +81,10 @@ async def _cleanup(db):
                 await db.pool.execute("DELETE FROM lab_cases WHERE tenant_id=$1 AND patient_id = ANY($2::int[])", TEST_TENANT, ids)
             except Exception:
                 pass  # la tabla puede no existir en entornos sin el módulo Laboratorio
+            try:
+                await db.pool.execute("DELETE FROM clinic_pendings WHERE tenant_id=$1 AND patient_id = ANY($2::int[])", TEST_TENANT, ids)
+            except Exception:
+                pass  # ídem: módulo Pendientes (mig 075)
             await db.pool.execute("DELETE FROM patients WHERE id = ANY($1::int[])", ids)
             print(f"   🧹 limpieza: {len(ids)} paciente(s) de prueba + sus turnos borrados")
     except Exception as e:
@@ -375,11 +379,86 @@ async def scenario_laboratorio(db, book_appointment, set_ctx):
     return results
 
 
+# ----------------------------------------------------------------------------
+# ESCENARIO F — Módulo Pendientes (mig 075): el INSERT-dedupe del auto-pendiente
+# de derivhumano (la query exacta) + los buckets del summary.
+# (No llama derivhumano completo: mandaría emails reales al equipo.)
+# ----------------------------------------------------------------------------
+async def scenario_pendientes(db, book_appointment, set_ctx):
+    results = []
+    pid = await db.pool.fetchval(
+        "INSERT INTO patients (tenant_id, phone_number, first_name, status, created_at) "
+        "VALUES ($1,$2,'TestPendE2E','active',NOW()) "
+        "ON CONFLICT (tenant_id, phone_number) WHERE phone_number IS NOT NULL "
+        "DO UPDATE SET first_name='TestPendE2E' RETURNING id",
+        TEST_TENANT, TEST_PHONE,
+    )
+
+    _auto_insert = """
+        INSERT INTO clinic_pendings
+            (tenant_id, title, note, due_at, patient_id, conversation_id, created_by, source)
+        SELECT $1, $2, $3, NOW() + INTERVAL '24 hours',
+               (SELECT id FROM patients WHERE tenant_id = $1 AND phone_number = $4 LIMIT 1),
+               (SELECT id FROM chat_conversations WHERE tenant_id = $1 AND external_user_id = $4 ORDER BY updated_at DESC LIMIT 1),
+               'bot', 'derivhumano'
+        WHERE NOT EXISTS (
+            SELECT 1 FROM clinic_pendings
+            WHERE tenant_id = $1 AND source = 'derivhumano' AND status = 'abierto'
+              AND conversation_id = (SELECT id FROM chat_conversations WHERE tenant_id = $1 AND external_user_id = $4 ORDER BY updated_at DESC LIMIT 1)
+              AND created_at > NOW() - INTERVAL '24 hours'
+        )
+    """
+    args = (TEST_TENANT, "Seguir derivación: test E2E", "nota test", TEST_PHONE)
+
+    def _count():
+        return db.pool.fetchval(
+            "SELECT COUNT(*) FROM clinic_pendings WHERE tenant_id=$1 AND patient_id=$2 AND source='derivhumano'",
+            TEST_TENANT, pid,
+        )
+
+    # F.1 — el auto-pendiente se crea.
+    await db.pool.execute(_auto_insert, *args)
+    n1 = await _count()
+    results.append(("auto-pendiente de derivación se crea", n1 == 1, f"filas={n1}"))
+
+    # F.2 — dedupe: repetir NO duplica (misma conversación, abierto, <24h).
+    # OJO: sin chat_conversations del test, conversation_id es NULL y el dedupe por
+    # conversación no matchea (NULL != NULL) — creamos la conversación primero.
+    conv = await db.pool.fetchval(
+        "INSERT INTO chat_conversations (tenant_id, channel, external_user_id, last_message_at, updated_at) "
+        "VALUES ($1,'whatsapp',$2,NOW(),NOW()) "
+        "ON CONFLICT (tenant_id, channel, external_user_id) DO UPDATE SET updated_at=NOW() RETURNING id",
+        TEST_TENANT, TEST_PHONE,
+    )
+    await db.pool.execute("UPDATE clinic_pendings SET conversation_id=$1 WHERE tenant_id=$2 AND patient_id=$3", conv, TEST_TENANT, pid)
+    await db.pool.execute(_auto_insert, *args)
+    n2 = await _count()
+    results.append(("dedupe: repetir la derivación NO duplica el pendiente", n2 == 1, f"filas={n2}"))
+
+    # F.3 — bucket vencidas: un pendiente con due_at pasado cuenta como vencido.
+    await db.pool.execute(
+        "UPDATE clinic_pendings SET due_at = NOW() - INTERVAL '1 hour' WHERE tenant_id=$1 AND patient_id=$2",
+        TEST_TENANT, pid,
+    )
+    overdue = await db.pool.fetchval(
+        "SELECT COUNT(*) FROM clinic_pendings WHERE tenant_id=$1 AND patient_id=$2 "
+        "AND status='abierto' AND due_at IS NOT NULL AND due_at < NOW()",
+        TEST_TENANT, pid,
+    )
+    results.append(("bucket 'vencidas' lo detecta (estado derivado, sin job)", overdue == 1, f"vencidas={overdue}"))
+
+    # limpieza local del escenario (la conversación de test no la borra _cleanup)
+    await db.pool.execute("DELETE FROM clinic_pendings WHERE tenant_id=$1 AND patient_id=$2", TEST_TENANT, pid)
+    await db.pool.execute("DELETE FROM chat_conversations WHERE id=$1 AND tenant_id=$2", conv, TEST_TENANT)
+    return results
+
+
 SCENARIOS = {
     "hijo": scenario_hijo_no_duplicado,
     "agendado": scenario_agendado_y_quiere_antes,
     "profesional": scenario_profesional_ultimo_turno,
     "lab": scenario_laboratorio,
+    "pendientes": scenario_pendientes,
     "dados": scenario_dados,
 }
 

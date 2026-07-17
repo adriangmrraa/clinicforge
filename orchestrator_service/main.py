@@ -7799,6 +7799,36 @@ async def derivhumano(reason: str):
         except Exception:
             pass  # Socket notification is non-critical
 
+        # AUTO-PENDIENTE (módulo Pendientes, mig 075): cada derivación crea una tarea con
+        # vencimiento en 24h para que el equipo la siga — cierra el hueco "la IA promete
+        # 'lo pasé al equipo' y el chat se olvida". Dedupe: no duplica si ya hay un
+        # pendiente ABIERTO de derivhumano para esta conversación en las últimas 24h.
+        # Best-effort: si falla (p. ej. la migración aún no corrió), la derivación sigue.
+        try:
+            await db.pool.execute(
+                """
+                INSERT INTO clinic_pendings
+                    (tenant_id, title, note, due_at, patient_id, conversation_id, created_by, source)
+                SELECT $1, $2, $3, NOW() + INTERVAL '24 hours',
+                       (SELECT id FROM patients WHERE tenant_id = $1 AND phone_number = $4 LIMIT 1),
+                       (SELECT id FROM chat_conversations WHERE tenant_id = $1 AND external_user_id = $4 ORDER BY updated_at DESC LIMIT 1),
+                       'bot', 'derivhumano'
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM clinic_pendings
+                    WHERE tenant_id = $1 AND source = 'derivhumano' AND status = 'abierto'
+                      AND conversation_id = (SELECT id FROM chat_conversations WHERE tenant_id = $1 AND external_user_id = $4 ORDER BY updated_at DESC LIMIT 1)
+                      AND created_at > NOW() - INTERVAL '24 hours'
+                )
+                """,
+                tenant_id,
+                f"Seguir derivación: {(reason or '')[:150]}",
+                f"El bot derivó esta conversación al equipo. Motivo: {reason}",
+                phone,
+            )
+            logger.info(f"📌 Auto-pendiente de derivación creado/deduplicado para {phone}")
+        except Exception as _pend_err:
+            logger.warning(f"auto-pendiente de derivación no creado (non-fatal): {_pend_err}")
+
         # 1. Full patient data + PSIDs for social links
         patient = await db.pool.fetchrow(
             """
@@ -14628,6 +14658,15 @@ try:
     logger.info("✅ Laboratorio router registered")
 except Exception as e:
     logger.error(f"lab_router_registration_failed: {e}")
+
+# Módulo Pendientes con vencimiento (mig 075): clinic_pendings
+try:
+    from routes.pending_routes import router as pending_router
+
+    app.include_router(pending_router, prefix="/admin", tags=["Pendientes"])
+    logger.info("✅ Pendientes router registered")
+except Exception as e:
+    logger.error(f"pending_router_registration_failed: {e}")
 
 # Playbook Engine V2 routes
 try:

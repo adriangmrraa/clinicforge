@@ -2259,6 +2259,41 @@ class AgentTurnLog(Base):
 # =============================================================================
 
 
+class ClinicPending(Base):
+    """Pendiente de la clinica con vencimiento (migración 075).
+
+    Tarea/nota para que no se olviden chats cuando interviene la secretaria.
+    'vencido' NO se almacena: se deriva de (status='abierto' AND due_at < NOW()).
+    El bot crea pendientes automáticos al derivar (created_by='bot', source='derivhumano').
+    """
+
+    __tablename__ = "clinic_pendings"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    tenant_id = Column(
+        Integer, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    title = Column(String(200), nullable=False)
+    note = Column(Text, nullable=True)
+    due_at = Column(DateTime(timezone=True), nullable=True)
+    status = Column(String(12), nullable=False, server_default="abierto")
+    patient_id = Column(
+        Integer, ForeignKey("patients.id", ondelete="SET NULL"), nullable=True
+    )
+    conversation_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("chat_conversations.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    assigned_to = Column(String(120), nullable=True)
+    created_by = Column(String(40), nullable=False, server_default="staff")
+    source = Column(String(40), nullable=True)
+    reminder_sent_at = Column(DateTime(timezone=True), nullable=True)
+    done_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
 class CaseToReview(Base):
     """Conversacion donde el bot fallo o quedo trabado, detectada por el job
     colector (jobs/case_collector.py) para revisar y mejorar el prompt.
