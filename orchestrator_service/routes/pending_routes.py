@@ -110,6 +110,45 @@ async def list_pendings(
 
 
 @router.get(
+    "/pendings/unanswered-chats",
+    dependencies=[Depends(verify_admin_token)],
+    tags=["Pendientes"],
+)
+async def unanswered_chats(
+    hours: int = 2,
+    tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """Chats ESPERANDO RESPUESTA de la clínica (caso Pau 2026-07-16): la secretaria
+    intervino (IA muda por override humano), el paciente respondió y nadie siguió.
+
+    Detección EN VIVO (sin job ni datos nuevos): override humano vigente + el último
+    mensaje es del PACIENTE + pasaron >N horas (default 2) sin respuesta.
+    """
+    hours = max(1, min(int(hours or 2), 72))
+    rows = await db.pool.fetch(
+        """
+        SELECT cc.id AS conversation_id, cc.external_user_id AS chat_phone,
+               cc.display_name, cc.last_message_at, cc.last_message_preview,
+               p.id AS patient_id,
+               p.first_name || ' ' || COALESCE(p.last_name, '') AS patient_name,
+               EXTRACT(EPOCH FROM (NOW() - cc.last_message_at))/3600.0 AS hours_waiting
+        FROM chat_conversations cc
+        LEFT JOIN patients p ON p.id = cc.linked_patient_id AND p.tenant_id = cc.tenant_id
+        WHERE cc.tenant_id = $1
+          AND cc.human_override_until IS NOT NULL AND cc.human_override_until > NOW()
+          AND cc.last_user_message_at IS NOT NULL
+          AND cc.last_user_message_at >= cc.last_message_at - INTERVAL '5 seconds'
+          AND cc.last_user_message_at < NOW() - ($2 || ' hours')::interval
+        ORDER BY cc.last_user_message_at ASC
+        LIMIT 50
+        """,
+        tenant_id,
+        str(hours),
+    )
+    return [dict(r) for r in rows]
+
+
+@router.get(
     "/pendings/summary",
     dependencies=[Depends(verify_admin_token)],
     tags=["Pendientes"],

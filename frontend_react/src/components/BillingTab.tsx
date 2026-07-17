@@ -2275,7 +2275,8 @@ interface CreatePlanModalProps {
   professionals: Professional[];
   onCreate: () => void;
   onClose: () => void;
-  t: (key: string) => string;
+  // Misma firma que el t del LanguageContext (acepta fallback/interpolación como 2º arg)
+  t: (key: string, data?: Record<string, any> | string) => string;
 }
 
 function CreatePlanModal({ newPlanData, setNewPlanData, professionals, onCreate, onClose, t }: CreatePlanModalProps) {

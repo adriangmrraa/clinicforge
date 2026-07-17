@@ -21,6 +21,7 @@ import {
   Wallet,
   Ban,
   FlaskConical,
+  ListTodo,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTranslation } from '../context/LanguageContext';
@@ -134,6 +135,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle, onCloseMo
     { id: 'tokens', labelKey: 'nav.tokens' as const, icon: <Zap size={17} />, path: '/dashboard/status', roles: ['ceo'], hint: 'Consumo de IA por servicio, costos y seleccion de modelos' },
     { id: 'treatments', labelKey: 'nav.treatments' as const, icon: <Clock size={17} />, path: '/tratamientos', roles: ['ceo', 'secretary'], hint: 'Tipos de tratamiento con precios, duracion e imagenes' },
     { id: 'laboratorio', labelKey: 'nav.laboratorio' as const, icon: <FlaskConical size={17} />, path: '/laboratorio', roles: ['ceo', 'professional', 'secretary'], hint: 'Trabajos de laboratorio: estados, vencimientos y laboratorios' },
+    { id: 'pendientes', labelKey: 'nav.pendientes' as const, icon: <ListTodo size={17} />, path: '/pendientes', roles: ['ceo', 'professional', 'secretary'], hint: 'Tareas con vencimiento y chats esperando respuesta — que nada se olvide' },
     { id: 'my-liquidations', labelKey: 'nav.my_liquidations' as const, icon: <Wallet size={17} />, path: '/mis-liquidaciones', roles: ['professional'], hint: 'Tus liquidaciones, comisiones y estado de pagos' },
     { id: 'profile', labelKey: 'nav.profile' as const, icon: <User size={17} />, path: '/perfil', roles: ['ceo', 'professional', 'secretary'], hint: 'Tu perfil y datos de cuenta' },
     { id: 'marketing', labelKey: 'nav.marketing' as const, icon: <Megaphone size={17} />, path: '/marketing', roles: ['ceo'], hint: 'ROI real de Meta Ads y Google Ads con atribución de pacientes' },
