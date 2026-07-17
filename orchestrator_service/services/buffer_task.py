@@ -4840,9 +4840,22 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                 # MISFIRE de silencio SOLO si: el bot ofreció avanzar Y el paciente ACEPTÓ
                 # (no un simple "gracias"). Así NO alertamos de más en cierres corteses legítimos.
                 _silence_misfire = _bot_offered_advance and _user_accepts
+                # Afinado 2026-07-16 (caso Lucas 2ª prueba): la cortesía efusiva rioplatense es
+                # LARGA ("gracias tu atención es increíble qué feliz me haces...") — el tope de
+                # 6 palabras daba falso "Bot falló" ante un puro agradecimiento. Ahora: hasta 12
+                # palabras, PERO cualquier palabra de PEDIDO/ACCIÓN fuerza el flag igual (un
+                # "gracias... mirame esto y seguimos" SÍ requiere respuesta aunque agradezca).
+                _action_words = (
+                    "mira", "mirá", "necesito", "quiero", "podes", "podés", "puede", "podrias", "podrías",
+                    "mandame", "mando", "envio", "envío", "espera", "esperá", "turno", "consulta",
+                    "precio", "cuanto", "cuánto", "cuando", "cuándo", "donde", "dónde", "como se", "cómo se",
+                    "ayuda", "seguimos", "pendiente", "reprogram", "cancel", "cambia", "avisame", "avísame",
+                )
+                _has_action = any(w in _last_user for w in _action_words)
                 _looks_courtesy = (
                     "?" not in _last_user
-                    and len(_last_user.split()) <= 6
+                    and len(_last_user.split()) <= 12
+                    and not _has_action
                     and not _last_user.startswith(("hola", "buenas", "buen dia", "buen día"))
                     and any(w in _last_user for w in (_accept_words + _pure_courtesy))
                     and not _silence_misfire
