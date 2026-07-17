@@ -184,11 +184,14 @@ def execute(name: str, args: dict) -> str:
                 f"SYSTEM_NOTE: el turno mas cercano disponible es {_fmt(s1)} "
                 f"(a +{delay} dias de hoy).\n"
             )
+        # Espejo de la tool real: cada slot incluye el profesional (la real lo trae
+        # de la BD; sin esto, el banco marcaba "no dijo con la Dra" como fallo del
+        # bot cuando en prod el nombre viene servido en el resultado de la tool).
         return (
             note
             + "DISPONIBLE:\n"
-            + f"1) {_fmt(s1)} — 10:00 hs\n"
-            + f"2) {_fmt(s2)} — 11:15 hs"
+            + f"1) {_fmt(s1)} — 10:00 hs — Dra. Laura Delgado\n"
+            + f"2) {_fmt(s2)} — 11:15 hs — Dra. Laura Delgado"
         )
 
     if name == "confirm_slot":
