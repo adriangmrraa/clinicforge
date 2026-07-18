@@ -4795,6 +4795,77 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
     except Exception as _oc_err:
         logger.warning(f"candado-salida-recurrente skipped (non-fatal): {_oc_err}")
 
+    # --- CANDADO DE SALIDA: CIERRE DEL TURNO en 2 globitos (optimización burbujas) ---
+    # Decisión 2026-07-17 (Carlos, caso María Montes): el cierre saturaba con ~7 globitos
+    # (confirmación repetida + seña + ficha + relleno). Este guard actúa SOLO sobre una
+    # respuesta que es un CIERRE de agendado (tiene la seña o el link de anamnesis) y:
+    #   1) borra frases de puro relleno ("si querés después te ayudo con cualquier duda")
+    #   2) saca re-confirmaciones DUPLICADAS (deja la primera)
+    #   3) reagrupa en 2 globitos: confirmación | acciones opcionales (seña + ficha)
+    # Determinista, no depende del modelo. Defensivo: ante cualquier error o duda, deja la
+    # respuesta como estaba (NUNCA rompe el cierre real ni pierde la seña/el link).
+    try:
+        if response_text:
+            _rt = response_text
+            _low = _rt.lower()
+            _has_anamnesis = (
+                ("anamnesis" in _low or "ficha médica" in _low or "ficha medica" in _low)
+                and "http" in _low
+            )
+            _has_sena = bool(re.search(r"se[ñn]a", _rt, re.I)) and bool(
+                re.search(r"alias|cbu", _rt, re.I)
+            )
+            if _has_anamnesis or _has_sena:
+                _paras = [p.strip() for p in re.split(r"\n\s*\n", _rt) if p.strip()]
+                # 1) relleno fuera (frases de cierre vacías; NO toca el "avisame" de la ficha)
+                _filler = re.compile(
+                    r"(?i)^\s*(?:si quer[eé]s[,]?\s+despu[eé]s te ayudo"
+                    r"|cualquier (?:otra )?(?:duda|consulta)[,.]?\s+(?:me\s+)?avisa"
+                    r"|ante cualquier (?:otra )?(?:duda|consulta)"
+                    r"|quedo a (?:tu )?disposici[oó]n)"
+                )
+                _paras = [p for p in _paras if not _filler.search(p)]
+                # 2) dedup de confirmaciones (un párrafo que dice "turno confirmado/reservado")
+                _seen_confirm = False
+                _kept = []
+                for _p in _paras:
+                    _is_confirm = bool(
+                        re.search(
+                            r"(?i)(?:turno.*(?:confirm|reserv)|qued[oó].*(?:confirmad|reservad)|ya ten[eé]s tu turno)",
+                            _p,
+                        )
+                    )
+                    if _is_confirm and _seen_confirm:
+                        continue  # re-confirmación duplicada → fuera
+                    if _is_confirm:
+                        _seen_confirm = True
+                    _kept.append(_p)
+                _paras = _kept
+
+                def _is_opt(_p):
+                    _pl = _p.lower()
+                    return (
+                        "alias" in _pl or "cbu" in _pl or bool(re.search(r"se[ñn]a", _pl))
+                        or "ficha médica" in _pl or "ficha medica" in _pl or "anamnesis" in _pl
+                    )
+
+                _first_opt = next((i for i, _p in enumerate(_paras) if _is_opt(_p)), None)
+                if _first_opt is not None and _first_opt > 0:
+                    _conf = "\n".join(_paras[:_first_opt]).strip()
+                    _opt = "\n".join(_paras[_first_opt:]).strip()
+                    _new = (_conf + "\n\n" + _opt) if (_conf and _opt) else (_conf or _opt)
+                else:
+                    _new = "\n\n".join(_paras).strip()
+
+                if _new and _new != _rt:
+                    logger.warning(
+                        f"🔒 CANDADO CIERRE: reagrupé el cierre en 2 globitos / saqué relleno "
+                        f"({len(_rt)}→{len(_new)} chars) para {external_user_id}"
+                    )
+                    response_text = _new
+    except Exception as _cl_err:
+        logger.warning(f"candado-cierre skipped (non-fatal): {_cl_err}")
+
     # --- AGENT FAILURE GUARD (blindaje "esto no puede pasar") ---
     # Si el motor cayó y quedó el fallback de error, NO lo mandamos como mensaje
     # robótico al paciente, PERO tampoco lo dejamos en silencio invisible:
