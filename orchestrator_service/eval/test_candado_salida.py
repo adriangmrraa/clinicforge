@@ -39,6 +39,15 @@ def candado_salida(response_text: str, patient_context: str, last_user_msg: str)
             r"(?is)la consulta de evaluaci[oó]n tiene un valor.*?presupuesto correspondiente\.?",
             "", response_text,
         ).strip()
+    _continuity = any(
+        w in _last_txt
+        for w in ("a terminar", "terminar", "seguir con", "continuar", "en curso",
+                  "que empec", "retomar", "seguimiento", "control")
+    )
+    if _continuity:
+        response_text = re.sub(
+            r"(?im)^.*\bideal\b.{0,45}\bevaluaci[oó]n.*$\n?", "", response_text
+        ).strip()
     response_text = re.sub(r"\n{3,}", "\n\n", response_text).strip()
     if not response_text:
         response_text = FALLBACK
@@ -103,6 +112,24 @@ CASOS = [
         CTX_RECURRENTE_PARTICULAR,
         "quiero un turno con la dra",
         lambda out: "obra social" not in out.lower() and "coordino el turno" in out,
+    ),
+    (
+        "MALA-6: continuidad (Myriam) — plantilla 'primero una evaluación' a un recurrente en curso",
+        "¡Hola Myriam! 😊\n"
+        "Para implantes lo ideal es primero una evaluación con la Dra. Laura Delgado.\n"
+        "Con Jerárquicos Salud, si corresponde algún coseguro se confirma en la clínica.\n\n"
+        "1️⃣ Lunes 20/07 — 10:00 hs\n2️⃣ Martes 21/07 — 11:15 hs\n¿Cuál te queda mejor?",
+        CTX_RECURRENTE_OS,
+        "Hola, tengo un implante con la dra a terminar, necesito turno",
+        lambda out: "ideal es primero una evaluación" not in out.lower() and "1️⃣" in out,
+    ),
+    (
+        "BUENA-4: recurrente NUEVO interés en implantes (SIN continuidad) → la evaluación SOBREVIVE",
+        "¡Hola! Para implantes lo ideal es primero una evaluación con la Dra. Laura.\n\n"
+        "1️⃣ Lunes 20/07 — 10:00 hs",
+        CTX_RECURRENTE_OS,
+        "hola, me interesa ponerme implantes, nunca me hice",
+        lambda out: "evaluación" in out.lower(),  # sin palabra de continuidad → no se toca
     ),
     (
         "BUENA-1: paciente NUEVO → la pregunta de cobertura SOBREVIVE (flujo correcto)",

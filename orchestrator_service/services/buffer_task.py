@@ -4783,6 +4783,20 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                     r"(?is)la consulta de evaluaci[oó]n tiene un valor.*?presupuesto correspondiente\.?",
                     "", response_text,
                 ).strip()
+            # 3) CONTINUIDAD (caso Myriam, flip-flop del banco 76%↔90%): si el paciente
+            #    dice que viene a TERMINAR/SEGUIR un tratamiento en curso, la plantilla
+            #    "lo ideal es primero una evaluación" es para NUEVOS y está mal → fuera.
+            #    Gatilla solo con palabras de continuidad en su mensaje (no toca a un
+            #    recurrente que consulta por un tratamiento NUEVO).
+            _continuity = any(
+                w in _last_txt
+                for w in ("a terminar", "terminar", "seguir con", "continuar", "en curso",
+                          "que empec", "retomar", "seguimiento", "control")
+            )
+            if _continuity:
+                response_text = re.sub(
+                    r"(?im)^.*\bideal\b.{0,45}\bevaluaci[oó]n.*$\n?", "", response_text
+                ).strip()
             response_text = re.sub(r"\n{3,}", "\n\n", response_text).strip()
             if _before != response_text:
                 logger.warning(
