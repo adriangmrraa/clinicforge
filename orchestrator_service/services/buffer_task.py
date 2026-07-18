@@ -4916,6 +4916,47 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
     except Exception as _cl_err:
         logger.warning(f"candado-cierre skipped (non-fatal): {_cl_err}")
 
+    # --- CANDADO: OFERTA DE TURNOS en UN solo globito (caso Lucas: salió en 4) ---
+    # El prompt YA pide "todo en una burbuja" para las opciones, pero el mini usa doble
+    # salto de línea igual y WhatsApp lo parte en 3-4 globitos. Guard determinista: si la
+    # respuesta es una OFERTA de turnos (tiene 1️⃣ + una pregunta de elección/2️⃣) y NO es
+    # un cierre (sin seña ni link de anamnesis), colapsamos los dobles saltos a saltos
+    # simples → un solo globito. Defensivo.
+    try:
+        if (
+            response_text
+            and "1️⃣" in response_text
+            and re.search(r"(2️⃣|cu[aá]l te queda mejor|opciones disponibles)", response_text, re.I)
+            and not re.search(r"alias|cbu|anamnesis|ficha m[eé]dica", response_text, re.I)
+        ):
+            _pre_of = response_text
+            response_text = re.sub(r"\n\s*\n", "\n", response_text).strip()
+            if _pre_of != response_text:
+                logger.warning(
+                    f"🔒 CANDADO OFERTA: junté la oferta de turnos en 1 globito "
+                    f"({len(_pre_of)}→{len(response_text)} chars) para {external_user_id}"
+                )
+    except Exception as _of_err:
+        logger.warning(f"candado-oferta skipped (non-fatal): {_of_err}")
+
+    # --- CANDADO: coseguro NO es solo 'en efectivo' (caso Lucas) ---
+    # El bot a veces inventa que el coseguro "se abona en efectivo" — el prompt NO lo dice
+    # (el coseguro se puede pagar en efectivo O por transferencia). Ampliamos la frase para
+    # no darle info incorrecta al paciente. Solo toca frases de coseguro con "en efectivo".
+    try:
+        if response_text and re.search(r"coseguro", response_text, re.I) and re.search(r"en efectivo", response_text, re.I):
+            _pre_cs = response_text
+            response_text = re.sub(
+                r"(?i)\bse abona en efectivo\b", "se abona (en efectivo o por transferencia)", response_text
+            )
+            response_text = re.sub(
+                r"(?i)\bse paga en efectivo\b", "se paga (en efectivo o por transferencia)", response_text
+            )
+            if _pre_cs != response_text:
+                logger.warning(f"🔒 CANDADO COSEGURO: amplié 'efectivo' a efectivo/transferencia para {external_user_id}")
+    except Exception as _cs_err:
+        logger.warning(f"candado-coseguro skipped (non-fatal): {_cs_err}")
+
     # --- AGENT FAILURE GUARD (blindaje "esto no puede pasar") ---
     # Si el motor cayó y quedó el fallback de error, NO lo mandamos como mensaje
     # robótico al paciente, PERO tampoco lo dejamos en silencio invisible:
