@@ -1002,7 +1002,11 @@ async def _action_send_instructions(pool, tenant_id, phone, step, execution) -> 
             logger.info("send_instructions: no instructions found, skipping")
             return True  # Not a failure, just nothing to send
 
-        # Send each bubble as a separate message
+        # Consolidar TODAS las secciones en UN SOLO mensaje (optimización de burbujas
+        # 2026-07-17, pedido Carlos). Antes se mandaba cada sección (intro + qué traer +
+        # medicación + ayuno + preparación) como un globito aparte con 2s de espera → 2 a 5
+        # mensajes facturables por Meta de una. Ahora: intro + un renglón en blanco + las
+        # secciones juntas, y se envía en UN solo globito (single_bubble). Misma info, 1 msg.
         conv = await pool.fetchrow(
             "SELECT id, provider, channel, external_account_id, external_chatwoot_id "
             "FROM chat_conversations WHERE tenant_id = $1 AND external_user_id = $2 "
@@ -1011,9 +1015,15 @@ async def _action_send_instructions(pool, tenant_id, phone, step, execution) -> 
         )
         if conv:
             from services.response_sender import ResponseSender
-            for i, bubble in enumerate(bubbles):
-                if not bubble.strip():
-                    continue
+            _parts = [b.strip() for b in bubbles if b and b.strip()]
+            if _parts:
+                # El 1er elemento es el encabezado; se separa con un renglón en blanco
+                # de las secciones para que se lea prolijo dentro del mismo globito.
+                _joined = (
+                    _parts[0] + "\n\n" + "\n".join(_parts[1:])
+                    if len(_parts) > 1
+                    else _parts[0]
+                )
                 await ResponseSender.send_sequence(
                     tenant_id=tenant_id, external_user_id=phone,
                     conversation_id=str(conv["id"]),
@@ -1021,10 +1031,9 @@ async def _action_send_instructions(pool, tenant_id, phone, step, execution) -> 
                     channel=conv.get("channel") or "whatsapp",
                     account_id=str(conv.get("external_account_id") or ""),
                     cw_conv_id=str(conv.get("external_chatwoot_id") or ""),
-                    messages_text=bubble.strip(),
+                    messages_text=_joined,
+                    single_bubble=True,
                 )
-                if i < len(bubbles) - 1:
-                    await asyncio.sleep(2)  # Small delay between bubbles for natural feel
 
         await _update_message_counters(pool, tenant_id, phone, step)
         return True
