@@ -4809,6 +4809,42 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
     except Exception as _oc_err:
         logger.warning(f"candado-salida-recurrente skipped (non-fatal): {_oc_err}")
 
+    # --- CANDADO: NO REPETIR EL PÁRRAFO DE PRECIO (cross-turn, caso María $60.000 x2) ---
+    # Decisión 2026-07-17 (Carlos): el párrafo largo del valor de la consulta ("La consulta
+    # de evaluación tiene un valor de $X. Ahí la doctora evalúa... presupuesto correspondiente")
+    # se re-imprime ENTERO cada vez que el paciente toca el tema. Si ese párrafo YA se envió
+    # en un mensaje reciente del bot en esta charla, la segunda vez va CORTO (una línea con el
+    # número). No borra el precio — solo evita repetir el discurso largo. Determinista.
+    try:
+        if response_text and re.search(r"tiene un valor", response_text, re.I):
+            _already_priced = await pool.fetchval(
+                "SELECT 1 FROM chat_messages WHERE conversation_id = $1 AND tenant_id = $2 "
+                "AND role = 'assistant' AND content ILIKE '%tiene un valor%' "
+                "AND created_at > NOW() - INTERVAL '40 minutes' LIMIT 1",
+                conversation_id,
+                tenant_id,
+            )
+            if _already_priced:
+                _amt = re.search(r"\$\s?[\d.]+", response_text)
+                _short = (
+                    f"Como te comenté, la consulta es de {_amt.group(0).replace(' ', '')} 😊"
+                    if _amt
+                    else "Como te comenté, ese es el valor de la consulta 😊"
+                )
+                _pre = response_text
+                response_text = re.sub(
+                    r"(?is)la consulta de evaluaci[oó]n tiene un valor.*?presupuesto correspondiente\.?",
+                    _short,
+                    response_text,
+                ).strip()
+                if _pre != response_text:
+                    logger.warning(
+                        f"🔒 CANDADO PRECIO: el párrafo de precio ya se envió antes → acorté "
+                        f"({len(_pre)}→{len(response_text)} chars) para {external_user_id}"
+                    )
+    except Exception as _pr_err:
+        logger.warning(f"candado-no-repetir-precio skipped (non-fatal): {_pr_err}")
+
     # --- CANDADO DE SALIDA: CIERRE DEL TURNO en 2 globitos (optimización burbujas) ---
     # Decisión 2026-07-17 (Carlos, caso María Montes): el cierre saturaba con ~7 globitos
     # (confirmación repetida + seña + ficha + relleno). Este guard actúa SOLO sobre una
