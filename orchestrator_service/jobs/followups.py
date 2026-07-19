@@ -46,7 +46,8 @@ async def send_post_treatment_followups():
                 p.id as patient_id,
                 p.first_name,
                 p.last_name,
-                p.phone_number
+                p.phone_number,
+                p.guardian_phone
             FROM appointments a
             INNER JOIN patients p ON a.patient_id = p.id AND p.tenant_id = a.tenant_id
             WHERE a.status = 'completed'
@@ -97,15 +98,34 @@ async def send_post_treatment_followups():
                 # No HSM rule — send generic fallback message
                 apt_date = apt["appointment_datetime"].strftime("%d/%m")
                 patient_name = apt["first_name"]
-                message = (
-                    f"Hola {patient_name}, te escribimos para saber cómo te sentís "
-                    f"después de la atención de ayer ({apt_date}). "
-                    f"¿Tuviste alguna molestia o va todo bien?"
-                )
+
+                # MENORES/FAMILIARES (fix 2026-07-18): el seguimiento va al ADULTO A
+                # CARGO, no al placeholder -M{N} (que no es un WhatsApp real). Regla
+                # central en services/family_phones. El saludo se adapta: al guardián
+                # se le pregunta cómo sigue el/la paciente, no "cómo te sentís".
+                from services.family_phones import is_placeholder_phone, resolve_contact_phone
+
+                dest_phone = resolve_contact_phone(apt["phone_number"], apt.get("guardian_phone"))
+                if not dest_phone:
+                    logger.info(f"⏭️ Skip followup {patient_name}: sin teléfono real ni guardián")
+                    skip_count += 1
+                    continue
+                if is_placeholder_phone(apt["phone_number"]):
+                    message = (
+                        f"Hola! Te escribimos para saber cómo sigue {patient_name} "
+                        f"después de la atención de ayer ({apt_date}). "
+                        f"¿Tuvo alguna molestia o va todo bien?"
+                    )
+                else:
+                    message = (
+                        f"Hola {patient_name}, te escribimos para saber cómo te sentís "
+                        f"después de la atención de ayer ({apt_date}). "
+                        f"¿Tuviste alguna molestia o va todo bien?"
+                    )
 
                 sent = await _send_via_response_sender(
                     tenant_id=tenant_id,
-                    phone=apt["phone_number"],
+                    phone=dest_phone,
                     message=message,
                 )
 

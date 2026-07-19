@@ -5734,6 +5734,67 @@ async def create_patient(
         from main import normalize_phone_for_tenant
         normalized_phone = normalize_phone_for_tenant(raw_phone, tenant_country)
 
+        # FAMILIAR QUE COMPARTE NÚMERO (fix 2026-07-18, pedido Carlos): si el número ya
+        # pertenece a OTRA persona (nombre distinto), el viejo ON CONFLICT PISABA la ficha
+        # existente (le mezclaba dni/email del familiar al titular y devolvía el id del
+        # titular — el "hijo" nunca se creaba). Ahora: se crea un paciente APARTE con
+        # teléfono placeholder -M{N} + guardian_phone = número del adulto (el MISMO
+        # mecanismo que usa el bot en book_appointment). Los envíos (seguimientos, etc.)
+        # resuelven el guardián vía services/family_phones.resolve_contact_phone.
+        try:
+            from services.family_phones import next_minor_phone, same_person
+
+            _existing = await db.pool.fetchrow(
+                "SELECT id, first_name FROM patients WHERE tenant_id = $1 AND phone_number = $2",
+                tenant_id,
+                normalized_phone,
+            )
+            if _existing and not same_person(_existing["first_name"], p.first_name):
+                _fam_count = await db.pool.fetchval(
+                    "SELECT COUNT(*) FROM patients WHERE tenant_id = $1 AND guardian_phone = $2",
+                    tenant_id,
+                    normalized_phone,
+                ) or 0
+                _minor_phone = next_minor_phone(normalized_phone, _fam_count)
+                row = await db.pool.fetchrow(
+                    """
+                    INSERT INTO patients (tenant_id, first_name, last_name, phone_number, guardian_phone,
+                                          email, dni, insurance_provider, insurance_id, city, birth_date,
+                                          notes, status, created_at)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'active', NOW())
+                    ON CONFLICT (tenant_id, phone_number) DO UPDATE SET status = 'active'
+                    RETURNING id, first_name, last_name, phone_number, status
+                    """,
+                    tenant_id,
+                    (p.first_name or "").strip() or "Sin nombre",
+                    (p.last_name or "").strip() or "",
+                    _minor_phone,
+                    normalized_phone,
+                    (p.email or "").strip() or None,
+                    (p.dni or "").strip() or None,
+                    (p.insurance_provider or "").strip() or None,
+                    (p.insurance_id or "").strip() or None,
+                    (p.city or "").strip() or None,
+                    p.birth_date,
+                    (p.notes or "").strip() or None,
+                )
+                logger.info(
+                    f"👨‍👧 create_patient: número de {_existing['first_name']} (id {_existing['id']}) compartido → "
+                    f"creado FAMILIAR '{row['first_name']}' con {_minor_phone} (guardian={normalized_phone})"
+                )
+                return {
+                    "id": row["id"],
+                    "first_name": row["first_name"],
+                    "last_name": row["last_name"],
+                    "phone_number": row["phone_number"],
+                    "status": row["status"],
+                    "family_of": _existing["id"],
+                }
+        except HTTPException:
+            raise
+        except Exception as _fam_err:
+            logger.warning(f"create_patient rama-familiar falló, sigo con upsert clásico: {_fam_err}")
+
         # Upsert paciente: si ya existe por teléfono, actualizar datos y promover status
         row = await db.pool.fetchrow(
             """
