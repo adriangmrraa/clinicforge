@@ -65,7 +65,11 @@ export default function ScheduleAppointmentModal({
   // Wizard state
   const [step, setStep] = useState<1 | 2>(patientId ? 2 : 1);
   const [createdPatientId, setCreatedPatientId] = useState<number | null>(null);
-  const effectivePatientId = patientId || createdPatientId;
+  // Para hijo/familiar (isForMinor): el paciente del CHAT es el adulto — el turno es
+  // para el familiar recién creado en el paso 1 (el backend lo vincula con -M{N} +
+  // guardian_phone al recibir el número del adulto con un nombre distinto). Sin esto,
+  // el turno del hijo se agendaba en la ficha del padre.
+  const effectivePatientId = isForMinor ? createdPatientId : (patientId || createdPatientId);
 
   // Step 1: patient form
   const [patientForm, setPatientForm] = useState<PatientFormData>({
@@ -105,7 +109,9 @@ export default function ScheduleAppointmentModal({
   useEffect(() => {
     if (!isOpen) return;
     setError('');
-    setStep(patientId ? 2 : 1);
+    // Para hijo/familiar SIEMPRE pasa por el paso 1 (crear/vincular al familiar):
+    // el paciente del chat es el adulto, no el que se atiende.
+    setStep(patientId && !isForMinor ? 2 : 1);
     setCreatedPatientId(null);
     setCollision(null);
     setSelectedProfessionalId('');
@@ -118,10 +124,14 @@ export default function ScheduleAppointmentModal({
 
     // Init patient form
     const isPhoneName = /^\+?[\d\s()\-]{7,}$/.test(patientName || '');
-    // For minor booking: leave phone empty (API will use parent's phone)
-    const initialPhone = isForMinor ? '' : patientPhone;
+    // Hijo/familiar: se manda el número del ADULTO (el del chat) — el backend detecta
+    // que el nombre es de otra persona y crea la ficha del familiar vinculada (-M{N} +
+    // guardian_phone) sin pisar la del titular. Antes se blanqueaba el teléfono y el
+    // alta fallaba con 422 "teléfono requerido". El nombre arranca vacío: es el del
+    // familiar, lo escribe la secretaria (no precargar el del adulto).
+    const initialPhone = patientPhone;
     setPatientForm({
-      first_name: isPhoneName ? '' : (patientName || ''),
+      first_name: (isForMinor || isPhoneName) ? '' : (patientName || ''),
       last_name: '', phone_number: initialPhone, dni: '', insurance: '', email: '', city: '', notes: '',
     });
   }, [isOpen, patientId, patientPhone, patientName, isForMinor]);
@@ -320,8 +330,10 @@ export default function ScheduleAppointmentModal({
 
   if (!isOpen) return null;
 
-  const needsStep1 = !patientId && !createdPatientId;
-  const showStepIndicator = !patientId; // Only show steps if we started without a patient
+  // isForMinor cuenta como "necesita paso 1": el familiar se crea aunque el chat ya
+  // tenga paciente (el adulto).
+  const needsStep1 = !createdPatientId && (!patientId || isForMinor);
+  const showStepIndicator = !patientId || isForMinor; // Only show steps if we must create the patient
 
   // Min date: today
   const today = new Date().toISOString().split('T')[0];
