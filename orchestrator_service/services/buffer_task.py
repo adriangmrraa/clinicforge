@@ -4809,6 +4809,50 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
     except Exception as _oc_err:
         logger.warning(f"candado-salida-recurrente skipped (non-fatal): {_oc_err}")
 
+    # --- CANDADO: GATE DE PRECIO PARA COBERTURA NO RESUELTA (enforcement del A1) ---
+    # El gate A1 (texto, ~2448) le dice al modelo que NO dé el valor de la consulta si la
+    # cobertura no está resuelta — pero el mini lo saltea a veces (fallo edge-triple del
+    # banco: nuevo pregunta precio entre 3 preguntas y el bot regala "$60.000"). Este es
+    # el enforcement DETERMINISTA: misma señal que el A1 (sin "Obra Social registrada" ni
+    # ISSN en el contexto, o agendando para un menor) → si la respuesta trae el párrafo
+    # del valor, se recorta y se asegura la pregunta de cobertura. Excepciones (el valor
+    # SÍ sale): el paciente pidió explícitamente "particular", o consulta tratamientos
+    # ESTÉTICOS (carillas/blanqueamiento/diseño = siempre particulares por regla).
+    try:
+        if response_text and re.search(r"tiene un valor", response_text, re.I):
+            _gp_ctx = patient_context or ""
+            _gp_cov_resuelta = bool(_gp_ctx) and (
+                "Obra Social registrada" in _gp_ctx
+                or bool(re.search(r"\bissn\b", _gp_ctx, re.I))
+                or "instituto de seguridad" in _gp_ctx.lower()
+                or "particular" in _gp_ctx.lower()
+            )
+            _gp_minor = bool(_gp_ctx) and (
+                "HIJO/A MENOR" in _gp_ctx or "[INTERNAL_BOOKING_CONTEXT]" in _gp_ctx
+            )
+            _gp_last = " ".join(messages).lower() if isinstance(messages, list) else str(messages or "").lower()
+            _gp_pidio_particular = "particular" in _gp_last
+            _gp_estetico = any(
+                k in _gp_last for k in ("carilla", "blanqueamiento", "diseño de sonrisa", "estetic", "estétic")
+            )
+            if (_gp_minor or not _gp_cov_resuelta) and not _gp_pidio_particular and not _gp_estetico:
+                _gp_pre = response_text
+                response_text = re.sub(
+                    r"(?is)la consulta de evaluaci[oó]n tiene un valor.*?presupuesto correspondiente\.?",
+                    "", response_text,
+                ).strip()
+                response_text = re.sub(r"\n{3,}", "\n\n", response_text).strip()
+                if "obra social" not in response_text.lower():
+                    _gp_q = "¿Contás con alguna obra social o te atenderías de forma particular?"
+                    response_text = (response_text + "\n" + _gp_q).strip() if response_text else _gp_q
+                if _gp_pre != response_text:
+                    logger.warning(
+                        f"🔒 CANDADO GATE-PRECIO: valor con cobertura no resuelta → recorté y pregunté cobertura "
+                        f"({len(_gp_pre)}→{len(response_text)} chars) para {external_user_id}"
+                    )
+    except Exception as _gp_err:
+        logger.warning(f"candado-gate-precio skipped (non-fatal): {_gp_err}")
+
     # --- CANDADO: NO REPETIR EL PÁRRAFO DE PRECIO (cross-turn, caso María $60.000 x2) ---
     # Decisión 2026-07-17 (Carlos): el párrafo largo del valor de la consulta ("La consulta
     # de evaluación tiene un valor de $X. Ahí la doctora evalúa... presupuesto correspondiente")

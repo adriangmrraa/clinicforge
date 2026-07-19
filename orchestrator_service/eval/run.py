@@ -284,15 +284,35 @@ async def main() -> int:
                 answer = ""
                 print(f"\n[{c.get('id')}] ERROR llamando al modelo: {e}")
 
-            # CANDADO DE SALIDA (espejo de buffer_task ~4760, decisión 2026-07-17):
-            # en prod la respuesta del modelo pasa por el strip determinista ANTES
-            # de llegar al paciente. El banco juzga lo que el paciente VE, así que
-            # se aplica acá también — la misma función que valida test_candado_salida.
-            from eval.test_candado_salida import candado_salida as _candado
+            # CADENA COMPLETA DE CANDADOS DE SALIDA (espejo de buffer_task, 2026-07-18):
+            # en prod la respuesta pasa por TODOS los candados deterministas antes de
+            # llegar al paciente. El banco juzga lo que el paciente VE — aplicamos la
+            # cadena entera en el MISMO orden que buffer_task:
+            #   recurrente/continuidad → precio-no-repetir → cierre → oferta → coseguro
+            from eval.test_candado_salida import candado_salida as _c_salida
+            from eval.test_candado_gate_precio import candado_gate_precio as _c_gate
+            from eval.test_candado_precio import candado_precio as _c_precio
+            from eval.test_candado_cierre import candado_cierre as _c_cierre
+            from eval.test_candado_oferta_coseguro import (
+                candado_oferta as _c_oferta,
+                candado_coseguro as _c_coseguro,
+            )
             _pre_candado = answer
-            answer = _candado(answer, c.get("patient_context", ""), c.get("user", ""))
+            answer = _c_salida(answer, c.get("patient_context", ""), c.get("user", ""))
+            answer = _c_gate(answer, c.get("patient_context", ""), c.get("user", ""))
+            # precio ya-dicho: en el banco, "ya se envió" = algún mensaje previo del
+            # bot en el history del caso contiene el párrafo del valor.
+            _already_priced = any(
+                "tiene un valor" in (h.get("content") or h.get("texto") or "")
+                for h in (c.get("history") or [])
+                if (h.get("role") or ("assistant" if h.get("de") in ("bot", "asistente") else "user")) == "assistant"
+            )
+            answer = _c_precio(answer, _already_priced)
+            answer = _c_cierre(answer)
+            answer = _c_oferta(answer)
+            answer = _c_coseguro(answer)
             if _pre_candado != answer:
-                print(f"    [candado-salida] recortó lo prohibido ({len(_pre_candado)}->{len(answer)} chars)")
+                print(f"    [candados] la cadena recortó/reagrupó ({len(_pre_candado)}->{len(answer)} chars)")
 
             # [SILENCIO] = el agente decidió no responder (anti-loop de cortesía).
             # No lo mandamos al juez: lo evaluamos según lo que el caso espera.
