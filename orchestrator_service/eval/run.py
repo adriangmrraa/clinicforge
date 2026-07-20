@@ -389,6 +389,8 @@ async def main() -> int:
                 candado_mencion_coseguro as _c_mencos,
                 candado_multi_turno as _c_multiturno,
             )
+            from services.inyecciones_frescas import candado_compactar_cimo as _c_cimo
+            answer = _c_cimo(answer)
             answer = _c_mencos(answer, c.get("user", ""), c.get("patient_context", ""))
             answer = _c_encuadre(answer, c.get("user", ""))
             answer = _c_avance(answer, c.get("user", ""), _tool_names_turn)

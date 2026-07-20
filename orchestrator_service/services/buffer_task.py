@@ -5446,6 +5446,17 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
     except Exception as _mc_err:
         logger.warning(f"candado-mencion-coseguro skipped (non-fatal): {_mc_err}")
 
+    # --- CANDADO: bloque ISSN→CIMO en UN globito (caso real de pruebas 2026-07-20) ---
+    try:
+        from services.inyecciones_frescas import candado_compactar_cimo as _cc_fn
+
+        _cc_pre = response_text
+        response_text = _cc_fn(response_text)
+        if _cc_pre != response_text:
+            logger.warning(f"🔒 CANDADO CIMO: compacté el bloque ISSN a 1 globito para {external_user_id}")
+    except Exception as _cc_err:
+        logger.warning(f"candado-cimo skipped (non-fatal): {_cc_err}")
+
     # --- CANDADO: AVANCE (globito muerto) — pidió turno y la respuesta no avanza ---
     # Banco v2 (terce-hermana-OSDE, continuidad-implante): el bot quedaba en una
     # declaración sin pregunta ni opciones ("primero verifico la cobertura y después

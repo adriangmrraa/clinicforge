@@ -525,8 +525,14 @@ def candado_mencion_coseguro(response_text: str, last_user: str, patient_context
             + "\nSobre lo adicional: si tu plan tiene coseguro, te lo confirman en la clínica antes de atenderte — sin sorpresas 😊"
         )
     if os_presente and "paciente recurrente" not in _ctx:
+        # v5: también dispara al hablar de cobertura restringida u ofrecer opciones/fechas
+        # con la OS (os-osde-coseguro: 'cobertura restringida... ¿te paso opciones?' sin
+        # nombrar el coseguro).
         oferta_o_valor = ("1️⃣" in response_text) or bool(
-            re.search(r"(?i)tiene un valor|particular tiene", response_text)
+            re.search(
+                r"(?i)tiene un valor|particular tiene|cobertura restringida|te paso opciones|primera fecha disponible",
+                response_text,
+            )
         )
         if oferta_o_valor:
             return (
@@ -534,6 +540,17 @@ def candado_mencion_coseguro(response_text: str, last_user: str, patient_context
                 + "\nCon tu obra social, si corresponde un coseguro, te lo confirman en la clínica 😊"
             )
     return response_text
+
+
+def candado_compactar_cimo(response_text: str) -> str:
+    """El bloque ISSN→CIMO salía en DOS globitos (el template trae doble salto y el
+    sender parte por \\n\\n — caso real de pruebas 2026-07-20). Con CIMO en la
+    respuesta, se compacta a UN globito. No toca nada más."""
+    if not response_text or "CIMO" not in response_text:
+        return response_text
+    if "\n\n" not in response_text:
+        return response_text
+    return response_text.replace("\n\n", "\n")
 
 
 def candado_encuadre_valor(response_text: str, last_user: str = "") -> str:

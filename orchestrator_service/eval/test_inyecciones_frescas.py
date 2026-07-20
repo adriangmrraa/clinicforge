@@ -14,6 +14,7 @@ import sys
 from services.inyecciones_frescas import (
     aplicar_inyecciones,
     candado_avance,
+    candado_compactar_cimo,
     candado_encuadre_valor,
     candado_mencion_coseguro,
     candado_multi_turno,
@@ -465,6 +466,28 @@ CASOS = [
         "quiere-antes salida: respuesta sin oferta de slots → NO se toca",
         lambda: candado_quiere_antes_salida("Te entiendo. ¿Cómo preferís seguir?"),
         lambda out: "particular" not in out.lower(),
+    ),
+    # ------------------- compactador CIMO + mención coseguro v5 -------------------
+    (
+        "CIMO: el bloque ISSN sale en 1 globito (caso real de pruebas)",
+        lambda: candado_compactar_cimo(
+            "Para cirugía maxilofacial con ISSN, la atención se realiza a través de CIMO. Podés comunicarte al +54 9 299 329-4089.\n\nPara otros tratamientos, la atención en el consultorio es particular."
+        ),
+        lambda out: "\n\n" not in out and "CIMO" in out,
+    ),
+    (
+        "CIMO: respuestas sin CIMO NO se tocan",
+        lambda: candado_compactar_cimo("Hola!\n\n¿Contás con obra social?"),
+        lambda out: "\n\n" in out,
+    ),
+    (
+        "mención-coseguro v5: 'cobertura restringida... ¿te paso opciones?' sin coseguro → agrega la línea (fallo v5 os-osde)",
+        lambda: candado_mencion_coseguro(
+            "Con OSDE trabajamos con cobertura restringida; el detalle se confirma en la clínica.\nLa primera fecha disponible es a partir del 25/07/2026, ¿te paso opciones desde ahí? 📅",
+            "Hola, soy Paula. Necesito un turno de limpieza. Tengo OSDE.",
+            "Lead nuevo.",
+        ),
+        lambda out: "coseguro" in out.lower(),
     ),
     # ------------------- gate A1 compartido -------------------
     (
