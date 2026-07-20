@@ -167,19 +167,165 @@ def es_confusion_sena(texto: str) -> bool:
     )
 
 
+def es_insistencia_monto(texto: str) -> bool:
+    """Insistencia por un monto SIN nombrar 'coseguro' ('dale pero un aproximado...',
+    '10, 20, 50 lucas?', 'cuánta plata llevo') — cuenta como pregunta de coseguro
+    SOLO si el hilo de coseguro ya estaba abierto (ya_explicado >= 1)."""
+    t = (texto or "").lower()
+    return bool(
+        re.search(
+            r"aproximad|m[aá]s o menos|una cifra|un n[uú]mero|aunque sea"
+            r"|decime cu[aá]nto|\d+\s*(?:lucas|mil|k)\b|cu[aá]nta plata|qu[eé] monto",
+            t,
+        )
+    )
+
+
+def iny_acepto_ofrecimiento(last_user: str, last_bot: str) -> str | None:
+    """El bot ofreció algo condicional ('si querés te busco...' / 'le paso tu consulta
+    al equipo, ¿te sirve?') y el paciente respondió una afirmación corta → EJECUTAR ya
+    (caso Luis, prod 2026-07-20; extendido al equipo por el coseguro nivel 2)."""
+    t = (last_user or "").lower().strip()
+    if not re.fullmatch(
+        r"(bueno|dale|s[ií]|ok(a|ey)?|listo|de una|obvio|perfecto|genial|joya|buen[íi]simo"
+        r"|s[ií] dale|dale s[ií]|bueno dale|dale bueno|me parece( bien)?|est[aá] bien|me sirve"
+        r"|s[ií],? dale,?( me sirve)?|s[ií],? me sirve|dale,? me sirve)[.!,\s😊👍🙏]*",
+        t,
+    ):
+        return None
+    b = (last_bot or "").lower()
+    if not re.search(
+        r"decime y te busco|te busco opciones|te paso (?:turnos|opciones|las opciones)"
+        r"|quer[eé]s que (?:te )?(?:busque|pase|coordine)|decime para qu[eé] d[íi]a"
+        r"|si quer[eé]s.{0,40}(?:busco|paso|coordino)"
+        r"|(?:le |te )?paso tu consulta al equipo|te sirve\?",
+        b,
+    ):
+        return None
+    if re.search(r"equipo|te confirman", b):
+        return (
+            "⚡ EL PACIENTE ACEPTÓ TU OFRECIMIENTO de pasar su consulta al EQUIPO: llamá "
+            "derivhumano AHORA (motivo: lo que ofreciste que el equipo confirme, ej. 'confirmar "
+            "el monto del coseguro de su plan') y avisale cálido que el equipo le responde a la "
+            "brevedad. ⛔ PROHIBIDO re-preguntar o dejarlo en una promesa sin ejecutar."
+        )
+    return (
+        "⚡ EL PACIENTE ACEPTÓ TU OFRECIMIENTO: en tu último mensaje le ofreciste buscar/pasar "
+        "opciones y respondió que SÍ ('bueno/dale'). EJECUTALO EN ESTA RESPUESTA: llamá la herramienta "
+        "que corresponda (check_availability para opciones de turno; derivhumano si lo ofrecido fue "
+        "pasar la consulta al equipo) y entregá el RESULTADO concreto. "
+        "⛔ PROHIBIDO volver a preguntar 'decime cuándo/para qué día' o re-ofrecer sin resultados — "
+        "eso ya lo dijiste y el paciente ya aceptó."
+    )
+
+
+def iny_manejo_coseguro(pregunta_monto: bool, confusion_sena: bool, ya_explicado: int = 0) -> str | None:
+    """Manejo EMPÁTICO del coseguro (caso Agustín; pedido Carlos: 'llevarlos bien sin
+    hacerlos enojar'). El monto es INTERNO (nunca una cifra por chat): lo que cambia
+    es CÓMO se acompaña. 3 niveles: porqué cálido → salida concreta con el equipo →
+    aclarar la confusión seña↔precio. Texto único compartido prod/banco."""
+    if not (pregunta_monto or confusion_sena):
+        return None
+    gate = "💬 MANEJO DEL COSEGURO (el paciente pregunta el monto o confunde la seña con el precio — llevalo BIEN, sin frustrar): "
+    if confusion_sena:
+        gate += (
+            "Está confundiendo la SEÑA con el precio de la consulta. Aclaráselo DIRECTO y amable: "
+            "'No, tranquilo/a — ese monto es la seña OPCIONAL para reservar el turno, no el precio de la consulta. "
+            "Con tu obra social la consulta va por tu cobertura; si corresponde un coseguro, te lo confirman en la clínica.' "
+            "⛔ NO repitas la explicación completa del coseguro ni des cifras del valor de consulta. "
+        )
+    elif int(ya_explicado) >= 2:
+        gate += (
+            "YA le explicaste el coseguro en esta charla: NO repitas la misma frase (lo frustra). Dale una SALIDA CONCRETA: "
+            "'El monto exacto depende del plan que tengas — si querés, le paso tu consulta al equipo y te confirman el valor "
+            "de TU plan antes del turno, ¿te sirve?'. Si acepta, llamá derivhumano (motivo: 'Paciente quiere el monto exacto "
+            "del coseguro de su plan — confirmarle'). Si su apuro es práctico (ej. 'cuánta plata llevo'), reconocéselo con "
+            "empatía antes de la salida. ⛔ Nunca una cifra ni un rango por chat. "
+        )
+    else:
+        gate += (
+            "Explicale el PORQUÉ con calidez (no la muletilla seca): el coseguro depende del PLAN específico que tenga con su "
+            "obra social — por eso no hay una cifra única — y se lo confirman en la clínica ANTES de atenderse, sin sorpresas. "
+            "Cerrá con tranquilidad ('quedate tranquilo/a que te lo confirman apenas llegues, antes de atenderte') y seguí "
+            "con el turno. ⛔ Nunca una cifra por chat. "
+        )
+    return gate
+
+
+# ---------------------------------------------------------------------------
+# "QUIERE ANTES" — semáforo de OS con demora (pedido Carlos 2026-07-20)
+# ---------------------------------------------------------------------------
+
+_QUIERE_ANTES_PAT = re.compile(
+    r"(?i)no puedo esperar|esperar tanto|tanto tiempo|tan (?:lejos|adelante|tarde)"
+    r"|(?:nada|algo|un hueco|un huequito|turno)s? (?:m[aá]s )?(?:antes|cerca|cercano)"
+    r"|antes no (?:hay|ten[eé]s|se puede)|¿?no (?:hay|ten[eé]s) (?:nada|algo) antes"
+    r"|m[aá]s pronto|lo antes posible no|es un mont[oó]n de (?:tiempo|d[íi]as|espera)"
+    r"|reci[eé]n (?:para|el|en) .{0,20}\?|me urge|necesito (?:que sea )?antes|quiero (?:ir |atenderme )?antes"
+)
+
+
+def quiere_antes_matchea(last_user: str) -> bool:
+    """¿El mensaje pide atenderse ANTES del plazo? (gate barato antes de la query)."""
+    return bool(_QUIERE_ANTES_PAT.search(last_user or ""))
+
+
+def iny_quiere_antes(os_name: str, delay_days: int, min_date: str) -> str | None:
+    """El paciente con OS demorada insiste en atenderse antes → porqué real + salida
+    particular, presentada como opción y SIN presionar. (El match del mensaje se
+    valida antes con quiere_antes_matchea; acá solo se arma el texto.)"""
+    if not os_name or int(delay_days or 0) <= 0:
+        return None
+    return (
+        f"⏳ EL PACIENTE QUIERE ATENDERSE ANTES DEL PLAZO DE SU OBRA SOCIAL ({os_name} agenda "
+        f"turnos por cobertura recién a partir del {min_date}, demora de {int(delay_days)} días): "
+        "1) Explicale el PORQUÉ REAL con calidez: es el plazo que su obra social maneja para turnos "
+        "por cobertura — ⛔ PROHIBIDO decir 'no tengo disponibilidad' (es falso: la agenda existe, "
+        "el plazo es de la cobertura) y PROHIBIDO repetir el mismo bloqueo si ya se lo dijiste. "
+        "2) Ofrecele la SALIDA: si prefiere no esperar, puede atenderse de forma PARTICULAR mucho "
+        "antes (la atención particular no pasa por ese plazo) — si le interesa, buscá disponibilidad "
+        "llamando check_availability con insurance_provider='particular' y pasale opciones concretas. "
+        "3) Presentalo como OPCIÓN, sin presionar: si elige esperar por su cobertura, está perfecto — "
+        "pasale opciones desde esa fecha y listo."
+    )
+
+
 def aplicar_inyecciones(
     last_user: str,
     user_texts: list[str] | None = None,
     last_bot: str = "",
+    coseguro_ya_explicado: int = 0,
+    os_delayed: dict | None = None,
 ) -> str:
-    """Concatena todas las inyecciones que disparen (para el banco / run.py)."""
+    """Concatena todas las inyecciones que disparen (para el banco / run.py).
+
+    os_delayed: {"name", "delay_days", "min_date"} si la OS del caso tiene demora.
+    coseguro_ya_explicado: cuántas veces el bot ya explicó el coseguro en el hilo.
+    """
+    _preg_monto = es_pregunta_monto_coseguro(last_user) or (
+        int(coseguro_ya_explicado) >= 1 and es_insistencia_monto(last_user)
+    )
     partes = [
         iny_derivacion_explicita(last_user),
         iny_pide_cancelar(user_texts or [last_user], last_bot),
         iny_multi_persona(last_user),
         iny_queja_precio(last_user),
         iny_os_en_mensaje(last_user),
+        iny_acepto_ofrecimiento(last_user, last_bot),
+        iny_manejo_coseguro(
+            _preg_monto,
+            es_confusion_sena(last_user),
+            coseguro_ya_explicado,
+        ),
     ]
+    if os_delayed and quiere_antes_matchea(last_user):
+        partes.append(
+            iny_quiere_antes(
+                str(os_delayed.get("name", "")),
+                int(os_delayed.get("delay_days", 0) or 0),
+                str(os_delayed.get("min_date", "")),
+            )
+        )
     return "".join(f"\n{p}" for p in partes if p)
 
 

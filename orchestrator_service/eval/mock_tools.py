@@ -248,6 +248,13 @@ def execute(name: str, args: dict) -> str:
         if cfg["mode"] == "delayed":
             first_ok = date.today() + timedelta(days=cfg["delay_days"])
             data["turnos_desde"] = first_ok.strftime("%d/%m/%Y")
+            # Espejo del nota_obligatoria de prod (check_insurance_coverage 2026-07-20):
+            # el plazo es de la OS (no falta de agenda) y la vía particular no lo lleva.
+            data["nota_obligatoria"] = (
+                f"⏳ {canon} agenda turnos POR COBERTURA a partir del {first_ok.strftime('%d/%m')} (plazo de la "
+                "obra social, NO falta de agenda — nunca digas 'no tengo disponibilidad'). Si el paciente quiere "
+                "atenderse antes, puede hacerlo de forma PARTICULAR sin ese plazo — opción, sin presionar."
+            )
         return json.dumps(data, ensure_ascii=False)
 
     if name == "triage_urgency":

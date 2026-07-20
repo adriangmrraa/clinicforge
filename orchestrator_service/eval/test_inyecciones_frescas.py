@@ -15,12 +15,17 @@ from services.inyecciones_frescas import (
     aplicar_inyecciones,
     candado_avance,
     candado_multi_turno,
+    es_insistencia_monto,
     es_pregunta_monto_coseguro,
+    iny_acepto_ofrecimiento,
     iny_derivacion_explicita,
+    iny_manejo_coseguro,
     iny_multi_persona,
     iny_os_en_mensaje,
     iny_pide_cancelar,
     iny_queja_precio,
+    iny_quiere_antes,
+    quiere_antes_matchea,
 )
 
 CASOS = [
@@ -219,6 +224,101 @@ CASOS = [
         "integración: mensaje neutro no inyecta nada",
         lambda: aplicar_inyecciones("hola, buen día"),
         lambda out: out == "",
+    ),
+    # ------------------- quiere-antes (semáforo OS) -------------------
+    (
+        "quiere-antes: '¿¿30 días?? no puedo esperar tanto... ¿no tenés nada antes?' → matchea",
+        lambda: quiere_antes_matchea("¿¿30 días?? Uf, no puedo esperar tanto... ¿no tenés nada antes?"),
+        lambda out: out is True,
+    ),
+    (
+        "quiere-antes: pedido de turno normal NO matchea",
+        lambda: quiere_antes_matchea("hola, quiero un turno para la semana que viene"),
+        lambda out: out is False,
+    ),
+    (
+        "quiere-antes: la inyección explica el porqué real + salida particular + sin presionar",
+        lambda: iny_quiere_antes("OSDE", 30, "19/08"),
+        lambda out: out is not None
+        and "OSDE" in out
+        and "19/08" in out
+        and "PARTICULAR" in out
+        and "no tengo disponibilidad" in out.lower()
+        and "sin presionar" in out.lower(),
+    ),
+    (
+        "quiere-antes: sin demora (delay 0) NO inyecta",
+        lambda: iny_quiere_antes("IOMA", 0, "21/07"),
+        lambda out: out is None,
+    ),
+    (
+        "quiere-antes integración: os_delayed + mensaje que insiste → la inyección entra",
+        lambda: aplicar_inyecciones(
+            "uf no puedo esperar tanto, ¿nada antes?",
+            os_delayed={"name": "OSDE", "delay_days": 30, "min_date": "19/08"},
+        ),
+        lambda out: "PLAZO DE SU OBRA SOCIAL" in out,
+    ),
+    # ------------------- manejo del coseguro (texto compartido) -------------------
+    (
+        "coseguro nivel 1: primera pregunta → porqué cálido, sin cifras",
+        lambda: iny_manejo_coseguro(True, False, 0),
+        lambda out: out is not None and "PORQUÉ" in out and "Nunca una cifra" in out,
+    ),
+    (
+        "coseguro nivel 2: ya explicado 2 veces → salida concreta con el equipo (derivhumano)",
+        lambda: iny_manejo_coseguro(True, False, 2),
+        lambda out: out is not None and "SALIDA CONCRETA" in out and "derivhumano" in out,
+    ),
+    (
+        "coseguro confusión seña: aclara directo que la seña no es el precio",
+        lambda: iny_manejo_coseguro(False, True, 0),
+        lambda out: out is not None and "SEÑA" in out,
+    ),
+    (
+        "coseguro insistencia sin la palabra ('10, 20, 50 lucas? cuánta plata llevo') → detectada",
+        lambda: es_insistencia_monto("dale pero decime aunque sea un aproximado, 10, 20, 50 lucas? es para saber cuanta plata llevar"),
+        lambda out: out is True,
+    ),
+    (
+        "coseguro insistencia integración: hilo abierto (ya_explicado=2) + insistencia → nivel 2 entra",
+        lambda: aplicar_inyecciones(
+            "dale pero decime aunque sea un aproximado, es para saber cuanta plata llevar",
+            coseguro_ya_explicado=2,
+        ),
+        lambda out: "SALIDA CONCRETA" in out,
+    ),
+    (
+        "coseguro insistencia SIN hilo abierto (ya_explicado=0) → NO inyecta (podría ser otra cosa)",
+        lambda: aplicar_inyecciones("decime un aproximado de lo que sale mas o menos"),
+        lambda out: "COSEGURO" not in out,
+    ),
+    # ------------------- aceptó-ofrecimiento (compartido, con rama equipo) -------------------
+    (
+        "aceptó-ofrecimiento: 'Bueno' tras 'decime y te busco opciones' → ejecutar (caso Luis)",
+        lambda: iny_acepto_ofrecimiento("Bueno", "Decime y te busco opciones para la semana que viene 😊"),
+        lambda out: out is not None and "check_availability" in out,
+    ),
+    (
+        "aceptó-ofrecimiento equipo: 'si dale, me sirve' tras 'le paso tu consulta al equipo ¿te sirve?' → derivhumano",
+        lambda: iny_acepto_ofrecimiento(
+            "si dale, me sirve 🙏",
+            "si querés, le paso tu consulta al equipo y te confirman el valor de TU plan antes del turno, ¿te sirve?",
+        ),
+        lambda out: out is not None and "derivhumano" in out and "EQUIPO" in out,
+    ),
+    (
+        "aceptó-ofrecimiento: mensaje largo con contenido NO dispara (no es afirmación corta)",
+        lambda: iny_acepto_ofrecimiento(
+            "dale pero antes decime cuánto sale la consulta porque no estoy seguro",
+            "Decime y te busco opciones 😊",
+        ),
+        lambda out: out is None,
+    ),
+    (
+        "aceptó-ofrecimiento: 'dale' sin oferta previa del bot NO dispara",
+        lambda: iny_acepto_ofrecimiento("dale", "Tu turno quedó confirmado para el jueves 😊"),
+        lambda out: out is None,
     ),
 ]
 

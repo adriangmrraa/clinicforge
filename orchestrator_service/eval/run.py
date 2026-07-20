@@ -264,10 +264,31 @@ async def main() -> int:
                 ),
                 "",
             )
+            # Nivel 2 del coseguro: cuántas veces el bot YA lo explicó (en prod es una
+            # query a chat_messages; en el banco se cuenta en el history del caso).
+            _cos_hist_count = sum(
+                1
+                for h in (c.get("history") or [])
+                if (h.get("role") or ("assistant" if h.get("de") in ("bot", "asistente") else "user")) == "assistant"
+                and "coseguro" in ((h.get("content") or h.get("texto") or "").lower())
+            )
+            # Semáforo: el caso declara os_delayed={"name","delay_days"} y acá se
+            # computa la primera fecha por cobertura (hoy+N, igual que prod).
+            _os_delayed_param = None
+            if c.get("os_delayed"):
+                from datetime import date as _qa_d, timedelta as _qa_t
+                _os_dd = int((c["os_delayed"].get("delay_days") or 0))
+                _os_delayed_param = {
+                    "name": c["os_delayed"].get("name", ""),
+                    "delay_days": _os_dd,
+                    "min_date": (_qa_d.today() + _qa_t(days=_os_dd)).strftime("%d/%m"),
+                }
             _ctx_con_iny = (c.get("patient_context", "") or "") + aplicar_inyecciones(
                 c.get("user", ""),
                 user_texts=[t for t in _case_texts if t],
                 last_bot=_last_bot_hist,
+                coseguro_ya_explicado=_cos_hist_count,
+                os_delayed=_os_delayed_param,
             )
             messages = [{"role": "system", "content": prompt_for(status, _ctx_con_iny, case_tags)}]
             messages += _history_to_messages(c.get("history"))

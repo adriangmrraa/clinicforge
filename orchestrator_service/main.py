@@ -2570,25 +2570,40 @@ async def check_availability(
 
         # Persist insurance provider in patient record and lead_context if provided
         if insurance_provider:
-            if _ca_patient_id:
-                try:
-                    await db.pool.execute(
-                        "UPDATE patients SET insurance_provider = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3",
-                        insurance_provider.strip(),
-                        _ca_patient_id,
-                        tenant_id,
-                    )
-                    logger.info(f"📅 check_availability: Updated insurance_provider to '{insurance_provider}' for patient {_ca_patient_id}")
-                except Exception as e:
-                    logger.warning(f"📅 check_availability: Failed to update patient insurance: {e}")
+            _ins_arg = insurance_provider.strip()
+            _ins_es_particular = _ins_arg.lower() in ("particular", "ninguna", "no", "sin obra social")
             _ca_phone = current_customer_phone.get()
-            if _ca_phone:
-                try:
-                    from services.lead_context import merge as lead_ctx_merge
-                    await lead_ctx_merge(tenant_id, _ca_phone, {"insurance_provider": insurance_provider.strip()})
-                    logger.info(f"📅 check_availability: Merged insurance_provider '{insurance_provider}' into lead_context")
-                except Exception as e:
-                    logger.warning(f"📅 check_availability: Failed to merge insurance into lead_context: {e}")
+            if _ins_es_particular:
+                # "QUIERE ANTES" (semáforo OS, 2026-07-20): eligió atenderse PARTICULAR
+                # esta vez. NO pisamos su OS real (ni ficha ni lead_context — antes este
+                # UPDATE borraba la OS registrada). Solo marcamos el flag efímero que
+                # abre la RESERVA sin el plazo de la OS (_insurance_min_booking_date).
+                if _ca_phone:
+                    try:
+                        from services.lead_context import merge as lead_ctx_merge
+                        await lead_ctx_merge(tenant_id, _ca_phone, {"particular_this_booking": True})
+                        logger.info("📅 check_availability: búsqueda PARTICULAR explícita → flag particular_this_booking (la OS registrada NO se pisa)")
+                    except Exception as e:
+                        logger.warning(f"📅 check_availability: no pude marcar particular_this_booking: {e}")
+            else:
+                if _ca_patient_id:
+                    try:
+                        await db.pool.execute(
+                            "UPDATE patients SET insurance_provider = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3",
+                            _ins_arg,
+                            _ca_patient_id,
+                            tenant_id,
+                        )
+                        logger.info(f"📅 check_availability: Updated insurance_provider to '{insurance_provider}' for patient {_ca_patient_id}")
+                    except Exception as e:
+                        logger.warning(f"📅 check_availability: Failed to update patient insurance: {e}")
+                if _ca_phone:
+                    try:
+                        from services.lead_context import merge as lead_ctx_merge
+                        await lead_ctx_merge(tenant_id, _ca_phone, {"insurance_provider": _ins_arg})
+                        logger.info(f"📅 check_availability: Merged insurance_provider '{insurance_provider}' into lead_context")
+                    except Exception as e:
+                        logger.warning(f"📅 check_availability: Failed to merge insurance into lead_context: {e}")
 
         # 0b. DERIVATION RULES: if no professional specified and no forced assignment,
         # check if treatment matches a derivation rule. Rules are evaluated in priority order.
@@ -4405,6 +4420,19 @@ async def _insurance_min_booking_date(tenant_id: int, phone=None, patient_id=Non
     antes de hoy+N por NINGÚN camino (reserva directa sin re-búsqueda, insistencia,
     reprogramación). Resolución: ficha del paciente > lead_context. None si no aplica."""
     try:
+        # "QUIERE ANTES": si el paciente eligió EXPLÍCITAMENTE atenderse particular
+        # (flag efímero que setea check_availability con insurance_provider='particular'),
+        # esta reserva no lleva el plazo de la OS — sin esto, la vía particular que le
+        # ofrecemos al que no quiere esperar moría acá (la ficha con OS gana siempre).
+        if phone:
+            try:
+                from services.lead_context import get as _lc_flag_get
+                _lcf = await _lc_flag_get(tenant_id, phone)
+                if (_lcf or {}).get("particular_this_booking"):
+                    logger.info(f"⏳ SEMAPHORE: bypass por elección particular explícita ({phone})")
+                    return None
+            except Exception:
+                pass
         prov = None
         if patient_id:
             _prow = await db.pool.fetchrow(
@@ -4934,8 +4962,13 @@ async def book_appointment(
                     f"⏳ SEMAPHORE(BOOK): bloqueada reserva {apt_datetime.date()} < {_ins_min[0]} (OS '{_ins_min[1]}') para {chat_phone}"
                 )
                 return (
-                    f"Ese día todavía no tengo disponibilidad 😊 La primera fecha disponible es a partir del "
-                    f"{_ins_min[0].strftime('%d/%m')}. ¿Querés que te pase opciones desde esa fecha?"
+                    f"[SEMÁFORO OS — informale con transparencia] La reserva se frenó porque {_ins_min[1]} "
+                    f"agenda turnos POR COBERTURA a partir del {_ins_min[0].strftime('%d/%m')} — es un plazo de su "
+                    "obra social, NO falta de agenda (⛔ prohibido decirle 'no tengo disponibilidad'). "
+                    "Explicáselo con calidez y ofrecele las 2 vías SIN presionar: "
+                    "1) turnos por su cobertura desde esa fecha (ofrecé pasarle opciones), o "
+                    "2) si prefiere atenderse antes, de forma PARTICULAR no corre ese plazo — si le interesa, "
+                    "llamá check_availability con insurance_provider='particular' y pasale opciones cercanas."
                 )
         except Exception as _semb_err:
             logger.warning(f"semaphore book guard (non-fatal): {_semb_err}")
@@ -5916,6 +5949,16 @@ async def book_appointment(
         logger.info(
             f"✅ book_appointment OK phone={phone} tenant={tenant_id} apt_id={apt_id} patient_id={patient_id} prof={target_prof['first_name']} datetime={apt_datetime}"
         )
+
+        # "QUIERE ANTES": el bypass particular es POR RESERVA — se apaga al concretarse
+        # para que el próximo turno vuelva a respetar el plazo de su obra social.
+        try:
+            _pb_phone_clear = current_customer_phone.get()
+            if _pb_phone_clear:
+                from services.lead_context import merge as _lc_clear_pb
+                await _lc_clear_pb(tenant_id, _pb_phone_clear, {"particular_this_booking": False})
+        except Exception:
+            pass
 
         # v8.2: Reset booking attempts on successful booking
         try:
@@ -7212,8 +7255,12 @@ async def reschedule_appointment(original_date: str, new_date_time: str, interpr
                     f"\u23f3 SEMAPHORE(RESCHEDULE): bloqueada reprogramaci\u00f3n {new_dt.date()} < {_ins_min_r[0]} (OS '{_ins_min_r[1]}')"
                 )
                 return (
-                    f"Para esa fecha todav\u00eda no tengo disponibilidad \ud83d\ude0a La primera fecha disponible es a partir del "
-                    f"{_ins_min_r[0].strftime('%d/%m')}. \u00bfQuer\u00e9s que busque opciones desde ah\u00ed?"
+                    f"[SEM\u00c1FORO OS \u2014 informale con transparencia] La reprogramaci\u00f3n se fren\u00f3 porque {_ins_min_r[1]} "
+                    f"agenda turnos POR COBERTURA a partir del {_ins_min_r[0].strftime('%d/%m')} \u2014 es un plazo de su "
+                    "obra social, NO falta de agenda (\u26d4 prohibido decirle 'no tengo disponibilidad'). "
+                    "Ofrecele las 2 v\u00edas SIN presionar: 1) reprogramar desde esa fecha (ofrec\u00e9 opciones), o "
+                    "2) si prefiere atenderse antes, de forma PARTICULAR no corre ese plazo \u2014 si le interesa, "
+                    "llam\u00e1 check_availability con insurance_provider='particular' y pasale opciones cercanas."
                 )
         except Exception as _semr_err:
             logger.warning(f"semaphore reschedule guard (non-fatal): {_semr_err}")
@@ -10509,8 +10556,30 @@ async def check_insurance_coverage(insurance_provider: str) -> str:
         if status == "external_derivation" and row.get("ai_response_template"):
             return row["ai_response_template"]
         prepaid_note = " (prepaga)" if row.get("is_prepaid") else ""
+        # Semáforo (2026-07-20): informar la DEMORA de la OS en el momento exacto — antes
+        # el paciente se enteraba recién al buscar turnos y el "quiere antes" quedaba sin
+        # explicación ni salida. Datos + nota de máxima adherencia (patrón de la casa).
+        _sched_info = None
+        _sched_nota = None
+        try:
+            if (row.get("scheduling_mode") or "immediate") == "delayed" and int(row.get("scheduling_delay_days") or 0) > 0:
+                _sched_delay = int(row.get("scheduling_delay_days") or 0)
+                _sched_first = (get_now_arg().date() + timedelta(days=_sched_delay)).strftime("%d/%m")
+                _sched_info = {"mode": "delayed", "delay_days": _sched_delay, "turnos_por_cobertura_desde": _sched_first}
+                _sched_nota = (
+                    f"⏳ {name} agenda turnos POR COBERTURA a partir del {_sched_first} (es un plazo de la obra social, "
+                    "NO falta de agenda — nunca digas 'no tengo disponibilidad'). Avisáselo al hablar de turnos. "
+                    "Si el paciente quiere atenderse antes, puede hacerlo de forma PARTICULAR sin ese plazo — "
+                    "presentalo como opción, sin presionar."
+                )
+        except Exception:
+            pass
         if status == "accepted":
-            return json.dumps({"status": "accepted", "provider_name": name, "is_prepaid": bool(row.get("is_prepaid")), "has_copay": bool(row.get("requires_copay")), "copay_note": (row.get("copay_notes") or None), "next_action": "offer_slots"}, ensure_ascii=False)
+            _acc = {"status": "accepted", "provider_name": name, "is_prepaid": bool(row.get("is_prepaid")), "has_copay": bool(row.get("requires_copay")), "copay_note": (row.get("copay_notes") or None), "next_action": "offer_slots"}
+            if _sched_info:
+                _acc["scheduling"] = _sched_info
+                _acc["nota_obligatoria"] = _sched_nota
+            return json.dumps(_acc, ensure_ascii=False)
         elif status == "restricted":
             # Migration 034: read coverage_by_treatment JSONB instead of the
             # old free-text restrictions field.
@@ -10530,8 +10599,13 @@ async def check_insurance_coverage(insurance_provider: str) -> str:
                 else []
             )
             if covered_codes:
-                return json.dumps({"status": "restricted", "provider_name": name, "is_prepaid": bool(row.get("is_prepaid")), "copay_note": (row.get("copay_notes") or None), "covered_treatments": covered_codes[:5], "has_more": len(covered_codes) > 5, "next_action": "clarify_coverage"}, ensure_ascii=False)
-            return json.dumps({"status": "restricted", "provider_name": name, "is_prepaid": bool(row.get("is_prepaid")), "copay_note": (row.get("copay_notes") or None), "covered_treatments": [], "next_action": "ask_clinic"}, ensure_ascii=False)
+                _res = {"status": "restricted", "provider_name": name, "is_prepaid": bool(row.get("is_prepaid")), "copay_note": (row.get("copay_notes") or None), "covered_treatments": covered_codes[:5], "has_more": len(covered_codes) > 5, "next_action": "clarify_coverage"}
+            else:
+                _res = {"status": "restricted", "provider_name": name, "is_prepaid": bool(row.get("is_prepaid")), "copay_note": (row.get("copay_notes") or None), "covered_treatments": [], "next_action": "ask_clinic"}
+            if _sched_info:
+                _res["scheduling"] = _sched_info
+                _res["nota_obligatoria"] = _sched_nota
+            return json.dumps(_res, ensure_ascii=False)
         elif status == "external_derivation":
             return json.dumps({"status": "external_derivation", "provider_name": name, "external_target": row.get("external_target", ""), "next_action": "provide_contact"}, ensure_ascii=False)
         else:  # rejected → particular + reintegro

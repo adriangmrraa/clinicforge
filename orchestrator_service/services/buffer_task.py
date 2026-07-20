@@ -2507,13 +2507,20 @@ async def process_buffer_task(
         # → salida concreta con el equipo → aclarar la confusión seña↔precio directo.
         try:
             # Regex COMPARTIDOS con el banco (services/inyecciones_frescas.py) — ampliados
-            # con "¿debo abonar algo adicional?" (caso post-confirmacion del banco v2).
-            from services.inyecciones_frescas import es_confusion_sena, es_pregunta_monto_coseguro
+            # con "¿debo abonar algo adicional?" (caso post-confirmacion del banco v2) y
+            # con la INSISTENCIA sin la palabra coseguro ("dale, un aproximado... cuánta
+            # plata llevo?"): si el hilo de coseguro ya estaba abierto, sigue siendo la
+            # misma pregunta y merece el mismo manejo cálido.
+            from services.inyecciones_frescas import (
+                es_confusion_sena,
+                es_insistencia_monto,
+                es_pregunta_monto_coseguro,
+            )
             _cos_last = " ".join(messages).lower() if isinstance(messages, list) else str(messages or "").lower()
             _cos_pregunta_monto = es_pregunta_monto_coseguro(_cos_last)
             _cos_confusion_sena = es_confusion_sena(_cos_last)
-            if _cos_pregunta_monto or _cos_confusion_sena:
-                _cos_ya_explicado = 0
+            _cos_ya_explicado = 0
+            if _cos_pregunta_monto or _cos_confusion_sena or es_insistencia_monto(_cos_last):
                 try:
                     _cos_ya_explicado = await pool.fetchval(
                         "SELECT COUNT(*) FROM chat_messages WHERE conversation_id = $1 AND tenant_id = $2 "
@@ -2524,72 +2531,20 @@ async def process_buffer_task(
                     ) or 0
                 except Exception:
                     pass
-                _cos_gate = "\n💬 MANEJO DEL COSEGURO (el paciente pregunta el monto o confunde la seña con el precio — llevalo BIEN, sin frustrar): "
-                if _cos_confusion_sena:
-                    _cos_gate += (
-                        "Está confundiendo la SEÑA con el precio de la consulta. Aclaráselo DIRECTO y amable: "
-                        "'No, tranquilo/a — ese monto es la seña OPCIONAL para reservar el turno, no el precio de la consulta. "
-                        "Con tu obra social la consulta va por tu cobertura; si corresponde un coseguro, te lo confirman en la clínica.' "
-                        "⛔ NO repitas la explicación completa del coseguro ni des cifras del valor de consulta. "
-                    )
-                elif int(_cos_ya_explicado) >= 2:
-                    _cos_gate += (
-                        "YA le explicaste el coseguro en esta charla: NO repitas la misma frase (lo frustra). Dale una SALIDA CONCRETA: "
-                        "'El monto exacto depende del plan que tengas — si querés, le paso tu consulta al equipo y te confirman el valor "
-                        "de TU plan antes del turno, ¿te sirve?'. Si acepta, llamá derivhumano (motivo: 'Paciente quiere el monto exacto "
-                        "del coseguro de su plan — confirmarle'). ⛔ Nunca una cifra por chat. "
-                    )
-                else:
-                    _cos_gate += (
-                        "Explicale el PORQUÉ con calidez (no la muletilla seca): el coseguro depende del PLAN específico que tenga con su "
-                        "obra social — por eso no hay una cifra única — y se lo confirman en la clínica ANTES de atenderse, sin sorpresas. "
-                        "Cerrá con tranquilidad ('quedate tranquilo/a que te lo confirman apenas llegues, antes de atenderte') y seguí "
-                        "con el turno. ⛔ Nunca una cifra por chat. "
-                    )
-                patient_context = (patient_context + _cos_gate) if patient_context else _cos_gate
+                if not (_cos_pregunta_monto or _cos_confusion_sena) and int(_cos_ya_explicado) >= 1:
+                    _cos_pregunta_monto = True  # insistencia sobre un hilo de coseguro ya abierto
+            if _cos_pregunta_monto or _cos_confusion_sena:
+                # Texto único compartido con el banco (misma función en eval/run.py).
+                from services.inyecciones_frescas import iny_manejo_coseguro
+                _cos_gate = iny_manejo_coseguro(_cos_pregunta_monto, _cos_confusion_sena, int(_cos_ya_explicado))
+                if _cos_gate:
+                    patient_context = (patient_context + "\n" + _cos_gate) if patient_context else _cos_gate
         except Exception as _cos_err:
             logger.debug(f"manejo-coseguro skipped (non-fatal): {_cos_err}")
 
-        # ACEPTÓ TU OFRECIMIENTO → EJECUTAR (caso Luis, prod 2026-07-20: el bot ofreció
-        # 'decime y te busco opciones', Luis dijo 'Bueno' y el bot RE-OFRECIÓ lo mismo en
-        # vez de buscar). Si el último mensaje del bot fue una oferta condicional y el
-        # paciente responde con una afirmación corta, la oferta se EJECUTA ya.
-        try:
-            _ao_last = (" ".join(messages) if isinstance(messages, list) else str(messages or "")).lower().strip()
-            _ao_es_si = bool(
-                re.fullmatch(
-                    r"(bueno|dale|s[ií]|ok(a|ey)?|listo|de una|obvio|perfecto|genial|joya|buen[íi]simo"
-                    r"|s[ií] dale|dale s[ií]|bueno dale|dale bueno|me parece( bien)?|est[aá] bien)[.!\s😊👍🙏]*",
-                    _ao_last,
-                )
-            )
-            if _ao_es_si:
-                _ao_prev = await pool.fetchrow(
-                    "SELECT content FROM chat_messages WHERE conversation_id = $1 AND tenant_id = $2 "
-                    "AND role IN ('assistant', 'human_supervisor') ORDER BY created_at DESC LIMIT 1",
-                    conversation_id,
-                    tenant_id,
-                )
-                _ao_prev_txt = ((_ao_prev["content"] if _ao_prev else "") or "").lower()
-                _ao_ofrecio = bool(
-                    re.search(
-                        r"decime y te busco|te busco opciones|te paso (?:turnos|opciones|las opciones)"
-                        r"|quer[eé]s que (?:te )?(?:busque|pase|coordine)|decime para qu[eé] d[íi]a"
-                        r"|si quer[eé]s.{0,40}(?:busco|paso|coordino)",
-                        _ao_prev_txt,
-                    )
-                )
-                if _ao_ofrecio:
-                    patient_context = (patient_context or "") + (
-                        "\n⚡ EL PACIENTE ACEPTÓ TU OFRECIMIENTO: en tu último mensaje le ofreciste buscar/pasar "
-                        "opciones y respondió que SÍ ('bueno/dale'). EJECUTALO EN ESTA RESPUESTA: llamá la herramienta "
-                        "que corresponda (check_availability para opciones de turno) y entregá el RESULTADO concreto. "
-                        "⛔ PROHIBIDO volver a preguntar 'decime cuándo/para qué día' o re-ofrecer sin resultados — "
-                        "eso ya lo dijiste y el paciente ya aceptó."
-                    )
-                    logger.info(f"⚡ Aceptación de ofrecimiento detectada para {external_user_id} — instrucción de ejecución inyectada")
-        except Exception as _ao_err:
-            logger.debug(f"acepto-ofrecimiento skipped (non-fatal): {_ao_err}")
+        # ACEPTÓ TU OFRECIMIENTO → EJECUTAR (caso Luis; migrado a la función COMPARTIDA
+        # iny_acepto_ofrecimiento con la rama equipo→derivhumano — se aplica junto con
+        # las demás inyecciones frescas más abajo, con el mismo last_bot).
 
         # HILO HUMANO RECIENTE (caso Matías, prod 2026-07-20): la secretaria coordinó por
         # texto (override activo), el override venció, el bot se reactivó y agarró la
@@ -2680,6 +2635,7 @@ async def process_buffer_task(
         # (eval/run.py) aplica LAS MISMAS: una sola fuente de verdad, sin espejos.
         try:
             from services.inyecciones_frescas import (
+                iny_acepto_ofrecimiento,
                 iny_derivacion_explicita,
                 iny_multi_persona,
                 iny_os_en_mensaje,
@@ -2698,8 +2654,10 @@ async def process_buffer_task(
                     tenant_id,
                 )
                 _if_users = [r["content"] or "" for r in _if_rows if r["role"] == "user"][:3] + _if_users
+                # El último saliente que vio el paciente (bot O secretaria por la app):
+                # el aceptó-ofrecimiento aplica a ofertas de ambos.
                 _if_last_bot = next(
-                    (r["content"] or "" for r in _if_rows if r["role"] == "assistant"), ""
+                    (r["content"] or "" for r in _if_rows if r["role"] in ("assistant", "human_supervisor")), ""
                 )
             except Exception:
                 pass
@@ -2709,6 +2667,7 @@ async def process_buffer_task(
                 iny_multi_persona(_if_last),
                 iny_queja_precio(_if_last),
                 iny_os_en_mensaje(_if_last),
+                iny_acepto_ofrecimiento(_if_last, _if_last_bot),
             ):
                 if _if_txt:
                     patient_context = (patient_context + "\n" + _if_txt) if patient_context else _if_txt
@@ -2717,6 +2676,69 @@ async def process_buffer_task(
                     )
         except Exception as _if_err:
             logger.debug(f"inyecciones-frescas skipped (non-fatal): {_if_err}")
+
+        # QUIERE-ANTES (semáforo OS, pedido Carlos 2026-07-20): el paciente con OS
+        # demorada insiste en atenderse antes → porqué real (es el plazo de SU obra
+        # social, no falta de agenda) + salida particular sin presionar. El regex puro
+        # gatea la query (barata solo cuando hace falta).
+        try:
+            from services.inyecciones_frescas import iny_quiere_antes, quiere_antes_matchea
+
+            _qa_last = str(messages[-1] if messages else "")
+            if quiere_antes_matchea(_qa_last):
+                _qa_row = await pool.fetchrow(
+                    """
+                    SELECT tip.provider_name, tip.scheduling_delay_days
+                    FROM patients p
+                    JOIN tenant_insurance_providers tip
+                      ON tip.tenant_id = p.tenant_id
+                     AND LOWER(tip.provider_name) = LOWER(p.insurance_provider)
+                    WHERE p.tenant_id = $1
+                      AND REGEXP_REPLACE(p.phone_number, '[^0-9]', '', 'g') = REGEXP_REPLACE($2, '[^0-9]', '', 'g')
+                      AND tip.is_active = true
+                      AND tip.scheduling_mode = 'delayed'
+                      AND COALESCE(tip.scheduling_delay_days, 0) > 0
+                    LIMIT 1
+                    """,
+                    tenant_id,
+                    external_user_id,
+                )
+                if not _qa_row:
+                    # Lead sin ficha: la cobertura vive en lead_context (Redis).
+                    try:
+                        from services.lead_context import get as _qa_lc_get
+
+                        _qa_lc = await _qa_lc_get(tenant_id, external_user_id)
+                        _qa_prov = ((_qa_lc or {}).get("insurance_provider") or "").strip()
+                        if _qa_prov and _qa_prov.lower() not in ("particular", "ninguna", "no", "sin obra social"):
+                            _qa_row = await pool.fetchrow(
+                                """
+                                SELECT provider_name, scheduling_delay_days
+                                FROM tenant_insurance_providers
+                                WHERE tenant_id = $1 AND is_active = true
+                                  AND LOWER(provider_name) = LOWER($2)
+                                  AND scheduling_mode = 'delayed'
+                                  AND COALESCE(scheduling_delay_days, 0) > 0
+                                LIMIT 1
+                                """,
+                                tenant_id,
+                                _qa_prov,
+                            )
+                    except Exception:
+                        pass
+                if _qa_row:
+                    from datetime import date as _qa_date, timedelta as _qa_td
+
+                    _qa_delay = int(_qa_row["scheduling_delay_days"] or 0)
+                    _qa_min = (_qa_date.today() + _qa_td(days=_qa_delay)).strftime("%d/%m")
+                    _qa_txt = iny_quiere_antes(str(_qa_row["provider_name"]), _qa_delay, _qa_min)
+                    if _qa_txt:
+                        patient_context = (patient_context + "\n" + _qa_txt) if patient_context else _qa_txt
+                        logger.info(
+                            f"⏳ Inyección QUIERE-ANTES aplicada (OS {_qa_row['provider_name']}, {_qa_delay} días) para {external_user_id}"
+                        )
+        except Exception as _qa_err:
+            logger.debug(f"quiere-antes skipped (non-fatal): {_qa_err}")
 
         system_prompt = build_system_prompt(
             clinic_name=clinic_name,
