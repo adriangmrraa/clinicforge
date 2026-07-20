@@ -2574,17 +2574,51 @@ async def check_availability(
             _ins_es_particular = _ins_arg.lower() in ("particular", "ninguna", "no", "sin obra social")
             _ca_phone = current_customer_phone.get()
             if _ins_es_particular:
-                # "QUIERE ANTES" (semáforo OS, 2026-07-20): eligió atenderse PARTICULAR
-                # esta vez. NO pisamos su OS real (ni ficha ni lead_context — antes este
-                # UPDATE borraba la OS registrada). Solo marcamos el flag efímero que
-                # abre la RESERVA sin el plazo de la OS (_insurance_min_booking_date).
-                if _ca_phone:
-                    try:
-                        from services.lead_context import merge as lead_ctx_merge
-                        await lead_ctx_merge(tenant_id, _ca_phone, {"particular_this_booking": True})
-                        logger.info("📅 check_availability: búsqueda PARTICULAR explícita → flag particular_this_booking (la OS registrada NO se pisa)")
-                    except Exception as e:
-                        logger.warning(f"📅 check_availability: no pude marcar particular_this_booking: {e}")
+                # Dos reglas de negocio conviven (v2, E2E cobertura 2026-07-20):
+                # - SIN OS real previa → "Particular" SÍ se persiste en la ficha (regla
+                #   original: al particular no se lo re-interroga).
+                # - CON OS real previa → NO se pisa (quiere-antes: eligió particular
+                #   SOLO esta vez); flag efímero que abre la RESERVA sin el plazo de
+                #   la OS (_insurance_min_booking_date).
+                _os_previa = ""
+                try:
+                    if _ca_patient_id:
+                        _os_previa = await db.pool.fetchval(
+                            "SELECT insurance_provider FROM patients WHERE id = $1 AND tenant_id = $2",
+                            _ca_patient_id, tenant_id,
+                        ) or ""
+                    if not _os_previa and _ca_phone:
+                        from services.lead_context import get as _lc_get_prev
+                        _os_previa = ((await _lc_get_prev(tenant_id, _ca_phone)) or {}).get("insurance_provider") or ""
+                except Exception:
+                    _os_previa = ""
+                _hay_os_real = bool(str(_os_previa).strip()) and str(_os_previa).strip().lower() not in (
+                    "particular", "ninguna", "no", "sin obra social",
+                )
+                if _hay_os_real:
+                    if _ca_phone:
+                        try:
+                            from services.lead_context import merge as lead_ctx_merge
+                            await lead_ctx_merge(tenant_id, _ca_phone, {"particular_this_booking": True})
+                            logger.info(f"📅 check_availability: PARTICULAR explícito con OS registrada ('{_os_previa}') → flag particular_this_booking (la OS NO se pisa)")
+                        except Exception as e:
+                            logger.warning(f"📅 check_availability: no pude marcar particular_this_booking: {e}")
+                else:
+                    if _ca_patient_id:
+                        try:
+                            await db.pool.execute(
+                                "UPDATE patients SET insurance_provider = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3",
+                                _ins_arg, _ca_patient_id, tenant_id,
+                            )
+                            logger.info(f"📅 check_availability: sin OS previa → persisto '{_ins_arg}' en la ficha")
+                        except Exception as e:
+                            logger.warning(f"📅 check_availability: Failed to update patient insurance: {e}")
+                    if _ca_phone:
+                        try:
+                            from services.lead_context import merge as lead_ctx_merge
+                            await lead_ctx_merge(tenant_id, _ca_phone, {"insurance_provider": _ins_arg})
+                        except Exception as e:
+                            logger.warning(f"📅 check_availability: Failed to merge insurance into lead_context: {e}")
             else:
                 if _ca_patient_id:
                     try:

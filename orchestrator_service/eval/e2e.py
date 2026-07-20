@@ -313,10 +313,15 @@ async def scenario_profesional_ultimo_turno(db, book_appointment, set_ctx):
     # OJO: las opciones NO nombran al profesional en el texto (regla del prompt) →
     # se verifica por el ESTADO interno: last_offered_slots guarda el professional
     # de cada slot ofrecido (lo escribe check_availability al setear OFFERED_SLOTS).
+    # v3 (sync 2026-07-20): SIN treatment_name — en el catálogo REAL de prod
+    # "Consulta General" está asignada a Eli, así que pedirla forzaba el filtro del
+    # junction y el fallback degradaba a búsqueda general (conducta CORRECTA según
+    # el panel). El fallback al prof del último turno se prueba con el pedido
+    # genérico puro ("quiero un control"), que es el caso Amelia real.
     r1 = str(await _invoke_tool(
         check_availability,
         date_query="quiero un control, lo antes posible", interpreted_date=manana,
-        search_mode="open", treatment_name="consulta",
+        search_mode="open",
     ))
     # v2 (2026-07-20): los slots del estado guardan SOLO date/time (sin nombre de
     # profesional) — la fuente de verdad del ruteo es el professional_id que
@@ -501,7 +506,9 @@ async def scenario_cobertura(db, book_appointment, set_ctx):
     )
     results.append(("OS dicha UNA vez → queda GUARDADA en la ficha", saved == "OSDE", f"ficha={saved!r}"))
 
-    # G.2 — "Particular" también se persiste (para no re-interrogar al particular).
+    # G.2 — REGLA v2 (quiere-antes, 2026-07-20): con una OS REAL registrada, elegir
+    # "particular" NO la pisa (es "particular SOLO esta vez") — se marca el flag
+    # efímero particular_this_booking que abre la reserva sin el plazo de la OS.
     await reset(TEST_TENANT, TEST_PHONE)
     await _invoke_tool(
         check_availability,
@@ -511,7 +518,35 @@ async def scenario_cobertura(db, book_appointment, set_ctx):
     saved2 = await db.pool.fetchval(
         "SELECT insurance_provider FROM patients WHERE id=$1 AND tenant_id=$2", pid, TEST_TENANT
     )
-    results.append(("'Particular' también se persiste en la ficha", saved2 == "Particular", f"ficha={saved2!r}"))
+    from services.lead_context import get as _lc_get_cob
+    _lc_cob = await _lc_get_cob(TEST_TENANT, TEST_PHONE)
+    _flag = bool((_lc_cob or {}).get("particular_this_booking"))
+    results.append((
+        "particular con OS registrada → NO pisa la OS (queda OSDE) + flag por-reserva",
+        saved2 == "OSDE" and _flag,
+        f"ficha={saved2!r} flag={_flag}",
+    ))
+
+    # G.3 — SIN OS real previa, "Particular" SÍ se persiste (regla original: al
+    # particular no se lo re-interroga).
+    await db.pool.execute(
+        "UPDATE patients SET insurance_provider = NULL WHERE id=$1 AND tenant_id=$2", pid, TEST_TENANT
+    )
+    await reset(TEST_TENANT, TEST_PHONE)
+    try:
+        from services.lead_context import merge as _lc_merge_cob
+        await _lc_merge_cob(TEST_TENANT, TEST_PHONE, {"insurance_provider": "", "particular_this_booking": False})
+    except Exception:
+        pass
+    await _invoke_tool(
+        check_availability,
+        date_query="lo antes posible", interpreted_date=manana,
+        search_mode="open", treatment_name="consulta", insurance_provider="Particular",
+    )
+    saved3 = await db.pool.fetchval(
+        "SELECT insurance_provider FROM patients WHERE id=$1 AND tenant_id=$2", pid, TEST_TENANT
+    )
+    results.append(("sin OS previa → 'Particular' SÍ se persiste en la ficha", saved3 == "Particular", f"ficha={saved3!r}"))
 
     await reset(TEST_TENANT, TEST_PHONE)
     return results
