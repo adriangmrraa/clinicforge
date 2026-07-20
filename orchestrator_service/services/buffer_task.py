@@ -5326,6 +5326,20 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
     try:
         if response_text:
             _rt = response_text
+            # v2 (caso Lucas 2026-07-20, "los cierres son muy largos"): compresión de
+            # las frases-plantilla ANTES de reagrupar. Mismo contenido, ~40% menos texto.
+            _rt = re.sub(
+                r"(?i)si quer[eé]s,? pod[eé]s adelantar una se[ñn]a de \$?([\d\.,]+)(?: por transferencia)?:?\s*\n",
+                r"Seña opcional para asegurarlo: $\1 →\n", _rt)
+            _rt = re.sub(
+                r"(?i)Alias:\s*([^\n|]+?)\s*\n\s*CBU:\s*([^\n|]+?)\s*\n\s*Titular:\s*([^\n]+)",
+                r"Alias: \1 · CBU: \2 · Titular: \3", _rt)
+            _rt = re.sub(
+                r"(?i)para ahorrar tiempo(?: en tu consulta)? pod[eé]s completar tu ficha m[eé]dica aqu[ií]:\s*",
+                "Tu ficha médica (2 min): ", _rt)
+            _rt = re.sub(
+                r"(?i)cuando termines,? avisame(?: para corroborar los datos)?\.?",
+                "Avisame cuando la completes 😊", _rt)
             _low = _rt.lower()
             _has_anamnesis = (
                 ("anamnesis" in _low or "ficha médica" in _low or "ficha medica" in _low)

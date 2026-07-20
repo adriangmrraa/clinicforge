@@ -20,6 +20,20 @@ def candado_cierre(response_text: str) -> str:
     if not response_text:
         return response_text
     _rt = response_text
+    # v2 (caso Lucas 2026-07-20, "los cierres son muy largos"): compresión de las
+    # frases-plantilla ANTES de reagrupar. Mismo contenido, ~40% menos texto.
+    _rt = re.sub(
+        r"(?i)si quer[eé]s,? pod[eé]s adelantar una se[ñn]a de \$?([\d\.,]+)(?: por transferencia)?:?\s*\n",
+        r"Seña opcional para asegurarlo: $\1 →\n", _rt)
+    _rt = re.sub(
+        r"(?i)Alias:\s*([^\n|]+?)\s*\n\s*CBU:\s*([^\n|]+?)\s*\n\s*Titular:\s*([^\n]+)",
+        r"Alias: \1 · CBU: \2 · Titular: \3", _rt)
+    _rt = re.sub(
+        r"(?i)para ahorrar tiempo(?: en tu consulta)? pod[eé]s completar tu ficha m[eé]dica aqu[ií]:\s*",
+        "Tu ficha médica (2 min): ", _rt)
+    _rt = re.sub(
+        r"(?i)cuando termines,? avisame(?: para corroborar los datos)?\.?",
+        "Avisame cuando la completes 😊", _rt)
     _low = _rt.lower()
     _has_anamnesis = (
         ("anamnesis" in _low or "ficha médica" in _low or "ficha medica" in _low)
@@ -118,6 +132,27 @@ CASOS = [
         "Si querés, podés adelantar una seña de $25.000: Alias: dradelgadoml\n\n"
         "Ya tenés tu turno confirmado 😊",
         lambda out: len(_globitos(out)) == 2 and "Alias: dradelgadoml" in out and out.count("confirmado") == 1,
+    ),
+    (
+        "Lucas (real 2026-07-20): el cierre largo se COMPRIME (~40% menos) sin perder nada",
+        "Listo, quedó tu evaluación para limpieza dental el miércoles 29/07 a las 10:45 😊\n"
+        "Consultorios Santa Monica — Salta 147, 1er piso, consultorio 9\n"
+        "Maps: https://maps.app.goo.gl/iQHbGYWSRPypzDEw5\n\n"
+        "Si querés, podés adelantar una seña de $25.000 por transferencia:\n"
+        "Alias: dradelgadoml\n"
+        "CBU: 0970099455003515270012\n"
+        "Titular: Delgado Maria Laura\n"
+        "Para ahorrar tiempo en tu consulta podés completar tu ficha médica aquí: https://x.host/anamnesis/1/abc\n"
+        "Cuando termines avisame para corroborar los datos.",
+        lambda out: (
+            len(_globitos(out)) == 2
+            and "Seña opcional para asegurarlo: $25.000" in out
+            and "Alias: dradelgadoml · CBU: 0970099455003515270012 · Titular: Delgado Maria Laura" in out
+            and "Tu ficha médica (2 min):" in out
+            and "Avisame cuando la completes 😊" in out
+            and "por transferencia" not in out
+            and "corroborar" not in out
+        ),
     ),
 ]
 

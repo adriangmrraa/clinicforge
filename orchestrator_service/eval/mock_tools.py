@@ -239,6 +239,18 @@ def execute(name: str, args: dict) -> str:
         return f"RESERVADO 30 min: {args.get('slot_datetime', '')}."
 
     if name == "book_appointment":
+        # CANDADO DATOS (espejo del real, caso Lucas 2026-07-20): un paciente NUEVO
+        # sin nombre/apellido/DNI NO se reserva — se piden los datos primero.
+        if (_CTX.get("patient_status") or "") in ("new_lead", "lead") and not args.get("is_minor") and not args.get("is_art"):
+            _faltan = [n for n, k in (("nombre", "first_name"), ("apellido", "last_name"), ("DNI", "dni"))
+                       if not str(args.get(k) or "").strip()]
+            if _faltan:
+                return (
+                    "FALTAN_DATOS — el turno NO se reservó todavía. Es un paciente NUEVO y antes de "
+                    "reservar necesitás: " + ", ".join(_faltan) + ". "
+                    "Pedile esos datos en UN solo mensaje amable y RECIÉN después volvé a llamar "
+                    "book_appointment con todos los datos (el horario elegido sigue disponible unos minutos)."
+                )
         # Simular el bug offer!=bookable (caso Graciela): la reserva falla con
         # UNAVAILABLE aunque check_availability haya ofrecido el slot.
         _bf = _CTX.get("book_fails")

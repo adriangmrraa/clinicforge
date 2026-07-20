@@ -325,6 +325,7 @@ async def main() -> int:
                         "avail_days": c.get("mock_availability_days"),
                         "book_fails": c.get("mock_book_fails"),
                         "my_appointments": c.get("mock_my_appointments"),
+                        "patient_status": c.get("patient_status"),
                     })
                     answer, _pt, _ct, tool_trace = await _run_agent_turn(
                         client, mc["model"], messages, args.temperature, tools,

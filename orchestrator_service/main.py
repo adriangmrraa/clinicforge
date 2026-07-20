@@ -5721,6 +5721,39 @@ async def book_appointment(
             )
             patient_id = existing_patient["id"]
         else:
+            # CANDADO DATOS (caso Lucas, pruebas 2026-07-20: turno creado como
+            # "No especificado No especificado" — la regla de pedir nombre/apellido/DNI
+            # vivía solo en el prompt y el modelo la salteó). Un paciente NUEVO no se
+            # crea sin identidad: la reserva se RECHAZA antes de crear nada, con la
+            # instrucción de pedir los datos. Pacientes existentes no pasan por acá.
+            _cd_fn = bool(str(first_name or "").strip())
+            _cd_ln = bool(str(last_name or "").strip())
+            _cd_dni = bool(str(dni or "").strip())
+            _cd_faltan = []
+            if is_art:
+                if not _cd_dni:
+                    _cd_faltan = ["DNI del paciente"]
+            elif is_minor:
+                if not _cd_fn:
+                    _cd_faltan = ["nombre del menor"]
+            else:
+                if not _cd_fn:
+                    _cd_faltan.append("nombre")
+                if not _cd_ln:
+                    _cd_faltan.append("apellido")
+                if not _cd_dni:
+                    _cd_faltan.append("DNI")
+            if _cd_faltan:
+                logger.warning(
+                    f"⛔ CANDADO DATOS: book de paciente NUEVO sin {_cd_faltan} ({phone}) — reserva rechazada, se piden los datos"
+                )
+                return (
+                    "FALTAN_DATOS — el turno NO se reservó todavía. Es un paciente NUEVO y antes de "
+                    "reservar necesitás: " + ", ".join(_cd_faltan) + ". "
+                    "Pedile esos datos en UN solo mensaje amable y RECIÉN después volvé a llamar "
+                    "book_appointment con todos los datos (el horario elegido sigue disponible unos minutos)."
+                )
+
             # Determine patient_source for new patients
             _patient_source = "regular"
             if is_art:

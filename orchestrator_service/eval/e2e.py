@@ -118,6 +118,25 @@ async def scenario_hijo_no_duplicado(db, book_appointment, set_ctx):
     await reset(TEST_TENANT, TEST_PHONE)
     set_ctx(TEST_TENANT, TEST_PHONE)
 
+    # A.0 — CANDADO DATOS (caso Lucas 2026-07-20): un paciente NUEVO sin nombre/
+    # apellido/DNI NO se reserva — el book se rechaza con FALTAN_DATOS y NO crea nada.
+    import datetime as _dt_a0
+    _manana_a0 = (_dt_a0.datetime.now() + _dt_a0.timedelta(days=1)).strftime("%Y-%m-%d 10:00")
+    r_sin_datos = str(await _invoke_tool(
+        book_appointment, date_time=_manana_a0, treatment_reason="consulta",
+    ))
+    _apts_a0 = await db.pool.fetchval(
+        "SELECT COUNT(*) FROM appointments a JOIN patients p ON p.id = a.patient_id "
+        "WHERE a.tenant_id = $1 AND regexp_replace(COALESCE(p.phone_number,''),'[^0-9]','','g') = regexp_replace($2,'[^0-9]','','g')",
+        TEST_TENANT, TEST_PHONE,
+    )
+    results.append((
+        "paciente NUEVO sin datos → book rechazado (FALTAN_DATOS) y NO crea turno",
+        "FALTAN_DATOS" in r_sin_datos and (_apts_a0 or 0) == 0,
+        f"resp: {r_sin_datos[:90]} | turnos={_apts_a0}",
+    ))
+    await reset(TEST_TENANT, TEST_PHONE)
+
     # Simular "la madre ya tiene un turno confirmado en esta charla".
     await set_state(TEST_TENANT, TEST_PHONE, "BOOKED", last_booked_appointment_id=999999999)
 
