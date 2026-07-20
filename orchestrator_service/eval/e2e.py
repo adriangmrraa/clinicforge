@@ -655,6 +655,111 @@ async def scenario_dos_turnos(db, book_appointment, set_ctx):
     return results
 
 
+# ----------------------------------------------------------------------------
+# ESCENARIOS K/L/M/N — ronda gratis extra (2026-07-20, pedido Carlos: exprimir
+# lo gratis antes de la corrida paga).
+# ----------------------------------------------------------------------------
+
+async def scenario_guard_slot(db, book_appointment, set_ctx):
+    """K — el guard offer==bookable de reschedule BLOQUEA horarios no ofrecidos
+    (chequeo POSITIVO del guard que descubrimos funcionando en la corrida v1)."""
+    from main import reschedule_appointment
+    results = []
+    await _cleanup(db)
+    f1, f_inventada = _proximo_lunes(2), _proximo_lunes(4)
+    pid, (apt_id,) = await _sembrar_paciente_con_turnos(db, [(f1, "15:00")])
+    set_ctx(TEST_TENANT, TEST_PHONE)
+    # SIN sembrar oferta: reprogramar a una fecha/hora arbitraria debe ser BLOQUEADO.
+    r = str(await _invoke_tool(
+        reschedule_appointment,
+        original_date=f1.isoformat(),
+        new_date_time=f"{f_inventada.isoformat()} 16:00",
+        interpreted_date=f"{f_inventada.isoformat()} 16:00",
+    ))
+    row = await db.pool.fetchrow(
+        "SELECT appointment_datetime::date AS d FROM appointments WHERE id=$1 AND tenant_id=$2",
+        apt_id, TEST_TENANT,
+    )
+    no_movio = row is not None and str(row["d"]) == f1.isoformat()
+    bloqueo = ("no fue ofrecido" in r.lower()) or ("no puedo reprogramar" in r.lower()) or ("⛔" in r)
+    results.append(("el guard BLOQUEÓ la reprogramación a un horario no ofrecido", bloqueo, r[:140]))
+    results.append(("el turno original quedó INTACTO en la BD", no_movio,
+                    f"esperaba {f1}, BD={row['d'] if row else 'sin turno'}"))
+    return results
+
+
+async def scenario_cancelar_sin_turno(db, book_appointment, set_ctx):
+    """L — cancelar sin tener turnos: mensaje claro, sin crash, sin tocar nada."""
+    from main import cancel_appointment
+    results = []
+    await _cleanup(db)
+    # paciente SIN turnos
+    await db.pool.execute(
+        "INSERT INTO patients (tenant_id, first_name, last_name, phone_number, status, created_at) "
+        "VALUES ($1, 'Prueba', 'SinTurnos', $2, 'active', NOW()) "
+        "ON CONFLICT (tenant_id, phone_number) DO UPDATE SET status='active'",
+        TEST_TENANT, TEST_PHONE,
+    )
+    set_ctx(TEST_TENANT, TEST_PHONE)
+    f = _proximo_lunes(2)
+    r = str(await _invoke_tool(cancel_appointment, date_query=f.isoformat()))
+    suave = ("no encontr" in r.lower()) or ("no ten" in r.lower()) or ("sin turno" in r.lower())
+    results.append(("cancelar sin turnos responde claro y NO revienta", suave, r[:140]))
+    return results
+
+
+async def scenario_reprogramar_el_correcto(db, book_appointment, set_ctx):
+    """M — con DOS turnos, reprogramar por fecha mueve EL correcto y no toca el otro."""
+    from main import check_availability, reschedule_appointment
+    import re as _re
+    results = []
+    await _cleanup(db)
+    f1, f2 = _proximo_lunes(2), _proximo_lunes(3)
+    pid, (apt1, apt2) = await _sembrar_paciente_con_turnos(db, [(f1, "15:00"), (f2, "15:00")])
+    set_ctx(TEST_TENANT, TEST_PHONE)
+    # sembrar oferta para la semana 4 y mover EL SEGUNDO turno a un slot ofrecido
+    f_obj = _proximo_lunes(4)
+    r_av = str(await _invoke_tool(
+        check_availability, date_query=f_obj.isoformat(), interpreted_date=f_obj.isoformat(),
+        search_mode="week", treatment_name="Consulta General",
+    ))
+    _slots = _re.findall(r"(\d{4}-\d{2}-\d{2})[^\d]{0,20}(\d{1,2}:\d{2})", r_av)
+    if not _slots:
+        _hum = _re.findall(r"(\d{1,2})/(\d{1,2})[^\d]{0,20}(\d{1,2}:\d{2})", r_av)
+        if _hum:
+            dd, mm, hhmm = _hum[0]
+            _slots = [(f"{f_obj.year}-{int(mm):02d}-{int(dd):02d}", hhmm)]
+    if not _slots:
+        results.append(("hubo slots para mover el 2º turno", False, r_av[:140]))
+        return results
+    slot_date, slot_time = _slots[0]
+    await _invoke_tool(
+        reschedule_appointment,
+        original_date=f2.isoformat(),
+        new_date_time=f"{slot_date} {slot_time}",
+        interpreted_date=f"{slot_date} {slot_time}",
+    )
+    d1 = await db.pool.fetchval("SELECT appointment_datetime::date FROM appointments WHERE id=$1", apt1)
+    d2 = await db.pool.fetchval("SELECT appointment_datetime::date FROM appointments WHERE id=$1", apt2)
+    results.append(("movió EL turno correcto (el 2º)", str(d2) == slot_date, f"apt2={d2}, esperaba {slot_date}"))
+    results.append(("el 1º turno quedó intacto", str(d1) == f1.isoformat(), f"apt1={d1}, esperaba {f1}"))
+    return results
+
+
+async def scenario_triage(db, book_appointment, set_ctx):
+    """N — triage_urgency REAL (criterios fijos, sin LLM): clasifica bien los niveles."""
+    from main import triage_urgency
+    results = []
+    set_ctx(TEST_TENANT, TEST_PHONE)
+    r_emerg = str(await _invoke_tool(triage_urgency, symptoms="me golpeé la boca, sangra mucho y un diente se me movió, dolor insoportable"))
+    r_leve = str(await _invoke_tool(triage_urgency, symptoms="tengo una molestia leve al masticar desde ayer, nada grave"))
+    results.append(("síntomas graves → nivel de urgencia alto (emergency/high)",
+                    bool(__import__("re").search(r"emergency|high", r_emerg, __import__("re").I)), r_emerg[:120]))
+    results.append(("molestia leve → NO clasifica como emergencia",
+                    "emergency" not in r_leve.lower(), r_leve[:120]))
+    return results
+
+
 SCENARIOS = {
     "hijo": scenario_hijo_no_duplicado,
     "agendado": scenario_agendado_y_quiere_antes,
@@ -666,6 +771,10 @@ SCENARIOS = {
     "reprogramar": scenario_reprogramar,
     "cancelar": scenario_cancelar,
     "dos-turnos": scenario_dos_turnos,
+    "guard-slot": scenario_guard_slot,
+    "cancelar-sin-turno": scenario_cancelar_sin_turno,
+    "reprogramar-el-correcto": scenario_reprogramar_el_correcto,
+    "triage": scenario_triage,
 }
 
 
