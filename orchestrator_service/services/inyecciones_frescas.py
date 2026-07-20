@@ -121,9 +121,27 @@ def iny_queja_precio(last_user: str) -> str | None:
     )
 
 
+# OS que el paciente puede nombrar pero NO tienen convenio con la clínica (panel
+# real tenant 1, sync 2026-07-20) → encuadre directo: particular + comprobante.
+_OS_NO_PANEL_PAT = re.compile(
+    r"(?i)\b(swiss(?:\s+medical)?|ioma|osdepym|omint|luis pasteur|prevenci[oó]n)\b"
+)
+
+
 def iny_os_en_mensaje(last_user: str) -> str | None:
     """OS nombrada en el mensaje → reconocerla, verificar antes de afirmar, sin precio particular."""
     t = (last_user or "").lower()
+    m_np = _OS_NO_PANEL_PAT.search(t)
+    if m_np:
+        os_np = m_np.group(1).title()
+        return (
+            f"🏥 EL PACIENTE NOMBRÓ {os_np}, que NO tiene convenio con la clínica: "
+            f"1) Reconocela y aclaráselo con calidez, SIN inventar convenio ('con {os_np} no tenemos "
+            "convenio directo'). 2) El encuadre es atención PARTICULAR y SIEMPRE mencionás que la "
+            "clínica entrega el comprobante/recibo para que pueda gestionar el reintegro con su "
+            "cobertura. 3) Después seguí el flujo normal hacia el turno (si es para un tercero, "
+            "detectalo y sus datos se piden al agendar)."
+        )
     m = re.search(_OS_MSG_PATTERN, t)
     if not m:
         return None
@@ -333,7 +351,12 @@ def iny_gate_cobertura(minor_booking: bool, cov_conocida: bool) -> str | None:
         return None
     return (
         "⛔ COBERTURA NO RESUELTA: no sabés si la persona que se atiende es particular o tiene "
-        "obra social. "
+        "obra social. ANTES QUE NADA: si el mensaje trae ADEMÁS otras preguntas (horarios de "
+        "atención, dirección, si se puede agendar tal día), respondé ESAS directamente en esta "
+        "misma respuesta — solo el PRECIO espera la cobertura; no dejes al paciente sin sus otras "
+        "respuestas. EXCEPCIÓN ESTÉTICA: carillas, blanqueamiento y diseño de sonrisa son SIEMPRE "
+        "particulares (ninguna obra social los cubre): para esos NO preguntes cobertura — aclaralo, "
+        "informá el valor de la consulta de evaluación con su encuadre y coordiná el turno. "
         + (
             "⚠️ Estás agendando para un HIJO/A MENOR: la 'Obra Social registrada' del contexto es "
             "la del INTERLOCUTOR (quien escribe), NO la del menor — preguntá la cobertura DEL MENOR "
@@ -347,10 +370,7 @@ def iny_gate_cobertura(minor_booking: bool, cov_conocida: bool) -> str | None:
         "particular / te damos el comprobante para el reintegro' Y TAMBIÉN dar el VALOR/monto de "
         "la consulta (ni '$60.000' ni ningún número) hasta que (a) diga EXPLÍCITAMENTE "
         "que es particular, o (b) nombre una OS y la verifiques con check_insurance_coverage. "
-        "Y NUNCA des el valor si el paciente NO lo preguntó — pidió un turno, no un precio. "
-        "OJO: si el mensaje trae ADEMÁS otras preguntas (horarios de atención, dirección, si se "
-        "puede agendar), respondé ESAS directamente en la MISMA respuesta — solo el PRECIO espera "
-        "la respuesta de cobertura; no dejes al paciente sin sus otras respuestas."
+        "Y NUNCA des el valor si el paciente NO lo preguntó — pidió un turno, no un precio."
     )
 
 
@@ -534,4 +554,24 @@ def candado_encuadre_valor(response_text: str, last_user: str = "") -> str:
     return (
         response_text.rstrip()
         + "\nEn esa consulta la doctora evalúa tu caso completo, te da el diagnóstico y te arma el plan de tratamiento con su presupuesto — es lo que evita gastos de más después."
+    )
+
+
+def candado_quiere_antes_salida(response_text: str) -> str:
+    """SALIDA del quiere-antes (banco v4, os-osde-quiere-antes): el paciente con OS
+    demorada pidió atenderse antes y la respuesta ofrece slots por cobertura SIN
+    mencionar la vía particular → se agrega la opción en una línea, sin presionar.
+    El CALLER decide la activación (la inyección quiere-antes disparó este turno).
+    Aditivo, nunca recorta."""
+    if not response_text:
+        return response_text
+    if re.search(r"(?i)particular", response_text):
+        return response_text
+    if re.search(r"(?i)\[[^\[\]]*silencio[^\[\]]*\]", response_text):
+        return response_text
+    if not ("1️⃣" in response_text or re.search(r"(?i)primera fecha|opciones dispon|a partir del", response_text)):
+        return response_text
+    return (
+        response_text.rstrip()
+        + "\nY si preferís no esperar, también tenés la opción de atenderte de forma particular antes 😊"
     )

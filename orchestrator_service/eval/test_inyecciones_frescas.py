@@ -17,6 +17,7 @@ from services.inyecciones_frescas import (
     candado_encuadre_valor,
     candado_mencion_coseguro,
     candado_multi_turno,
+    candado_quiere_antes_salida,
     es_insistencia_monto,
     es_pregunta_monto_coseguro,
     iny_acepto_ofrecimiento,
@@ -102,9 +103,9 @@ CASOS = [
     ),
     # ------------------- OS en el mensaje -------------------
     (
-        "OS: 'Yo tengo IOMA' (fallo del banco) → dispara con verificar + sin precio particular",
+        "OS: 'Yo tengo IOMA' → rama sin-convenio (IOMA NO está en el panel real, sync 2026-07-20)",
         lambda: iny_os_en_mensaje("Bueno, quiero un turno. ¿Trabajan con alguna obra social? Yo tengo IOMA."),
-        lambda out: out is not None and "IOMA" in out and "check_insurance_coverage" in out,
+        lambda out: out is not None and "NO tiene convenio" in out and "comprobante" in out.lower(),
     ),
     (
         "OS: 'Tengo Galeno' con dolor (fallo del banco) → dispara (reconocerla aunque haya urgencia)",
@@ -428,6 +429,42 @@ CASOS = [
         "encuadre-valor: respuesta sin valor ni queja NO se toca",
         lambda: candado_encuadre_valor("¿Contás con alguna obra social o te atenderías de forma particular?", "quiero un turno"),
         lambda out: "diagnóstico" not in out.lower(),
+    ),
+    # ------------------- OS sin convenio (rama no-panel) -------------------
+    (
+        "OS no-panel: Swiss Medical → encuadre directo particular + comprobante (fallo v4 terce-madre)",
+        lambda: iny_os_en_mensaje("Hola, necesito un turno para mi mamá María, ella tiene Swiss Medical, ¿cuánto es la consulta?"),
+        lambda out: out is not None and "NO tiene convenio" in out and "comprobante" in out.lower(),
+    ),
+    (
+        "OS no-panel: IOMA → mismo encuadre directo",
+        lambda: iny_os_en_mensaje("tengo ioma, ¿atienden?"),
+        lambda out: out is not None and "NO tiene convenio" in out,
+    ),
+    (
+        "OS del panel (OSDE) → sigue la rama normal (reconocer + verificar), no la de sin-convenio",
+        lambda: iny_os_en_mensaje("tengo OSDE, quiero un turno"),
+        lambda out: out is not None and "NO tiene convenio" not in out and "OSDE" in out,
+    ),
+    # ------------------- candado salida quiere-antes -------------------
+    (
+        "quiere-antes salida: oferta por cobertura sin 'particular' → agrega la vía (fallo v4)",
+        lambda: candado_quiere_antes_salida(
+            "Te entiendo, ojalá pudiera adelantártelo 😊\nPara OSDE, la primera fecha disponible es a partir del 25/07.\n1️⃣ Lunes 27/07 — 10:00 hs\n2️⃣ Martes 28/07 — 11:15 hs\nCuál te queda mejor?"
+        ),
+        lambda out: "particular" in out.lower(),
+    ),
+    (
+        "quiere-antes salida: ya menciona particular → NO duplica",
+        lambda: candado_quiere_antes_salida(
+            "Por tu cobertura arrancan el 25/07, o podés atenderte particular antes.\n1️⃣ Lunes 27/07 — 10:00 hs"
+        ),
+        lambda out: out.lower().count("particular") == 1,
+    ),
+    (
+        "quiere-antes salida: respuesta sin oferta de slots → NO se toca",
+        lambda: candado_quiere_antes_salida("Te entiendo. ¿Cómo preferís seguir?"),
+        lambda out: "particular" not in out.lower(),
     ),
     # ------------------- gate A1 compartido -------------------
     (

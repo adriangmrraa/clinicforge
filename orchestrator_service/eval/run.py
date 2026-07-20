@@ -395,6 +395,15 @@ async def main() -> int:
             if c.get("mock_my_appointments") == "two":
                 from eval.mock_tools import fechas_futuras_two as _f2
                 answer = _c_multiturno(answer, _f2())
+            # Salida del quiere-antes: misma activación que buffer_task (la inyección
+            # quiere-antes disparó este turno → la oferta debe recordar la vía particular).
+            if _os_delayed_param:
+                from services.inyecciones_frescas import (
+                    candado_quiere_antes_salida as _c_qas,
+                    quiere_antes_matchea as _qam,
+                )
+                if _qam(c.get("user", "")):
+                    answer = _c_qas(answer)
             if _pre_candado != answer:
                 print(f"    [candados] la cadena recortó/reagrupó ({len(_pre_candado)}->{len(answer)} chars)")
 

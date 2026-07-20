@@ -299,6 +299,12 @@ async def scenario_profesional_ultimo_turno(db, book_appointment, set_ctx):
         "DO UPDATE SET first_name='TestProfE2E', assigned_professional_id=NULL RETURNING id",
         TEST_TENANT, TEST_PHONE,
     )
+    # Aislamiento (2026-07-20): escenarios previos pueden dejar turnos FUTUROS del
+    # mismo paciente de prueba (la query del fallback toma el ultimo por fecha DESC
+    # → un turno futuro de OTRO profesional contaminaba el resultado).
+    await db.pool.execute(
+        "DELETE FROM appointments WHERE tenant_id=$1 AND patient_id=$2", TEST_TENANT, pid
+    )
     ayer = _dt.datetime.now() - _dt.timedelta(days=1)
     await db.pool.execute(
         "INSERT INTO appointments (id, tenant_id, patient_id, professional_id, appointment_datetime, "
@@ -520,7 +526,7 @@ async def scenario_cobertura(db, book_appointment, set_ctx):
     )
     from services.lead_context import get as _lc_get_cob
     _lc_cob = await _lc_get_cob(TEST_TENANT, TEST_PHONE)
-    _flag = bool((_lc_cob or {}).get("particular_this_booking"))
+    _flag = str((_lc_cob or {}).get("particular_this_booking") or "").lower() in ("1", "true")
     results.append((
         "particular con OS registrada → NO pisa la OS (queda OSDE) + flag por-reserva",
         saved2 == "OSDE" and _flag,
@@ -534,8 +540,14 @@ async def scenario_cobertura(db, book_appointment, set_ctx):
     )
     await reset(TEST_TENANT, TEST_PHONE)
     try:
-        from services.lead_context import merge as _lc_merge_cob
-        await _lc_merge_cob(TEST_TENANT, TEST_PHONE, {"insurance_provider": "", "particular_this_booking": False})
+        # HDEL directo: el merge del lead_context filtra valores vacios/falsy, asi
+        # que "limpiar" via merge era un no-op (leccion del flag booleano).
+        import re as _re_cob
+        from services.relay import get_redis as _gr_cob
+        _rr = _gr_cob()
+        if _rr is not None:
+            _k = f"lead_ctx:{TEST_TENANT}:{_re_cob.sub(r'[^0-9]', '', TEST_PHONE)}"
+            await _rr.hdel(_k, "insurance_provider", "particular_this_booking")
     except Exception:
         pass
     await _invoke_tool(

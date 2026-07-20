@@ -2599,7 +2599,7 @@ async def check_availability(
                     if _ca_phone:
                         try:
                             from services.lead_context import merge as lead_ctx_merge
-                            await lead_ctx_merge(tenant_id, _ca_phone, {"particular_this_booking": True})
+                            await lead_ctx_merge(tenant_id, _ca_phone, {"particular_this_booking": "1"})  # STRING: redis no acepta bool y el merge filtra falsy
                             logger.info(f"📅 check_availability: PARTICULAR explícito con OS registrada ('{_os_previa}') → flag particular_this_booking (la OS NO se pisa)")
                         except Exception as e:
                             logger.warning(f"📅 check_availability: no pude marcar particular_this_booking: {e}")
@@ -4462,7 +4462,7 @@ async def _insurance_min_booking_date(tenant_id: int, phone=None, patient_id=Non
             try:
                 from services.lead_context import get as _lc_flag_get
                 _lcf = await _lc_flag_get(tenant_id, phone)
-                if (_lcf or {}).get("particular_this_booking"):
+                if str((_lcf or {}).get("particular_this_booking") or "").lower() in ("1", "true"):
                     logger.info(f"⏳ SEMAPHORE: bypass por elección particular explícita ({phone})")
                     return None
             except Exception:
@@ -5990,7 +5990,7 @@ async def book_appointment(
             _pb_phone_clear = current_customer_phone.get()
             if _pb_phone_clear:
                 from services.lead_context import merge as _lc_clear_pb
-                await _lc_clear_pb(tenant_id, _pb_phone_clear, {"particular_this_booking": False})
+                await _lc_clear_pb(tenant_id, _pb_phone_clear, {"particular_this_booking": "0"})
         except Exception:
             pass
 

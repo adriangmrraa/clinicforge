@@ -2672,6 +2672,7 @@ async def process_buffer_task(
         # demorada insiste en atenderse antes → porqué real (es el plazo de SU obra
         # social, no falta de agenda) + salida particular sin presionar. El regex puro
         # gatea la query (barata solo cuando hace falta).
+        _qa_disparo = False  # activa el candado de SALIDA quiere-antes (post-LLM)
         try:
             from services.inyecciones_frescas import iny_quiere_antes, quiere_antes_matchea
 
@@ -2725,6 +2726,7 @@ async def process_buffer_task(
                     _qa_txt = iny_quiere_antes(str(_qa_row["provider_name"]), _qa_delay, _qa_min)
                     if _qa_txt:
                         patient_context = (patient_context + "\n" + _qa_txt) if patient_context else _qa_txt
+                        _qa_disparo = True
                         logger.info(
                             f"⏳ Inyección QUIERE-ANTES aplicada (OS {_qa_row['provider_name']}, {_qa_delay} días) para {external_user_id}"
                         )
@@ -5500,6 +5502,22 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
             )
     except Exception as _mtu_err:
         logger.warning(f"candado-multi-turno skipped (non-fatal): {_mtu_err}")
+
+    # --- CANDADO: SALIDA del quiere-antes — oferta por cobertura sin la vía particular ---
+    # (banco v4, os-osde-quiere-antes: la inyección explicó el plazo y pasó slots, pero
+    # omitió recordar la opción particular). Solo si la inyección quiere-antes disparó.
+    try:
+        if locals().get("_qa_disparo"):
+            from services.inyecciones_frescas import candado_quiere_antes_salida as _qas_fn
+
+            _qas_pre = response_text
+            response_text = _qas_fn(response_text)
+            if _qas_pre != response_text:
+                logger.warning(
+                    f"🔒 CANDADO QUIERE-ANTES: agregué la vía particular a la oferta por cobertura para {external_user_id}"
+                )
+    except Exception as _qas_err:
+        logger.warning(f"candado-quiere-antes skipped (non-fatal): {_qas_err}")
 
     # --- GUARD: PROMESA-FANTASMA (banco 2026-07-18: 'te paso con el equipo' / 'lo cancelo'
     # SIN ejecutar ninguna herramienta — la promesa quedaba en la nada; hueco #1 del
