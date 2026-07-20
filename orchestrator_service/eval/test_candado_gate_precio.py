@@ -32,7 +32,7 @@ def candado_gate_precio(response_text: str, patient_context: str, last_user_msg:
     _estetico = any(k in _last for k in ("carilla", "blanqueamiento", "diseño de sonrisa", "estetic", "estétic"))
     _os_en_msg = bool(
         re.search(
-            r"\b(osde|sancor|swiss|galeno|ioma|issn|osdepym|sosunc|osseg|jer[aá]rquicos|medif[eé]|omint|luis pasteur|prevenci[oó]n)\b",
+            r"\b(osde|sancor|swiss|galeno|ioma|issn|osdepym|sosunc|osseg|jer[aá]rquicos|medif[eé]|omint|luis pasteur|prevenci[oó]n|apsot|mca|am[eé]rica|bancarios|siaco|credi.?gu[ií]a|federada|medicus|poder judicial)\b",
             _last,
         )
     )

@@ -19,7 +19,7 @@ def candado_cobertura_chat(response_text: str, last_user_msg: str) -> str:
     _last = (last_user_msg or "").lower()
     _named = "particular" in _last or bool(
         re.search(
-            r"\b(osde|sancor|swiss|galeno|ioma|issn|osdepym|sosunc|osseg|jer[aá]rquicos|medif[eé]|omint|luis pasteur|prevenci[oó]n)\b",
+            r"\b(osde|sancor|swiss|galeno|ioma|issn|osdepym|sosunc|osseg|jer[aá]rquicos|medif[eé]|omint|luis pasteur|prevenci[oó]n|apsot|mca|am[eé]rica|bancarios|siaco|credi.?gu[ií]a|federada|medicus|poder judicial)\b",
             _last,
         )
     ) or bool(re.search(r"\b(tengo|con|soy de)\s+(la\s+)?(obra social|prepaga)\b", _last))
@@ -40,7 +40,10 @@ def candado_reintegro(response_text: str, patient_context: str, last_user_msg: s
     _last = (last_user_msg or "").lower()
     # Banco v3: OS sin convenio nombrada en el mensaje + valor en la respuesta sin el
     # encuadre particular → dispara y agrega el encuadre COMPLETO.
-    _os_msg_rechazada = re.search(r"(?i)\b(swiss(?:\s+medical)?|sancor|prevenci[oó]n)\b", _last)
+    # Set = OS FUERA del panel real (sync 2026-07-20). Sancor NO va: es restringida.
+    _os_msg_rechazada = re.search(
+        r"(?i)\b(swiss(?:\s+medical)?|ioma|osdepym|omint|luis pasteur|prevenci[oó]n)\b", _last
+    )
     _dispara = bool(response_text) and not _ya_comprobante and (
         bool(re.search(r"(?i)(ser[íi]a de forma particular|atenci[oó]n.*particular|consulta particular|es particular)", response_text or ""))
         or (bool(re.search(r"\bissn\b", _ctx_low)) and bool(re.search(r"(?i)tiene un valor", response_text or "")))

@@ -19,15 +19,26 @@ from datetime import date, timedelta
 # Config de juguete (espejo de la clínica real — actualizar si cambia el panel)
 # ---------------------------------------------------------------------------
 
+# ESPEJO REAL del panel de prod (sync 2026-07-20 — pegado por Carlos tras el import).
+# 16 OS reales. Las que NO figuran (Swiss, IOMA, OSDEPYM, Omint...) son not_found →
+# particular + comprobante/reintegro, igual que prod.
 INSURANCE_FIXTURE = {
-    # nombre canónico -> config
-    "OSDE": {"status": "restricted", "mode": "delayed", "delay_days": 30, "copay": 30000},
-    "GALENO": {"status": "accepted", "mode": "delayed", "delay_days": 15, "copay": 30000},
-    "IOMA": {"status": "accepted", "mode": "immediate", "delay_days": 0, "copay": 30000},
-    "OSDEPYM": {"status": "accepted", "mode": "immediate", "delay_days": 0, "copay": 30000},
-    "SOSUNC": {"status": "accepted", "mode": "immediate", "delay_days": 0, "copay": 30000},
+    "AMÉRICA SERVICIOS (MCA)": {"status": "accepted", "mode": "delayed", "delay_days": 15, "copay": 30000},
+    "APSOT": {"status": "accepted", "mode": "immediate", "delay_days": 0, "copay": 30000},
+    "BANCARIOS (SIACO)": {"status": "accepted", "mode": "immediate", "delay_days": 0, "copay": 30000},
+    "CREDI-GUÍA": {"status": "accepted", "mode": "immediate", "delay_days": 0, "copay": 30000},
+    "FEDERADA SALUD": {"status": "accepted", "mode": "immediate", "delay_days": 0, "copay": 30000},
+    "GALENO": {"status": "accepted", "mode": "immediate", "delay_days": 0, "copay": 30000},
+    "ISSN": {"status": "external_derivation", "mode": "immediate", "delay_days": 0, "copay": None},
+    "JERÁRQUICOS SALUD": {"status": "accepted", "mode": "immediate", "delay_days": 0, "copay": 30000},
+    "MEDICUS": {"status": "accepted", "mode": "immediate", "delay_days": 0, "copay": 30000},
+    "MEDICUS ESPECIALISTAS": {"status": "accepted", "mode": "immediate", "delay_days": 0, "copay": 30000},
+    "MEDIFÉ": {"status": "accepted", "mode": "immediate", "delay_days": 0, "copay": 30000},
+    "OSDE": {"status": "restricted", "mode": "delayed", "delay_days": 5, "copay": 30000},
     "OSSEG": {"status": "accepted", "mode": "immediate", "delay_days": 0, "copay": 30000},
-    "SWISS MEDICAL": {"status": "rejected", "mode": "immediate", "delay_days": 0, "copay": None},
+    "PODER JUDICIAL": {"status": "accepted", "mode": "immediate", "delay_days": 0, "copay": 30000},
+    "SANCOR SALUD": {"status": "restricted", "mode": "immediate", "delay_days": 0, "copay": 30000},
+    "SOSUNC": {"status": "accepted", "mode": "immediate", "delay_days": 0, "copay": 30000},
 }
 
 _DIAS = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
@@ -65,12 +76,32 @@ def fechas_futuras_two() -> list[str]:
     return [d1.strftime("%d/%m"), d2.strftime("%d/%m")]
 
 
+def _sin_tildes(s: str) -> str:
+    import unicodedata
+    return "".join(c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn")
+
+
+_TOKENS_GENERICOS = {"SALUD", "SERVICIOS"}  # no identifican una OS por sí solos
+
+
 def _match_insurance(name: str) -> tuple[str, dict] | tuple[None, None]:
-    raw = (name or "").strip().upper()
+    """Match por PALABRA COMPLETA (no substring: 'OSDEPYM' NO es 'OSDE')."""
+    import re as _re
+
+    raw = _sin_tildes((name or "").strip().upper())
     if not raw:
         return None, None
+
+    def toks(s):
+        return {t for t in _re.split(r"[^A-Z0-9]+", s) if len(t) >= 3 and t not in _TOKENS_GENERICOS}
+
     for canon, cfg in INSURANCE_FIXTURE.items():
-        if canon in raw or raw in canon:
+        c = _sin_tildes(canon)
+        if raw == c or _re.search(r"\b" + _re.escape(c) + r"\b", raw):
+            return canon, cfg
+    raw_toks = toks(raw)
+    for canon, cfg in INSURANCE_FIXTURE.items():
+        if raw_toks & toks(_sin_tildes(canon)):
             return canon, cfg
     return None, None
 
@@ -238,10 +269,41 @@ def execute(name: str, args: dict) -> str:
         # SOLO DATOS — sin dictar frases: el prompt ya sabe qué decir con esto.
         canon, cfg = _match_insurance(args.get("provider_name", ""))
         if not cfg:
+            # Espejo del not_found real: particular + comprobante para reintegro.
             return json.dumps(
-                {"cobertura": args.get("provider_name", ""), "convenio": False},
+                {
+                    "status": "not_found",
+                    "cobertura": args.get("provider_name", ""),
+                    "convenio": False,
+                    "alternative": "particular_con_reintegro",
+                    "nota_obligatoria": "Decile EXPLÍCITAMENTE que la clínica le entrega el comprobante/recibo para que pueda gestionar el reintegro con su cobertura.",
+                },
                 ensure_ascii=False,
             )
+        if cfg["status"] == "external_derivation":
+            # ISSN → texto fijo real del panel (ai_response_template).
+            return (
+                "Para cirugía maxilofacial con ISSN, la atención se realiza a través de CIMO. "
+                "Podés comunicarte al +54 9 299 329-4089. Para otros tratamientos, la atención "
+                "en el consultorio es particular."
+            )
+        if cfg["status"] == "restricted":
+            data = {
+                "status": "restricted",
+                "cobertura": canon,
+                "convenio": "restringido",
+                "nota": "cubre solo algunos tratamientos según el plan; el detalle se confirma con la clínica",
+                "coseguro": cfg["copay"],
+            }
+            if cfg["mode"] == "delayed":
+                first_ok = date.today() + timedelta(days=cfg["delay_days"])
+                data["turnos_desde"] = first_ok.strftime("%d/%m/%Y")
+                data["nota_obligatoria"] = (
+                    f"⏳ {canon} agenda turnos POR COBERTURA a partir del {first_ok.strftime('%d/%m')} (plazo de la "
+                    "obra social, NO falta de agenda — nunca digas 'no tengo disponibilidad'). Si el paciente quiere "
+                    "atenderse antes, puede hacerlo de forma PARTICULAR sin ese plazo — opción, sin presionar."
+                )
+            return json.dumps(data, ensure_ascii=False)
         if cfg["status"] == "rejected":
             return json.dumps({"cobertura": canon, "convenio": False}, ensure_ascii=False)
         data = {"cobertura": canon, "convenio": True, "coseguro": cfg["copay"]}

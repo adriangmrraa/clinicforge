@@ -20,7 +20,8 @@ import re
 # OS de la clínica SIN issn (ISSN tiene su bloque específico en buffer_task).
 _OS_MSG_PATTERN = (
     r"\b(osde|sancor|swiss(?:\s+medical)?|galeno|ioma|osdepym|sosunc|osseg"
-    r"|jer[aá]rquicos|medif[eé]|omint|luis pasteur|prevenci[oó]n)\b"
+    r"|jer[aá]rquicos|medif[eé]|omint|luis pasteur|prevenci[oó]n"
+    r"|apsot|mca|am[eé]rica|bancarios|siaco|credi.?gu[ií]a|federada|medicus|poder judicial)\b"
 )
 
 
@@ -446,11 +447,13 @@ def candado_multi_turno(response_text: str, fechas_futuras: list[str] | None) ->
     return response_text.rstrip() + "\n" + pregunta
 
 
-# OS aceptadas CON coseguro del tenant 1 (nacido del banco, mismo precedente que
-# el set de rechazadas del candado reintegro). Swiss/Sancor/Prevención NO van acá
-# (rechazadas → candado reintegro); ISSN tampoco (bloque propio).
+# OS del PANEL REAL (sync 2026-07-20) que llevan coseguro — accepted + restricted
+# (OSDE/Sancor restringidas TAMBIÉN tienen convenio con coseguro en lo cubierto).
+# Las NO-panel (swiss/ioma/osdepym/omint/luis pasteur) NO van acá: su encuadre es
+# particular + reintegro (candado reintegro); ISSN tampoco (bloque propio).
 _OS_CON_COSEGURO_PAT = re.compile(
-    r"(?i)\b(osde|galeno|ioma|osdepym|sosunc|osseg|jer[aá]rquicos|medif[eé]|omint|luis pasteur)\b"
+    r"(?i)\b(osde|galeno|sancor|sosunc|osseg|jer[aá]rquicos|medif[eé]|medicus"
+    r"|apsot|mca|am[eé]rica|bancarios|siaco|credi.?gu[ií]a|federada|poder judicial)\b"
 )
 
 

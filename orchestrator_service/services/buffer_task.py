@@ -5076,7 +5076,7 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
             _cq_last = " ".join(messages).lower() if isinstance(messages, list) else str(messages or "").lower()
             _cq_named = "particular" in _cq_last or bool(
                 re.search(
-                    r"\b(osde|sancor|swiss|galeno|ioma|issn|osdepym|sosunc|osseg|jer[aá]rquicos|medif[eé]|omint|luis pasteur|prevenci[oó]n)\b",
+                    r"\b(osde|sancor|swiss|galeno|ioma|issn|osdepym|sosunc|osseg|jer[aá]rquicos|medif[eé]|omint|luis pasteur|prevenci[oó]n|apsot|mca|am[eé]rica|bancarios|siaco|credi.?gu[ií]a|federada|medicus|poder judicial)\b",
                     _cq_last,
                 )
             ) or bool(re.search(r"\b(tengo|con|soy de)\s+(la\s+)?(obra social|prepaga)\b", _cq_last))
@@ -5113,7 +5113,11 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
         # Banco v3 (terce-madre-Swiss v2): el paciente nombra una OS SIN convenio y la
         # respuesta da el valor sin el encuadre particular → también dispara (y abajo
         # se agrega el encuadre COMPLETO, no solo la línea del comprobante).
-        _ri_os_msg_rechazada = re.search(r"(?i)\b(swiss(?:\s+medical)?|sancor|prevenci[oó]n)\b", _ri_last)
+        # Set = OS FUERA del panel real (sync 2026-07-20). Sancor NO va: es restringida
+        # (SÍ tiene convenio) — afirmarle "no tenemos convenio" sería falso.
+        _ri_os_msg_rechazada = re.search(
+            r"(?i)\b(swiss(?:\s+medical)?|ioma|osdepym|omint|luis pasteur|prevenci[oó]n)\b", _ri_last
+        )
         _ri_dispara = bool(response_text) and not _ri_ya_comprobante and (
             bool(re.search(r"(?i)(ser[íi]a de forma particular|atenci[oó]n.*particular|consulta particular|es particular)", response_text or ""))
             # Ampliación (banco 2026-07-20, issn-precio): con ISSN activo, dar el VALOR de
@@ -5250,7 +5254,7 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
             # cobertura-chat: un candado sacaba la pregunta y este la volvía a poner).
             _gp_os_en_msg = bool(
                 re.search(
-                    r"\b(osde|sancor|swiss|galeno|ioma|issn|osdepym|sosunc|osseg|jer[aá]rquicos|medif[eé]|omint|luis pasteur|prevenci[oó]n)\b",
+                    r"\b(osde|sancor|swiss|galeno|ioma|issn|osdepym|sosunc|osseg|jer[aá]rquicos|medif[eé]|omint|luis pasteur|prevenci[oó]n|apsot|mca|am[eé]rica|bancarios|siaco|credi.?gu[ií]a|federada|medicus|poder judicial)\b",
                     _gp_last,
                 )
             )
