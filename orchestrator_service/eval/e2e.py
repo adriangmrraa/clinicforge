@@ -565,12 +565,15 @@ async def scenario_reprogramar(db, book_appointment, set_ctx):
     set_ctx(TEST_TENANT, TEST_PHONE)
 
     # 1) Sembrar la oferta REAL para otra semana (como hace el flujo del agente).
+    # Firma real: check_availability(date_query, interpreted_date, search_mode, ...,
+    # treatment_name=...) — v3: el primer intento usaba 'treatment_code' (kwarg inexistente).
     f_obj = _proximo_lunes(3)
     r_av = str(await _invoke_tool(
         check_availability,
-        treatment_code="checkup",
+        date_query=f_obj.isoformat(),
         interpreted_date=f_obj.isoformat(),
         search_mode="week",
+        treatment_name="checkup",
     ))
     # 2) Extraer el PRIMER slot ofrecido (fecha ISO + hora) del slot_offer sembrado.
     import re as _re
