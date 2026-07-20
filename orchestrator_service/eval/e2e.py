@@ -318,15 +318,16 @@ async def scenario_profesional_ultimo_turno(db, book_appointment, set_ctx):
         date_query="quiero un control, lo antes posible", interpreted_date=manana,
         search_mode="open", treatment_name="consulta",
     ))
-    from services.conversation_state import get_state as _gs_prof
-    _st = await _gs_prof(TEST_TENANT, TEST_PHONE)
-    _slots_prof = [(s.get("professional") or "") for s in (_st.get("last_offered_slots") or [])]
-    ok1 = bool(_slots_prof) and all(
-        target["first_name"].lower() in p.lower() for p in _slots_prof
-    ) and not any(o.lower() in p.lower() for p in _slots_prof for o in otros)
+    # v2 (2026-07-20): los slots del estado guardan SOLO date/time (sin nombre de
+    # profesional) — la fuente de verdad del ruteo es el professional_id que
+    # check_availability persiste en el lead_context al resolver el fallback.
+    from services.lead_context import get as _lc_get
+    _lc = await _lc_get(TEST_TENANT, TEST_PHONE)
+    _lc_prof = str(_lc.get("professional_id") or "")
+    ok1 = ("DISPONIBLE" in r1 or "1️⃣" in r1 or "Opciones" in r1) and _lc_prof == str(target["id"])
     results.append((
         f"control genérico → ofrece SOLO a {target['first_name']} (prof del último turno)",
-        ok1, f"profesionales de los slots ofrecidos={_slots_prof} resp: {r1[:100]}",
+        ok1, f"professional_id resuelto={_lc_prof!r} (esperaba {target['id']}) resp: {r1[:100]}",
     ))
 
     # D.2 — ortodoncia NO se fuerza al último profesional (exclusión).
