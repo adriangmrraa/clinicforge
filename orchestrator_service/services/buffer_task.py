@@ -3046,12 +3046,13 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
         # --- Wait for pending audio transcriptions before processing ---
         # Check if recent messages have audio without transcription and wait up to 15s
         try:
+            # (mismo fix que la visión: la clave presente con null NO es "transcripto")
             pending_audio = await pool.fetch(
                 """
                 SELECT id, content_attributes FROM chat_messages
                 WHERE conversation_id = $1 AND tenant_id = $2
                 AND content_attributes::text LIKE '%audio%'
-                AND content_attributes::text NOT LIKE '%transcription%'
+                AND content_attributes::text !~ '"transcription"\\s*:\\s*"'
                 ORDER BY created_at DESC LIMIT 3
             """,
                 conversation_id,
@@ -3069,7 +3070,7 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                     still_pending = await pool.fetchval(
                         """
                         SELECT COUNT(*) FROM chat_messages
-                        WHERE id = ANY($1) AND content_attributes::text NOT LIKE '%transcription%'
+                        WHERE id = ANY($1) AND content_attributes::text !~ '"transcription"\\s*:\\s*"'
                     """,
                         [r["id"] for r in pending_audio],
                     )
@@ -3120,12 +3121,16 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
         import asyncio
 
         try:
+            # FIX comprobantes (2026-07-20): el matcher viejo (NOT LIKE '%description%')
+            # daba "ya descripta" si la clave venía presente con null → el buffer NO
+            # esperaba a la visión, clasificaba el comprobante como neutral y contestaba
+            # "lo guardé en tu ficha". Ahora se exige description como STRING no vacío.
             pending_vision = await pool.fetchval(
                 """
                 SELECT COUNT(*) FROM chat_messages
                 WHERE conversation_id = $1 AND tenant_id = $2
                 AND content_attributes::text LIKE '%image%'
-                AND content_attributes::text NOT LIKE '%description%'
+                AND content_attributes::text !~ '"description"\\s*:\\s*"'
                 AND created_at > NOW() - INTERVAL '30 seconds'
             """,
                 conversation_id,
@@ -3142,7 +3147,7 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                         SELECT COUNT(*) FROM chat_messages
                         WHERE conversation_id = $1 AND tenant_id = $2
                         AND content_attributes::text LIKE '%image%'
-                        AND content_attributes::text NOT LIKE '%description%'
+                        AND content_attributes::text !~ '"description"\\s*:\\s*"'
                         AND created_at > NOW() - INTERVAL '30 seconds'
                     """,
                         conversation_id,
@@ -4048,24 +4053,63 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
             except Exception:
                 has_patient = False
 
+            # --- VISIÓN/ARCHIVOS DEL TURNO ACTUAL (fix comprobante↔radiografía 2026-07-20) ---
+            # La clasificación usaba vision_context_str (media de los ÚLTIMOS 30 MIN): el PDF
+            # de una radiografía HEREDABA la descripción del comprobante mandado minutos antes
+            # y se clasificaba como pago (caso Joana: la imagen-comprobante salió "a tu ficha"
+            # y al PDF-radiografía le dijo "¿para qué pago es?"). Ahora se clasifica SOLO con
+            # los adjuntos posteriores a la última respuesta del bot (el turno real) y se
+            # suman los NOMBRES de archivo (un "RX_panoramica.pdf" clasifica médico aunque
+            # el PDF no tenga visión).
+            turn_vision_str = ""
+            turn_files_str = ""
+            try:
+                _tv_rows = await pool.fetch(
+                    """
+                    SELECT content_attributes FROM chat_messages
+                    WHERE conversation_id = $1 AND tenant_id = $2 AND role = 'user'
+                      AND content_attributes IS NOT NULL
+                      AND created_at > COALESCE(
+                          (SELECT MAX(created_at) FROM chat_messages
+                           WHERE conversation_id = $1 AND tenant_id = $2 AND role = 'assistant'),
+                          NOW() - INTERVAL '3 minutes')
+                    ORDER BY created_at DESC LIMIT 4
+                    """,
+                    conversation_id,
+                    tenant_id,
+                )
+                for _tv_row in _tv_rows:
+                    _tv_attrs = _tv_row["content_attributes"]
+                    if isinstance(_tv_attrs, str):
+                        _tv_attrs = json.loads(_tv_attrs)
+                    if isinstance(_tv_attrs, list):
+                        for _tv_att in _tv_attrs:
+                            _tv_desc = _tv_att.get("description")
+                            if _tv_desc:
+                                turn_vision_str += f"\n[IMAGEN: {_tv_desc}]"
+                            _tv_fn = _tv_att.get("file_name")
+                            if _tv_fn and _tv_fn not in ("image", "document", "echo_image"):
+                                turn_files_str += f" {_tv_fn}"
+            except Exception as _tv_err:
+                logger.debug(f"turn-media extract skipped (non-fatal): {_tv_err}")
+
             # Classify image BEFORE branching — needed in ALL paths (patient, non-patient)
             is_classified_payment = False
             is_classified_medical = False
             try:
                 from services.image_classifier import classify_message as _clf_msg
 
-                _clf_text = messages[-1] if messages else ""
+                _clf_text = (messages[-1] if messages else "") + turn_files_str
                 _clf_result = await _clf_msg(
                     text=_clf_text,
                     tenant_id=tenant_id,
-                    vision_description=vision_context_str
-                    if vision_context_str
-                    else None,
+                    vision_description=turn_vision_str if turn_vision_str else None,
                 )
                 is_classified_payment = _clf_result.get("is_payment", False)
                 is_classified_medical = _clf_result.get("is_medical", False)
                 logger.info(
-                    f"🖼️ Pre-classification: payment={is_classified_payment}, medical={is_classified_medical}"
+                    f"🖼️ Pre-classification: payment={is_classified_payment}, medical={is_classified_medical} "
+                    f"(vision_turno={bool(turn_vision_str)}, files={turn_files_str.strip() or '-'})"
                 )
             except Exception as _pre_clf_err:
                 logger.debug(f"Pre-classification skipped: {_pre_clf_err}")
@@ -4110,12 +4154,13 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                         # TODA la función y rompe la referencia previa (~2865) con
                         # UnboundLocalError al procesar imagen + texto juntos.
                         # Combine text messages and vision context for classification
-                        text_for_classification = messages[-1] if messages else ""
+                        # (SOLO media del turno actual — ver fix comprobante↔radiografía arriba)
+                        text_for_classification = (messages[-1] if messages else "") + turn_files_str
                         classification_result = await classify_message(
                             text=text_for_classification,
                             tenant_id=tenant_id,
-                            vision_description=vision_context_str
-                            if vision_context_str
+                            vision_description=turn_vision_str
+                            if turn_vision_str
                             else None,
                         )
                         logger.info(
@@ -4140,6 +4185,11 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                             if external_user_id
                             else ""
                         )
+                        # Fix post-atención (2026-07-20, casos Estela/Joana): el coseguro o
+                        # saldo se paga DESPUÉS de atenderse — un turno de las últimas 48hs
+                        # ya completado con pago pendiente también cuenta como "hay un pago
+                        # en juego" (antes solo miraba turnos futuros con seña y el
+                        # comprobante post-consulta terminaba "guardado en la ficha").
                         pending_apt = await pool.fetchval(
                             """
                             SELECT a.id FROM appointments a
@@ -4147,8 +4197,11 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                             WHERE a.tenant_id = $1
                               AND (p.phone_number = $2 OR p.phone_number = $3
                                    OR REGEXP_REPLACE(p.phone_number, '[^0-9]', '', 'g') = REGEXP_REPLACE($2, '[^0-9]', '', 'g'))
-                              AND a.status IN ('scheduled', 'confirmed')
                               AND (a.payment_status IS NULL OR a.payment_status = 'pending' OR a.payment_status = 'partial')
+                              AND (
+                                    a.status IN ('scheduled', 'confirmed')
+                                 OR (a.status = 'completed' AND a.appointment_datetime > NOW() - INTERVAL '48 hours')
+                              )
                             ORDER BY a.appointment_datetime ASC LIMIT 1
                         """,
                             tenant_id,
@@ -4214,7 +4267,8 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                                 )
                             else:
                                 media_context += (
-                                    "PROBABLE COMPROBANTE DE PAGO: El paciente tiene un turno con seña pendiente y acaba de enviar una imagen/documento. "
+                                    "PROBABLE COMPROBANTE DE PAGO: El paciente tiene un turno con seña o saldo pendiente "
+                                    "(puede ser la seña de un turno próximo O el pago/coseguro del turno que acaba de tener) y acaba de enviar una imagen/documento. "
                                     "Es MUY probable que sea un comprobante de transferencia bancaria. "
                                     "ACCIÓN OBLIGATORIA: Usá 'verify_payment_receipt' para verificar el comprobante. "
                                     "Pasá la descripción de la imagen del CONTEXTO VISUAL como 'receipt_description' y el monto que detectes como 'amount_detected'. "
