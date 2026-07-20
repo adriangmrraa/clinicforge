@@ -1856,7 +1856,17 @@ async def process_buffer_task(
                         "Reconocé el pago/archivo de la consulta de HOY ('quedó registrado el pago de tu consulta de hoy ✅' / 'quedó guardado en tu ficha'). "
                         "⛔ PROHIBIDO decir 'te esperamos', 'tu turno queda confirmado' o 'la Dra. lo revisará en la consulta' como si la consulta fuera futura."
                     )
-                if days_since <= 7:
+                # Caso Luis (prod 2026-07-20): NO preguntar "cómo te sentís después de la
+                # atención" si tiene un PRÓXIMO turno pendiente HOY — su cirugía era a las
+                # 15:30 y a las 10:47 el bot le preguntó por una atención que aún no fue
+                # (se refería al control de 4 días atrás; confunde). Con turno de hoy
+                # pendiente, el saludo se centra en el turno de HOY.
+                _prox_hoy_pendiente = False
+                try:
+                    _prox_hoy_pendiente = bool(next_apt) and es_hoy
+                except NameError:
+                    pass
+                if days_since <= 7 and not _prox_hoy_pendiente:
                     identity_lines.append(
                         f"• SEGUIMIENTO POST-TRATAMIENTO: El paciente tuvo un turno hace {days_since} días. Si escribe, preguntale cómo se siente después del tratamiento."
                     )
@@ -2540,6 +2550,47 @@ async def process_buffer_task(
                 patient_context = (patient_context + _cos_gate) if patient_context else _cos_gate
         except Exception as _cos_err:
             logger.debug(f"manejo-coseguro skipped (non-fatal): {_cos_err}")
+
+        # ACEPTÓ TU OFRECIMIENTO → EJECUTAR (caso Luis, prod 2026-07-20: el bot ofreció
+        # 'decime y te busco opciones', Luis dijo 'Bueno' y el bot RE-OFRECIÓ lo mismo en
+        # vez de buscar). Si el último mensaje del bot fue una oferta condicional y el
+        # paciente responde con una afirmación corta, la oferta se EJECUTA ya.
+        try:
+            _ao_last = (" ".join(messages) if isinstance(messages, list) else str(messages or "")).lower().strip()
+            _ao_es_si = bool(
+                re.fullmatch(
+                    r"(bueno|dale|s[ií]|ok(a|ey)?|listo|de una|obvio|perfecto|genial|joya|buen[íi]simo"
+                    r"|s[ií] dale|dale s[ií]|bueno dale|dale bueno|me parece( bien)?|est[aá] bien)[.!\s😊👍🙏]*",
+                    _ao_last,
+                )
+            )
+            if _ao_es_si:
+                _ao_prev = await pool.fetchrow(
+                    "SELECT content FROM chat_messages WHERE conversation_id = $1 AND tenant_id = $2 "
+                    "AND role IN ('assistant', 'human_supervisor') ORDER BY created_at DESC LIMIT 1",
+                    conversation_id,
+                    tenant_id,
+                )
+                _ao_prev_txt = ((_ao_prev["content"] if _ao_prev else "") or "").lower()
+                _ao_ofrecio = bool(
+                    re.search(
+                        r"decime y te busco|te busco opciones|te paso (?:turnos|opciones|las opciones)"
+                        r"|quer[eé]s que (?:te )?(?:busque|pase|coordine)|decime para qu[eé] d[íi]a"
+                        r"|si quer[eé]s.{0,40}(?:busco|paso|coordino)",
+                        _ao_prev_txt,
+                    )
+                )
+                if _ao_ofrecio:
+                    patient_context = (patient_context or "") + (
+                        "\n⚡ EL PACIENTE ACEPTÓ TU OFRECIMIENTO: en tu último mensaje le ofreciste buscar/pasar "
+                        "opciones y respondió que SÍ ('bueno/dale'). EJECUTALO EN ESTA RESPUESTA: llamá la herramienta "
+                        "que corresponda (check_availability para opciones de turno) y entregá el RESULTADO concreto. "
+                        "⛔ PROHIBIDO volver a preguntar 'decime cuándo/para qué día' o re-ofrecer sin resultados — "
+                        "eso ya lo dijiste y el paciente ya aceptó."
+                    )
+                    logger.info(f"⚡ Aceptación de ofrecimiento detectada para {external_user_id} — instrucción de ejecución inyectada")
+        except Exception as _ao_err:
+            logger.debug(f"acepto-ofrecimiento skipped (non-fatal): {_ao_err}")
 
         # HILO HUMANO RECIENTE (caso Matías, prod 2026-07-20): la secretaria coordinó por
         # texto (override activo), el override venció, el bot se reactivó y agarró la
@@ -5405,7 +5456,14 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                     "?" not in _last_user
                     and len(_last_user.split()) <= 12
                     and not _has_action
-                    and not _last_user.startswith(("hola", "buenas", "buen dia", "buen día"))
+                    # Un saludo pelado ("hola") exige respuesta, PERO "Buen día! Gracias
+                    # por la información!" es un CIERRE (falso 'Bot falló' de Juan,
+                    # prod 2026-07-20): si además del saludo hay agradecimiento, es
+                    # cortesía y el silencio es correcto.
+                    and (
+                        not _last_user.startswith(("hola", "buenas", "buen dia", "buen día"))
+                        or "gracias" in _last_user
+                    )
                     and any(w in _last_user for w in (_accept_words + _pure_courtesy))
                     and not _silence_misfire
                 )
