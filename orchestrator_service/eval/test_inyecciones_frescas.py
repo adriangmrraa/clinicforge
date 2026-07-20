@@ -15,9 +15,12 @@ from services.inyecciones_frescas import (
     aplicar_inyecciones,
     candado_avance,
     candado_compactar_cimo,
+    candado_coseguro_frio,
     candado_encuadre_valor,
+    candado_formato,
     candado_mencion_coseguro,
     candado_multi_turno,
+    candado_particular_incoherente,
     candado_quiere_antes_salida,
     es_insistencia_monto,
     es_pregunta_monto_coseguro,
@@ -244,14 +247,17 @@ CASOS = [
         lambda out: out is False,
     ),
     (
-        "quiere-antes: la inyección explica el porqué real + salida particular + sin presionar",
+        "quiere-antes: la inyección explica el porqué real + salida particular AMABLE + sin presionar",
         lambda: iny_quiere_antes("OSDE", 30, "19/08"),
         lambda out: out is not None
         and "OSDE" in out
         and "19/08" in out
-        and "PARTICULAR" in out
+        and "particular" in out.lower()
         and "no tengo disponibilidad" in out.lower()
-        and "sin presionar" in out.lower(),
+        and "sin presionar" in out.lower()
+        # v2 (caso 4 manual): la frase seca queda PROHIBIDA y se pide la versión amable
+        and "PROHIBIDA la frase seca" in out
+        and "elegís vos" in out,
     ),
     (
         "quiere-antes: sin demora (delay 0) NO inyecta",
@@ -549,6 +555,100 @@ CASOS = [
         "gate-A1: menor con cobertura del interlocutor conocida → inyecta igual (la del MENOR no se sabe)",
         lambda: iny_gate_cobertura(True, True),
         lambda out: out is not None and "HIJO/A MENOR" in out,
+    ),
+    # ------------------- avance v2: pedido imperativo de datos (caso 5 manual) -------------------
+    (
+        "avance v2: 'me falta tu nombre y apellido, y tu DNI' (sin '?') → NO agrega pregunta redundante",
+        lambda: candado_avance(
+            "Perfecto, quedó reservado ese turno para vos 😊\nPara dejarlo agendado me falta tu nombre y apellido, y tu DNI solo con números.",
+            "Agendame para el martes 11",
+            [],
+        ),
+        lambda out: "tipo de consulta" not in out and "te busco opciones" not in out,
+    ),
+    (
+        "avance v2: 'pasame tu nombre completo y DNI' → tampoco agrega",
+        lambda: candado_avance(
+            "Genial. Pasame tu nombre completo y DNI así lo dejo agendado.",
+            "quiero el turno del lunes",
+            [],
+        ),
+        lambda out: out == "Genial. Pasame tu nombre completo y DNI así lo dejo agendado.",
+    ),
+    (
+        "avance: globito muerto REAL (sin pregunta ni pedido de datos) → sigue agregando la pregunta",
+        lambda: candado_avance(
+            "Vamos a coordinar esa continuidad.",
+            "quiero un turno para terminar mi tratamiento",
+            [],
+        ),
+        lambda out: "?" in out,
+    ),
+    # ------------------- coseguro frío (caso 7 manual) -------------------
+    (
+        "coseguro-frío: 'no te paso un monto por acá' → reemplazado por el porqué cálido",
+        lambda: candado_coseguro_frio(
+            "La consulta con OSDE puede tener un coseguro que se confirma en la clínica, no te paso un monto por acá.\nPara esta evaluación tengo: 1️⃣ Lunes 27/07 — 17:30 hs."
+        ),
+        lambda out: "no te paso" not in out and "depende del plan" in out and "sin sorpresas" in out and "1️⃣" in out,
+    ),
+    (
+        "coseguro-frío: respuesta cálida normal → NO la toca",
+        lambda: candado_coseguro_frio("El coseguro depende de tu plan y te lo confirman en la clínica 😊"),
+        lambda out: out == "El coseguro depende de tu plan y te lo confirman en la clínica 😊",
+    ),
+    # ------------------- particular incoherente (casos 1/8 manuales) -------------------
+    (
+        "particular-incoherente: opciones DESPUÉS del plazo + venta de 'antes particular' → se recorta la venta",
+        lambda: candado_particular_incoherente(
+            "Para turnos por cobertura, OSDE agenda a partir del 25/07. Si querés atenderte antes, también podés hacerlo de forma particular.\n"
+            "1️⃣ Lunes 27/07 — 17:30 hs\n2️⃣ Martes 28/07 — 13:00 hs\n¿Cuál te viene mejor?"
+        ),
+        lambda out: "particular" not in out.lower() and "a partir del 25/07" in out and "1️⃣" in out and "2️⃣" in out,
+    ),
+    (
+        "particular-incoherente: opciones ANTES del plazo (vía particular real) → NO toca nada",
+        lambda: candado_particular_incoherente(
+            "Por cobertura, OSDE agenda a partir del 09/08. Si querés atenderte antes, podés hacerlo de forma particular.\n"
+            "1️⃣ Lunes 27/07 — 17:30 hs\n2️⃣ Martes 28/07 — 13:00 hs"
+        ),
+        lambda out: "particular" in out.lower(),
+    ),
+    (
+        "particular-incoherente: sin plazo mencionado → NO toca nada",
+        lambda: candado_particular_incoherente("1️⃣ Lunes 27/07 — 17:30 hs\n2️⃣ Martes 28/07 — 13:00 hs"),
+        lambda out: out == "1️⃣ Lunes 27/07 — 17:30 hs\n2️⃣ Martes 28/07 — 13:00 hs",
+    ),
+    # ------------------- formato: párrafo-ladrillo (casos 3/6 manuales) -------------------
+    (
+        "formato: el ladrillo del pitch de implantes (caso 6) → una oración por línea, respetando 'Dra.'",
+        lambda: candado_formato(
+            "Hola 😊 Soy Paula, del equipo de Clínica Dra. Laura Delgado. Para implantes lo ideal es hacer primero una "
+            "evaluación con la Dra. Laura Delgado. La consulta de evaluación tiene un valor de $60.000. Ahí la doctora "
+            "evalúa tu caso y te orienta sobre las opciones de tratamiento más adecuadas para vos. Una vez realizada la "
+            "evaluación, se informa el plan y el presupuesto correspondiente."
+        ),
+        lambda out: out.count("\n") >= 3 and "\n\n" not in out and "Dra.\n" not in out and "$60.000" in out,
+    ),
+    (
+        "formato: párrafo corto → NO lo toca",
+        lambda: candado_formato("Listo, quedó confirmado tu turno para el lunes 😊"),
+        lambda out: out == "Listo, quedó confirmado tu turno para el lunes 😊",
+    ),
+    (
+        "formato: oferta con 1️⃣ larga → NO la toca (ya tiene su propio formato)",
+        lambda: candado_formato(
+            "1️⃣ Lunes 27/07 — 17:30 hs con la doctora en el consultorio de Salta 147 primer piso, y también 2️⃣ Martes "
+            "28/07 — 13:00 hs con la doctora en el mismo consultorio de siempre. Decime cuál te queda más cómodo y lo "
+            "dejamos reservado con tus datos, además si tenés estudios previos traelos."
+        ),
+        lambda out: "\n" not in out,
+    ),
+    # ------------------- quiere-antes: salida v2 amable (caso 4 manual) -------------------
+    (
+        "quiere-antes-salida v2: la línea agregada es la versión amable (sin 'si preferís no esperar')",
+        lambda: candado_quiere_antes_salida("Por tu cobertura, la primera fecha disponible es a partir del 09/08.\n1️⃣ Lunes 10/08 — 15:30 hs"),
+        lambda out: "no esperar" not in out and "vía particular" in out and "elegís vos" in out,
     ),
 ]
 

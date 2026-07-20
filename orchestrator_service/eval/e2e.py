@@ -135,6 +135,33 @@ async def scenario_hijo_no_duplicado(db, book_appointment, set_ctx):
         "FALTAN_DATOS" in r_sin_datos and (_apts_a0 or 0) == 0,
         f"resp: {r_sin_datos[:90]} | turnos={_apts_a0}",
     ))
+
+    # A.0b — ANTI-INVENTO (casos "Nombre Apellido" / "Abuela Garnier" del 2026-07-20):
+    # placeholders y parentescos NO son identidad → FALTAN_DATOS y NADA creado.
+    r_invento = str(await _invoke_tool(
+        book_appointment, date_time=_manana_a0, treatment_reason="consulta",
+        first_name="Nombre", last_name="Apellido", dni="12345678",
+    ))
+    _apts_inv = await db.pool.fetchval(
+        "SELECT COUNT(*) FROM appointments a JOIN patients p ON p.id = a.patient_id "
+        "WHERE a.tenant_id = $1 AND regexp_replace(COALESCE(p.phone_number,''),'[^0-9]','','g') = regexp_replace($2,'[^0-9]','','g')",
+        TEST_TENANT, TEST_PHONE,
+    )
+    results.append((
+        "datos INVENTADOS ('Nombre Apellido') → book rechazado y NO crea nada",
+        "FALTAN_DATOS" in r_invento and "INVENTADOS" in r_invento and (_apts_inv or 0) == 0,
+        f"resp: {r_invento[:110]} | turnos={_apts_inv}",
+    ))
+
+    # A.0c — parentesco como nombre ('Abuela Garnier') → también rechazado.
+    r_abuela = str(await _invoke_tool(
+        book_appointment, date_time=_manana_a0, treatment_reason="consulta",
+        first_name="Abuela", last_name="Garnier", dni="99887766",
+    ))
+    results.append((
+        "parentesco como nombre ('Abuela') → book rechazado (pide el nombre REAL)",
+        "FALTAN_DATOS" in r_abuela, f"resp: {r_abuela[:110]}",
+    ))
     await reset(TEST_TENANT, TEST_PHONE)
 
     # Simular "la madre ya tiene un turno confirmado en esta charla".
@@ -230,10 +257,13 @@ async def scenario_agendado_y_quiere_antes(db, book_appointment, set_ctx):
     tomorrow = (_dt.datetime.now() + _dt.timedelta(days=1)).strftime("%Y-%m-%d")
 
     # 2) check_availability (siembra el slot_offer). search_mode="open" = lo antes posible.
+    # v2 (gate de cobertura 2026-07-20): se pasa insurance_provider explícito para que
+    # el gate no frene ESTE escenario (que prueba el handshake, no la cobertura —
+    # el gate tiene su propio escenario dedicado).
     r_avail = str(await _invoke_tool(
         check_availability,
         date_query="lo antes posible", interpreted_date=tomorrow,
-        search_mode="open", treatment_name=tname,
+        search_mode="open", treatment_name=tname, insurance_provider="particular",
     ))
     _low = r_avail.lower()
     ofrecio = (":" in r_avail) and ("no ten" not in _low) and ("cerrad" not in _low) and ("no hay" not in _low)
@@ -584,6 +614,74 @@ async def scenario_cobertura(db, book_appointment, set_ctx):
 
 
 # ----------------------------------------------------------------------------
+# ESCENARIO O — GATE DE COBERTURA (caso 2 manual 2026-07-20): a un lead nuevo SIN
+# cobertura conocida NO se le ofrecen horarios — primero se pregunta. Una sola
+# vez (anti-loop), y con insurance_provider explícito nunca gatea.
+# ----------------------------------------------------------------------------
+async def scenario_gate_cobertura(db, book_appointment, set_ctx):
+    from main import check_availability
+    from services.conversation_state import get_state, reset
+    import datetime as _dt
+    import re as _re
+
+    results = []
+    await _cleanup(db)  # sin paciente ni turnos del teléfono de prueba
+    await reset(TEST_TENANT, TEST_PHONE)
+    set_ctx(TEST_TENANT, TEST_PHONE)
+
+    _lead_key = f"lead_ctx:{TEST_TENANT}:{_re.sub(r'[^0-9]', '', TEST_PHONE)}"
+
+    async def _limpiar_lead_ctx():
+        try:
+            from services.relay import get_redis as _gr
+            _r = _gr()
+            if _r is not None:
+                await _r.hdel(_lead_key, "insurance_provider", "particular_this_booking", "cov_gate_asked")
+        except Exception:
+            pass
+
+    await _limpiar_lead_ctx()
+    manana = (_dt.datetime.now() + _dt.timedelta(days=1)).strftime("%Y-%m-%d")
+
+    # O.1 — 1ª búsqueda sin cobertura → gate: sin horarios y SIN pasar a OFFERED_SLOTS.
+    r1 = str(await _invoke_tool(
+        check_availability, date_query="lo antes posible", interpreted_date=manana,
+        search_mode="open", treatment_name="Consulta General",
+    ))
+    st1 = (await get_state(TEST_TENANT, TEST_PHONE)).get("state", "IDLE")
+    results.append((
+        "lead nuevo sin cobertura → NO da horarios (gate: preguntar primero)",
+        "COBERTURA_DESCONOCIDA" in r1 and st1 == "IDLE",
+        f"state={st1} resp: {r1[:120]}",
+    ))
+
+    # O.2 — 2ª búsqueda igual → anti-loop: pregunta UNA sola vez, después busca normal.
+    r2 = str(await _invoke_tool(
+        check_availability, date_query="lo antes posible", interpreted_date=manana,
+        search_mode="open", treatment_name="Consulta General",
+    ))
+    results.append((
+        "anti-loop: la 2ª búsqueda ya NO gatea (flag cov_gate_asked)",
+        "COBERTURA_DESCONOCIDA" not in r2, r2[:120],
+    ))
+
+    # O.3 — con insurance_provider explícito nunca gatea.
+    await _limpiar_lead_ctx()
+    await reset(TEST_TENANT, TEST_PHONE)
+    r3 = str(await _invoke_tool(
+        check_availability, date_query="lo antes posible", interpreted_date=manana,
+        search_mode="open", treatment_name="Consulta General", insurance_provider="particular",
+    ))
+    results.append((
+        "con insurance_provider explícito NO gatea",
+        "COBERTURA_DESCONOCIDA" not in r3, r3[:120],
+    ))
+
+    await reset(TEST_TENANT, TEST_PHONE)
+    return results
+
+
+# ----------------------------------------------------------------------------
 # ESCENARIOS H/I/J — Agenda completa: reprogramar, cancelar y dos-turnos (Matías).
 # Cubren los llamados reales que faltaban: reschedule_appointment, cancel_appointment
 # y list_my_appointments con múltiples turnos. (Validación final 2026-07-20.)
@@ -834,6 +932,7 @@ SCENARIOS = {
     "lab": scenario_laboratorio,
     "pendientes": scenario_pendientes,
     "cobertura": scenario_cobertura,
+    "gate-cobertura": scenario_gate_cobertura,
     "dados": scenario_dados,
     "reprogramar": scenario_reprogramar,
     "cancelar": scenario_cancelar,

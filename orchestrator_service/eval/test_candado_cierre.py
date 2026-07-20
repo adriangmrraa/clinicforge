@@ -20,17 +20,27 @@ def candado_cierre(response_text: str) -> str:
     if not response_text:
         return response_text
     _rt = response_text
-    # v2 (caso Lucas 2026-07-20, "los cierres son muy largos"): compresión de las
-    # frases-plantilla ANTES de reagrupar. Mismo contenido, ~40% menos texto.
+    # v3 (casos 3/6 manuales 2026-07-20, "amontonado queda super feo"): el bloque de
+    # seña se estructura en LÍNEAS (saltos simples = mismo globito) con emoji de
+    # sección. Cubre las 3 formas del modelo: multilínea, inline con comas, y v2 '·'.
     _rt = re.sub(
         r"(?i)si quer[eé]s,? pod[eé]s adelantar una se[ñn]a de \$?([\d\.,]+)(?: por transferencia)?:?\s*\n",
-        r"Seña opcional para asegurarlo: $\1 →\n", _rt)
+        r"💳 Seña opcional: $\1\n", _rt)
     _rt = re.sub(
-        r"(?i)Alias:\s*([^\n|]+?)\s*\n\s*CBU:\s*([^\n|]+?)\s*\n\s*Titular:\s*([^\n]+)",
-        r"Alias: \1 · CBU: \2 · Titular: \3", _rt)
+        r"(?i)si quer[eé]s,? pod[eé]s adelantar una se[ñn]a de \$?([\d\.,]+)(?: por transferencia)?[:,]?\s*"
+        r"alias:?\s*([\w\.\-]+)\s*[,·;|]\s*cbu:?\s*([\d][\d\s\.]*?)\s*[,·;|]\s*titular:?\s*([^\n,\.]+)",
+        r"💳 Seña opcional: $\1\nAlias: \2\nCBU: \3\nTitular: \4", _rt)
+    _rt = re.sub(
+        r"(?i)se[ñn]a opcional para asegurarlo:\s*\$?([\d\.,]+)\s*→?\s*",
+        r"💳 Seña opcional: $\1\n", _rt)
+    _rt = re.sub(
+        r"(?i)alias:\s*([^\n|·]+?)\s*[\n|·]+\s*cbu:\s*([^\n|·]+?)\s*[\n|·]+\s*titular:\s*([^\n|·]+)",
+        r"Alias: \1\nCBU: \2\nTitular: \3", _rt)
+    _rt = re.sub(r"(?i)\.\s+(no es obligatoria)", r".\n\1", _rt)
     _rt = re.sub(
         r"(?i)para ahorrar tiempo(?: en tu consulta)? pod[eé]s completar tu ficha m[eé]dica aqu[ií]:\s*",
-        "Tu ficha médica (2 min): ", _rt)
+        "📋 Tu ficha médica (2 min): ", _rt)
+    _rt = re.sub(r"(?im)^(?:📋\s*)?tu ficha m[eé]dica \(2 min\):", "📋 Tu ficha médica (2 min):", _rt)
     _rt = re.sub(
         r"(?i)cuando termines,? avisame(?: para corroborar los datos)?\.?",
         "Avisame cuando la completes 😊", _rt)
@@ -104,18 +114,19 @@ MARIA_FLOOD = (
 
 CASOS = [
     (
-        "María: cierre de 5 globitos → 2 (sin relleno ni re-confirmación)",
+        "María: cierre de 5 globitos → 2, con la seña en líneas estructuradas (v3)",
         MARIA_FLOOD,
         lambda out: (
             len(_globitos(out)) == 2
-            and "Alias: dradelgadoml" in out            # la seña sobrevive
+            and "💳 Seña opcional: $25.000" in out       # encabezado estructurado
+            and "Alias: dradelgadoml\nCBU: 0970099455003515270012\nTitular: Delgado Maria Laura" in out
             and "anamnesis/1/" in out                    # el link sobrevive
             and out.count("confirmado") == 1             # una sola confirmación
             and "después te ayudo" not in out            # relleno fuera
         ),
     ),
     (
-        "Habitual: solo confirmación + ficha (sin seña) → 2 globitos, nada perdido",
+        "Habitual: solo confirmación + ficha (sin seña) → 2 globitos, ficha con 📋",
         "¡Listo, Marta! Tu turno quedó confirmado para el lunes 20/07 a las 10:00 hs con la Dra. Laura.\n\n"
         "Para ahorrar tiempo completá tu ficha médica aquí: https://app.dralauradelgado.com/anamnesis/1/abc\n"
         "Cuando termines avisame.",
@@ -134,7 +145,7 @@ CASOS = [
         lambda out: len(_globitos(out)) == 2 and "Alias: dradelgadoml" in out and out.count("confirmado") == 1,
     ),
     (
-        "Lucas (real 2026-07-20): el cierre largo se COMPRIME (~40% menos) sin perder nada",
+        "Lucas (real 2026-07-20): el cierre largo queda en 2 globitos con seña estructurada (v3)",
         "Listo, quedó tu evaluación para limpieza dental el miércoles 29/07 a las 10:45 😊\n"
         "Consultorios Santa Monica — Salta 147, 1er piso, consultorio 9\n"
         "Maps: https://maps.app.goo.gl/iQHbGYWSRPypzDEw5\n\n"
@@ -146,12 +157,30 @@ CASOS = [
         "Cuando termines avisame para corroborar los datos.",
         lambda out: (
             len(_globitos(out)) == 2
-            and "Seña opcional para asegurarlo: $25.000" in out
-            and "Alias: dradelgadoml · CBU: 0970099455003515270012 · Titular: Delgado Maria Laura" in out
-            and "Tu ficha médica (2 min):" in out
+            and "💳 Seña opcional: $25.000" in out
+            and "Alias: dradelgadoml\nCBU: 0970099455003515270012\nTitular: Delgado Maria Laura" in out
+            and "📋 Tu ficha médica (2 min):" in out
             and "Avisame cuando la completes 😊" in out
             and "por transferencia" not in out
             and "corroborar" not in out
+        ),
+    ),
+    (
+        "Caso 3 real (inline con comas): 'seña de $25.000 por transferencia: alias X, CBU Y, titular Z' → líneas",
+        "Listo, quedó tu evaluación para Limpieza Dental el martes 28/07 a las 18:30, con la Dra. Elizabeth.\n"
+        "📍 consultorios santa monica — salta 147 1er piso consul 9\n"
+        "🗺️ https://maps.app.goo.gl/iQHbGYWSRPypzDEw5\n\n"
+        "Si querés, podés adelantar una seña de $25.000 por transferencia: alias dradelgadoml, "
+        "CBU 0970099455003515270012, titular Delgado Maria Laura. No es obligatoria, tu turno ya quedó reservado igual.\n"
+        "Tu ficha médica (2 min): https://x.host/anamnesis/1/abc\n"
+        "Avisame cuando la completes 😊",
+        lambda out: (
+            len(_globitos(out)) == 2
+            and "💳 Seña opcional: $25.000" in out
+            and "\nAlias: dradelgadoml\n" in out
+            and "\nCBU: 0970099455003515270012\n" in out
+            and "\nNo es obligatoria" in out
+            and "📋 Tu ficha médica (2 min):" in out
         ),
     ),
 ]

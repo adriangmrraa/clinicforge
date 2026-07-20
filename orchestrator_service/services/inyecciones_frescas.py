@@ -337,9 +337,12 @@ def iny_quiere_antes(os_name: str, delay_days: int, min_date: str) -> str | None
         "1) Explicale el PORQUÉ REAL con calidez: es el plazo que su obra social maneja para turnos "
         "por cobertura — ⛔ PROHIBIDO decir 'no tengo disponibilidad' (es falso: la agenda existe, "
         "el plazo es de la cobertura) y PROHIBIDO repetir el mismo bloqueo si ya se lo dijiste. "
-        "2) Ofrecele la SALIDA: si prefiere no esperar, puede atenderse de forma PARTICULAR mucho "
-        "antes (la atención particular no pasa por ese plazo) — si le interesa, buscá disponibilidad "
-        "llamando check_availability con insurance_provider='particular' y pasale opciones concretas. "
+        "2) Ofrecele la SALIDA con calidez, como AYUDA y no como venta: la vía particular tiene "
+        "fechas más próximas porque no pasa por ese plazo. ⛔ PROHIBIDA la frase seca 'si preferís "
+        "no esperar, podés atenderte de forma particular' (suena comercial y cae mal) — decilo como "
+        "'si lo necesitás resolver antes, te busco fechas por la vía particular y elegís vos'. Si le "
+        "interesa, buscá disponibilidad llamando check_availability con insurance_provider='particular' "
+        "y pasale opciones concretas. "
         "3) Presentalo como OPCIÓN, sin presionar: si elige esperar por su cobertura, está perfecto — "
         "pasale opciones desde esa fecha y listo."
     )
@@ -500,6 +503,16 @@ def candado_avance(response_text: str, last_user: str, tools_names: list[str] | 
         return response_text
     # La respuesta YA avanza: pregunta algo, ofrece opciones numeradas, manda un
     # link (anamnesis/pago), pide datos, o deriva a un humano.
+    # v2 (caso 5 manual 2026-07-20): un pedido de datos en IMPERATIVO ("me falta tu
+    # nombre y apellido, y tu DNI") avanza AUNQUE no tenga '?'. Agregar acá la
+    # pregunta genérica ("¿para qué tipo de consulta sería?") era redundante y
+    # mareaba: el tratamiento ya estaba elegido y el turno ya reservado.
+    if re.search(
+        r"(?i)(?:decime|pasame|p[aá]same|contame|indicame|ind[ií]came|me falta[n]?|necesito|falta[n]? tu)"
+        r"[^\n]{0,80}(?:nombre|apellido|dni|datos)",
+        response_text,
+    ):
+        return response_text
     if "?" in response_text or "¿" in response_text:
         return response_text
     if "1️⃣" in response_text or "http" in response_text.lower():
@@ -643,7 +656,97 @@ def candado_quiere_antes_salida(response_text: str) -> str:
         return response_text
     if not ("1️⃣" in response_text or re.search(r"(?i)primera fecha|opciones dispon|a partir del", response_text)):
         return response_text
+    # Texto v2 (caso 4 manual 2026-07-20: "si preferís no esperar... particular"
+    # sonaba a venta seca): se presenta como ayuda, sin presión.
     return (
         response_text.rstrip()
-        + "\nY si preferís no esperar, también tenés la opción de atenderte de forma particular antes 😊"
+        + "\nSi lo necesitás resolver antes, contame y te busco fechas más próximas por la vía particular — sin compromiso, elegís vos 😊"
     )
+
+
+def candado_coseguro_frio(response_text: str) -> str:
+    """CASO 7 manual (2026-07-20): 'no te paso un monto por acá' — seco, sin empatía
+    (pedido Carlos: 'debemos explicarle'). La frase-bloqueo se reemplaza por el
+    PORQUÉ cálido: depende del plan, se confirma en la clínica, sin sorpresas.
+    Determinista: solo reemplaza esa frase, no toca el resto."""
+    if not response_text:
+        return response_text
+    pat = re.compile(
+        r"(?i)(?:no te (?:paso|doy|digo) (?:un |el |una )?(?:monto|valor|cifra|n[uú]mero)"
+        r"|no (?:puedo|podemos) (?:pasarte|darte|decirte) (?:el |un |una )?(?:monto|valor|cifra|n[uú]mero))"
+        r"[^.\n]*"
+    )
+    if not pat.search(response_text):
+        return response_text
+    calido = (
+        "el monto exacto depende del plan que tengas — te lo confirman en la clínica "
+        "antes de atenderte, así vas sin sorpresas 😊"
+    )
+    return pat.sub(calido, response_text)
+
+
+def candado_particular_incoherente(response_text: str) -> str:
+    """CASOS 1/8 manuales (2026-07-20): 'por cobertura a partir del 25/07' + opciones
+    27/07 y 28/07 → las opciones YA cumplen el plazo de la obra social, y el 'si
+    querés antes, podés de forma particular' SOBRA y confunde (parece que esas
+    fechas fueran solo pagando). Si TODAS las opciones ofrecidas son >= la fecha
+    del plazo, la venta de la vía particular se recorta. Si hay fechas antes del
+    plazo (vía particular real), no toca nada."""
+    if not response_text:
+        return response_text
+    if re.search(r"(?i)\[[^\[\]]*silencio[^\[\]]*\]", response_text):
+        return response_text
+    m = re.search(r"(?i)a partir del (\d{1,2})/(\d{1,2})", response_text)
+    if not m:
+        return response_text
+    _min = (int(m.group(2)), int(m.group(1)))  # (mes, día) para comparar cronológico
+    slots = re.findall(r"[1-3]️?⃣[^\n]*?(\d{1,2})/(\d{1,2})", response_text)
+    if not slots:
+        return response_text
+    if not all((int(mm), int(dd)) >= _min for dd, mm in slots):
+        return response_text  # hay opciones ANTES del plazo → la vía particular es real
+    pat = re.compile(
+        r"(?i)[^.\n]*(?:si (?:quer[eé]s|prefer[ií]s|lo )[^.\n]{0,45}antes[^.\n]{0,70}particular"
+        r"|particular[^.\n]{0,70}antes)[^.\n]*[.!?]?\s*"
+    )
+    nuevo = pat.sub("", response_text)
+    nuevo = re.sub(r"\n{3,}", "\n\n", nuevo).strip()
+    nuevo = re.sub(r"[ \t]{2,}", " ", nuevo)
+    return nuevo if nuevo else response_text
+
+
+# Abreviaturas que NO cortan oración ("la Dra. Laura" no es fin de frase).
+_ABREV_NO_CORTE = ("dra", "dr", "sra", "sr", "lic", "od", "esp", "prof", "av")
+
+
+def candado_formato(response_text: str) -> str:
+    """LEGIBILIDAD (pedido Carlos, casos 3/6 manuales 2026-07-20: 'está tan junto
+    que no se entiende... agregar saltos de línea para diferenciar la info'): un
+    párrafo-ladrillo (>240 chars sin ningún salto) se parte en UNA oración por
+    línea, con saltos SIMPLES (mismo globito — no crea burbujas nuevas). No toca
+    ofertas 1️⃣, URLs ni abreviaturas (Dra., Sr.). Determinista, corre al final."""
+    if not response_text:
+        return response_text
+    if re.search(r"(?i)\[[^\[\]]*silencio[^\[\]]*\]", response_text):
+        return response_text
+
+    def _partir(linea: str) -> str:
+        if len(linea) <= 240 or "1️⃣" in linea:
+            return linea
+        out, ini = [], 0
+        for m in re.finditer(r"[.!?] +", linea):
+            prev = linea[ini:m.start()]
+            ult = re.search(r"([\wÁÉÍÓÚáéíóúñÑ]+)$", prev)
+            if ult and ult.group(1).lower() in _ABREV_NO_CORTE:
+                continue
+            nxt = linea[m.end():m.end() + 1]
+            if nxt and (nxt.isupper() or nxt in "¿¡"):
+                out.append(linea[ini:m.start() + 1])
+                ini = m.end()
+        out.append(linea[ini:])
+        partes = [p.strip() for p in out if p.strip()]
+        return "\n".join(partes) if partes else linea
+
+    paras = response_text.split("\n\n")
+    nuevos = ["\n".join(_partir(l) for l in p.split("\n")) for p in paras]
+    return "\n\n".join(nuevos)

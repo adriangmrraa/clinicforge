@@ -201,6 +201,21 @@ def execute(name: str, args: dict) -> str:
     args = args or {}
 
     if name == "check_availability":
+        # GATE DE COBERTURA (espejo del real 2026-07-20, opt-in con "cov_gate" en el
+        # caso): sin cobertura conocida, la PRIMERA búsqueda no devuelve horarios —
+        # devuelve la orden de preguntar. Una sola vez (espejo del flag anti-loop).
+        if _CTX.get("cov_gate") and not str(args.get("insurance_provider") or "").strip():
+            _CTX["cov_gate"] = False
+            return (
+                "COBERTURA_DESCONOCIDA — NO ofrezcas horarios todavía (la agenda NO se consultó). "
+                "Primero preguntá en UN solo mensaje: '¿Contás con alguna obra social o te "
+                "atenderías de forma particular?' (si el turno es para OTRA persona, preguntá la "
+                "cobertura de ESA persona). Cuando conteste: si nombra una obra social, verificala "
+                "con check_insurance_coverage y volvé a llamar check_availability pasando "
+                "insurance_provider con ese nombre; si dice particular, volvé a llamar "
+                "check_availability con insurance_provider='particular'. ⛔ NO inventes fechas ni "
+                "digas que no hay lugar: la agenda todavía no se miró."
+            )
         canon, cfg = _match_insurance(args.get("insurance_provider", ""))
         delay = cfg["delay_days"] if (cfg and cfg["mode"] == "delayed") else 0
         # Override por-caso: fuerza que el turno mas cercano este a +N dias
@@ -242,14 +257,31 @@ def execute(name: str, args: dict) -> str:
         # CANDADO DATOS (espejo del real, caso Lucas 2026-07-20): un paciente NUEVO
         # sin nombre/apellido/DNI NO se reserva — se piden los datos primero.
         if (_CTX.get("patient_status") or "") in ("new_lead", "lead") and not args.get("is_minor") and not args.get("is_art"):
+            # v2 ANTI-INVENTO (espejo del real, casos "Nombre Apellido"/"Abuela Garnier"):
+            # placeholders y parentescos NO cuentan como dato — se tratan como faltantes.
+            _placeholders = {
+                "nombre", "apellido", "paciente", "cliente", "desconocido", "desconocida",
+                "test", "prueba", "nn", "xx", "sin nombre", "no especificado",
+                "abuela", "abuelo", "mama", "mamá", "papa", "papá", "madre", "padre",
+                "hijo", "hija", "tia", "tía", "tio", "tío", "hermano", "hermana",
+                "esposa", "esposo", "señora", "senora", "señor", "senor", "amigo", "amiga",
+                "novia", "novio", "nena", "nene", "bebe", "bebé", "menor", "tambien", "también",
+            }
+
+            def _vale(k):
+                _v = str(args.get(k) or "").strip()
+                return bool(_v) and _v.lower() not in _placeholders and len(_v) >= 2
+
             _faltan = [n for n, k in (("nombre", "first_name"), ("apellido", "last_name"), ("DNI", "dni"))
-                       if not str(args.get(k) or "").strip()]
+                       if not _vale(k)]
             if _faltan:
                 return (
                     "FALTAN_DATOS — el turno NO se reservó todavía. Es un paciente NUEVO y antes de "
                     "reservar necesitás: " + ", ".join(_faltan) + ". "
                     "Pedile esos datos en UN solo mensaje amable y RECIÉN después volvé a llamar "
-                    "book_appointment con todos los datos (el horario elegido sigue disponible unos minutos)."
+                    "book_appointment con todos los datos (el horario elegido sigue disponible unos "
+                    "minutos). ⛔ NUNCA inventes nombre/apellido/DNI ni uses placeholders o "
+                    "parentescos ('Nombre Apellido', 'Abuela'): preguntale a la persona sus datos REALES."
                 )
         # Simular el bug offer!=bookable (caso Graciela): la reserva falla con
         # UNAVAILABLE aunque check_availability haya ofrecido el slot.

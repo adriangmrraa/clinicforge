@@ -2287,7 +2287,14 @@ async def process_buffer_task(
 
         # Pre-booking minor context: detect from current messages AND cached lead_context
         # Check user messages for minor booking indicators BEFORE the LLM call
-        _MINOR_STOP_WORDS = {"de", "un", "una", "el", "la", "los", "las", "y", "e", "a", "para", "con", "por", "en", "del", "que"}
+        # v2 (caso hijo 2026-07-20): "turno para mi hijo tambien" guardaba al menor
+        # como "Hijo Tambien" — parentescos y muletillas NO son nombres.
+        _MINOR_STOP_WORDS = {
+            "de", "un", "una", "el", "la", "los", "las", "y", "e", "a", "para", "con", "por", "en", "del", "que",
+            "tambien", "también", "porfa", "favor", "porfavor", "urgente", "hoy", "mañana", "manana",
+            "hijo", "hija", "nene", "nena", "bebe", "beba", "bebé", "menor", "mi", "su",
+            "turno", "control", "consulta", "limpieza", "si", "no", "seria", "sería",
+        }
 
         try:
             _msg_text = " ".join(messages).lower()
@@ -2383,6 +2390,12 @@ async def process_buffer_task(
                     _msg_lower = " ".join(messages).lower()
                     _incr_dni = re.search(r'\b(\d{7,8})\b', _msg_lower)
                     _incr_name = re.search(r'^(\w+)\s+(\w+)\s+\b(\d{7,8})\b', _msg_lower)
+                    if not _incr_name:
+                        # v2 (caso hijo 2026-07-20): "seria para control Mariano perez 26637363"
+                        # — nombre+DNI no vienen al inicio. Fallback no-anclado: las DOS
+                        # palabras inmediatamente antes del DNI (los stop words filtran
+                        # "para control" y similares).
+                        _incr_name = re.search(r'\b([a-záéíóúñ]+)\s+([a-záéíóúñ]+)\s+(\d{7,8})\b', _msg_lower)
                     _incr_fields = {}
                     if _incr_name:
                         _f = _incr_name.group(1).capitalize()
@@ -5330,15 +5343,28 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
             _rt = response_text
             # v2 (caso Lucas 2026-07-20, "los cierres son muy largos"): compresión de
             # las frases-plantilla ANTES de reagrupar. Mismo contenido, ~40% menos texto.
+            # v3 (casos 3/6 manuales 2026-07-20, "amontonado queda super feo"): el
+            # bloque de seña se estructura en LÍNEAS (saltos simples = mismo globito)
+            # con emoji de sección. Cubre las 3 formas que produce el modelo:
+            # multilínea, inline con comas, y el formato v2 con '·' del historial.
             _rt = re.sub(
                 r"(?i)si quer[eé]s,? pod[eé]s adelantar una se[ñn]a de \$?([\d\.,]+)(?: por transferencia)?:?\s*\n",
-                r"Seña opcional para asegurarlo: $\1 →\n", _rt)
+                r"💳 Seña opcional: $\1\n", _rt)
             _rt = re.sub(
-                r"(?i)Alias:\s*([^\n|]+?)\s*\n\s*CBU:\s*([^\n|]+?)\s*\n\s*Titular:\s*([^\n]+)",
-                r"Alias: \1 · CBU: \2 · Titular: \3", _rt)
+                r"(?i)si quer[eé]s,? pod[eé]s adelantar una se[ñn]a de \$?([\d\.,]+)(?: por transferencia)?[:,]?\s*"
+                r"alias:?\s*([\w\.\-]+)\s*[,·;|]\s*cbu:?\s*([\d][\d\s\.]*?)\s*[,·;|]\s*titular:?\s*([^\n,\.]+)",
+                r"💳 Seña opcional: $\1\nAlias: \2\nCBU: \3\nTitular: \4", _rt)
+            _rt = re.sub(
+                r"(?i)se[ñn]a opcional para asegurarlo:\s*\$?([\d\.,]+)\s*→?\s*",
+                r"💳 Seña opcional: $\1\n", _rt)
+            _rt = re.sub(
+                r"(?i)alias:\s*([^\n|·]+?)\s*[\n|·]+\s*cbu:\s*([^\n|·]+?)\s*[\n|·]+\s*titular:\s*([^\n|·]+)",
+                r"Alias: \1\nCBU: \2\nTitular: \3", _rt)
+            _rt = re.sub(r"(?i)\.\s+(no es obligatoria)", r".\n\1", _rt)
             _rt = re.sub(
                 r"(?i)para ahorrar tiempo(?: en tu consulta)? pod[eé]s completar tu ficha m[eé]dica aqu[ií]:\s*",
-                "Tu ficha médica (2 min): ", _rt)
+                "📋 Tu ficha médica (2 min): ", _rt)
+            _rt = re.sub(r"(?im)^(?:📋\s*)?tu ficha m[eé]dica \(2 min\):", "📋 Tu ficha médica (2 min):", _rt)
             _rt = re.sub(
                 r"(?i)cuando termines,? avisame(?: para corroborar los datos)?\.?",
                 "Avisame cuando la completes 😊", _rt)
@@ -5564,6 +5590,30 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                 )
     except Exception as _qas_err:
         logger.warning(f"candado-quiere-antes skipped (non-fatal): {_qas_err}")
+
+    # --- CANDADOS DE LEGIBILIDAD (casos manuales 1/3/6/7/8 del 2026-07-20) ---
+    # 1) coseguro-frío: "no te paso un monto por acá" → porqué cálido (caso 7)
+    # 2) particular-incoherente: si las opciones ofrecidas YA cumplen el plazo de la
+    #    OS, la venta de "si querés antes, particular" sobra y confunde (casos 1/8)
+    # 3) formato: párrafo-ladrillo >240 chars sin saltos → una oración por línea,
+    #    saltos SIMPLES (mismo globito). Corre AL FINAL de la cadena (casos 3/6).
+    try:
+        from services.inyecciones_frescas import (
+            candado_coseguro_frio as _cf_fn,
+            candado_formato as _fmt_fn,
+            candado_particular_incoherente as _pi_fn,
+        )
+
+        _leg_pre = response_text
+        response_text = _cf_fn(response_text)
+        response_text = _pi_fn(response_text)
+        response_text = _fmt_fn(response_text)
+        if _leg_pre != response_text:
+            logger.warning(
+                f"🔒 CANDADO LEGIBILIDAD: coseguro-frío / particular-incoherente / formato aplicado para {external_user_id}"
+            )
+    except Exception as _leg_err:
+        logger.warning(f"candado-legibilidad skipped (non-fatal): {_leg_err}")
 
     # --- GUARD: PROMESA-FANTASMA (banco 2026-07-18: 'te paso con el equipo' / 'lo cancelo'
     # SIN ejecutar ninguna herramienta — la promesa quedaba en la nada; hueco #1 del

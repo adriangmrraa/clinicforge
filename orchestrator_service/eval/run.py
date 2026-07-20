@@ -326,6 +326,10 @@ async def main() -> int:
                         "book_fails": c.get("mock_book_fails"),
                         "my_appointments": c.get("mock_my_appointments"),
                         "patient_status": c.get("patient_status"),
+                        # Gate de cobertura (espejo del real, opt-in por caso): la 1ª
+                        # check_availability sin insurance_provider devuelve
+                        # COBERTURA_DESCONOCIDA y el bot debe preguntar primero.
+                        "cov_gate": bool(c.get("cov_gate")),
                     })
                     answer, _pt, _ct, tool_trace = await _run_agent_turn(
                         client, mc["model"], messages, args.temperature, tools,
@@ -409,6 +413,16 @@ async def main() -> int:
                 )
                 if _qam(c.get("user", "")):
                     answer = _c_qas(answer)
+            # Legibilidad (casos manuales 1/3/6/7/8 del 2026-07-20) — mismo orden que buffer_task:
+            # coseguro-frío → particular-incoherente → formato (el formato SIEMPRE al final).
+            from services.inyecciones_frescas import (
+                candado_coseguro_frio as _c_cfrio,
+                candado_formato as _c_fmt,
+                candado_particular_incoherente as _c_pinc,
+            )
+            answer = _c_cfrio(answer)
+            answer = _c_pinc(answer)
+            answer = _c_fmt(answer)
             if _pre_candado != answer:
                 print(f"    [candados] la cadena recortó/reagrupó ({len(_pre_candado)}->{len(answer)} chars)")
 

@@ -2293,6 +2293,14 @@ async def check_availability(
                 # bloquear flujos legítimos de reprogramación donde la IA pasa solo la fecha
                 # pero el paciente dijo "reprogramar" o "cualquier día a la tarde" antes.
                 if _ca_state_str in ("BOOKED", "PAYMENT_PENDING"):
+                    # CASO HIJO (manual 2026-07-20): hay un TERCERO/MENOR pendiente de
+                    # agendar (booking_targets en convstate) → este check_availability
+                    # es para ESA persona, no un duplicado del turno propio. El gate
+                    # no debe exigir "señales de reprogramación" para dejarlo pasar.
+                    _bt_pend = [
+                        t for t in (_ca_state.get("booking_targets") or [])
+                        if isinstance(t, dict) and str(t.get("status", "")).lower() in ("pending", "collecting")
+                    ]
                     # AG-03 fix: stems con \w* (sin \b final) para que matcheen las
                     # palabras reales. Antes 'reprogram|cancel|reagend...)\b' NUNCA
                     # matcheaba "reprogramar/cancelar/reagendar" (el \b exigia limite de
@@ -2307,6 +2315,8 @@ async def check_availability(
                         r'verif\w*|intento|intentalo|no puedo ir|no podr[ee] ir|no voy a poder|'
                         r'no llego|qu[ee] d[ii]a|para cuando|cuando puede|propon|lo que tengas|'
                         r'el que sea|vos decim|'
+                        r'hij[oa]\b|menor\b|nen[ea]\b|beb[eé]\b|abuel[oa]\b|mam[aá]\b|pap[aá]\b|'
+                        r'esposo|esposa|herman[oa]\b|se atender[íi]a|ser[íi]a para|es para \w+|'
                         r'lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo|'
                         r'ma[nñ]ana|tarde|noche|temprano|m[aa]s tarde|'
                         r'a las \d|a la (ma[nñ]ana|tarde|noche))'
@@ -2352,7 +2362,12 @@ async def check_availability(
                         r'otro turno|otra fecha|no puedo ir|no voy a poder|no podr[ée] ir|no llego)\b',
                         _ca_input_text, re.IGNORECASE,
                     )
-                    if _wants_earlier and not _explicit_resched:
+                    if _bt_pend:
+                        logger.info(
+                            f"📊 BOOKING_FLOW | check_availability ALLOWED: booking target pendiente "
+                            f"(tercero/menor) en convstate — es un turno para OTRA persona. phone={_ca_phone}"
+                        )
+                    if _wants_earlier and not _explicit_resched and not _bt_pend:
                         logger.warning(
                             f"📊 BOOKING_FLOW | check_availability BLOCKED (quiere-antes sin reprogramar): "
                             f"state={_ca_state_str} phone={_ca_phone}"
@@ -2368,7 +2383,7 @@ async def check_availability(
                             "turno y decile 'si se libera un lugar antes, te aviso'. No menciones ni "
                             "envíes esta nota.]"
                         )
-                    if not re.search(_intent_signals, _ca_input_text, re.IGNORECASE):
+                    if not _bt_pend and not re.search(_intent_signals, _ca_input_text, re.IGNORECASE):
                         logger.warning(
                             f"📊 BOOKING_FLOW | check_availability BLOCKED: state={_ca_state_str} "
                             f"no reschedule/new-booking intent detected. phone={_ca_phone}"
@@ -2967,11 +2982,15 @@ async def check_availability(
         _mode = "immediate"
         _delay = 0
         _prov = None
+        # ¿Alguna fuente resolvió la cobertura? (incluye "Particular": conocida ≠ con OS)
+        _cov_alguna_fuente = False
 
         if insurance_provider and insurance_provider.strip():
             _prov = insurance_provider.strip()
+            _cov_alguna_fuente = True
         if not _prov and patient_row and patient_row.get("insurance_provider"):
             _prov = str(patient_row["insurance_provider"]).strip()
+            _cov_alguna_fuente = _cov_alguna_fuente or bool(_prov)
         if not _prov and _ca_phone:
             try:
                 _sem_prow = await db.pool.fetchrow(
@@ -2980,6 +2999,7 @@ async def check_availability(
                 )
                 if _sem_prow:
                     _prov = str(_sem_prow["insurance_provider"]).strip()
+                    _cov_alguna_fuente = _cov_alguna_fuente or bool(_prov)
             except Exception as _sem_err:
                 logger.debug(f"semaphore patients-by-phone lookup (non-fatal): {_sem_err}")
         if not _prov:
@@ -2992,12 +3012,99 @@ async def check_availability(
                     _lc_ins = (_lc_data or {}).get("insurance_provider")
                     if _lc_ins:
                         _prov = str(_lc_ins).strip()
+                        _cov_alguna_fuente = _cov_alguna_fuente or bool(_prov)
                         logger.info(f"📅 SEMAPHORE: Resolved insurance '{_prov}' from lead_context")
             except Exception as _lc_err:
                 logger.debug(f"lead_context insurance lookup (non-fatal): {_lc_err}")
 
         if _prov and _prov.lower() in ("particular", "ninguna", "no", "sin obra social"):
             _prov = None
+
+        # ── GATE DE COBERTURA (caso 2 manual 2026-07-20: el bot ofreció horarios sin
+        # saber la cobertura → el semáforo de la OS no puede aplicarse y el encuadre
+        # queda mal). A un paciente SIN cobertura conocida, en el PRIMER contacto de
+        # agenda (IDLE), NO se le ofrecen horarios: primero se pregunta. Se pregunta
+        # UNA sola vez (flag anti-loop) y con excepciones: paciente con historia en
+        # la clínica, urgencia/dolor, estética (siempre particular), o cobertura ya
+        # nombrada en el último mensaje (el flujo normal la verifica).
+        try:
+            _gate_state = "IDLE"
+            try:
+                _gate_state = _ca_state_str
+            except NameError:
+                pass
+            if not _cov_alguna_fuente and _gate_state == "IDLE" and _ca_phone:
+                _gate_skip = False
+                _tn_low = (treatment_name or "").lower()
+                if re.search(r"carilla|blanqueam|dise[ñn]o de sonrisa|urgencia|emergencia", _tn_low):
+                    _gate_skip = True  # estética = siempre particular; urgencia no espera
+                if not _gate_skip:
+                    try:
+                        from services.lead_context import get as _lc_gate_get
+                        _gate_lc = (await _lc_gate_get(tenant_id, _ca_phone)) or {}
+                        if str(_gate_lc.get("cov_gate_asked") or "") == "1":
+                            _gate_skip = True  # ya se preguntó una vez — no insistir
+                    except Exception:
+                        pass
+                if not _gate_skip:
+                    try:
+                        _gate_has_appt = await db.pool.fetchval(
+                            "SELECT 1 FROM appointments a JOIN patients p ON p.id = a.patient_id AND p.tenant_id = a.tenant_id "
+                            "WHERE a.tenant_id = $1 AND REGEXP_REPLACE(COALESCE(p.phone_number,''),'[^0-9]','','g') = $2 LIMIT 1",
+                            tenant_id, normalize_phone_digits(_ca_phone),
+                        )
+                        if _gate_has_appt:
+                            _gate_skip = True  # con historia en la clínica no se interroga (regla Myriam)
+                    except Exception:
+                        pass
+                if not _gate_skip:
+                    try:
+                        _gate_msg = str(await db.pool.fetchval(
+                            """
+                            SELECT cm.content FROM chat_messages cm
+                            JOIN chat_conversations cc ON cc.id = cm.conversation_id
+                            WHERE cc.external_user_id ILIKE $1 AND cc.tenant_id = $2 AND cm.role = 'user'
+                            ORDER BY cm.created_at DESC LIMIT 1
+                            """,
+                            f"%{re.sub(r'[^0-9]', '', _ca_phone or '')}%", tenant_id,
+                        ) or "")
+                        if re.search(
+                            r"(?i)particular|no tengo (?:obra|cobertura)|sin obra social|prepaga"
+                            r"|dolor|duele|urgen|emergencia|sangr|hinchad|golpe",
+                            _gate_msg,
+                        ):
+                            _gate_skip = True
+                        else:
+                            try:
+                                from services.inyecciones_frescas import iny_os_en_mensaje as _gate_os_fn
+                                if _gate_os_fn(_gate_msg):
+                                    _gate_skip = True  # nombró su OS: el flujo normal la verifica
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+                if not _gate_skip:
+                    try:
+                        from services.lead_context import merge as _lc_gate_merge
+                        await _lc_gate_merge(tenant_id, _ca_phone, {"cov_gate_asked": "1"})
+                    except Exception:
+                        pass
+                    logger.warning(
+                        f"⛔ GATE COBERTURA: check_availability sin cobertura conocida en IDLE → primero se pregunta ({_ca_phone})"
+                    )
+                    return (
+                        "COBERTURA_DESCONOCIDA — NO ofrezcas horarios todavía (la agenda NO se consultó). "
+                        "Primero preguntá en UN solo mensaje: '¿Contás con alguna obra social o te "
+                        "atenderías de forma particular?' (si el turno es para OTRA persona, preguntá la "
+                        "cobertura de ESA persona). Cuando conteste: si nombra una obra social, verificala "
+                        "con check_insurance_coverage y volvé a llamar check_availability pasando "
+                        "insurance_provider con ese nombre; si dice particular, volvé a llamar "
+                        "check_availability con insurance_provider='particular'. ⛔ NO inventes fechas ni "
+                        "digas que no hay lugar: la agenda todavía no se miró."
+                    )
+        except Exception as _gate_err:
+            logger.warning(f"gate-cobertura skipped (non-fatal): {_gate_err}")
+
         if _prov:
             # Escalera compartida (exacto → alias → trigram → bidireccional):
             # idéntica a check_insurance_coverage y a los guards de reserva.
@@ -5686,6 +5793,41 @@ async def book_appointment(
 
         # 4. Crear/actualizar paciente SOLO cuando hay disponibilidad confirmada (Spec 2026-03-13)
         # PROTECCIÓN: Si es turno para tercero, NO tocar el registro del interlocutor
+
+        # CANDADO DATOS v2 — ANTI-INVENTO (casos 1/8 manuales 2026-07-20: el modelo
+        # esquivó el candado creando pacientes "Nombre Apellido" y "Abuela Garnier" —
+        # placeholders y parentescos NO son identidad). Un dato inventado se DESCARTA
+        # (queda None): en paciente NUEVO dispara FALTAN_DATOS; en EXISTENTE evita
+        # pisar el registro real con basura (el COALESCE recibe None y no toca nada).
+        _CD_PLACEHOLDERS = {
+            "nombre", "apellido", "paciente", "cliente", "desconocido", "desconocida",
+            "test", "prueba", "nn", "xx", "sin nombre", "no especificado",
+            "abuela", "abuelo", "mama", "mamá", "papa", "papá", "madre", "padre",
+            "hijo", "hija", "tia", "tía", "tio", "tío", "hermano", "hermana",
+            "esposa", "esposo", "señora", "senora", "señor", "senor", "amigo", "amiga",
+            "novia", "novio", "nena", "nene", "bebe", "bebé", "menor", "tambien", "también",
+        }
+
+        def _cd_es_invento(_v) -> bool:
+            _s = str(_v or "").strip().lower()
+            return bool(_s) and (_s in _CD_PLACEHOLDERS or len(_s) < 2)
+
+        _cd_inventados = []
+        if _cd_es_invento(first_name):
+            _cd_inventados.append(f"nombre '{first_name}'")
+            first_name = None
+        if _cd_es_invento(last_name):
+            _cd_inventados.append(f"apellido '{last_name}'")
+            last_name = None
+        _cd_dni_digits = re.sub(r"\D", "", str(dni or ""))
+        if str(dni or "").strip() and not (6 <= len(_cd_dni_digits) <= 9):
+            _cd_inventados.append(f"DNI '{dni}' (inválido)")
+            dni = None
+        if _cd_inventados:
+            logger.warning(
+                f"⛔ CANDADO DATOS v2: datos inventados/placeholder DESCARTADOS: {_cd_inventados} ({phone})"
+            )
+
         if existing_patient:
             db_insurance = existing_patient.get("insurance_provider")
             new_insurance = db_insurance if db_insurance else lead_insurance
@@ -5752,6 +5894,12 @@ async def book_appointment(
                     "reservar necesitás: " + ", ".join(_cd_faltan) + ". "
                     "Pedile esos datos en UN solo mensaje amable y RECIÉN después volvé a llamar "
                     "book_appointment con todos los datos (el horario elegido sigue disponible unos minutos)."
+                    + (
+                        " ⛔ OJO: descarté datos INVENTADOS que pasaste (" + ", ".join(_cd_inventados) + "). "
+                        "NUNCA inventes nombre/apellido/DNI ni uses placeholders o parentescos "
+                        "('Nombre Apellido', 'Abuela'): preguntale a la persona sus datos REALES."
+                        if _cd_inventados else ""
+                    )
                 )
 
             # Determine patient_source for new patients
@@ -8584,7 +8732,46 @@ async def save_scheduling_constraint(
         elif ct == "preferred_days":
             kwargs["preferred_days"] = [d.strip().lower() for d in value.split(",") if d.strip()]
         elif ct == "exclude_days":
-            kwargs["exclude_days"] = [d.strip().lower() for d in value.split(",") if d.strip()]
+            _dias = [d.strip().lower() for d in value.split(",") if d.strip()]
+            kwargs["exclude_days"] = _dias
+            # CANDADO INVERSIÓN (caso Lucas manual 2026-07-20): "puedo los lunes o
+            # viernes únicamente" → el LLM mandó exclude_days='lunes,viernes' (los
+            # ÚNICOS días que SÍ puede) y el turno cayó un miércoles. Si el último
+            # mensaje del paciente declara los días en POSITIVO (puedo/solo/única-
+            # mente + día, sin un 'no' pegado al día), lo que se excluye es el
+            # COMPLEMENTO de los días declarados — nunca los días que pidió.
+            try:
+                _lum = await db.pool.fetchval(
+                    """
+                    SELECT cm.content FROM chat_messages cm
+                    JOIN chat_conversations cc ON cc.id = cm.conversation_id
+                    WHERE cc.external_user_id ILIKE $1 AND cc.tenant_id = $2 AND cm.role = 'user'
+                    ORDER BY cm.created_at DESC LIMIT 1
+                    """,
+                    f"%{re.sub(r'[^0-9]', '', phone or '')}%", tid,
+                )
+                _msg_n = str(_lum or "").lower()
+                for _a, _b in (("á", "a"), ("é", "e"), ("í", "i"), ("ó", "o"), ("ú", "u")):
+                    _msg_n = _msg_n.replace(_a, _b)
+                _D7 = ["lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo"]
+                _decl = [d for d in _D7 if d in _msg_n]
+                _positivo = bool(re.search(r"puedo|me sirve|me queda|me viene|\bsolo\b|unicamente|nada mas", _msg_n))
+                _negativo = bool(re.search(
+                    r"no puedo|\bno\b[^\n.]{0,15}(?:lunes|martes|miercoles|jueves|viernes|sabado|domingo)"
+                    r"|(?:lunes|martes|miercoles|jueves|viernes|sabado|domingo)[^\n.]{0,15}\bno\b",
+                    _msg_n,
+                ))
+                _dias_n = {d.replace("é", "e").replace("á", "a") for d in _dias}
+                if _positivo and not _negativo and _decl and (set(_decl) & _dias_n):
+                    _comp = [d for d in _D7 if d not in _decl]
+                    kwargs["exclude_days"] = _comp
+                    kwargs["preferred_days"] = _decl
+                    logger.warning(
+                        f"[save_scheduling_constraint] INVERSIÓN POSITIVA: el paciente SOLO puede {_decl} "
+                        f"(el LLM mandó exclude={_dias}) → exclude_days={_comp}"
+                    )
+            except Exception as _inv_err:
+                logger.warning(f"[save_scheduling_constraint] inversión positiva no evaluada (non-fatal): {_inv_err}")
         elif ct == "exclude_dates":
             kwargs["exclude_dates"] = [d.strip() for d in value.split(",") if d.strip()]
         else:
@@ -8646,7 +8833,46 @@ async def save_scheduling_constraint(
         elif ct == "preferred_days":
             kwargs["preferred_days"] = [d.strip().lower() for d in value.split(",") if d.strip()]
         elif ct == "exclude_days":
-            kwargs["exclude_days"] = [d.strip().lower() for d in value.split(",") if d.strip()]
+            _dias = [d.strip().lower() for d in value.split(",") if d.strip()]
+            kwargs["exclude_days"] = _dias
+            # CANDADO INVERSIÓN (caso Lucas manual 2026-07-20): "puedo los lunes o
+            # viernes únicamente" → el LLM mandó exclude_days='lunes,viernes' (los
+            # ÚNICOS días que SÍ puede) y el turno cayó un miércoles. Si el último
+            # mensaje del paciente declara los días en POSITIVO (puedo/solo/única-
+            # mente + día, sin un 'no' pegado al día), lo que se excluye es el
+            # COMPLEMENTO de los días declarados — nunca los días que pidió.
+            try:
+                _lum = await db.pool.fetchval(
+                    """
+                    SELECT cm.content FROM chat_messages cm
+                    JOIN chat_conversations cc ON cc.id = cm.conversation_id
+                    WHERE cc.external_user_id ILIKE $1 AND cc.tenant_id = $2 AND cm.role = 'user'
+                    ORDER BY cm.created_at DESC LIMIT 1
+                    """,
+                    f"%{re.sub(r'[^0-9]', '', phone or '')}%", tid,
+                )
+                _msg_n = str(_lum or "").lower()
+                for _a, _b in (("á", "a"), ("é", "e"), ("í", "i"), ("ó", "o"), ("ú", "u")):
+                    _msg_n = _msg_n.replace(_a, _b)
+                _D7 = ["lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo"]
+                _decl = [d for d in _D7 if d in _msg_n]
+                _positivo = bool(re.search(r"puedo|me sirve|me queda|me viene|\bsolo\b|unicamente|nada mas", _msg_n))
+                _negativo = bool(re.search(
+                    r"no puedo|\bno\b[^\n.]{0,15}(?:lunes|martes|miercoles|jueves|viernes|sabado|domingo)"
+                    r"|(?:lunes|martes|miercoles|jueves|viernes|sabado|domingo)[^\n.]{0,15}\bno\b",
+                    _msg_n,
+                ))
+                _dias_n = {d.replace("é", "e").replace("á", "a") for d in _dias}
+                if _positivo and not _negativo and _decl and (set(_decl) & _dias_n):
+                    _comp = [d for d in _D7 if d not in _decl]
+                    kwargs["exclude_days"] = _comp
+                    kwargs["preferred_days"] = _decl
+                    logger.warning(
+                        f"[save_scheduling_constraint] INVERSIÓN POSITIVA: el paciente SOLO puede {_decl} "
+                        f"(el LLM mandó exclude={_dias}) → exclude_days={_comp}"
+                    )
+            except Exception as _inv_err:
+                logger.warning(f"[save_scheduling_constraint] inversión positiva no evaluada (non-fatal): {_inv_err}")
         elif ct == "exclude_dates":
             kwargs["exclude_dates"] = [d.strip() for d in value.split(",") if d.strip()]
         else:
