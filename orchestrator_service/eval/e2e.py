@@ -568,12 +568,14 @@ async def scenario_reprogramar(db, book_appointment, set_ctx):
     # Firma real: check_availability(date_query, interpreted_date, search_mode, ...,
     # treatment_name=...) — v3: el primer intento usaba 'treatment_code' (kwarg inexistente).
     f_obj = _proximo_lunes(3)
+    # v4: treatment_name debe ser un NOMBRE del catálogo real de la clínica (validado
+    # contra list_services) — 'checkup' es un code interno y check_availability lo rechaza.
     r_av = str(await _invoke_tool(
         check_availability,
         date_query=f_obj.isoformat(),
         interpreted_date=f_obj.isoformat(),
         search_mode="week",
-        treatment_name="checkup",
+        treatment_name="Consulta General",
     ))
     # 2) Extraer el PRIMER slot ofrecido (fecha ISO + hora) del slot_offer sembrado.
     import re as _re
