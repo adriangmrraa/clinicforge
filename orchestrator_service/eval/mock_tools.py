@@ -55,6 +55,16 @@ def _next_weekday(start: date) -> date:
     return d
 
 
+def fechas_futuras_two() -> list[str]:
+    """Fechas %d/%m de los DOS turnos del modo mock 'two' (candado multi-turno).
+
+    Misma lógica que list_my_appointments modo 'two' — si cambia allá, cambiar acá.
+    """
+    d1 = _next_weekday(date.today() + timedelta(days=3))
+    d2 = _next_weekday(d1 + timedelta(days=1))
+    return [d1.strftime("%d/%m"), d2.strftime("%d/%m")]
+
+
 def _match_insurance(name: str) -> tuple[str, dict] | tuple[None, None]:
     raw = (name or "").strip().upper()
     if not raw:

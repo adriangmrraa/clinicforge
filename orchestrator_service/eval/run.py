@@ -252,7 +252,24 @@ async def main() -> int:
             _ctx_low = (c.get("patient_context") or "").lower()
             if "payment_status" in _ctx_low or "pendiente" in _ctx_low:
                 case_tags.add("payment")
-            messages = [{"role": "system", "content": prompt_for(status, c.get("patient_context", ""), case_tags)}]
+            # INYECCIONES FRESCAS (espejo de buffer_task): el banco corre el MISMO
+            # contexto fresco que prod. Funciones puras compartidas — no hay copia.
+            from services.inyecciones_frescas import aplicar_inyecciones
+
+            _last_bot_hist = next(
+                (
+                    (h.get("content") or h.get("texto") or "")
+                    for h in reversed(c.get("history") or [])
+                    if (h.get("role") or ("assistant" if h.get("de") in ("bot", "asistente") else "user")) == "assistant"
+                ),
+                "",
+            )
+            _ctx_con_iny = (c.get("patient_context", "") or "") + aplicar_inyecciones(
+                c.get("user", ""),
+                user_texts=[t for t in _case_texts if t],
+                last_bot=_last_bot_hist,
+            )
+            messages = [{"role": "system", "content": prompt_for(status, _ctx_con_iny, case_tags)}]
             messages += _history_to_messages(c.get("history"))
             messages.append({"role": "user", "content": c.get("user", "")})
 
@@ -324,6 +341,15 @@ async def main() -> int:
             answer = _c_cierre(answer)
             answer = _c_oferta(answer)
             answer = _c_coseguro(answer)
+            # Candados nuevos (banco v2): compartidos con buffer_task, sin espejo a mano.
+            from services.inyecciones_frescas import (
+                candado_avance as _c_avance,
+                candado_multi_turno as _c_multiturno,
+            )
+            answer = _c_avance(answer, c.get("user", ""), _tool_names_turn)
+            if c.get("mock_my_appointments") == "two":
+                from eval.mock_tools import fechas_futuras_two as _f2
+                answer = _c_multiturno(answer, _f2())
             if _pre_candado != answer:
                 print(f"    [candados] la cadena recortó/reagrupó ({len(_pre_candado)}->{len(answer)} chars)")
 

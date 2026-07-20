@@ -33,7 +33,11 @@ def candado_cobertura_chat(response_text: str, last_user_msg: str) -> str:
 
 def candado_reintegro(response_text: str, patient_context: str, last_user_msg: str) -> str:
     _ctx_low = (patient_context or "").lower()
-    _dispara = bool(response_text) and not re.search(r"(?i)comprobante|recibo|reintegro", response_text or "") and (
+    # Fino (banco v2, terce-madre-Swiss): solo el comprobante/recibo desactiva — decir
+    # "reintegro" sin nombrar el comprobante quedaba a medias.
+    _ya_comprobante = bool(re.search(r"(?i)comprobante|recibo|factura", response_text or ""))
+    _ya_reintegro = bool(re.search(r"(?i)reintegro", response_text or ""))
+    _dispara = bool(response_text) and not _ya_comprobante and (
         bool(re.search(r"(?i)(ser[íi]a de forma particular|atenci[oó]n.*particular|consulta particular|es particular)", response_text or ""))
         or (bool(re.search(r"\bissn\b", _ctx_low)) and bool(re.search(r"(?i)tiene un valor", response_text or "")))
     )
@@ -47,10 +51,16 @@ def candado_reintegro(response_text: str, patient_context: str, last_user_msg: s
         or bool(re.search(r"\b(issn|swiss|prevenci[oó]n)\b", _last))
     )
     if _os_context:
-        response_text = (
-            response_text.rstrip()
-            + "\nIgual te entregamos el comprobante para que puedas gestionar reintegro con tu cobertura, si te corresponde."
-        )
+        if _ya_reintegro:
+            response_text = (
+                response_text.rstrip()
+                + "\nEl comprobante para gestionarlo te lo entregamos nosotros en la clínica."
+            )
+        else:
+            response_text = (
+                response_text.rstrip()
+                + "\nIgual te entregamos el comprobante para que puedas gestionar reintegro con tu cobertura, si te corresponde."
+            )
     return response_text
 
 
@@ -123,6 +133,16 @@ CASOS = [
             "Ah, ¿y cuánto sale la consulta?",
         ),
         lambda out: "comprobante" in out.lower() and "reintegro" in out.lower(),
+    ),
+    (
+        "Dice 'reintegro' pero NO comprobante (fallo terce-madre-Swiss del banco v2) → completa con la línea corta",
+        lambda: candado_reintegro(
+            "Con Swiss Medical no trabajamos con convenio directo, así que la atención sería de forma "
+            "particular y luego podés gestionar reintegro con tu cobertura.",
+            "",
+            "Hola, necesito un turno para mi mamá María, ella tiene Swiss Medical, ¿cuánto es la consulta?",
+        ),
+        lambda out: "comprobante" in out.lower() and out.lower().count("reintegro") == 1,
     ),
 ]
 

@@ -2506,13 +2506,12 @@ async def process_buffer_task(
         # una cifra por chat): lo que cambia es CÓMO se acompaña. 3 niveles: porqué cálido
         # → salida concreta con el equipo → aclarar la confusión seña↔precio directo.
         try:
+            # Regex COMPARTIDOS con el banco (services/inyecciones_frescas.py) — ampliados
+            # con "¿debo abonar algo adicional?" (caso post-confirmacion del banco v2).
+            from services.inyecciones_frescas import es_confusion_sena, es_pregunta_monto_coseguro
             _cos_last = " ".join(messages).lower() if isinstance(messages, list) else str(messages or "").lower()
-            _cos_pregunta_monto = bool(
-                re.search(r"(cu[aá]nto|de cu[aá]nto|qu[eé] monto|qu[eé] valor).{0,30}coseguro|coseguro.{0,35}(cu[aá]nto|monto|valor|sale)", _cos_last)
-            )
-            _cos_confusion_sena = bool(
-                re.search(r"(solo|solamente|nada m[aá]s).{0,25}(consulta|x consulta|por consulta).{0,20}(30|treinta|se[ñn]a|mil)|consulta son \$?\s?\d", _cos_last)
-            )
+            _cos_pregunta_monto = es_pregunta_monto_coseguro(_cos_last)
+            _cos_confusion_sena = es_confusion_sena(_cos_last)
             if _cos_pregunta_monto or _cos_confusion_sena:
                 _cos_ya_explicado = 0
                 try:
@@ -2651,11 +2650,10 @@ async def process_buffer_task(
         # SEGURO Y CONDICIONAL: solo si el ÚLTIMO mensaje menciona dolor/molestia (no una negación
         # "sin molestias") Y NO hay SEGUIMIENTO POST-TRATAMIENTO activo (ahí manda ESE protocolo, no F2).
         try:
-            _last_user_l = ""
-            for _m in reversed(messages or []):
-                if isinstance(_m, dict) and _m.get("role") == "user":
-                    _last_user_l = str(_m.get("content", "")).lower()
-                    break
+            # FIX banco v2 (2026-07-20): `messages` acá es List[str] (el buffer de mensajes
+            # del paciente), NO dicts con role — el loop anterior buscaba dicts y dejaba
+            # _last_user_l vacío SIEMPRE: la inyección de dolor estaba muerta en prod.
+            _last_user_l = str(messages[-1] if messages else "").lower()
             # Señal FUERTE de dolor (casi nunca es cortesía): dispara directo.
             _strong_pain = any(k in _last_user_l for k in ("duele", "dolor", "no aguanto", "inflam", "hinch", "sangr", "flemón", "flemon", "absceso"))
             # "molestia" es AMBIGUA (cortesía/negación) → solo cuenta si NO es cortesía ni negación.
@@ -2673,6 +2671,52 @@ async def process_buffer_task(
                 patient_context = (patient_context + "\n" + _pain_note) if patient_context else _pain_note
         except Exception as _pain_err:
             logger.debug(f"pain-gate injection skipped (non-fatal): {_pain_err}")
+
+        # INYECCIONES FRESCAS COMPARTIDAS (banco v2, 2026-07-20): derivación explícita
+        # ("quiero hablar con una persona" → derivhumano YA), pide-cancelar (ejecutar,
+        # no re-preguntar), dos personas (dos turnos + cobertura de cada uno), queja de
+        # precio (defensa del valor) y OS nombrada (reconocer + verificar + sin precio
+        # particular). Funciones PURAS en services/inyecciones_frescas.py — el banco
+        # (eval/run.py) aplica LAS MISMAS: una sola fuente de verdad, sin espejos.
+        try:
+            from services.inyecciones_frescas import (
+                iny_derivacion_explicita,
+                iny_multi_persona,
+                iny_os_en_mensaje,
+                iny_pide_cancelar,
+                iny_queja_precio,
+            )
+
+            _if_last = str(messages[-1] if messages else "")
+            _if_users = list(messages or [])
+            _if_last_bot = ""
+            try:
+                _if_rows = await pool.fetch(
+                    "SELECT role, content FROM chat_messages WHERE conversation_id = $1 AND tenant_id = $2 "
+                    "ORDER BY created_at DESC LIMIT 8",
+                    conversation_id,
+                    tenant_id,
+                )
+                _if_users = [r["content"] or "" for r in _if_rows if r["role"] == "user"][:3] + _if_users
+                _if_last_bot = next(
+                    (r["content"] or "" for r in _if_rows if r["role"] == "assistant"), ""
+                )
+            except Exception:
+                pass
+            for _if_txt in (
+                iny_derivacion_explicita(_if_last),
+                iny_pide_cancelar(_if_users, _if_last_bot),
+                iny_multi_persona(_if_last),
+                iny_queja_precio(_if_last),
+                iny_os_en_mensaje(_if_last),
+            ):
+                if _if_txt:
+                    patient_context = (patient_context + "\n" + _if_txt) if patient_context else _if_txt
+                    logger.info(
+                        f"💉 Inyección fresca aplicada ({_if_txt[:42]}...) para {external_user_id}"
+                    )
+        except Exception as _if_err:
+            logger.debug(f"inyecciones-frescas skipped (non-fatal): {_if_err}")
 
         system_prompt = build_system_prompt(
             clinic_name=clinic_name,
@@ -4993,7 +5037,12 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
     # agrega UNA línea. Determinista, aditivo (nunca recorta).
     try:
         _ri_ctx_low = (patient_context or "").lower()
-        _ri_dispara = bool(response_text) and not re.search(r"(?i)comprobante|recibo|reintegro", response_text or "") and (
+        # Fino (banco v2, terce-madre-Swiss): antes el anti-duplicado incluía "reintegro",
+        # así que una respuesta que decía "podés gestionar reintegro" SIN nombrar el
+        # comprobante quedaba a medias — ahora solo el comprobante/recibo desactiva.
+        _ri_ya_comprobante = bool(re.search(r"(?i)comprobante|recibo|factura", response_text or ""))
+        _ri_ya_reintegro = bool(re.search(r"(?i)reintegro", response_text or ""))
+        _ri_dispara = bool(response_text) and not _ri_ya_comprobante and (
             bool(re.search(r"(?i)(ser[íi]a de forma particular|atenci[oó]n.*particular|consulta particular|es particular)", response_text or ""))
             # Ampliación (banco 2026-07-20, issn-precio): con ISSN activo, dar el VALOR de
             # la consulta también exige la línea del comprobante aunque la respuesta no
@@ -5009,10 +5058,17 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                 or bool(re.search(r"\b(issn|swiss|prevenci[oó]n)\b", _ri_last))
             )
             if _ri_os_context:
-                response_text = (
-                    response_text.rstrip()
-                    + "\nIgual te entregamos el comprobante para que puedas gestionar reintegro con tu cobertura, si te corresponde."
-                )
+                if _ri_ya_reintegro:
+                    # Ya habló del reintegro pero sin el comprobante: completa sin repetir.
+                    response_text = (
+                        response_text.rstrip()
+                        + "\nEl comprobante para gestionarlo te lo entregamos nosotros en la clínica."
+                    )
+                else:
+                    response_text = (
+                        response_text.rstrip()
+                        + "\nIgual te entregamos el comprobante para que puedas gestionar reintegro con tu cobertura, si te corresponde."
+                    )
                 logger.warning(f"🔒 CANDADO REINTEGRO: agregué la línea del comprobante para {external_user_id}")
     except Exception as _ri_err:
         logger.warning(f"candado-reintegro skipped (non-fatal): {_ri_err}")
@@ -5283,6 +5339,63 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                 logger.warning(f"🔒 CANDADO COSEGURO: amplié 'efectivo' a efectivo/transferencia para {external_user_id}")
     except Exception as _cs_err:
         logger.warning(f"candado-coseguro skipped (non-fatal): {_cs_err}")
+
+    # --- CANDADO: AVANCE (globito muerto) — pidió turno y la respuesta no avanza ---
+    # Banco v2 (terce-hermana-OSDE, continuidad-implante): el bot quedaba en una
+    # declaración sin pregunta ni opciones ("primero verifico la cobertura y después
+    # te paso opciones.") y la conversación moría. Función pura compartida con el
+    # banco (services/inyecciones_frescas.py). Aditivo: solo AGREGA una pregunta.
+    try:
+        from services.inyecciones_frescas import candado_avance as _av_fn
+
+        try:
+            _av_tools = list(_tools_names)
+        except NameError:
+            _av_tools = []
+        _av_last = str(messages[-1] if messages else "")
+        _av_pre = response_text
+        response_text = _av_fn(response_text, _av_last, _av_tools)
+        if _av_pre != response_text:
+            logger.warning(
+                f"🔒 CANDADO AVANCE: globito muerto con pedido de turno → agregué la pregunta de avance para {external_user_id}"
+            )
+    except Exception as _av_err:
+        logger.warning(f"candado-avance skipped (non-fatal): {_av_err}")
+
+    # --- CANDADO: MULTI-TURNO — confirma 1 de 2+ turnos sin preguntar por el otro ---
+    # Caso Matías (prod 2026-07-20): la secretaria cargó DOS turnos, el paciente eligió
+    # el jueves y el del viernes quedó vivo sin que nadie lo mencione. Si la respuesta
+    # confirma UNA fecha y el paciente tiene OTRO turno futuro no mencionado, se agrega
+    # la pregunta '¿lo dejamos o lo cancelo?'. Fechas reales de la BD; función pura
+    # compartida con el banco. Aditivo, nunca recorta.
+    try:
+        from services.inyecciones_frescas import candado_multi_turno as _mtu_fn
+
+        _mtu_pre = response_text
+        _mtu_fechas: list = []
+        if response_text and re.search(r"(?i)confirmad|queda|listo|✅", response_text):
+            _mtu_rows = await pool.fetch(
+                """
+                SELECT to_char(a.appointment_datetime, 'DD/MM') AS f
+                FROM appointments a
+                JOIN patients p ON p.id = a.patient_id AND p.tenant_id = a.tenant_id
+                WHERE a.tenant_id = $1 AND p.phone_number = $2
+                  AND a.appointment_datetime > NOW()
+                  AND a.status IN ('scheduled', 'confirmed', 'pending_payment')
+                ORDER BY a.appointment_datetime
+                LIMIT 5
+                """,
+                tenant_id,
+                external_user_id,
+            )
+            _mtu_fechas = [r["f"] for r in _mtu_rows or []]
+        response_text = _mtu_fn(response_text, _mtu_fechas)
+        if _mtu_pre != response_text:
+            logger.warning(
+                f"🔒 CANDADO MULTI-TURNO: confirmó 1 de {len(_mtu_fechas)} turnos futuros → pregunté por el otro para {external_user_id}"
+            )
+    except Exception as _mtu_err:
+        logger.warning(f"candado-multi-turno skipped (non-fatal): {_mtu_err}")
 
     # --- GUARD: PROMESA-FANTASMA (banco 2026-07-18: 'te paso con el equipo' / 'lo cancelo'
     # SIN ejecutar ninguna herramienta — la promesa quedaba en la nada; hueco #1 del
