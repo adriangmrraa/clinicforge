@@ -2490,6 +2490,43 @@ async def process_buffer_task(
                 "entregás el comprobante/recibo para gestionar el reintegro con la obra social."
             )
 
+        # HILO HUMANO RECIENTE (caso Matías, prod 2026-07-20): la secretaria coordinó por
+        # texto (override activo), el override venció, el bot se reactivó y agarró la
+        # respuesta del paciente A ESE hilo humano — y arrancó su flujo estándar (slots/
+        # "reserva temporal") contradiciendo lo ofrecido. Si el ÚLTIMO saliente que vio el
+        # paciente lo escribió una PERSONA (plataforma = human_supervisor; celular del
+        # consultorio = assistant con source whatsapp_business_app), inyectamos el aviso
+        # fresco: retomar el hilo del equipo como compromisos válidos.
+        try:
+            _rh_last_out = await pool.fetchrow(
+                """
+                SELECT role, content, platform_metadata::text AS pm
+                FROM chat_messages
+                WHERE conversation_id = $1 AND tenant_id = $2
+                  AND role IN ('assistant', 'human_supervisor')
+                ORDER BY created_at DESC LIMIT 1
+                """,
+                conversation_id,
+                tenant_id,
+            )
+            if _rh_last_out is not None and (
+                _rh_last_out["role"] == "human_supervisor"
+                or "whatsapp_business_app" in (_rh_last_out["pm"] or "")
+            ):
+                _rh_snip = (_rh_last_out["content"] or "").replace("\n", " ")[:220]
+                patient_context += (
+                    "\n⚠️ HILO HUMANO RECIENTE: el último mensaje que recibió el paciente lo escribió UNA PERSONA "
+                    f"del equipo (secretaria/doctora), no vos. El paciente responde a ESO. Mensaje del equipo: «{_rh_snip}». "
+                    "Lo que el equipo ofreció/prometió son COMPROMISOS VÁLIDOS: seguí ESE hilo con naturalidad — "
+                    "si el paciente acepta una opción que el equipo le ofreció, verificá su agenda real "
+                    "(list_my_appointments) y confirmale lo que corresponda. ⛔ NO arranques tu flujo estándar de "
+                    "cero, NO contradigas lo ofrecido por el equipo, NO hables de 'reserva temporal', y ante la "
+                    "duda sobre algo que el equipo prometió y no podés verificar, llamá derivhumano en vez de inventar."
+                )
+                logger.info(f"⚠️ Hilo humano reciente detectado para {external_user_id} — contexto de reactivación inyectado")
+        except Exception as _rh_err:
+            logger.debug(f"hilo-humano check skipped (non-fatal): {_rh_err}")
+
         # PACIENTE RECURRENTE (reglas Carlos, caso Myriam/Jerárquicos 2026-07-17): al que ya
         # asistió NO se lo interroga — tenemos sus datos. El caso real: el bot le tiró "$60.000"
         # a un "buen día un turno", re-confirmó la OS dos veces, repitió las mismas opciones tres

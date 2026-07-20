@@ -49,6 +49,13 @@ def candado_reserva_fantasma(response_text: str, tools: list, prev_state: str) -
     return re.sub(r"\n{3,}", "\n\n", response_text).strip()
 
 
+def es_hilo_humano(role: str, platform_metadata_text: str) -> bool:
+    """Espejo de la detección de HILO HUMANO RECIENTE en buffer_task (caso Matías):
+    el último saliente lo escribió una persona si vino de la plataforma
+    (human_supervisor) o del celular del consultorio (echo whatsapp_business_app)."""
+    return role == "human_supervisor" or "whatsapp_business_app" in (platform_metadata_text or "")
+
+
 CTX_CON_TURNO = (
     "• Nombre: Gisela Lopez\n"
     "• Obra Social registrada: OSDE\n"
@@ -109,6 +116,21 @@ CASOS = [
             "OFFERED_SLOTS",
         ),
         lambda out: "reserva" in out.lower(),
+    ),
+    (
+        "HILO HUMANO: secretaria por plataforma (human_supervisor) → detectado",
+        lambda: es_hilo_humano("human_supervisor", None),
+        lambda out: out is True,
+    ),
+    (
+        "HILO HUMANO: secretaria por celular (echo whatsapp_business_app) → detectado",
+        lambda: es_hilo_humano("assistant", '{"source": "whatsapp_business_app"}'),
+        lambda out: out is True,
+    ),
+    (
+        "Mensaje normal del BOT → NO es hilo humano (no se inyecta nada)",
+        lambda: es_hilo_humano("assistant", '{"delivery_status": "sent"}'),
+        lambda out: out is False,
     ),
 ]
 
