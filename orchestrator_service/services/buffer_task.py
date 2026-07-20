@@ -1757,7 +1757,15 @@ async def process_buffer_task(
                     )
                     if _future_count and int(_future_count) > 1:
                         identity_lines.append(
-                            f"• OJO: el paciente tiene {_future_count} turnos futuros (arriba solo se muestra el más próximo). Ante cancelar/reprogramar, llamá list_my_appointments y confirmá CUÁL de los turnos es."
+                            f"• OJO: el paciente tiene {_future_count} turnos futuros (arriba solo se muestra el más próximo). Ante cancelar/reprogramar, llamá list_my_appointments y confirmá CUÁL de los turnos es. "
+                            "⛔ CASO 'ELIGE UNO DE SUS TURNOS' (caso Matías, prod 2026-07-20 — pasa cuando la "
+                            "secretaria carga las opciones como turnos reales mientras el paciente decide): si el "
+                            "paciente nombra el día/hora de UNO de sus turnos YA agendados ('dale el jueves', 'el "
+                            "que me dieron quiero'), ese turno YA ESTÁ CONFIRMADO — respondé confirmándoselo "
+                            "('¡Listo! Ya tenés tu turno del [día] a las [hora] confirmado') y preguntá si el OTRO "
+                            "turno lo cancelás (cancel_appointment si dice que sí). ⛔ PROHIBIDO: tratarlo como "
+                            "reprogramación, ofrecer slots nuevos, o hablar de 'reserva temporal' (no existe "
+                            "ninguna reserva temporal sobre turnos ya agendados)."
                         )
                 except Exception:
                     pass
@@ -4865,6 +4873,71 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                 logger.warning(f"🔒 CANDADO REINTEGRO: agregué la línea del comprobante para {external_user_id}")
     except Exception as _ri_err:
         logger.warning(f"candado-reintegro skipped (non-fatal): {_ri_err}")
+
+    # --- CANDADO: POST-BOOKING — no ofrecer turnos a quien YA tiene turno (caso Gisela) ---
+    # Prod 2026-07-20: confirmó su turno y 2 minutos después el bot le ofreció "te paso
+    # turnos para la evaluación". La regla POST-BOOKING del prompt existe pero el mini la
+    # dropea. Determinista: contexto con PRÓXIMO TURNO + la respuesta ofrece turnos + el
+    # paciente NO pidió un turno nuevo en su mensaje → se recorta la oferta.
+    try:
+        if (
+            response_text
+            and patient_context
+            and "PRÓXIMO TURNO" in patient_context
+            and re.search(r"(?i)te paso (?:turnos|opciones|las opciones|disponibilidad)|quer[eé]s que te pase turnos", response_text)
+        ):
+            _pb_last = " ".join(messages).lower() if isinstance(messages, list) else str(messages or "").lower()
+            _pb_pidio_turno = bool(
+                re.search(r"(?i)(otro turno|un turno|sacar turno|nuevo turno|agendar|reprogram|cambiar (?:el |mi )?turno|cita para)", _pb_last)
+            )
+            if not _pb_pidio_turno:
+                _pb_pre = response_text
+                response_text = re.sub(
+                    r"(?im)^.*(?:te paso (?:turnos|opciones|las opciones|disponibilidad)|quer[eé]s que te pase turnos).*$\n?",
+                    "", response_text,
+                ).strip()
+                response_text = re.sub(r"\n{3,}", "\n\n", response_text).strip()
+                if _pb_pre != response_text:
+                    logger.warning(
+                        f"🔒 CANDADO POST-BOOKING: recorté la oferta de turnos a un paciente con turno ya agendado "
+                        f"({len(_pb_pre)}→{len(response_text)} chars) para {external_user_id}"
+                    )
+                if not response_text:
+                    response_text = "Cualquier duda con tu turno, avisame 😊"
+    except Exception as _pb_err:
+        logger.warning(f"candado-post-booking skipped (non-fatal): {_pb_err}")
+
+    # --- CANDADO: 'RESERVA TEMPORAL' FANTASMA (caso Matías) ---
+    # Prod 2026-07-20: el bot dijo "se venció la reserva temporal de ese turno" hablando de
+    # un turno REAL ya agendado — la reserva temporal (confirm_slot, 30 min) no existía.
+    # Determinista: si la respuesta habla de reserva temporal/vencida y NO hubo confirm_slot
+    # en este turno NI el estado previo era de slots del bot, la línea se reemplaza.
+    try:
+        if response_text and re.search(r"(?i)se venci[oó] la reserva|reserva temporal", response_text):
+            try:
+                _rf_tools = list(_tools_names)
+            except NameError:
+                _rf_tools = []
+            try:
+                _rf_state = str(prev_state_str)
+            except NameError:
+                _rf_state = ""
+            if "confirm_slot" not in _rf_tools and _rf_state not in ("SLOT_LOCKED", "OFFERED_SLOTS"):
+                _rf_pre = response_text
+                response_text = re.sub(
+                    r"(?im)^.*(?:se venci[oó] la reserva|reserva temporal).*$\n?",
+                    "Dame un segundo que reviso tu agenda 😊",
+                    response_text, count=1,
+                ).strip()
+                response_text = re.sub(r"(?im)^.*(?:se venci[oó] la reserva|reserva temporal).*$\n?", "", response_text).strip()
+                response_text = re.sub(r"\n{3,}", "\n\n", response_text).strip()
+                if _rf_pre != response_text:
+                    logger.warning(
+                        f"🔒 CANDADO RESERVA-FANTASMA: 'reserva temporal' sin slot-lock previo → reemplazada "
+                        f"para {external_user_id} (tools={_rf_tools}, estado={_rf_state or 'desconocido'})"
+                    )
+    except Exception as _rf_err:
+        logger.warning(f"candado-reserva-fantasma skipped (non-fatal): {_rf_err}")
 
     # --- CANDADO: GATE DE PRECIO PARA COBERTURA NO RESUELTA (enforcement del A1) ---
     # El gate A1 (texto, ~2448) le dice al modelo que NO dé el valor de la consulta si la

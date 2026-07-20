@@ -295,6 +295,10 @@ async def main() -> int:
                 candado_reintegro as _c_reintegro,
             )
             from eval.test_candado_gate_precio import candado_gate_precio as _c_gate
+            from eval.test_candado_radar_turno import (
+                candado_post_booking as _c_postbook,
+                candado_reserva_fantasma as _c_reserva,
+            )
             from eval.test_candado_precio import candado_precio as _c_precio
             from eval.test_candado_cierre import candado_cierre as _c_cierre
             from eval.test_candado_oferta_coseguro import (
@@ -305,6 +309,9 @@ async def main() -> int:
             answer = _c_salida(answer, c.get("patient_context", ""), c.get("user", ""))
             answer = _c_cov_chat(answer, c.get("user", ""))
             answer = _c_reintegro(answer, c.get("patient_context", ""), c.get("user", ""))
+            answer = _c_postbook(answer, c.get("patient_context", ""), c.get("user", ""))
+            _tool_names_turn = [t.split("(")[0] for t in (tool_trace or [])]
+            answer = _c_reserva(answer, _tool_names_turn, "")
             answer = _c_gate(answer, c.get("patient_context", ""), c.get("user", ""))
             # precio ya-dicho: en el banco, "ya se envió" = algún mensaje previo del
             # bot en el history del caso contiene el párrafo del valor.

@@ -260,6 +260,15 @@ def execute(name: str, args: dict) -> str:
         # la conversación a "ya tenés un turno" (falso FALLA de los casos recurrentes).
         if _CTX.get("my_appointments") == "none":
             return "Sin turnos. ¿Agendamos?"
+        if _CTX.get("my_appointments") == "two":
+            # Caso Matías (prod 2026-07-20): la secretaria cargó las DOS opciones como
+            # turnos reales mientras el paciente decidía.
+            d1 = _next_weekday(date.today() + timedelta(days=3))
+            d2 = _next_weekday(d1 + timedelta(days=1))
+            return (
+                f"TURNOS DEL PACIENTE:\n1) {_fmt(d1)} — 10:00 hs — Checkup. Sede Córdoba.\n"
+                f"2) {_fmt(d2)} — 18:20 hs — Checkup. Sede Córdoba."
+            )
         prox = _next_weekday(date.today() + timedelta(days=3))
         return f"PRÓXIMO TURNO: {_fmt(prox)} 10:00 hs — Consulta. Sede Córdoba."
 
