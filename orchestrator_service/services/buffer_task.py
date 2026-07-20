@@ -2490,6 +2490,57 @@ async def process_buffer_task(
                 "entregás el comprobante/recibo para gestionar el reintegro con la obra social."
             )
 
+        # MANEJO EMPÁTICO DEL COSEGURO (caso Agustín 2026-07-20, pedido Carlos: "llevarlos
+        # bien sin hacerlos enojar" — preguntan mucho el monto y la muletilla seca 'se
+        # confirma en la clínica' repetida frustra). El monto sigue siendo INTERNO (nunca
+        # una cifra por chat): lo que cambia es CÓMO se acompaña. 3 niveles: porqué cálido
+        # → salida concreta con el equipo → aclarar la confusión seña↔precio directo.
+        try:
+            _cos_last = " ".join(messages).lower() if isinstance(messages, list) else str(messages or "").lower()
+            _cos_pregunta_monto = bool(
+                re.search(r"(cu[aá]nto|de cu[aá]nto|qu[eé] monto|qu[eé] valor).{0,30}coseguro|coseguro.{0,35}(cu[aá]nto|monto|valor|sale)", _cos_last)
+            )
+            _cos_confusion_sena = bool(
+                re.search(r"(solo|solamente|nada m[aá]s).{0,25}(consulta|x consulta|por consulta).{0,20}(30|treinta|se[ñn]a|mil)|consulta son \$?\s?\d", _cos_last)
+            )
+            if _cos_pregunta_monto or _cos_confusion_sena:
+                _cos_ya_explicado = 0
+                try:
+                    _cos_ya_explicado = await pool.fetchval(
+                        "SELECT COUNT(*) FROM chat_messages WHERE conversation_id = $1 AND tenant_id = $2 "
+                        "AND role = 'assistant' AND content ILIKE '%coseguro%' "
+                        "AND created_at > NOW() - INTERVAL '2 hours'",
+                        conversation_id,
+                        tenant_id,
+                    ) or 0
+                except Exception:
+                    pass
+                _cos_gate = "\n💬 MANEJO DEL COSEGURO (el paciente pregunta el monto o confunde la seña con el precio — llevalo BIEN, sin frustrar): "
+                if _cos_confusion_sena:
+                    _cos_gate += (
+                        "Está confundiendo la SEÑA con el precio de la consulta. Aclaráselo DIRECTO y amable: "
+                        "'No, tranquilo/a — ese monto es la seña OPCIONAL para reservar el turno, no el precio de la consulta. "
+                        "Con tu obra social la consulta va por tu cobertura; si corresponde un coseguro, te lo confirman en la clínica.' "
+                        "⛔ NO repitas la explicación completa del coseguro ni des cifras del valor de consulta. "
+                    )
+                elif int(_cos_ya_explicado) >= 2:
+                    _cos_gate += (
+                        "YA le explicaste el coseguro en esta charla: NO repitas la misma frase (lo frustra). Dale una SALIDA CONCRETA: "
+                        "'El monto exacto depende del plan que tengas — si querés, le paso tu consulta al equipo y te confirman el valor "
+                        "de TU plan antes del turno, ¿te sirve?'. Si acepta, llamá derivhumano (motivo: 'Paciente quiere el monto exacto "
+                        "del coseguro de su plan — confirmarle'). ⛔ Nunca una cifra por chat. "
+                    )
+                else:
+                    _cos_gate += (
+                        "Explicale el PORQUÉ con calidez (no la muletilla seca): el coseguro depende del PLAN específico que tenga con su "
+                        "obra social — por eso no hay una cifra única — y se lo confirman en la clínica ANTES de atenderse, sin sorpresas. "
+                        "Cerrá con tranquilidad ('quedate tranquilo/a que te lo confirman apenas llegues, antes de atenderte') y seguí "
+                        "con el turno. ⛔ Nunca una cifra por chat. "
+                    )
+                patient_context = (patient_context + _cos_gate) if patient_context else _cos_gate
+        except Exception as _cos_err:
+            logger.debug(f"manejo-coseguro skipped (non-fatal): {_cos_err}")
+
         # HILO HUMANO RECIENTE (caso Matías, prod 2026-07-20): la secretaria coordinó por
         # texto (override activo), el override venció, el bot se reactivó y agarró la
         # respuesta del paciente A ESE hilo humano — y arrancó su flujo estándar (slots/
