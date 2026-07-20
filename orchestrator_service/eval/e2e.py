@@ -502,6 +502,113 @@ async def scenario_cobertura(db, book_appointment, set_ctx):
     return results
 
 
+# ----------------------------------------------------------------------------
+# ESCENARIOS H/I/J — Agenda completa: reprogramar, cancelar y dos-turnos (Matías).
+# Cubren los llamados reales que faltaban: reschedule_appointment, cancel_appointment
+# y list_my_appointments con múltiples turnos. (Validación final 2026-07-20.)
+# ----------------------------------------------------------------------------
+
+def _proximo_lunes(semanas_extra: int = 1):
+    """El lunes de dentro de N semanas (día hábil seguro para Laura: 14-18hs)."""
+    from datetime import date, timedelta
+    d = date.today()
+    d = d + timedelta(days=(7 - d.weekday()) % 7 or 7)  # próximo lunes estricto
+    return d + timedelta(weeks=semanas_extra - 1)
+
+
+async def _sembrar_paciente_con_turnos(db, fechas_horas):
+    """Crea el paciente de prueba + un turno scheduled por cada (fecha, 'HH:MM').
+    Devuelve (patient_id, [appointment_ids])."""
+    row = await db.pool.fetchrow(
+        "INSERT INTO patients (tenant_id, first_name, last_name, phone_number, status, created_at) "
+        "VALUES ($1, 'Prueba', 'AgendaE2E', $2, 'active', NOW()) "
+        "ON CONFLICT (tenant_id, phone_number) DO UPDATE SET status='active' RETURNING id",
+        TEST_TENANT, TEST_PHONE,
+    )
+    pid = row["id"]
+    apt_ids = []
+    for f, hhmm in fechas_horas:
+        r = await db.pool.fetchrow(
+            "INSERT INTO appointments (tenant_id, patient_id, appointment_datetime, appointment_type, "
+            "status, professional_id, source, duration_minutes) "
+            "VALUES ($1, $2, ($3 || ' ' || $4)::timestamptz, 'checkup', 'scheduled', 2, 'manual', 30) RETURNING id",
+            TEST_TENANT, pid, f.isoformat(), hhmm,
+        )
+        apt_ids.append(r["id"])
+    return pid, apt_ids
+
+
+async def scenario_reprogramar(db, book_appointment, set_ctx):
+    """H — reschedule_appointment REAL: el turno se MUEVE (no se duplica ni se pierde)."""
+    from main import reschedule_appointment
+    results = []
+    await _cleanup(db)
+    f1, f2 = _proximo_lunes(2), _proximo_lunes(3)
+    pid, (apt_id,) = await _sembrar_paciente_con_turnos(db, [(f1, "15:00")])
+    set_ctx(TEST_TENANT, TEST_PHONE)
+    r = await _invoke_tool(
+        reschedule_appointment,
+        original_date=f1.isoformat(),
+        new_date_time=f"{f2.isoformat()} 15:00",
+        interpreted_date=f"{f2.isoformat()} 15:00",
+    )
+    row = await db.pool.fetchrow(
+        "SELECT appointment_datetime::date AS d, status, COUNT(*) OVER () AS n FROM appointments "
+        "WHERE tenant_id=$1 AND patient_id=$2 AND status IN ('scheduled','confirmed')",
+        TEST_TENANT, pid,
+    )
+    movido = row is not None and str(row["d"]) == f2.isoformat()
+    unico = row is not None and int(row["n"]) == 1
+    results.append(("reschedule movió el turno a la fecha nueva (verificado en BD)", movido,
+                    f"esperaba {f2}, BD={row['d'] if row else 'sin turno'} | tool: {str(r)[:120]}"))
+    results.append(("sigue habiendo UN solo turno activo (no duplicó)", unico,
+                    f"activos={row['n'] if row else 0}"))
+    return results
+
+
+async def scenario_cancelar(db, book_appointment, set_ctx):
+    """I — cancel_appointment REAL: el turno queda cancelado en la BD."""
+    from main import cancel_appointment
+    results = []
+    await _cleanup(db)
+    f1 = _proximo_lunes(2)
+    pid, (apt_id,) = await _sembrar_paciente_con_turnos(db, [(f1, "15:00")])
+    set_ctx(TEST_TENANT, TEST_PHONE)
+    r = await _invoke_tool(cancel_appointment, date_query=f1.isoformat())
+    st = await db.pool.fetchval(
+        "SELECT status FROM appointments WHERE id = $1 AND tenant_id = $2", apt_id, TEST_TENANT
+    )
+    results.append(("cancel_appointment canceló de verdad (status en BD)", st == "cancelled",
+                    f"status={st} | tool: {str(r)[:120]}"))
+    return results
+
+
+async def scenario_dos_turnos(db, book_appointment, set_ctx):
+    """J — caso Matías con tools reales: 2 turnos cargados; listar muestra AMBOS y
+    cancelar por fecha cancela EL correcto (el otro queda vivo)."""
+    from main import cancel_appointment, list_my_appointments
+    results = []
+    await _cleanup(db)
+    f1, f2 = _proximo_lunes(2), _proximo_lunes(3)
+    pid, (apt1, apt2) = await _sembrar_paciente_con_turnos(db, [(f1, "15:00"), (f2, "15:00")])
+    set_ctx(TEST_TENANT, TEST_PHONE)
+
+    listado = str(await _invoke_tool(list_my_appointments))
+    d1 = f1.strftime("%d/%m")
+    d2 = f2.strftime("%d/%m")
+    ambos = (d1 in listado) and (d2 in listado)
+    results.append(("list_my_appointments muestra LOS DOS turnos", ambos,
+                    f"esperaba {d1} y {d2} en: {listado[:160]}"))
+
+    # cancelar SOLO el segundo (el que "no eligió")
+    await _invoke_tool(cancel_appointment, date_query=f2.isoformat())
+    st1 = await db.pool.fetchval("SELECT status FROM appointments WHERE id=$1 AND tenant_id=$2", apt1, TEST_TENANT)
+    st2 = await db.pool.fetchval("SELECT status FROM appointments WHERE id=$1 AND tenant_id=$2", apt2, TEST_TENANT)
+    results.append(("canceló el turno CORRECTO (el no elegido)", st2 == "cancelled", f"status2={st2}"))
+    results.append(("el turno ELEGIDO sigue vivo", st1 in ("scheduled", "confirmed"), f"status1={st1}"))
+    return results
+
+
 SCENARIOS = {
     "hijo": scenario_hijo_no_duplicado,
     "agendado": scenario_agendado_y_quiere_antes,
@@ -510,6 +617,9 @@ SCENARIOS = {
     "pendientes": scenario_pendientes,
     "cobertura": scenario_cobertura,
     "dados": scenario_dados,
+    "reprogramar": scenario_reprogramar,
+    "cancelar": scenario_cancelar,
+    "dos-turnos": scenario_dos_turnos,
 }
 
 
