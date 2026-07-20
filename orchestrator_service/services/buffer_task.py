@@ -2632,6 +2632,7 @@ async def process_buffer_task(
                 iny_os_en_mensaje,
                 iny_pide_cancelar,
                 iny_queja_precio,
+                iny_restriccion_dias,
             )
 
             _if_last = str(messages[-1] if messages else "")
@@ -2658,6 +2659,7 @@ async def process_buffer_task(
                 iny_multi_persona(_if_last),
                 iny_queja_precio(_if_last),
                 iny_os_en_mensaje(_if_last),
+                iny_restriccion_dias(_if_last),
                 iny_acepto_ofrecimiento(_if_last, _if_last_bot),
             ):
                 if _if_txt:
@@ -5470,6 +5472,25 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
             logger.warning(f"🔒 CANDADO CIMO: compacté el bloque ISSN a 1 globito para {external_user_id}")
     except Exception as _cc_err:
         logger.warning(f"candado-cimo skipped (non-fatal): {_cc_err}")
+
+    # --- CANDADO: DÍA SIN CONSULTAR (caso Lucas manual 2026-07-20) — la respuesta ---
+    # afirma que un día de la semana "no tiene lugar" sin haber llamado
+    # check_availability en este turno (agenda inventada por inferencia).
+    try:
+        from services.inyecciones_frescas import candado_dia_sin_consultar as _dsc_fn
+
+        try:
+            _dsc_tools = list(_tools_names)
+        except NameError:
+            _dsc_tools = []
+        _dsc_pre = response_text
+        response_text = _dsc_fn(response_text, _dsc_tools)
+        if _dsc_pre != response_text:
+            logger.warning(
+                f"🔒 CANDADO DÍA-SIN-CONSULTAR: recorté la afirmación de agenda inventada para {external_user_id}"
+            )
+    except Exception as _dsc_err:
+        logger.warning(f"candado-dia-sin-consultar skipped (non-fatal): {_dsc_err}")
 
     # --- CANDADO: AVANCE (globito muerto) — pidió turno y la respuesta no avanza ---
     # Banco v2 (terce-hermana-OSDE, continuidad-implante): el bot quedaba en una

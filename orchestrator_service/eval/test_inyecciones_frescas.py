@@ -30,6 +30,8 @@ from services.inyecciones_frescas import (
     iny_pide_cancelar,
     iny_queja_precio,
     iny_quiere_antes,
+    iny_restriccion_dias,
+    candado_dia_sin_consultar,
     quiere_antes_matchea,
 )
 
@@ -488,6 +490,49 @@ CASOS = [
             "Lead nuevo.",
         ),
         lambda out: "coseguro" in out.lower(),
+    ),
+    # ------------------- restricción de días (caso Lucas manual) -------------------
+    (
+        "restricción-días: 'puedo los lunes o viernes únicamente' → dispara (re-consultar la agenda)",
+        lambda: iny_restriccion_dias("Para mañana o pasado no tenes??? ademas puedo los lunes o viernes unicamente"),
+        lambda out: out is not None and "check_availability" in out,
+    ),
+    (
+        "restricción-días: '¿tenés para el viernes?' → dispara",
+        lambda: iny_restriccion_dias("¿Tenés algo para el viernes?"),
+        lambda out: out is not None,
+    ),
+    (
+        "restricción-días: mensaje sin días de semana NO dispara",
+        lambda: iny_restriccion_dias("quiero un turno lo antes posible"),
+        lambda out: out is None,
+    ),
+    (
+        "día-sin-consultar: 'lunes o viernes no me quedan' SIN haber llamado la tool → recortado + ofrece revisar",
+        lambda: candado_dia_sin_consultar(
+            "Para mañana y pasado no tengo lugares, y además lunes o viernes no me quedan para este turno 😊\n"
+            "Te quedan estos dos:\n1️⃣ Martes 28/07 — 18:30 hs\n2️⃣ Miércoles 29/07 — 10:45 hs\n¿Cuál te viene mejor?",
+            [],
+        ),
+        lambda out: "no me quedan" not in out and "revise la agenda" in out,
+    ),
+    (
+        "día-sin-consultar: la MISMA afirmación CON la tool llamada → NO se toca (la agenda es real)",
+        lambda: candado_dia_sin_consultar(
+            "Busqué y los viernes no hay lugar este mes 😊\n1️⃣ Martes 28/07 — 18:30 hs",
+            ["check_availability"],
+        ),
+        lambda out: "no hay lugar" in out,
+    ),
+    (
+        "día-sin-consultar: respuesta sin afirmaciones de día NO se toca",
+        lambda: candado_dia_sin_consultar("¿Contás con alguna obra social?", []),
+        lambda out: out == "¿Contás con alguna obra social?",
+    ),
+    (
+        "quiere-antes ampliado: 'Para mañana o pasado no tenes???' con OS demorada → matchea",
+        lambda: quiere_antes_matchea("Para mañana o pasado no tenes???"),
+        lambda out: out is True,
     ),
     # ------------------- gate A1 compartido -------------------
     (

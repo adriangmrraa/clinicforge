@@ -314,6 +314,9 @@ _QUIERE_ANTES_PAT = re.compile(
     r"|antes no (?:hay|ten[eé]s|se puede)|¿?no (?:hay|ten[eé]s) (?:nada|algo) antes"
     r"|m[aá]s pronto|lo antes posible no|es un mont[oó]n de (?:tiempo|d[íi]as|espera)"
     r"|reci[eé]n (?:para|el|en) .{0,20}\?|me urge|necesito (?:que sea )?antes|quiero (?:ir |atenderme )?antes"
+    # Caso Lucas manual 2026-07-20: "Para mañana o pasado no tenes???" con OS demorada
+    r"|para (?:hoy|ma[ñn]ana|pasado(?: ma[ñn]ana)?)(?: o (?:hoy|ma[ñn]ana|pasado(?: ma[ñn]ana)?))? no (?:ten[eé]s|hay|habr[aá])"
+    r"|¿?(?:ten[eé]s|hay) (?:algo |turno |lugar )?para (?:hoy|ma[ñn]ana|pasado(?: ma[ñn]ana)?)\b"
 )
 
 
@@ -340,6 +343,57 @@ def iny_quiere_antes(os_name: str, delay_days: int, min_date: str) -> str | None
         "3) Presentalo como OPCIÓN, sin presionar: si elige esperar por su cobertura, está perfecto — "
         "pasale opciones desde esa fecha y listo."
     )
+
+
+_DIAS_SEMANA = r"(?:lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bados?)"
+
+
+def iny_restriccion_dias(last_user: str) -> str | None:
+    """El paciente restringe o pregunta por DÍAS puntuales (caso Lucas manual
+    2026-07-20: 'puedo los lunes o viernes únicamente' → el bot respondió la agenda
+    DE MEMORIA infiriendo de las opciones ya ofrecidas, y mintió: el lunes 27 existía).
+    La agenda por día la resuelve check_availability — incluido el respaldo con el
+    otro profesional si el titular no atiende ese día."""
+    t = (last_user or "").lower()
+    if not re.search(
+        rf"(?:puedo|me queda[n]?|me viene[n]?|prefiero|solo|[uú]nicamente) (?:los |el |ir )?.{{0,20}}{_DIAS_SEMANA}"
+        rf"|{_DIAS_SEMANA}.{{0,25}}(?:[uú]nicamente|solo puedo|nada m[aá]s)"
+        rf"|(?:ten[eé]s|hay|habr[aá]).{{0,18}}(?:para )?(?:el |los )?{_DIAS_SEMANA}",
+        t,
+    ):
+        return None
+    return (
+        "📅 EL PACIENTE RESTRINGIÓ O PREGUNTÓ POR DÍAS PUNTUALES DE LA SEMANA: NO respondas la "
+        "agenda de memoria ni infieras de las opciones que ya ofreciste (eso es INVENTAR agenda). "
+        "Llamá check_availability DE NUEVO con esa preferencia (date_query con el día pedido, ej. "
+        "'próximo lunes' o 'viernes'). La herramienta resuelve la agenda REAL de ese día — incluido "
+        "el respaldo con OTRO profesional del equipo si el titular no atiende ese día y el "
+        "tratamiento es compartido. ⛔ PROHIBIDO afirmar 'ese día no tengo / no me quedan / no "
+        "atendemos' sin haber llamado la herramienta con ese día EN ESTE turno."
+    )
+
+
+def candado_dia_sin_consultar(response_text: str, tools_names: list[str] | None = None) -> str:
+    """RED del caso Lucas: la respuesta AFIRMA que un día de la semana no tiene lugar
+    pero check_availability NO se llamó en este turno → la afirmación es inventada.
+    Se recorta y se ofrece revisar la agenda (el 'sí' del paciente dispara el
+    aceptó-ofrecimiento → la herramienta de verdad)."""
+    if not response_text:
+        return response_text
+    if "check_availability" in (tools_names or []):
+        return response_text
+    if re.search(r"(?i)\[[^\[\]]*silencio[^\[\]]*\]", response_text):
+        return response_text
+    pat = re.compile(
+        rf"(?im)^.*{_DIAS_SEMANA}[^.\n]{{0,35}}no (?:me quedan|tengo|hay|atiende[n]?|atendemos)[^\n]*$\n?"
+        rf"|^.*no (?:me quedan|tengo|hay)[^\n]{{0,35}}{_DIAS_SEMANA}[^\n]*$\n?"
+    )
+    if not pat.search(response_text):
+        return response_text
+    nuevo = pat.sub("", response_text).strip()
+    nuevo = re.sub(r"\n{3,}", "\n\n", nuevo).strip()
+    linea = "¿Querés que revise la agenda para esos días puntuales? Así te confirmo con lo que hay de verdad 😊"
+    return (nuevo + "\n" + linea).strip() if nuevo else linea
 
 
 def iny_gate_cobertura(minor_booking: bool, cov_conocida: bool) -> str | None:
@@ -395,6 +449,7 @@ def aplicar_inyecciones(
         iny_multi_persona(last_user),
         iny_queja_precio(last_user),
         iny_os_en_mensaje(last_user),
+        iny_restriccion_dias(last_user),
         iny_acepto_ofrecimiento(last_user, last_bot),
         iny_manejo_coseguro(
             _preg_monto,
