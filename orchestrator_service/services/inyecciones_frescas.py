@@ -189,21 +189,34 @@ def es_insistencia_monto(texto: str) -> bool:
 
 def iny_acepto_ofrecimiento(last_user: str, last_bot: str) -> str | None:
     """El bot ofreció algo condicional ('si querés te busco...' / 'le paso tu consulta
-    al equipo, ¿te sirve?') y el paciente respondió una afirmación corta → EJECUTAR ya
-    (caso Luis, prod 2026-07-20; extendido al equipo por el coseguro nivel 2)."""
+    al equipo, ¿te sirve?' / 'si querés te confirmo qué traer') y el paciente respondió
+    que sí → EJECUTAR ya (caso Luis prod 2026-07-20; rama equipo por el coseguro nivel
+    2; rama INFO por el caso Braian prod 2026-07-20: 'te confirmo qué te conviene
+    traer' + 'dale' quedaba sin red — loop o inventaba requisitos)."""
     t = (last_user or "").lower().strip()
-    if not re.fullmatch(
-        r"(bueno|dale|s[ií]|ok(a|ey)?|listo|de una|obvio|perfecto|genial|joya|buen[íi]simo"
-        r"|s[ií] dale|dale s[ií]|bueno dale|dale bueno|me parece( bien)?|est[aá] bien|me sirve"
-        r"|s[ií],? dale,?( me sirve)?|s[ií],? me sirve|dale,? me sirve)[.!,\s😊👍🙏]*",
-        t,
-    ):
+    _es_si = bool(
+        re.fullmatch(
+            r"(bueno|dale|s[ií]|ok(a|ey)?|listo|de una|obvio|perfecto|genial|joya|buen[íi]simo"
+            r"|s[ií] dale|dale s[ií]|bueno dale|dale bueno|me parece( bien)?|est[aá] bien|me sirve"
+            r"|s[ií],? dale,?( me sirve)?|s[ií],? me sirve|dale,? me sirve)[.!,\s😊👍🙏]*",
+            t,
+        )
+    )
+    # Aceptación con re-pedido corto ("dale, decime", "sí, decime qué llevo") — sin
+    # señales de OTRA pregunta ("sí pero cuánto sale" NO es aceptación de la oferta).
+    _es_si_corto = (
+        not _es_si
+        and len(t.split()) <= 6
+        and bool(re.search(r"\b(dale|s[ií]|bueno|ok|decime|contame|me sirve)\b", t))
+        and not re.search(r"\bpero\b|cu[aá]nto|precio|valor|d[oó]nde|direcci[oó]n", t)
+    )
+    if not (_es_si or _es_si_corto):
         return None
     b = (last_bot or "").lower()
     if not re.search(
         r"decime y te busco|te busco opciones|te paso (?:turnos|opciones|las opciones)"
-        r"|quer[eé]s que (?:te )?(?:busque|pase|coordine)|decime para qu[eé] d[íi]a"
-        r"|si quer[eé]s.{0,40}(?:busco|paso|coordino)"
+        r"|quer[eé]s que (?:te )?(?:busque|pase|coordine|diga|confirme|cuente)|decime para qu[eé] d[íi]a"
+        r"|si quer[eé]s.{0,45}(?:te )?(?:busco|paso|coordino|confirmo|digo|cuento|indico|detallo|aviso|explico)"
         r"|(?:le |te )?paso tu consulta al equipo|te sirve\?",
         b,
     ):
@@ -214,6 +227,21 @@ def iny_acepto_ofrecimiento(last_user: str, last_bot: str) -> str | None:
             "derivhumano AHORA (motivo: lo que ofreciste que el equipo confirme, ej. 'confirmar "
             "el monto del coseguro de su plan') y avisale cálido que el equipo le responde a la "
             "brevedad. ⛔ PROHIBIDO re-preguntar o dejarlo en una promesa sin ejecutar."
+        )
+    if re.search(
+        r"(?:confirmo|digo|cuento|indico|detallo|explico) qu[eé]"
+        r"|qu[eé] (?:te )?conviene (?:traer|llevar)|qu[eé] (?:traer|llevar|necesit[aá]s (?:traer|llevar))",
+        b,
+    ):
+        return (
+            "⚡ EL PACIENTE ACEPTÓ TU OFRECIMIENTO DE INFORMACIÓN (qué traer/requisitos): "
+            "respondé la INFO CONCRETA AHORA, en un solo mensaje, con los datos que TENGAS "
+            "(requisitos del tratamiento del catálogo, FAQs de la clínica). Si no tenés el dato "
+            "específico, decile lo estándar y seguro: DNI, credencial/carnet de la obra social si "
+            "tiene, la orden (que puede mostrar virtual) y estudios previos si los tiene. "
+            "⛔ PROHIBIDO volver a ofrecer ('¿querés que te diga?') — ya aceptó — y PROHIBIDO "
+            "INVENTAR requisitos clínicos que nadie te dio (ayunos, suspender medicación, "
+            "preparaciones): si te preguntan algo clínico que no sabés, se confirma con la doctora."
         )
     return (
         "⚡ EL PACIENTE ACEPTÓ TU OFRECIMIENTO: en tu último mensaje le ofreciste buscar/pasar "

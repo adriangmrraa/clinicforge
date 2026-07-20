@@ -323,6 +323,27 @@ CASOS = [
         lambda: iny_acepto_ofrecimiento("dale", "Tu turno quedó confirmado para el jueves 😊"),
         lambda out: out is None,
     ),
+    (
+        "aceptó-ofrecimiento INFO (caso Braian): 'Dale' tras 'te confirmo qué te conviene traer' → rama info",
+        lambda: iny_acepto_ofrecimiento(
+            "Dale", "Si querés, también te confirmo qué te conviene traer para la consulta de hoy."
+        ),
+        lambda out: out is not None and "INFORMACIÓN" in out and "INVENTAR" in out,
+    ),
+    (
+        "aceptó-ofrecimiento INFO: 'dale, decime qué llevo' (aceptación con re-pedido corto) → dispara",
+        lambda: iny_acepto_ofrecimiento(
+            "dale, decime qué llevo", "Si querés, también te confirmo qué te conviene traer para la consulta de hoy."
+        ),
+        lambda out: out is not None and "INFORMACIÓN" in out,
+    ),
+    (
+        "aceptó-ofrecimiento: 'sí pero cuánto sale?' NO es aceptación (pregunta otra cosa)",
+        lambda: iny_acepto_ofrecimiento(
+            "sí pero cuánto sale?", "Si querés, también te confirmo qué te conviene traer."
+        ),
+        lambda out: out is None,
+    ),
     # ------------------- candado MENCIÓN COSEGURO -------------------
     (
         "mención-coseguro: pregunta '¿debo abonar algo adicional?' respondida seca → completa (fallo v3 post-confirmacion)",
