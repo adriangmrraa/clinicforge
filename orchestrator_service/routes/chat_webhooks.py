@@ -1096,14 +1096,20 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                            RETURNING id, appointment_datetime, appointment_type""",
                         tenant_id, msg.external_user_id,
                     )
+                    # Variantes rotativas + día humano (pedido Carlos 2026-07-20: los
+                    # textos fijos se sienten robóticos). Rotación determinista por
+                    # teléfono+fecha — services/message_variants.
+                    from services.message_variants import dia_humano, variante_confirmacion
                     if _apt_row:
                         from datetime import timezone, timedelta
                         _apt_dt_utc = _apt_row["appointment_datetime"]
                         _arg_tz = timezone(timedelta(hours=-3))
                         _apt_dt_arg = _apt_dt_utc.astimezone(_arg_tz)
-                        _confirm_msg = "✅ ¡Gracias por confirmar! Te esperamos en tu próximo turno 🦷"
+                        _confirm_msg = variante_confirmacion(
+                            f"{msg.external_user_id}:{_apt_dt_arg:%Y%m%d}", dia_humano(_apt_dt_arg)
+                        )
                     else:
-                        _confirm_msg = "✅ ¡Gracias por confirmar! Te esperamos en tu próximo turno 🦷"
+                        _confirm_msg = variante_confirmacion(msg.external_user_id or "x")
 
                     # Send confirmation reply
                     from services.response_sender import ResponseSender

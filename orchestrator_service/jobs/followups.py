@@ -103,25 +103,22 @@ async def send_post_treatment_followups():
                 # CARGO, no al placeholder -M{N} (que no es un WhatsApp real). Regla
                 # central en services/family_phones. El saludo se adapta: al guardián
                 # se le pregunta cómo sigue el/la paciente, no "cómo te sentís".
+                # + Variantes ROTATIVAS con nombre humanizado (pedido Carlos 2026-07-20:
+                # "Hola FRANCESCO TOMAS" fijo se sentía robótico) — message_variants.
                 from services.family_phones import is_placeholder_phone, resolve_contact_phone
+                from services.message_variants import variante_followup
 
                 dest_phone = resolve_contact_phone(apt["phone_number"], apt.get("guardian_phone"))
                 if not dest_phone:
                     logger.info(f"⏭️ Skip followup {patient_name}: sin teléfono real ni guardián")
                     skip_count += 1
                     continue
-                if is_placeholder_phone(apt["phone_number"]):
-                    message = (
-                        f"Hola! Te escribimos para saber cómo sigue {patient_name} "
-                        f"después de la atención de ayer ({apt_date}). "
-                        f"¿Tuvo alguna molestia o va todo bien?"
-                    )
-                else:
-                    message = (
-                        f"Hola {patient_name}, te escribimos para saber cómo te sentís "
-                        f"después de la atención de ayer ({apt_date}). "
-                        f"¿Tuviste alguna molestia o va todo bien?"
-                    )
+                message = variante_followup(
+                    seed=f"{dest_phone}:{apt_date}",
+                    nombre=patient_name,
+                    fecha=apt_date,
+                    para_guardian=is_placeholder_phone(apt["phone_number"]),
+                )
 
                 sent = await _send_via_response_sender(
                     tenant_id=tenant_id,
