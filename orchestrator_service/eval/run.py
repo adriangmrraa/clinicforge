@@ -290,6 +290,10 @@ async def main() -> int:
             # cadena entera en el MISMO orden que buffer_task:
             #   recurrente/continuidad → precio-no-repetir → cierre → oferta → coseguro
             from eval.test_candado_salida import candado_salida as _c_salida
+            from eval.test_candado_cobertura_chat import (
+                candado_cobertura_chat as _c_cov_chat,
+                candado_reintegro as _c_reintegro,
+            )
             from eval.test_candado_gate_precio import candado_gate_precio as _c_gate
             from eval.test_candado_precio import candado_precio as _c_precio
             from eval.test_candado_cierre import candado_cierre as _c_cierre
@@ -299,6 +303,8 @@ async def main() -> int:
             )
             _pre_candado = answer
             answer = _c_salida(answer, c.get("patient_context", ""), c.get("user", ""))
+            answer = _c_cov_chat(answer, c.get("user", ""))
+            answer = _c_reintegro(answer, c.get("patient_context", ""), c.get("user", ""))
             answer = _c_gate(answer, c.get("patient_context", ""), c.get("user", ""))
             # precio ya-dicho: en el banco, "ya se envió" = algún mensaje previo del
             # bot en el history del caso contiene el párrafo del valor.

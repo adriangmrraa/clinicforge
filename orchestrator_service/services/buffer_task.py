@@ -4809,6 +4809,63 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
     except Exception as _oc_err:
         logger.warning(f"candado-salida-recurrente skipped (non-fatal): {_oc_err}")
 
+    # --- CANDADO: NO RE-PREGUNTAR LA COBERTURA DICHA EN EL CHAT (caso Sancor del banco) ---
+    # El candado recurrente cubre la cobertura de FICHA; este cubre la dicha EN el turno:
+    # si el paciente acaba de nombrar su OS o dijo "particular" en su mensaje, la pregunta
+    # canónica "¿contás con alguna obra social...?" NO puede volver a salir. Determinista.
+    try:
+        if response_text and re.search(r"cont[aá]s con alguna obra social", response_text, re.I):
+            _cq_last = " ".join(messages).lower() if isinstance(messages, list) else str(messages or "").lower()
+            _cq_named = "particular" in _cq_last or bool(
+                re.search(
+                    r"\b(osde|sancor|swiss|galeno|ioma|issn|osdepym|sosunc|osseg|jer[aá]rquicos|medif[eé]|omint|luis pasteur|prevenci[oó]n)\b",
+                    _cq_last,
+                )
+            ) or bool(re.search(r"\b(tengo|con|soy de)\s+(la\s+)?(obra social|prepaga)\b", _cq_last))
+            if _cq_named:
+                _cq_pre = response_text
+                response_text = re.sub(
+                    r"(?im)^.*cont[aá]s con alguna obra social.*$\n?", "", response_text
+                ).strip()
+                response_text = re.sub(r"\n{3,}", "\n\n", response_text).strip()
+                if _cq_pre != response_text:
+                    logger.warning(
+                        f"🔒 CANDADO COBERTURA-CHAT: el paciente ya nombró su cobertura en el mensaje → "
+                        f"recorté la re-pregunta ({len(_cq_pre)}→{len(response_text)} chars) para {external_user_id}"
+                    )
+                if not response_text:
+                    response_text = "Contame qué necesitás y te lo coordino 😊"
+    except Exception as _cq_err:
+        logger.warning(f"candado-cobertura-chat skipped (non-fatal): {_cq_err}")
+
+    # --- CANDADO: MENCIONAR EL COMPROBANTE/REINTEGRO con atención particular por OS ---
+    # Regla fija de la clínica (falló x3 en el banco: ISSN-precio, ISSN-cirugía, Swiss):
+    # cuando la atención es PARTICULAR porque la OS no tiene convenio (o es ISSN fuera de
+    # cirugía), SIEMPRE se menciona que se entrega el comprobante/recibo para gestionar
+    # reintegro. Si la respuesta dice "particular" en ese contexto y no lo menciona, se
+    # agrega UNA línea. Determinista, aditivo (nunca recorta).
+    try:
+        if (
+            response_text
+            and re.search(r"(?i)(ser[íi]a de forma particular|atenci[oó]n.*particular|consulta particular|es particular)", response_text)
+            and not re.search(r"(?i)comprobante|recibo|reintegro", response_text)
+        ):
+            _ri_ctx = (patient_context or "").lower()
+            _ri_last = " ".join(messages).lower() if isinstance(messages, list) else str(messages or "").lower()
+            _ri_os_context = (
+                bool(re.search(r"\bissn\b", _ri_ctx)) or "instituto de seguridad" in _ri_ctx
+                or bool(re.search(r"\b(swiss|sancor|prevenci[oó]n|no trabajamos)\b", (response_text or "").lower()))
+                or bool(re.search(r"\b(issn|swiss|prevenci[oó]n)\b", _ri_last))
+            )
+            if _ri_os_context:
+                response_text = (
+                    response_text.rstrip()
+                    + "\nIgual te entregamos el comprobante para que puedas gestionar reintegro con tu cobertura, si te corresponde."
+                )
+                logger.warning(f"🔒 CANDADO REINTEGRO: agregué la línea del comprobante para {external_user_id}")
+    except Exception as _ri_err:
+        logger.warning(f"candado-reintegro skipped (non-fatal): {_ri_err}")
+
     # --- CANDADO: GATE DE PRECIO PARA COBERTURA NO RESUELTA (enforcement del A1) ---
     # El gate A1 (texto, ~2448) le dice al modelo que NO dé el valor de la consulta si la
     # cobertura no está resuelta — pero el mini lo saltea a veces (fallo edge-triple del
@@ -5000,6 +5057,51 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                 logger.warning(f"🔒 CANDADO COSEGURO: amplié 'efectivo' a efectivo/transferencia para {external_user_id}")
     except Exception as _cs_err:
         logger.warning(f"candado-coseguro skipped (non-fatal): {_cs_err}")
+
+    # --- GUARD: PROMESA-FANTASMA (banco 2026-07-18: 'te paso con el equipo' / 'lo cancelo'
+    # SIN ejecutar ninguna herramienta — la promesa quedaba en la nada; hueco #1 del
+    # protocolo de la secretaria). No tocamos la respuesta (la promesa es razonable):
+    # garantizamos su CUMPLIMIENTO → bandera roja + email + pendiente urgente para que
+    # un humano la ejecute. Mismo canal que el guard anti-silencio.
+    try:
+        _pf_humano = re.search(
+            r"(?i)(te paso con el equipo|lo paso con el equipo|elev[eé] tu caso|pas[eé] tu caso"
+            r"|derivo tu (?:caso|consulta)|ya (?:lo )?deriv[eé]|el equipo (?:lo revisa|te contacta|te va a contactar))",
+            response_text or "",
+        )
+        _pf_cancel = re.search(
+            r"(?i)(lo cancelo por vos|queda(?:r[áa])? cancelado|cancel[eé] tu turno|tu turno qued[oó] cancelado)",
+            response_text or "",
+        )
+        try:
+            _pf_tools = list(_tools_names)
+        except NameError:
+            _pf_tools = []
+        _pf_missing = (
+            (_pf_humano and "derivhumano" not in _pf_tools)
+            or (_pf_cancel and "cancel_appointment" not in _pf_tools)
+        )
+        if response_text and _pf_missing:
+            _pf_motivo = (
+                "prometió pasar el caso al equipo" if _pf_humano else "prometió cancelar el turno"
+            )
+            logger.warning(
+                f"🔒 GUARD PROMESA-FANTASMA: el bot {_pf_motivo} sin ejecutar la herramienta "
+                f"(tools del turno: {_pf_tools}) → alerta para que un humano cumpla la promesa | {external_user_id}"
+            )
+            await _flag_agent_failure_and_alert(
+                pool=pool,
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                phone=external_user_id,
+                row=row,
+                reason=(
+                    f"PROMESA SIN ACCIÓN: el bot {_pf_motivo} pero NO ejecutó la herramienta. "
+                    f"Cumplir la promesa a mano. Último mensaje del bot: {response_text[:200]}"
+                ),
+            )
+    except Exception as _pf_err:
+        logger.warning(f"guard-promesa-fantasma skipped (non-fatal): {_pf_err}")
 
     # --- AGENT FAILURE GUARD (blindaje "esto no puede pasar") ---
     # Si el motor cayó y quedó el fallback de error, NO lo mandamos como mensaje
