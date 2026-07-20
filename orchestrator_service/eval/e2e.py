@@ -62,6 +62,20 @@ async def _cleanup(db):
         await _reset(TEST_TENANT, TEST_PHONE)
     except Exception:
         pass
+    # Limpiar TAMBIÉN la oferta de slots en Redis (v2): un slot_offer residual de un
+    # escenario anterior hacía que el guard offer==bookable de reschedule comparara
+    # contra slots viejos de OTRO escenario.
+    try:
+        from services.relay import get_redis as _gr
+        _r = _gr()
+        if _r is not None:
+            for _k in (f"slot_offer:{TEST_TENANT}:{TEST_PHONE}", f"slot_offer:{TEST_TENANT}:+{TEST_PHONE.lstrip('+')}"):
+                try:
+                    await _r.delete(_k)
+                except Exception:
+                    pass
+    except Exception:
+        pass
     try:
         rows = await db.pool.fetch(
             "SELECT id FROM patients WHERE tenant_id = $1 AND ("
@@ -539,28 +553,55 @@ async def _sembrar_paciente_con_turnos(db, fechas_horas):
 
 
 async def scenario_reprogramar(db, book_appointment, set_ctx):
-    """H — reschedule_appointment REAL: el turno se MUEVE (no se duplica ni se pierde)."""
-    from main import reschedule_appointment
+    """H — reschedule_appointment REAL con el handshake completo del flujo:
+    check_availability siembra la oferta (guard offer==bookable de reschedule) y
+    recién ahí se reprograma A UNO DE LOS SLOTS OFRECIDOS. (v2: el intento inicial
+    reprogramaba a una fecha arbitraria y el guard lo bloqueó — correcto por diseño.)"""
+    from main import check_availability, reschedule_appointment
     results = []
     await _cleanup(db)
-    f1, f2 = _proximo_lunes(2), _proximo_lunes(3)
+    f1 = _proximo_lunes(2)
     pid, (apt_id,) = await _sembrar_paciente_con_turnos(db, [(f1, "15:00")])
     set_ctx(TEST_TENANT, TEST_PHONE)
+
+    # 1) Sembrar la oferta REAL para otra semana (como hace el flujo del agente).
+    f_obj = _proximo_lunes(3)
+    r_av = str(await _invoke_tool(
+        check_availability,
+        treatment_code="checkup",
+        interpreted_date=f_obj.isoformat(),
+        search_mode="week",
+    ))
+    # 2) Extraer el PRIMER slot ofrecido (fecha ISO + hora) del slot_offer sembrado.
+    import re as _re
+    _slots = _re.findall(r"(\d{4}-\d{2}-\d{2})[^\d]{0,20}(\d{1,2}:\d{2})", r_av)
+    if not _slots:
+        # formato humano: buscar dd/mm + hora y reconstruir el año
+        _hum = _re.findall(r"(\d{1,2})/(\d{1,2})[^\d]{0,20}(\d{1,2}:\d{2})", r_av)
+        if _hum:
+            dd, mm, hhmm = _hum[0]
+            _slots = [(f"{f_obj.year}-{int(mm):02d}-{int(dd):02d}", hhmm)]
+    if not _slots:
+        results.append(("check_availability ofreció slots para reprogramar", False, r_av[:180]))
+        return results
+    slot_date, slot_time = _slots[0]
+
+    # 3) Reprogramar AL slot ofrecido (handshake válido).
     r = await _invoke_tool(
         reschedule_appointment,
         original_date=f1.isoformat(),
-        new_date_time=f"{f2.isoformat()} 15:00",
-        interpreted_date=f"{f2.isoformat()} 15:00",
+        new_date_time=f"{slot_date} {slot_time}",
+        interpreted_date=f"{slot_date} {slot_time}",
     )
     row = await db.pool.fetchrow(
         "SELECT appointment_datetime::date AS d, status, COUNT(*) OVER () AS n FROM appointments "
         "WHERE tenant_id=$1 AND patient_id=$2 AND status IN ('scheduled','confirmed')",
         TEST_TENANT, pid,
     )
-    movido = row is not None and str(row["d"]) == f2.isoformat()
+    movido = row is not None and str(row["d"]) == slot_date
     unico = row is not None and int(row["n"]) == 1
-    results.append(("reschedule movió el turno a la fecha nueva (verificado en BD)", movido,
-                    f"esperaba {f2}, BD={row['d'] if row else 'sin turno'} | tool: {str(r)[:120]}"))
+    results.append(("reschedule movió el turno al slot OFRECIDO (verificado en BD)", movido,
+                    f"esperaba {slot_date}, BD={row['d'] if row else 'sin turno'} | tool: {str(r)[:140]}"))
     results.append(("sigue habiendo UN solo turno activo (no duplicó)", unico,
                     f"activos={row['n'] if row else 0}"))
     return results

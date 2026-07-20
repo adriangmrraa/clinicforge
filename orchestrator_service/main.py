@@ -539,6 +539,19 @@ def parse_date(date_query: str) -> Optional[date]:
     7. Fallback: None (no inventar fechas)
     """
     query = date_query.lower().strip()
+
+    # ── CAPA 0 (fix E2E 2026-07-20): fecha ISO EXACTA (YYYY-MM-DD, opcional hora).
+    # dateutil con dayfirst invertía mes↔día en el formato ISO ('2026-08-03' →
+    # 2026-03-08: agosto se volvía marzo) — visto en logs de prod (reschedule Lucas)
+    # y reproducido determinísticamente por el E2E (cancelar/dos-turnos no
+    # encontraban el turno). El ISO es inequívoco: se parsea directo, sin dayfirst.
+    _iso_m = re.match(r"^\s*(\d{4})-(\d{2})-(\d{2})(?:[ t]\d{1,2}:\d{2}(?::\d{2})?)?\s*$", query)
+    if _iso_m:
+        try:
+            return date(int(_iso_m.group(1)), int(_iso_m.group(2)), int(_iso_m.group(3)))
+        except ValueError:
+            pass  # fecha inválida (mes 13, etc.) → seguir con las capas normales
+
     # Limpiar preposiciones/artículos y frases que confunden al parser de fechas
     query_clean = re.sub(r"^(para el |para |el día |el |del |al )", "", query).strip()
     # Eliminar sufijos de rango que no aportan a la fecha en sí

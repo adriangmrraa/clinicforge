@@ -30,7 +30,13 @@ def candado_gate_precio(response_text: str, patient_context: str, last_user_msg:
     _last = (last_user_msg or "").lower()
     _pidio_particular = "particular" in _last
     _estetico = any(k in _last for k in ("carilla", "blanqueamiento", "diseño de sonrisa", "estetic", "estétic"))
-    if (_minor or not _cov_resuelta) and not _pidio_particular and not _estetico:
+    _os_en_msg = bool(
+        re.search(
+            r"\b(osde|sancor|swiss|galeno|ioma|issn|osdepym|sosunc|osseg|jer[aá]rquicos|medif[eé]|omint|luis pasteur|prevenci[oó]n)\b",
+            _last,
+        )
+    )
+    if (_minor or not _cov_resuelta) and not _pidio_particular and not _estetico and not _os_en_msg:
         response_text = re.sub(
             r"(?is)la consulta de evaluaci[oó]n tiene un valor.*?presupuesto correspondiente\.?",
             "", response_text,
@@ -90,6 +96,13 @@ CASOS = [
         "",
         "quiero un turno",
         lambda out: out == "Te paso opciones:\n1️⃣ Lunes 20/07 — 10:00 hs",
+    ),
+    (
+        "SANCOR nombrada en el mensaje (bug de cadena): el gate NO re-inyecta la pregunta ni toca el valor",
+        "Con Sancor la consulta sería de forma particular. " + PARRAFO + "\n1️⃣ Miércoles 22/07 — 10:00 hs",
+        "",  # lead sin ficha
+        "Hola, tengo Sancor y quiero hacerme una extracción de muela",
+        lambda out: "$60.000" in out and "contás con alguna obra social" not in out.lower(),
     ),
 ]
 

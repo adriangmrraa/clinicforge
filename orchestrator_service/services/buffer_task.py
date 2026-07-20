@@ -4941,12 +4941,16 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
     # reintegro. Si la respuesta dice "particular" en ese contexto y no lo menciona, se
     # agrega UNA línea. Determinista, aditivo (nunca recorta).
     try:
-        if (
-            response_text
-            and re.search(r"(?i)(ser[íi]a de forma particular|atenci[oó]n.*particular|consulta particular|es particular)", response_text)
-            and not re.search(r"(?i)comprobante|recibo|reintegro", response_text)
-        ):
-            _ri_ctx = (patient_context or "").lower()
+        _ri_ctx_low = (patient_context or "").lower()
+        _ri_dispara = bool(response_text) and not re.search(r"(?i)comprobante|recibo|reintegro", response_text or "") and (
+            bool(re.search(r"(?i)(ser[íi]a de forma particular|atenci[oó]n.*particular|consulta particular|es particular)", response_text or ""))
+            # Ampliación (banco 2026-07-20, issn-precio): con ISSN activo, dar el VALOR de
+            # la consulta también exige la línea del comprobante aunque la respuesta no
+            # use la palabra 'particular'.
+            or (bool(re.search(r"\bissn\b", _ri_ctx_low)) and bool(re.search(r"(?i)tiene un valor", response_text or "")))
+        )
+        if _ri_dispara:
+            _ri_ctx = _ri_ctx_low
             _ri_last = " ".join(messages).lower() if isinstance(messages, list) else str(messages or "").lower()
             _ri_os_context = (
                 bool(re.search(r"\bissn\b", _ri_ctx)) or "instituto de seguridad" in _ri_ctx
@@ -5053,7 +5057,17 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
             _gp_estetico = any(
                 k in _gp_last for k in ("carilla", "blanqueamiento", "diseño de sonrisa", "estetic", "estétic")
             )
-            if (_gp_minor or not _gp_cov_resuelta) and not _gp_pidio_particular and not _gp_estetico:
+            # Fix caso Sancor (banco 2026-07-20): si el paciente NOMBRÓ su cobertura EN el
+            # mensaje, la cobertura se está resolviendo en este turno — el gate NO debe
+            # strippear el valor ni re-inyectar la pregunta (deshacía al candado
+            # cobertura-chat: un candado sacaba la pregunta y este la volvía a poner).
+            _gp_os_en_msg = bool(
+                re.search(
+                    r"\b(osde|sancor|swiss|galeno|ioma|issn|osdepym|sosunc|osseg|jer[aá]rquicos|medif[eé]|omint|luis pasteur|prevenci[oó]n)\b",
+                    _gp_last,
+                )
+            )
+            if (_gp_minor or not _gp_cov_resuelta) and not _gp_pidio_particular and not _gp_estetico and not _gp_os_en_msg:
                 _gp_pre = response_text
                 response_text = re.sub(
                     r"(?is)la consulta de evaluaci[oó]n tiene un valor.*?presupuesto correspondiente\.?",

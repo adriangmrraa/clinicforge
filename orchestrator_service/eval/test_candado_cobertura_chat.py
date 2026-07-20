@@ -32,13 +32,14 @@ def candado_cobertura_chat(response_text: str, last_user_msg: str) -> str:
 
 
 def candado_reintegro(response_text: str, patient_context: str, last_user_msg: str) -> str:
-    if not (
-        response_text
-        and re.search(r"(?i)(ser[íi]a de forma particular|atenci[oó]n.*particular|consulta particular|es particular)", response_text)
-        and not re.search(r"(?i)comprobante|recibo|reintegro", response_text)
-    ):
+    _ctx_low = (patient_context or "").lower()
+    _dispara = bool(response_text) and not re.search(r"(?i)comprobante|recibo|reintegro", response_text or "") and (
+        bool(re.search(r"(?i)(ser[íi]a de forma particular|atenci[oó]n.*particular|consulta particular|es particular)", response_text or ""))
+        or (bool(re.search(r"\bissn\b", _ctx_low)) and bool(re.search(r"(?i)tiene un valor", response_text or "")))
+    )
+    if not _dispara:
         return response_text
-    _ctx = (patient_context or "").lower()
+    _ctx = _ctx_low
     _last = (last_user_msg or "").lower()
     _os_context = (
         bool(re.search(r"\bissn\b", _ctx)) or "instituto de seguridad" in _ctx
@@ -113,6 +114,15 @@ CASOS = [
             "cuanto sale particular?",
         ),
         lambda out: "comprobante" not in out.lower(),
+    ),
+    (
+        "ISSN + VALOR sin la palabra 'particular' (fallo issn-precio) → se agrega el comprobante",
+        lambda: candado_reintegro(
+            "La consulta de evaluación tiene un valor de $60.000. Ahí la doctora evalúa tu caso.",
+            "⛔ ISSN (respondé VOS...): con la clínica cualquier tratamiento ISSN es particular",
+            "Ah, ¿y cuánto sale la consulta?",
+        ),
+        lambda out: "comprobante" in out.lower() and "reintegro" in out.lower(),
     ),
 ]
 
