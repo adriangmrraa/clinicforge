@@ -4885,7 +4885,14 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                     "?" not in _last_user
                     and len(_last_user.split()) <= 12
                     and not _has_action
-                    and not _last_user.startswith(("hola", "buenas", "buen dia", "buen día"))
+                    # Un saludo pelado ("hola") exige respuesta, PERO "Buen día! Gracias
+                    # por la información!" es un CIERRE (falso 'Bot falló' de Juan,
+                    # prod 2026-07-20): si además del saludo hay agradecimiento, es
+                    # cortesía y el silencio es correcto.
+                    and (
+                        not _last_user.startswith(("hola", "buenas", "buen dia", "buen día"))
+                        or "gracias" in _last_user
+                    )
                     and any(w in _last_user for w in (_accept_words + _pure_courtesy))
                     and not _silence_misfire
                 )
