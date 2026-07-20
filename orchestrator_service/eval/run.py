@@ -266,11 +266,15 @@ async def main() -> int:
             )
             # Nivel 2 del coseguro: cuántas veces el bot YA lo explicó (en prod es una
             # query a chat_messages; en el banco se cuenta en el history del caso).
+            # 'depende del/de tu plan' cuenta aunque el bot haya variado la palabra.
             _cos_hist_count = sum(
                 1
                 for h in (c.get("history") or [])
                 if (h.get("role") or ("assistant" if h.get("de") in ("bot", "asistente") else "user")) == "assistant"
-                and "coseguro" in ((h.get("content") or h.get("texto") or "").lower())
+                and any(
+                    k in ((h.get("content") or h.get("texto") or "").lower())
+                    for k in ("coseguro", "depende del plan", "depende de tu plan")
+                )
             )
             # Semáforo: el caso declara os_delayed={"name","delay_days"} y acá se
             # computa la primera fecha por cobertura (hoy+N, igual que prod).
@@ -290,6 +294,22 @@ async def main() -> int:
                 coseguro_ya_explicado=_cos_hist_count,
                 os_delayed=_os_delayed_param,
             )
+            # Gate A1 de cobertura (espejo de buffer_task, texto compartido): dispara
+            # cuando el caso NO trae la cobertura resuelta en su contexto — igual que
+            # prod para un lead sin cobertura conocida.
+            import re as _re_a1
+            from services.inyecciones_frescas import iny_gate_cobertura
+            _a1_ctx_low = (c.get("patient_context") or "").lower()
+            _a1_minor = "internal_booking_context" in _a1_ctx_low or "hijo/a menor" in _a1_ctx_low
+            _a1_conocida = bool(
+                _re_a1.search(
+                    r"obra social registrada|\bissn\b|particular|cobertura\s+[a-záéíóú]+",
+                    _a1_ctx_low,
+                )
+            )
+            _a1_txt = iny_gate_cobertura(_a1_minor, _a1_conocida)
+            if _a1_txt:
+                _ctx_con_iny = (_ctx_con_iny + "\n" + _a1_txt) if _ctx_con_iny else _a1_txt
             messages = [{"role": "system", "content": prompt_for(status, _ctx_con_iny, case_tags)}]
             messages += _history_to_messages(c.get("history"))
             messages.append({"role": "user", "content": c.get("user", "")})
@@ -362,11 +382,15 @@ async def main() -> int:
             answer = _c_cierre(answer)
             answer = _c_oferta(answer)
             answer = _c_coseguro(answer)
-            # Candados nuevos (banco v2): compartidos con buffer_task, sin espejo a mano.
+            # Candados nuevos (banco v2/v3): compartidos con buffer_task, sin espejo a mano.
             from services.inyecciones_frescas import (
                 candado_avance as _c_avance,
+                candado_encuadre_valor as _c_encuadre,
+                candado_mencion_coseguro as _c_mencos,
                 candado_multi_turno as _c_multiturno,
             )
+            answer = _c_mencos(answer, c.get("user", ""), c.get("patient_context", ""))
+            answer = _c_encuadre(answer, c.get("user", ""))
             answer = _c_avance(answer, c.get("user", ""), _tool_names_turn)
             if c.get("mock_my_appointments") == "two":
                 from eval.mock_tools import fechas_futuras_two as _f2

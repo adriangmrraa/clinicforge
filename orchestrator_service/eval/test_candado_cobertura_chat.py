@@ -37,21 +37,32 @@ def candado_reintegro(response_text: str, patient_context: str, last_user_msg: s
     # "reintegro" sin nombrar el comprobante quedaba a medias.
     _ya_comprobante = bool(re.search(r"(?i)comprobante|recibo|factura", response_text or ""))
     _ya_reintegro = bool(re.search(r"(?i)reintegro", response_text or ""))
+    _last = (last_user_msg or "").lower()
+    # Banco v3: OS sin convenio nombrada en el mensaje + valor en la respuesta sin el
+    # encuadre particular → dispara y agrega el encuadre COMPLETO.
+    _os_msg_rechazada = re.search(r"(?i)\b(swiss(?:\s+medical)?|sancor|prevenci[oó]n)\b", _last)
     _dispara = bool(response_text) and not _ya_comprobante and (
         bool(re.search(r"(?i)(ser[íi]a de forma particular|atenci[oó]n.*particular|consulta particular|es particular)", response_text or ""))
         or (bool(re.search(r"\bissn\b", _ctx_low)) and bool(re.search(r"(?i)tiene un valor", response_text or "")))
+        or (bool(_os_msg_rechazada) and bool(re.search(r"(?i)tiene un valor", response_text or "")))
     )
     if not _dispara:
         return response_text
     _ctx = _ctx_low
-    _last = (last_user_msg or "").lower()
     _os_context = (
         bool(re.search(r"\bissn\b", _ctx)) or "instituto de seguridad" in _ctx
         or bool(re.search(r"\b(swiss|sancor|prevenci[oó]n|no trabajamos)\b", (response_text or "").lower()))
         or bool(re.search(r"\b(issn|swiss|prevenci[oó]n)\b", _last))
+        or bool(_os_msg_rechazada)
     )
     if _os_context:
-        if _ya_reintegro:
+        if _os_msg_rechazada and not re.search(r"(?i)particular", response_text or ""):
+            _os_nombre = _os_msg_rechazada.group(1).title()
+            response_text = (
+                response_text.rstrip()
+                + f"\nTe aclaro: con {_os_nombre} no tenemos convenio directo, así que la atención es particular — igual te entregamos el comprobante para que puedas gestionar el reintegro con tu cobertura."
+            )
+        elif _ya_reintegro:
             response_text = (
                 response_text.rstrip()
                 + "\nEl comprobante para gestionarlo te lo entregamos nosotros en la clínica."
@@ -143,6 +154,16 @@ CASOS = [
             "Hola, necesito un turno para mi mamá María, ella tiene Swiss Medical, ¿cuánto es la consulta?",
         ),
         lambda out: "comprobante" in out.lower() and out.lower().count("reintegro") == 1,
+    ),
+    (
+        "Swiss en el mensaje + valor SIN encuadre particular (fallo v3) → agrega el encuadre COMPLETO",
+        lambda: candado_reintegro(
+            "Anoté lo de Swiss Medical para María. La consulta de evaluación tiene un valor de $60.000. "
+            "Ahí la Dra. evalúa su caso.\n¿Me pasás el nombre completo y el DNI de María?",
+            "",
+            "Hola, necesito un turno para mi mamá María, ella tiene Swiss Medical, ¿cuánto es la consulta?",
+        ),
+        lambda out: "particular" in out.lower() and "comprobante" in out.lower() and "convenio directo" in out.lower(),
     ),
 ]
 

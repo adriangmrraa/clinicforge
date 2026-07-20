@@ -2463,25 +2463,12 @@ async def process_buffer_task(
         _a1_cov_known = bool(patient_context) and (
             "Obra Social registrada" in patient_context or _a1_issn_ctx
         )
-        if _a1_minor_booking or not _a1_cov_known:
-            _cov_gate = (
-                "⛔ COBERTURA NO RESUELTA: no sabés si la persona que se atiende es particular o tiene "
-                "obra social. "
-                + (
-                    "⚠️ Estás agendando para un HIJO/A MENOR: la 'Obra Social registrada' del contexto es "
-                    "la del INTERLOCUTOR (quien escribe), NO la del menor — preguntá la cobertura DEL MENOR "
-                    "y NO le apliques a él el coseguro de la OS del interlocutor. "
-                    if _a1_minor_booking
-                    else ""
-                )
-                + "Si pide turno/precio y TODAVÍA no sabés su cobertura (ni 'particular' ni una OS nombrada "
-                "en el chat), tu PRIMER movimiento es preguntar '¿Contás con alguna obra social o te "
-                "atenderías de forma particular?'. ⛔ PROHIBIDO la plantilla 'la consulta sería de forma "
-                "particular / te damos el comprobante para el reintegro' Y TAMBIÉN dar el VALOR/monto de "
-                "la consulta (ni '$60.000' ni ningún número) hasta que (a) diga EXPLÍCITAMENTE "
-                "que es particular, o (b) nombre una OS y la verifiques con check_insurance_coverage. "
-                "Y NUNCA des el valor si el paciente NO lo preguntó — pidió un turno, no un precio."
-            )
+        # Texto único compartido con el banco (services/inyecciones_frescas.py) — incluye
+        # la línea multi-pregunta (caso edge-triple: responder horarios/dirección YA, solo
+        # el precio espera la cobertura).
+        from services.inyecciones_frescas import iny_gate_cobertura
+        _cov_gate = iny_gate_cobertura(_a1_minor_booking, _a1_cov_known)
+        if _cov_gate:
             patient_context = (patient_context + "\n" + _cov_gate) if patient_context else _cov_gate
 
         # ISSN (candado de adherencia) — v2: usa el match por LÍMITE DE PALABRA de arriba (_a1_issn_ctx)
@@ -2522,9 +2509,13 @@ async def process_buffer_task(
             _cos_ya_explicado = 0
             if _cos_pregunta_monto or _cos_confusion_sena or es_insistencia_monto(_cos_last):
                 try:
+                    # 'depende del/de tu plan' cuenta como explicación aunque el bot haya
+                    # variado la palabra (banco v3: el nivel 2 no entraba y el bot repetía
+                    # la muletilla una tercera vez).
                     _cos_ya_explicado = await pool.fetchval(
                         "SELECT COUNT(*) FROM chat_messages WHERE conversation_id = $1 AND tenant_id = $2 "
-                        "AND role = 'assistant' AND content ILIKE '%coseguro%' "
+                        "AND role = 'assistant' AND (content ILIKE '%coseguro%' "
+                        "OR content ILIKE '%depende del plan%' OR content ILIKE '%depende de tu plan%') "
                         "AND created_at > NOW() - INTERVAL '2 hours'",
                         conversation_id,
                         tenant_id,
@@ -5064,23 +5055,36 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
         # comprobante quedaba a medias — ahora solo el comprobante/recibo desactiva.
         _ri_ya_comprobante = bool(re.search(r"(?i)comprobante|recibo|factura", response_text or ""))
         _ri_ya_reintegro = bool(re.search(r"(?i)reintegro", response_text or ""))
+        _ri_last = " ".join(messages).lower() if isinstance(messages, list) else str(messages or "").lower()
+        # Banco v3 (terce-madre-Swiss v2): el paciente nombra una OS SIN convenio y la
+        # respuesta da el valor sin el encuadre particular → también dispara (y abajo
+        # se agrega el encuadre COMPLETO, no solo la línea del comprobante).
+        _ri_os_msg_rechazada = re.search(r"(?i)\b(swiss(?:\s+medical)?|sancor|prevenci[oó]n)\b", _ri_last)
         _ri_dispara = bool(response_text) and not _ri_ya_comprobante and (
             bool(re.search(r"(?i)(ser[íi]a de forma particular|atenci[oó]n.*particular|consulta particular|es particular)", response_text or ""))
             # Ampliación (banco 2026-07-20, issn-precio): con ISSN activo, dar el VALOR de
             # la consulta también exige la línea del comprobante aunque la respuesta no
             # use la palabra 'particular'.
             or (bool(re.search(r"\bissn\b", _ri_ctx_low)) and bool(re.search(r"(?i)tiene un valor", response_text or "")))
+            or (bool(_ri_os_msg_rechazada) and bool(re.search(r"(?i)tiene un valor", response_text or "")))
         )
         if _ri_dispara:
             _ri_ctx = _ri_ctx_low
-            _ri_last = " ".join(messages).lower() if isinstance(messages, list) else str(messages or "").lower()
             _ri_os_context = (
                 bool(re.search(r"\bissn\b", _ri_ctx)) or "instituto de seguridad" in _ri_ctx
                 or bool(re.search(r"\b(swiss|sancor|prevenci[oó]n|no trabajamos)\b", (response_text or "").lower()))
                 or bool(re.search(r"\b(issn|swiss|prevenci[oó]n)\b", _ri_last))
+                or bool(_ri_os_msg_rechazada)
             )
             if _ri_os_context:
-                if _ri_ya_reintegro:
+                if _ri_os_msg_rechazada and not re.search(r"(?i)particular", response_text or ""):
+                    # Dio el valor sin aclarar el encuadre particular: se agrega COMPLETO.
+                    _ri_os_nombre = _ri_os_msg_rechazada.group(1).title()
+                    response_text = (
+                        response_text.rstrip()
+                        + f"\nTe aclaro: con {_ri_os_nombre} no tenemos convenio directo, así que la atención es particular — igual te entregamos el comprobante para que puedas gestionar el reintegro con tu cobertura."
+                    )
+                elif _ri_ya_reintegro:
                     # Ya habló del reintegro pero sin el comprobante: completa sin repetir.
                     response_text = (
                         response_text.rstrip()
@@ -5361,6 +5365,26 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                 logger.warning(f"🔒 CANDADO COSEGURO: amplié 'efectivo' a efectivo/transferencia para {external_user_id}")
     except Exception as _cs_err:
         logger.warning(f"candado-coseguro skipped (non-fatal): {_cs_err}")
+
+    # --- CANDADO: MENCIÓN DEL COSEGURO + ENCUADRE DEL VALOR (banco v3) ---
+    # Con OS que lleva coseguro, la oferta de turnos / el valor particular / la
+    # pregunta de "algo adicional" debe nombrar el coseguro (sin monto); y el valor
+    # de la consulta (o la respuesta a una queja de precio) debe explicar qué
+    # incluye. Funciones puras compartidas con el banco. Aditivos, 1 línea.
+    try:
+        from services.inyecciones_frescas import candado_encuadre_valor as _ev_fn
+        from services.inyecciones_frescas import candado_mencion_coseguro as _mc_fn
+
+        _mc_last = str(messages[-1] if messages else "")
+        _mc_pre = response_text
+        response_text = _mc_fn(response_text, _mc_last, patient_context or "")
+        response_text = _ev_fn(response_text, _mc_last)
+        if _mc_pre != response_text:
+            logger.warning(
+                f"🔒 CANDADO COSEGURO/ENCUADRE: completé la mención del coseguro o el encuadre del valor para {external_user_id}"
+            )
+    except Exception as _mc_err:
+        logger.warning(f"candado-mencion-coseguro skipped (non-fatal): {_mc_err}")
 
     # --- CANDADO: AVANCE (globito muerto) — pidió turno y la respuesta no avanza ---
     # Banco v2 (terce-hermana-OSDE, continuidad-implante): el bot quedaba en una

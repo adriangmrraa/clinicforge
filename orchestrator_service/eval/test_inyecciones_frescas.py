@@ -14,11 +14,14 @@ import sys
 from services.inyecciones_frescas import (
     aplicar_inyecciones,
     candado_avance,
+    candado_encuadre_valor,
+    candado_mencion_coseguro,
     candado_multi_turno,
     es_insistencia_monto,
     es_pregunta_monto_coseguro,
     iny_acepto_ofrecimiento,
     iny_derivacion_explicita,
+    iny_gate_cobertura,
     iny_manejo_coseguro,
     iny_multi_persona,
     iny_os_en_mensaje,
@@ -319,6 +322,107 @@ CASOS = [
         "aceptó-ofrecimiento: 'dale' sin oferta previa del bot NO dispara",
         lambda: iny_acepto_ofrecimiento("dale", "Tu turno quedó confirmado para el jueves 😊"),
         lambda out: out is None,
+    ),
+    # ------------------- candado MENCIÓN COSEGURO -------------------
+    (
+        "mención-coseguro: pregunta '¿debo abonar algo adicional?' respondida seca → completa (fallo v3 post-confirmacion)",
+        lambda: candado_mencion_coseguro(
+            "Sí, trabajamos con OSDE 😊",
+            "Consulta, cubre osde cierto? No debo abonar algo adicional",
+            "PRÓXIMO TURNO: jueves 23/07 10:00",
+        ),
+        lambda out: "coseguro" in out.lower() and "clínica" in out.lower(),
+    ),
+    (
+        "mención-coseguro: oferta de slots a OSDE sin nombrar el coseguro → agrega la línea (fallo v3 os-osde-coseguro)",
+        lambda: candado_mencion_coseguro(
+            "Con OSDE, te paso las opciones:\n1️⃣ Miércoles 19/08 — 10:00 hs\n2️⃣ Jueves 20/08 — 11:15 hs\nCuál te queda mejor?",
+            "Hola, soy Paula. Necesito un turno de limpieza. Tengo OSDE.",
+            "Lead nuevo.",
+        ),
+        lambda out: "coseguro" in out.lower(),
+    ),
+    (
+        "mención-coseguro: valor particular pedido con OSDE → agrega la comparación (fallo v3 os-pregunta-particular)",
+        lambda: candado_mencion_coseguro(
+            "Sí, con OSDE te lo confirmo: la consulta particular tiene un valor de $60.000.",
+            "tengo OSDE pero decime cuánto es particular",
+            "",
+        ),
+        lambda out: "coseguro" in out.lower(),
+    ),
+    (
+        "mención-coseguro: recurrente que recibe oferta NO se toca (regla Myriam: coseguro recién al confirmar)",
+        lambda: candado_mencion_coseguro(
+            "1️⃣ Martes 10:00 hs\n2️⃣ Miércoles 11:15 hs",
+            "quiero un turno",
+            "HISTORIAL: Paciente recurrente. Obra Social registrada: OSDE.",
+        ),
+        lambda out: "coseguro" not in out.lower(),
+    ),
+    (
+        "mención-coseguro: ya nombra el coseguro → NO duplica",
+        lambda: candado_mencion_coseguro(
+            "Con OSDE hay un coseguro que te confirman en la clínica 😊\n1️⃣ Martes 10:00 hs",
+            "tengo OSDE, quiero turno",
+            "",
+        ),
+        lambda out: out.lower().count("coseguro") == 1,
+    ),
+    (
+        "mención-coseguro: paciente sin OS nombrada NO se toca",
+        lambda: candado_mencion_coseguro(
+            "1️⃣ Martes 10:00 hs\n2️⃣ Miércoles 11:15 hs",
+            "quiero un turno para limpieza",
+            "Lead nuevo.",
+        ),
+        lambda out: "coseguro" not in out.lower(),
+    ),
+    # ------------------- candado ENCUADRE VALOR -------------------
+    (
+        "encuadre-valor: da el valor sin explicar qué incluye → agrega el encuadre (fallo v3 os-pregunta-particular)",
+        lambda: candado_encuadre_valor(
+            "Sí, con OSDE te lo confirmo: la consulta particular tiene un valor de $60.000.\nSi querés, te paso opciones 😊",
+            "tengo OSDE pero decime cuánto es particular",
+        ),
+        lambda out: "evalúa tu caso" in out.lower() or "diagnóstico" in out.lower(),
+    ),
+    (
+        "encuadre-valor: queja de precio sin defensa del contenido → agrega el encuadre (fallo v3 edge-enojado)",
+        lambda: candado_encuadre_valor(
+            "Entiendo que te parezca una inversión importante.\nSi querés, te ayudo a coordinar un turno de evaluación.",
+            "¿60 mil la consulta? Eso es un robo, es muy caro para una consulta.",
+        ),
+        lambda out: "diagnóstico" in out.lower(),
+    ),
+    (
+        "encuadre-valor: la plantilla completa ('evalúa tu caso') NO se toca",
+        lambda: candado_encuadre_valor(
+            "La consulta de evaluación tiene un valor de $60.000. Ahí la doctora evalúa tu caso y te orienta.",
+            "cuánto sale?",
+        ),
+        lambda out: "diagnóstico" not in out.lower(),
+    ),
+    (
+        "encuadre-valor: respuesta sin valor ni queja NO se toca",
+        lambda: candado_encuadre_valor("¿Contás con alguna obra social o te atenderías de forma particular?", "quiero un turno"),
+        lambda out: "diagnóstico" not in out.lower(),
+    ),
+    # ------------------- gate A1 compartido -------------------
+    (
+        "gate-A1: cobertura no resuelta → gate completo con la línea multi-pregunta (fallo v3 edge-triple)",
+        lambda: iny_gate_cobertura(False, False),
+        lambda out: out is not None and "COBERTURA NO RESUELTA" in out and "otras preguntas" in out.lower(),
+    ),
+    (
+        "gate-A1: cobertura conocida y sin menor → NO inyecta",
+        lambda: iny_gate_cobertura(False, True),
+        lambda out: out is None,
+    ),
+    (
+        "gate-A1: menor con cobertura del interlocutor conocida → inyecta igual (la del MENOR no se sabe)",
+        lambda: iny_gate_cobertura(True, True),
+        lambda out: out is not None and "HIJO/A MENOR" in out,
     ),
 ]
 

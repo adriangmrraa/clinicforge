@@ -94,16 +94,21 @@ def iny_multi_persona(last_user: str) -> str | None:
     )
 
 
+_QUEJA_PRECIO_PAT = re.compile(
+    r"es (?:un|una) (?:robo|locura|estafa|barbaridad)"
+    r"|(?:es|me parece|qu[eé]|re|muy|super|tan) car[oa]\b|car[íi]sim[oa]"
+    r"|no puede (?:ser|salir) (?:tan caro|eso)|es mucho para una consulta"
+    r"|no pienso pagar eso|una fortuna"
+)
+
+
+def queja_precio_matchea(texto: str) -> bool:
+    return bool(_QUEJA_PRECIO_PAT.search((texto or "").lower()))
+
+
 def iny_queja_precio(last_user: str) -> str | None:
     """Queja del precio → defender el VALOR con calidez, sin disculpas ni descuentos."""
-    t = (last_user or "").lower()
-    if not re.search(
-        r"es (?:un|una) (?:robo|locura|estafa|barbaridad)"
-        r"|(?:es|me parece|qu[eé]|re|muy|super|tan) car[oa]\b|car[íi]sim[oa]"
-        r"|no puede (?:ser|salir) (?:tan caro|eso)|es mucho para una consulta"
-        r"|no pienso pagar eso|una fortuna",
-        t,
-    ):
+    if not queja_precio_matchea(last_user):
         return None
     return (
         "💬 EL PACIENTE SE QUEJA DEL PRECIO: NO pidas disculpas, NO regatees ni inventes descuentos, "
@@ -290,6 +295,36 @@ def iny_quiere_antes(os_name: str, delay_days: int, min_date: str) -> str | None
     )
 
 
+def iny_gate_cobertura(minor_booking: bool, cov_conocida: bool) -> str | None:
+    """Gate A1 de cobertura (texto único compartido prod/banco, extraído de
+    buffer_task 2026-07-20 + línea multi-pregunta del caso edge-triple): con
+    cobertura NO resuelta, primero se pregunta la cobertura y el VALOR no sale —
+    pero las OTRAS preguntas del mensaje (horarios, dirección) se responden ya."""
+    if not (minor_booking or not cov_conocida):
+        return None
+    return (
+        "⛔ COBERTURA NO RESUELTA: no sabés si la persona que se atiende es particular o tiene "
+        "obra social. "
+        + (
+            "⚠️ Estás agendando para un HIJO/A MENOR: la 'Obra Social registrada' del contexto es "
+            "la del INTERLOCUTOR (quien escribe), NO la del menor — preguntá la cobertura DEL MENOR "
+            "y NO le apliques a él el coseguro de la OS del interlocutor. "
+            if minor_booking
+            else ""
+        )
+        + "Si pide turno/precio y TODAVÍA no sabés su cobertura (ni 'particular' ni una OS nombrada "
+        "en el chat), tu PRIMER movimiento es preguntar '¿Contás con alguna obra social o te "
+        "atenderías de forma particular?'. ⛔ PROHIBIDO la plantilla 'la consulta sería de forma "
+        "particular / te damos el comprobante para el reintegro' Y TAMBIÉN dar el VALOR/monto de "
+        "la consulta (ni '$60.000' ni ningún número) hasta que (a) diga EXPLÍCITAMENTE "
+        "que es particular, o (b) nombre una OS y la verifiques con check_insurance_coverage. "
+        "Y NUNCA des el valor si el paciente NO lo preguntó — pidió un turno, no un precio. "
+        "OJO: si el mensaje trae ADEMÁS otras preguntas (horarios de atención, dirección, si se "
+        "puede agendar), respondé ESAS directamente en la MISMA respuesta — solo el PRECIO espera "
+        "la respuesta de cobertura; no dejes al paciente sin sus otras respuestas."
+    )
+
+
 def aplicar_inyecciones(
     last_user: str,
     user_texts: list[str] | None = None,
@@ -409,3 +444,63 @@ def candado_multi_turno(response_text: str, fechas_futuras: list[str] | None) ->
             + " — ¿esos los dejamos o cancelo alguno? 😊"
         )
     return response_text.rstrip() + "\n" + pregunta
+
+
+# OS aceptadas CON coseguro del tenant 1 (nacido del banco, mismo precedente que
+# el set de rechazadas del candado reintegro). Swiss/Sancor/Prevención NO van acá
+# (rechazadas → candado reintegro); ISSN tampoco (bloque propio).
+_OS_CON_COSEGURO_PAT = re.compile(
+    r"(?i)\b(osde|galeno|ioma|osdepym|sosunc|osseg|jer[aá]rquicos|medif[eé]|omint|luis pasteur)\b"
+)
+
+
+def candado_mencion_coseguro(response_text: str, last_user: str, patient_context: str = "") -> str:
+    """MENCIÓN DEL COSEGURO (banco v3: os-osde-coseguro, post-confirmacion,
+    os-pregunta-particular): con OS que lleva coseguro, la respuesta que ofrece
+    turnos o da el valor particular — o que responde una pregunta directa de
+    'algo adicional' — debe nombrar el coseguro (sin monto). Aditivo, 1 línea.
+    A recurrentes NO se les agrega en la oferta (regla Myriam: el coseguro va en
+    una línea recién al confirmar) — solo si lo PREGUNTAN."""
+    if not response_text or re.search(r"(?i)coseguro", response_text):
+        return response_text
+    if re.search(r"(?i)\[[^\[\]]*silencio[^\[\]]*\]", response_text):
+        return response_text
+    _ctx = (patient_context or "").lower()
+    pregunta_directa = es_pregunta_monto_coseguro(last_user or "")
+    os_presente = bool(_OS_CON_COSEGURO_PAT.search(last_user or "")) or "obra social registrada" in _ctx
+    if pregunta_directa and (os_presente or re.search(r"(?i)trabajamos con", response_text)):
+        return (
+            response_text.rstrip()
+            + "\nSobre lo adicional: si tu plan tiene coseguro, te lo confirman en la clínica antes de atenderte — sin sorpresas 😊"
+        )
+    if os_presente and "paciente recurrente" not in _ctx:
+        oferta_o_valor = ("1️⃣" in response_text) or bool(
+            re.search(r"(?i)tiene un valor|particular tiene", response_text)
+        )
+        if oferta_o_valor:
+            return (
+                response_text.rstrip()
+                + "\nCon tu obra social, si corresponde un coseguro, te lo confirman en la clínica 😊"
+            )
+    return response_text
+
+
+def candado_encuadre_valor(response_text: str, last_user: str = "") -> str:
+    """ENCUADRE DEL VALOR (banco v3: edge-enojado, os-pregunta-particular): cuando
+    la respuesta da el valor de la consulta — o responde a una QUEJA de precio —
+    sin explicar qué incluye, se agrega el encuadre (evaluación + diagnóstico +
+    plan con presupuesto). Aditivo, 1 línea."""
+    if not response_text:
+        return response_text
+    if re.search(r"(?i)eval[uú]a (?:tu|su) caso|qu[eé] incluye|incluye la|diagn[oó]stico|plan de tratamiento", response_text):
+        return response_text
+    if re.search(r"(?i)\[[^\[\]]*silencio[^\[\]]*\]", response_text):
+        return response_text
+    da_valor = bool(re.search(r"(?i)tiene un valor de \$", response_text))
+    hay_queja = queja_precio_matchea(last_user)
+    if not (da_valor or hay_queja):
+        return response_text
+    return (
+        response_text.rstrip()
+        + "\nEn esa consulta la doctora evalúa tu caso completo, te da el diagnóstico y te arma el plan de tratamiento con su presupuesto — es lo que evita gastos de más después."
+    )
