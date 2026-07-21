@@ -861,3 +861,44 @@ def candado_issn_anti_ceder(response_text: str, patient_context: str = "", last_
     if _oferta_lineas:
         return _ISSN_ACLARA + "\n\n" + "\n".join(_oferta_lineas).strip()
     return _ISSN_ACLARA
+
+
+# Temas clínicos que requieren evaluación HUMANA — no un turno estándar del bot. Son
+# CATEGORÍAS (no casos puntuales): pediátrico complejo, malformaciones, condiciones
+# especiales, enfermedad sistémica grave. Pedido Carlos 21/07 (caso bebé con malformación
+# de paladar): "no podemos cubrir todas las boludeces que manda la gente — derivemos".
+_CLINICO_ESPECIAL_PAT = re.compile(
+    r"(?i)\b(beb[eé]s?|lactantes?|reci[eé]n nacid\w*|prematur\w*|neonat\w*|"
+    r"malformaci[oó]n\w*|paladar (?:hendido|fisurado|leporino)|labio leporino|fisura palatina|"
+    r"s[ií]ndrome de |condici[oó]n gen[eé]tica|"
+    r"(?:enfermedad|patolog[ií]a|tratamiento) (?:oncol[oó]g\w*|autoinmune)|"
+    r"quimioterapia|radioterapia|inmunodeprimid\w*|trasplant\w*)\b"
+)
+
+
+def candado_derivar_clinico_especial(response_text: str, last_user: str = "", tools_names=None) -> str:
+    """DERIVÁ ANTE LO CLÍNICO ESPECIAL (caso bebé prod 21/07; pedido Carlos: 'no podemos
+    cubrir todas las boludeces, derivemos'). Si el paciente introduce un tema que requiere
+    evaluación HUMANA — bebés/prematuros, malformaciones, síndromes, enfermedad sistémica
+    grave — y el bot NO está derivando (ni afirma capacidad ni agenda), se reemplaza la
+    respuesta por una derivación al equipo. El texto dice 'ya lo derivé', así que el guard
+    promesa-fantasma (posterior en la cadena) EJECUTA la derivación real (email + pendiente).
+    NO toca lo estándar (limpieza, extracción común, cobertura): solo las categorías del patrón."""
+    if not response_text:
+        return response_text
+    if re.search(r"(?i)\[[^\[\]]*silencio[^\[\]]*\]", response_text):
+        return response_text
+    if not _CLINICO_ESPECIAL_PAT.search(last_user or ""):
+        return response_text
+    # ¿el bot YA está derivando? no tocar (la derivación ya está en curso).
+    if "derivhumano" in (tools_names or []):
+        return response_text
+    if re.search(
+        r"(?i)(?:ya )?(?:lo )?deriv[eé]|el equipo (?:te contacta|lo revisa|te va a contactar)|pas[eé] tu caso",
+        response_text,
+    ):
+        return response_text
+    return (
+        "Este tipo de caso lo ve directamente el equipo para poder orientarte bien 😊\n"
+        "Ya lo derivé y te van a contactar a la brevedad."
+    )

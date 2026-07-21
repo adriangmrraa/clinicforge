@@ -402,6 +402,9 @@ async def main() -> int:
             answer = _c_issn(answer, c.get("patient_context", ""), c.get("user", ""))
             # ISSN anti-ceder (casos prod 21/07): el bot "dice que sí" ante "¿lo cubre?" → forzar particular+CIMO.
             answer = _c_issn_ac(answer, c.get("patient_context", ""), c.get("user", ""))
+            # Clínico especial (caso bebé prod 21/07): temas que requieren evaluación humana → derivar.
+            from services.inyecciones_frescas import candado_derivar_clinico_especial as _c_ce
+            answer = _c_ce(answer, c.get("user", ""), _tool_names_turn)
             answer = _c_cimo(answer)
             answer = _c_dsc(answer, _tool_names_turn)
             answer = _c_mencos(answer, c.get("user", ""), c.get("patient_context", ""))

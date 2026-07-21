@@ -16,6 +16,7 @@ from services.inyecciones_frescas import (
     candado_avance,
     candado_compactar_cimo,
     candado_coseguro_frio,
+    candado_derivar_clinico_especial,
     candado_issn_anti_ceder,
     candado_issn_no_deriva,
     candado_encuadre_valor,
@@ -741,6 +742,48 @@ CASOS = [
             "Obra Social registrada: OSDE", "trabajan con osde?",
         ),
         lambda out: out == "Sí, trabajamos con OSDE.",
+    ),
+    # ------------------- clínico especial: derivar ante lo que requiere evaluación humana -------------------
+    (
+        "clínico-especial: '¿atienden bebés?' → deriva (no afirma la capacidad inventada)",
+        lambda: candado_derivar_clinico_especial(
+            "Sí, atendemos bebés y también pacientes pediátricos.",
+            "quisiera saber si trabaja con bebés?", [],
+        ),
+        lambda out: "atendemos bebés" not in out and "derivé" in out.lower(),
+    ),
+    (
+        "clínico-especial: 'mi bebé tiene malformación en el paladar' → deriva",
+        lambda: candado_derivar_clinico_especial(
+            "Te podemos ayudar con eso, ¿qué día te viene bien? 😊",
+            "Mi bebé tiene una malformación en el paladar sin hundimiento de labios",
+            [],
+        ),
+        lambda out: "derivé" in out.lower(),
+    ),
+    (
+        "clínico-especial: turno normal de limpieza → NO deriva (no es tema especial)",
+        lambda: candado_derivar_clinico_especial(
+            "Te paso opciones para tu limpieza:\n1️⃣ Lunes 20/07 — 10:00 hs",
+            "quiero una limpieza dental", [],
+        ),
+        lambda out: "derivé" not in out.lower() and "1️⃣" in out,
+    ),
+    (
+        "clínico-especial: el bot YA llamó derivhumano → NO toca",
+        lambda: candado_derivar_clinico_especial(
+            "Ya derivé tu consulta sobre el bebé al equipo.",
+            "atienden bebés?", ["derivhumano"],
+        ),
+        lambda out: out == "Ya derivé tu consulta sobre el bebé al equipo.",
+    ),
+    (
+        "clínico-especial: enfermedad oncológica (quimioterapia) → deriva",
+        lambda: candado_derivar_clinico_especial(
+            "Claro, te agendo un turno normal 😊",
+            "estoy en quimioterapia, puedo hacerme una extracción?", [],
+        ),
+        lambda out: "derivé" in out.lower(),
     ),
 ]
 

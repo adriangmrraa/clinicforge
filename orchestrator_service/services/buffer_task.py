@@ -5520,6 +5520,28 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
     except Exception as _issn_err:
         logger.warning(f"candado-issn skipped (non-fatal): {_issn_err}")
 
+    # --- CANDADO: DERIVÁ ANTE LO CLÍNICO ESPECIAL (caso bebé prod 21/07, pedido Carlos) ---
+    # Temas que requieren evaluación HUMANA (bebés, prematuros, malformaciones, síndromes,
+    # enfermedad sistémica grave) → el bot NO afirma capacidad ni agenda: deriva. El texto
+    # dice "ya lo derivé", así que el guard promesa-fantasma (más abajo) ejecuta la
+    # derivación real (email + pendiente). NO toca lo estándar (limpieza, extracción común).
+    try:
+        from services.inyecciones_frescas import candado_derivar_clinico_especial as _ce_fn
+
+        try:
+            _ce_tools = list(_tools_names)
+        except NameError:
+            _ce_tools = []
+        _ce_last = "\n".join(str(m) for m in (messages or []))
+        _ce_pre = response_text
+        response_text = _ce_fn(response_text, _ce_last, _ce_tools)
+        if _ce_pre != response_text:
+            logger.warning(
+                f"🔒 CANDADO CLÍNICO ESPECIAL: tema que requiere evaluación humana → derivé al equipo para {external_user_id}"
+            )
+    except Exception as _ce_err:
+        logger.warning(f"candado-clinico-especial skipped (non-fatal): {_ce_err}")
+
     # --- CANDADO: bloque ISSN→CIMO en UN globito (caso real de pruebas 2026-07-20) ---
     try:
         from services.inyecciones_frescas import candado_compactar_cimo as _cc_fn
