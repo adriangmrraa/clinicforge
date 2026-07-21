@@ -4723,6 +4723,40 @@ async def book_appointment(
             "('particular', 'obra social') ni una afirmación ('dale', 'buenísimo') como si fuera el nombre."
         )
 
+    # 🛡️ GUARD DE NOMBRE (2) — OBRA SOCIAL usada como nombre (caso Cin/prod 2026-07-21):
+    # el LLM agendó con "Sancor Salud" (el nombre de la OBRA SOCIAL) como nombre del
+    # paciente. El guard de arriba no lo cazó porque _NON_NAME_WORDS solo tiene palabras
+    # genéricas ("particular", "obra social"), no las OS concretas del tenant. Acá
+    # comparamos el nombre contra las obras sociales ACTIVAS del tenant con match EXACTO
+    # case-insensitive (nada de fuzzy → cero riesgo de rechazar el apellido real de un
+    # paciente). Si coincide, pedimos el nombre de verdad. Determinista.
+    try:
+        _os_rows = await db.pool.fetch(
+            "SELECT provider_name FROM tenant_insurance_providers "
+            "WHERE tenant_id = $1 AND is_active = true",
+            tenant_id,
+        )
+        _os_names = {
+            (r["provider_name"] or "").strip().lower()
+            for r in _os_rows
+            if r["provider_name"]
+        }
+        _full_name_check = f"{_fn_check} {_ln_check}".strip()
+        if _os_names and (_full_name_check in _os_names or _fn_check in _os_names):
+            logger.warning(
+                f"📅 BOOK NAME-GUARD (OS): first_name={first_name!r} last_name={last_name!r} "
+                f"coincide con una obra social del tenant — no es un nombre real. Rechazando el agendado."
+            )
+            return (
+                "❌ Todavía no tengo el nombre real del paciente (parece que usé el nombre de la "
+                "OBRA SOCIAL como si fuera el nombre). Pedile amablemente su NOMBRE Y APELLIDO "
+                "antes de agendar — la obra social/cobertura NO es el nombre del paciente."
+            )
+    except Exception as _os_guard_err:
+        logger.warning(
+            f"📅 BOOK NAME-GUARD (OS): no se pudo verificar contra obras sociales (no fatal): {_os_guard_err}"
+        )
+
     # Patient context: if linked or resolved, use existing patient record
     _ctx_patient_id = get_patient_id_by_context()
     if _ctx_patient_id:
