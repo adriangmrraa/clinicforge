@@ -147,6 +147,16 @@ def upgrade():
             "{{hora_turno}}. Si no lo confirmás, liberamos el lugar. ¿Venís?"
         )
 
+        # DEGRADACIÓN DEFENSIVA (hallazgo del preview de prod, tenant 25 Dentalogic):
+        # si el tenant NO tiene plantilla HSM configurada (template_name NULL/vacío),
+        # un 'send_template' sin plantilla es un paso ROTO (no puede enviar nada). Lo
+        # pasamos a 'send_text' con el mensaje default. Así ningún tenant queda con un
+        # paso inejecutable, aunque hoy su playbook esté inactivo y no corra.
+        if r_action == "send_template" and not (r_tname and str(r_tname).strip()):
+            r_action = "send_text"
+        if a_action == "send_template" and not (a_tname and str(a_tname).strip()):
+            a_action = "send_text"
+
         # Reset de los pasos del 🛡️
         conn.execute(sa.text("DELETE FROM automation_steps WHERE playbook_id = :pid"), {"pid": pb_id})
 
