@@ -47,9 +47,15 @@ depends_on = None
 _RULES = json.dumps([
     {
         "name": "cancelar",
+        # Negaciones AMPLIAS: el matching es por substring y "confirmado" tiene
+        # "asistiré"/"cuenten conmigo" — sin estas variantes, "no asistiré" caería en
+        # confirmado. Cubrimos las formas negadas de las keywords de confirmación.
         "keywords": [
-            "no puedo", "no voy", "no asisto", "no llego", "no podre", "no podré",
-            "no confirmo", "no me sirve", "cancelar", "cancelo", "cancela el turno",
+            "no puedo", "no voy", "no asisto", "no asistire", "no asistiré",
+            "no asistira", "no asistiran", "no llego", "no ire", "no iré",
+            "no podre", "no podré", "no confirmo", "no cuenten", "no me sirve",
+            "no voy a ir", "no voy a asistir", "no cuento", "no lo confirmo",
+            "cancelar", "cancelo", "cancela el turno", "no asistiremos",
         ],
         "action": "abort",
     },
@@ -85,10 +91,13 @@ def _jsonb(v, default="{}"):
 def _insert_step(conn, pid, **kw):
     cols = ["playbook_id"] + list(kw.keys())
     vals = [":playbook_id"] + [f":{k}" for k in kw.keys()]
-    # castear los JSONB
+    # Castear los JSONB con CAST(:x AS jsonb). OJO: el sufijo ":x::jsonb" ROMPE el
+    # parser de binds de SQLAlchemy 2.0 — deja de reconocer el parámetro y manda ":x"
+    # literal a Postgres → "syntax error at or near ':'" → aborta alembic upgrade head
+    # → el orchestrator NO arranca. CAST(:x AS jsonb) sí conserva el bind.
     for i, c in enumerate(cols):
         if c in ("template_vars", "response_rules"):
-            vals[i] = vals[i] + "::jsonb"
+            vals[i] = f"CAST({vals[i]} AS jsonb)"
     sql = f"INSERT INTO automation_steps ({', '.join(cols)}) VALUES ({', '.join(vals)})"
     params = {"playbook_id": pid, **kw}
     conn.execute(sa.text(sql), params)
