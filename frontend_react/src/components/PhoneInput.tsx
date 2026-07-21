@@ -39,7 +39,17 @@ export default function PhoneInput({
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     // Solo permitir dígitos
-    const digits = e.target.value.replace(/\D/g, '');
+    let digits = e.target.value.replace(/\D/g, '');
+    // Si el usuario pegó el número ya con el prefijo incluido (copiado de
+    // WhatsApp, ej "+5493704868421" o "543704868421"), sacárselo antes de
+    // concatenar. El badge ya aporta el prefijo → si no, quedaría "549549…".
+    if (digits.startsWith(prefixDigits)) {
+      digits = digits.slice(prefixDigits.length);
+    } else if (prefixDigits.startsWith('54') && digits.startsWith('54')) {
+      // Pegó el país "54" sin el 9 de celular. Ningún código de área argentino
+      // empieza con 54, así que es prefijo pegado → sacarlo.
+      digits = digits.slice(2);
+    }
     onChange(prefix + digits);
   };
 

@@ -15,8 +15,10 @@ from services.inyecciones_frescas import (
     aplicar_inyecciones,
     candado_avance,
     candado_compactar_cimo,
+    candado_confirmacion_datos,
     candado_coseguro_frio,
     candado_derivar_clinico_especial,
+    candado_saludo_pregunta,
     candado_issn_anti_ceder,
     candado_issn_no_deriva,
     candado_encuadre_valor,
@@ -784,6 +786,53 @@ CASOS = [
             "estoy en quimioterapia, puedo hacerme una extracción?", [],
         ),
         lambda out: "derivé" in out.lower(),
+    ),
+    # --- Globitos: saludo + pregunta (caso Lucas 21/07) ---
+    (
+        "globitos saludo+pregunta: junta en 1 (sin doble salto)",
+        lambda: candado_saludo_pregunta(
+            "Hola 😊 Soy Paula, del equipo de Clínica Dra. Laura Delgado.\n\n"
+            "¿Contás con alguna obra social o te atenderías de forma particular?"
+        ),
+        lambda out: "\n\n" not in out and "obra social" in out.lower(),
+    ),
+    (
+        "globitos saludo+pregunta: con oferta de turnos (1️⃣) → NO toca",
+        lambda: candado_saludo_pregunta(
+            "Soy Paula del equipo 😊\n\n1️⃣ Lunes 20/07 — 10:00 hs\n\n¿Cuál te queda mejor?"
+        ),
+        lambda out: "\n\n" in out,
+    ),
+    (
+        "globitos saludo+pregunta: sin saludo de apertura → NO toca",
+        lambda: candado_saludo_pregunta(
+            "Con OSDE puede haber coseguro.\n\n¿Te paso turnos?"
+        ),
+        lambda out: "\n\n" in out,
+    ),
+    # --- Globitos: confirmación de reserva + pedido de datos (caso Lucas 21/07) ---
+    (
+        "globitos confirmación+datos: junta en 1",
+        lambda: candado_confirmacion_datos(
+            "Perfecto, ya quedó reservado el horario de las 10:00 del viernes 14/08.\n\n"
+            "Para dejarte el turno agendado necesito tu nombre, apellido y DNI."
+        ),
+        lambda out: "\n\n" not in out and "dni" in out.lower(),
+    ),
+    (
+        "globitos confirmación+datos: cierre con seña/anamnesis → NO toca",
+        lambda: candado_confirmacion_datos(
+            "Ya reservé tu turno del 14/08.\n\n"
+            "Para confirmarlo, la seña se transfiere al alias clinica.lau y te paso la ficha de anamnesis."
+        ),
+        lambda out: "\n\n" in out,
+    ),
+    (
+        "globitos confirmación+datos: solo confirma (sin pedir datos) → NO toca",
+        lambda: candado_confirmacion_datos(
+            "Perfecto, ya quedó reservado el horario.\n\n¡Te esperamos! 😊"
+        ),
+        lambda out: "\n\n" in out,
     ),
 ]
 

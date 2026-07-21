@@ -5453,6 +5453,27 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
     except Exception as _of_err:
         logger.warning(f"candado-oferta skipped (non-fatal): {_of_err}")
 
+    # --- CANDADO: CONSOLIDAR GLOBITOS (saludo+pregunta, confirmación+datos) ---
+    # Pedido Carlos 21/07 (Meta cobra por mensaje desde octubre, caso Lucas: 5 globitos
+    # en una charla). El saludo de apertura + la pregunta de avance, y la confirmación de
+    # reserva + el pedido de datos, salían en 2 globitos cada par. Estos 2 candados los
+    # juntan en 1 (colapsan \n\n → \n). No tocan ofertas (1️⃣) ni cierres (seña/anamnesis).
+    try:
+        from services.inyecciones_frescas import (
+            candado_confirmacion_datos as _cd_glob_fn,
+            candado_saludo_pregunta as _sp_glob_fn,
+        )
+
+        _glob_pre = response_text
+        response_text = _sp_glob_fn(response_text)
+        response_text = _cd_glob_fn(response_text)
+        if _glob_pre != response_text:
+            logger.warning(
+                f"🔒 CANDADO GLOBITOS: junté saludo+pregunta / confirmación+datos en 1 globito para {external_user_id}"
+            )
+    except Exception as _glob_err:
+        logger.warning(f"candado-globitos skipped (non-fatal): {_glob_err}")
+
     # --- CANDADO: coseguro NO es solo 'en efectivo' (caso Lucas) ---
     # El bot a veces inventa que el coseguro "se abona en efectivo" — el prompt NO lo dice
     # (el coseguro se puede pagar en efectivo O por transferencia). Ampliamos la frase para

@@ -902,3 +902,47 @@ def candado_derivar_clinico_especial(response_text: str, last_user: str = "", to
         "Este tipo de caso lo ve directamente el equipo para poder orientarte bien 😊\n"
         "Ya lo derivé y te van a contactar a la brevedad."
     )
+
+
+def candado_saludo_pregunta(response_text: str) -> str:
+    """CONSOLIDAR GLOBITOS (pedido Carlos 21/07 — Meta cobra por mensaje desde octubre):
+    el saludo de apertura de Paula ('Soy Paula, del equipo…') + la pregunta de avance
+    (obra social / tipo de consulta) salían en 2 globitos por el doble salto. Los junta
+    en 1 (colapsa \\n\\n → \\n = mismo globito). Solo actúa si es un saludo de apertura y
+    hay una pregunta; NO toca ofertas de turnos (1️⃣) ni cierres (seña/anamnesis).
+    Determinista, defensivo: ante cualquier duda deja el texto como estaba."""
+    if not response_text or "\n\n" not in response_text:
+        return response_text
+    rt = response_text
+    if not re.search(r"(?i)soy paula|del equipo de", rt):
+        return response_text
+    if "?" not in rt and "¿" not in rt:
+        return response_text
+    # No tocar ofertas de turnos ni cierres (tienen su propio candado)
+    if re.search(r"(?i)1️⃣|alias|cbu|anamnesis|ficha m[eé]dica", rt):
+        return response_text
+    return re.sub(r"\n\s*\n", "\n", rt).strip()
+
+
+def candado_confirmacion_datos(response_text: str) -> str:
+    """CONSOLIDAR GLOBITOS (pedido Carlos 21/07): la confirmación de la reserva del
+    horario + el pedido de datos (nombre/apellido/DNI) salían en 2 globitos. Los junta
+    en 1 (colapsa \\n\\n → \\n). Solo actúa cuando están AMBAS partes; NO toca cierres con
+    seña/anamnesis (esos tienen su propio candado de 2 globitos). Determinista, defensivo."""
+    if not response_text or "\n\n" not in response_text:
+        return response_text
+    rt = response_text
+    _reserva = re.search(
+        r"(?i)qued[óo] reservad|reserv[ée] (?:el|tu) (?:horario|turno)|te reserv[ée]|ya (?:te )?reserv",
+        rt,
+    )
+    _pide_datos = re.search(
+        r"(?i)(?:necesito|dejame|pas[aá]me|decime)[^.\n]{0,30}(?:nombre|apellido|dni|documento)"
+        r"|nombre[^.\n]{0,20}(?:apellido|dni|documento)",
+        rt,
+    )
+    if not (_reserva and _pide_datos):
+        return response_text
+    if re.search(r"(?i)alias|cbu|anamnesis", rt):
+        return response_text
+    return re.sub(r"\n\s*\n", "\n", rt).strip()
