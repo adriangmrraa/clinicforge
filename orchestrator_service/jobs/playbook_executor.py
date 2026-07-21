@@ -1148,6 +1148,35 @@ async def _handle_response_timeout(pool, execution: dict):
     playbook_id = execution["playbook_id"]
     current_order = execution["current_step_order"]
 
+    # 🛡️ CANDADO ANTI-FUGA (Escudo Anti-Ausencias): si el turno asociado ya está
+    # CONFIRMADO o CANCELADO, cortamos el flujo — NO mandamos 2º aviso ni aviso a la Dra.
+    # Cubre el hueco del BOTÓN "Confirmar asistencia": el intercept (chat_webhooks) cambia
+    # el estado del turno pero NO frena la execution del playbook, así que sin este candado
+    # el 2º aviso llegaría igual a quien ya confirmó (y peor, se avisaría "no confirmó" a la
+    # Dra). También cubre la confirmación/cancelación MANUAL desde el panel o Nova. El
+    # candado vive acá (punto único de avance por timeout) para no depender de cada vía de
+    # confirmación. Determinista.
+    _apt_id = execution.get("appointment_id")
+    if _apt_id:
+        try:
+            _apt_status = await pool.fetchval(
+                "SELECT status FROM appointments WHERE id::text = $1 AND tenant_id = $2",
+                str(_apt_id), execution["tenant_id"],
+            )
+            if _apt_status in ("confirmed", "cancelled"):
+                logger.info(
+                    f"🛡️ Execution {exec_id}: turno {_apt_id} ya está '{_apt_status}' — "
+                    f"corto el flujo, no mando más avisos (anti-fuga confirmar-por-botón)."
+                )
+                await _complete_execution(
+                    pool, exec_id, "completed", pause_reason=f"appointment_{_apt_status}"
+                )
+                return
+        except Exception as _antifuga_err:
+            logger.warning(
+                f"🛡️ anti-fuga guard no pudo verificar el turno (no fatal): {_antifuga_err}"
+            )
+
     step = await pool.fetchrow(
         "SELECT * FROM automation_steps WHERE playbook_id = $1 AND step_order = $2",
         playbook_id, current_order,
