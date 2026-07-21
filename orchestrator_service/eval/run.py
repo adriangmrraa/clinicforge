@@ -409,12 +409,14 @@ async def main() -> int:
                 answer = _c_multiturno(answer, _f2())
             # Salida del quiere-antes: misma activación que buffer_task (la inyección
             # quiere-antes disparó este turno → la oferta debe recordar la vía particular).
+            _qa_disparo_eval = False
             if _os_delayed_param:
                 from services.inyecciones_frescas import (
                     candado_quiere_antes_salida as _c_qas,
                     quiere_antes_matchea as _qam,
                 )
                 if _qam(c.get("user", "")):
+                    _qa_disparo_eval = True
                     answer = _c_qas(answer)
             # Legibilidad (casos manuales 1/3/6/7/8 del 2026-07-20) — mismo orden que buffer_task:
             # coseguro-frío → particular-incoherente → formato (el formato SIEMPRE al final).
@@ -424,7 +426,10 @@ async def main() -> int:
                 candado_particular_incoherente as _c_pinc,
             )
             answer = _c_cfrio(answer)
-            answer = _c_pinc(answer)
+            # Conflicto K vs J: si el quiere-antes disparó, NO borrar la línea de la vía
+            # particular que _c_qas agregó a propósito (espejo de buffer_task).
+            if not _qa_disparo_eval:
+                answer = _c_pinc(answer)
             answer = _c_fmt(answer)
             if _pre_candado != answer:
                 print(f"    [candados] la cadena recortó/reagrupó ({len(_pre_candado)}->{len(answer)} chars)")

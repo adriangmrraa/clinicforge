@@ -671,9 +671,12 @@ def candado_coseguro_frio(response_text: str) -> str:
     Determinista: solo reemplaza esa frase, no toca el resto."""
     if not response_text:
         return response_text
+    # v2 (verificación 2026-07-21): se QUITÓ 'número' de la alternancia — era ambiguo
+    # ("no te doy un número de teléfono" se convertía en el mensaje de precio). Solo
+    # monto/valor/cifra, que son inequívocamente monetarios.
     pat = re.compile(
-        r"(?i)(?:no te (?:paso|doy|digo) (?:un |el |una )?(?:monto|valor|cifra|n[uú]mero)"
-        r"|no (?:puedo|podemos) (?:pasarte|darte|decirte) (?:el |un |una )?(?:monto|valor|cifra|n[uú]mero))"
+        r"(?i)(?:no te (?:paso|doy|digo) (?:un |el |una )?(?:monto|valor|cifra)"
+        r"|no (?:puedo|podemos) (?:pasarte|darte|decirte) (?:el |un |una )?(?:monto|valor|cifra))"
         r"[^.\n]*"
     )
     if not pat.search(response_text):

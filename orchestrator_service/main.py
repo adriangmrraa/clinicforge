@@ -2297,9 +2297,22 @@ async def check_availability(
                     # agendar (booking_targets en convstate) → este check_availability
                     # es para ESA persona, no un duplicado del turno propio. El gate
                     # no debe exigir "señales de reprogramación" para dejarlo pasar.
+                    # Regresión cazada por verificación 2026-07-21: el target 'self' por
+                    # defecto queda status='pending' para siempre en el SoloEngine
+                    # (mark_target_booked solo corre en el motor multi) → _bt_pend era NO
+                    # vacío para CASI TODO paciente con turno, neutralizando el gate y
+                    # reabriendo el loop de Luis. Se restringe a terceros/menores REALES:
+                    # NO 'self' Y con identidad (is_minor o nombre o dni presentes).
                     _bt_pend = [
                         t for t in (_ca_state.get("booking_targets") or [])
-                        if isinstance(t, dict) and str(t.get("status", "")).lower() in ("pending", "collecting")
+                        if isinstance(t, dict)
+                        and str(t.get("status", "")).lower() in ("pending", "collecting")
+                        and str(t.get("type", "")).lower() != "self"
+                        and (
+                            t.get("is_minor")
+                            or str(t.get("first_name") or t.get("name") or "").strip()
+                            or str(t.get("dni") or "").strip()
+                        )
                     ]
                     # AG-03 fix: stems con \w* (sin \b final) para que matcheen las
                     # palabras reales. Antes 'reprogram|cancel|reagend...)\b' NUNCA
@@ -2316,7 +2329,8 @@ async def check_availability(
                         r'no llego|qu[ee] d[ii]a|para cuando|cuando puede|propon|lo que tengas|'
                         r'el que sea|vos decim|'
                         r'hij[oa]\b|menor\b|nen[ea]\b|beb[eé]\b|abuel[oa]\b|mam[aá]\b|pap[aá]\b|'
-                        r'esposo|esposa|herman[oa]\b|se atender[íi]a|ser[íi]a para|es para \w+|'
+                        r'esposo|esposa|herman[oa]\b|se atender[íi]a|'
+                        r'(?:es|ser[íi]a|para) (?:mi|su|un[a]?|el|la) (?:hij|nen|beb|menor|abuel|mam|pap|herman|espos)|'
                         r'lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo|'
                         r'ma[nñ]ana|tarde|noche|temprano|m[aa]s tarde|'
                         r'a las \d|a la (ma[nñ]ana|tarde|noche))'
@@ -3070,7 +3084,10 @@ async def check_availability(
                         ) or "")
                         if re.search(
                             r"(?i)particular|no tengo (?:obra|cobertura)|sin obra social|prepaga"
-                            r"|dolor|duele|urgen|emergencia|sangr|hinchad|golpe",
+                            r"|dolor|duele|urgen|emergencia|sangr|hinchad|golpe"
+                            # v2 (verificación 2026-07-21): sumar señales de urgencia que
+                            # triage_urgency SÍ trata como tal → no interrogar cobertura antes de contener.
+                            r"|se me (?:cay|romp|part)|perd[íi] un diente|diente (?:flojo|suelto)|avuls|molest",
                             _gate_msg,
                         ):
                             _gate_skip = True
@@ -5804,8 +5821,12 @@ async def book_appointment(
             "test", "prueba", "nn", "xx", "sin nombre", "no especificado",
             "abuela", "abuelo", "mama", "mamá", "papa", "papá", "madre", "padre",
             "hijo", "hija", "tia", "tía", "tio", "tío", "hermano", "hermana",
-            "esposa", "esposo", "señora", "senora", "señor", "senor", "amigo", "amiga",
-            "novia", "novio", "nena", "nene", "bebe", "bebé", "menor", "tambien", "también",
+            "esposa", "esposo", "señora", "senora", "señor", "senor",
+            "novia", "novio", "bebe", "bebé", "menor", "tambien", "también",
+            # v2 (verificación 2026-07-21): 'amigo/amiga' y 'nena/nene' se QUITARON —
+            # "Amigo" es apellido real y "Nena" nombre posible → descartarlos generaba
+            # un loop (FALTAN_DATOS al reenviar el apellido real). Los parentescos
+            # inequívocos (arriba) sí quedan.
         }
 
         def _cd_es_invento(_v) -> bool:
@@ -8762,7 +8783,11 @@ async def save_scheduling_constraint(
                     _msg_n,
                 ))
                 _dias_n = {d.replace("é", "e").replace("á", "a") for d in _dias}
-                if _positivo and not _negativo and _decl and (set(_decl) & _dias_n):
+                # v2 (verificación 2026-07-21): "puedo cualquier día MENOS el lunes" es
+                # EXCLUSIÓN, no limitación — invertir forzaría justo el día rechazado.
+                # Abortar la inversión ante menos/excepto/salvo/aparte de/fuera de.
+                _excl_neg = bool(re.search(r"\b(menos|excepto|salvo|aparte de|fuera de)\b", _msg_n))
+                if _positivo and not _negativo and not _excl_neg and _decl and (set(_decl) & _dias_n):
                     _comp = [d for d in _D7 if d not in _decl]
                     kwargs["exclude_days"] = _comp
                     kwargs["preferred_days"] = _decl
@@ -8863,7 +8888,11 @@ async def save_scheduling_constraint(
                     _msg_n,
                 ))
                 _dias_n = {d.replace("é", "e").replace("á", "a") for d in _dias}
-                if _positivo and not _negativo and _decl and (set(_decl) & _dias_n):
+                # v2 (verificación 2026-07-21): "puedo cualquier día MENOS el lunes" es
+                # EXCLUSIÓN, no limitación — invertir forzaría justo el día rechazado.
+                # Abortar la inversión ante menos/excepto/salvo/aparte de/fuera de.
+                _excl_neg = bool(re.search(r"\b(menos|excepto|salvo|aparte de|fuera de)\b", _msg_n))
+                if _positivo and not _negativo and not _excl_neg and _decl and (set(_decl) & _dias_n):
                     _comp = [d for d in _D7 if d not in _decl]
                     kwargs["exclude_days"] = _comp
                     kwargs["preferred_days"] = _decl

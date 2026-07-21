@@ -598,6 +598,11 @@ CASOS = [
         lambda: candado_coseguro_frio("El coseguro depende de tu plan y te lo confirman en la clínica 😊"),
         lambda out: out == "El coseguro depende de tu plan y te lo confirman en la clínica 😊",
     ),
+    (
+        "coseguro-frío v2 (regresión verif. 2026-07-21): 'no te doy un número de teléfono' → NO lo toca",
+        lambda: candado_coseguro_frio("No te doy un número de teléfono de la doctora, pero te ayudo por acá 😊"),
+        lambda out: out == "No te doy un número de teléfono de la doctora, pero te ayudo por acá 😊",
+    ),
     # ------------------- particular incoherente (casos 1/8 manuales) -------------------
     (
         "particular-incoherente: opciones DESPUÉS del plazo + venta de 'antes particular' → se recorta la venta",

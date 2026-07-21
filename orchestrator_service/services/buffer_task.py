@@ -2294,6 +2294,9 @@ async def process_buffer_task(
             "tambien", "también", "porfa", "favor", "porfavor", "urgente", "hoy", "mañana", "manana",
             "hijo", "hija", "nene", "nena", "bebe", "beba", "bebé", "menor", "mi", "su",
             "turno", "control", "consulta", "limpieza", "si", "no", "seria", "sería",
+            # v2 (verificación 2026-07-21): "el dni es 26637363" guardaba 'Dni Es' como
+            # nombre del menor → sumar los tokens de "documento" para que el fallback los filtre.
+            "dni", "documento", "número", "numero", "nro", "doc", "es",
         }
 
         try:
@@ -5624,7 +5627,12 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
 
         _leg_pre = response_text
         response_text = _cf_fn(response_text)
-        response_text = _pi_fn(response_text)
+        # CONFLICTO K vs J (verificación 2026-07-21): si el quiere-antes disparó, el
+        # candado_quiere_antes_salida YA agregó (a propósito) la línea de la vía
+        # particular — y particular_incoherente la borraría. En quiere-antes la vía
+        # particular SÍ es relevante (el paciente pidió atenderse antes) → se salta.
+        if not locals().get("_qa_disparo"):
+            response_text = _pi_fn(response_text)
         response_text = _fmt_fn(response_text)
         if _leg_pre != response_text:
             logger.warning(
