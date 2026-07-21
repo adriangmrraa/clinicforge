@@ -5488,6 +5488,24 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
     except Exception as _mc_err:
         logger.warning(f"candado-mencion-coseguro skipped (non-fatal): {_mc_err}")
 
+    # --- CANDADO: ISSN NO SE DERIVA — reconduce a turno particular (caso Griselda prod 2026-07-21) ---
+    # El prompt YA ordena "ISSN no se deriva, ofrecé turno particular" (main.py 14056-14059) pero
+    # el modelo igual derivó al equipo. Este candado hace determinista el rescate que Carlos hizo
+    # a mano: recorta la derivación errónea y ofrece la consulta particular con reintegro. Conserva
+    # la info de CIMO (correcta) y NO toca si el paciente pidió la cirugía maxilofacial o insiste.
+    try:
+        from services.inyecciones_frescas import candado_issn_no_deriva as _issn_fn
+
+        _issn_last = str(messages[-1] if messages else "")
+        _issn_pre = response_text
+        response_text = _issn_fn(response_text, patient_context or "", _issn_last)
+        if _issn_pre != response_text:
+            logger.warning(
+                f"🔒 CANDADO ISSN: reconduje la derivación errónea a turno particular para {external_user_id}"
+            )
+    except Exception as _issn_err:
+        logger.warning(f"candado-issn-no-deriva skipped (non-fatal): {_issn_err}")
+
     # --- CANDADO: bloque ISSN→CIMO en UN globito (caso real de pruebas 2026-07-20) ---
     try:
         from services.inyecciones_frescas import candado_compactar_cimo as _cc_fn

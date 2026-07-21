@@ -750,3 +750,53 @@ def candado_formato(response_text: str) -> str:
     paras = response_text.split("\n\n")
     nuevos = ["\n".join(_partir(l) for l in p.split("\n")) for p in paras]
     return "\n\n".join(nuevos)
+
+
+def candado_issn_no_deriva(response_text: str, patient_context: str = "", last_user: str = "") -> str:
+    """ISSN NO SE DERIVA — caso Griselda (prod 2026-07-21). El prompt YA ordena 4 veces
+    'con ISSN no derivar, ofrecé turno particular con reintegro' (main.py 14056-14059,
+    buffer_task 2494) pero el modelo igual derivó al equipo ('ya le pasé tu caso'). Este
+    candado hace determinista lo que Carlos hizo a mano: con ISSN activo, si la respuesta
+    promete DERIVAR al equipo SIN ofrecer el turno particular, y el paciente NO insiste en
+    cobertura ni pidió la cirugía maxilofacial en la clínica → se recorta la derivación y se
+    ofrece la consulta particular con reintegro. Conserva la info de CIMO (esa es correcta)."""
+    if not response_text:
+        return response_text
+    if re.search(r"(?i)\[[^\[\]]*silencio[^\[\]]*\]", response_text):
+        return response_text
+    _ctx = (patient_context or "").lower()
+    if not (re.search(r"\bissn\b", _ctx) or "instituto de seguridad" in _ctx):
+        return response_text
+    # ¿la respuesta deriva al equipo? (promesa-fantasma de handoff)
+    if not re.search(
+        r"(?i)(?:ya )?(?:le |te )?pas[eé] tu caso al equipo|elev[eé] tu caso"
+        r"|el equipo[^.\n]{0,30}(?:lo revis|te contact|te va a contactar)"
+        r"|para que (?:lo revisen|te contacten)",
+        response_text,
+    ):
+        return response_text
+    # Si YA ofrece el turno/consulta particular, no hace falta reconducir
+    if re.search(
+        r"(?i)consulta particular|evaluaci[oó]n particular|te paso turnos|te agendo"
+        r"|¿te paso|turno[^.\n]{0,20}particular|te busco (?:un )?turno",
+        response_text,
+    ):
+        return response_text
+    # Excepción: pidió la cirugía maxilofacial EN LA CLÍNICA o insiste en cobertura → dejar derivar
+    if re.search(
+        r"(?i)maxilofacial|insist|me lo cubr|tiene que cubrir|s[ií] o s[ií] por (?:la )?obra|exijo|reclamo",
+        last_user or "",
+    ):
+        return response_text
+    # Reconducir: recortar SOLO la frase de derivación (conserva CIMO + 'el resto es particular')
+    _nuevo = re.sub(
+        r"(?i)[^.\n]*(?:ya )?(?:le |te )?pas[eé] tu caso al equipo[^.\n]*[.\n]?", "", response_text)
+    _nuevo = re.sub(
+        r"(?i)[^.\n]*el equipo[^.\n]{0,30}(?:lo revis|te contact|te va a contactar)[^.\n]*[.\n]?", "", _nuevo)
+    _nuevo = re.sub(r"(?i)[^.\n]*para que (?:lo revisen|te contacten)[^.\n]*[.\n]?", "", _nuevo)
+    _nuevo = re.sub(r"\n{3,}", "\n\n", _nuevo).strip()
+    _oferta = (
+        "Con ISSN, cualquier tratamiento en el consultorio es particular 😊 ¿Te agendo una "
+        "consulta de evaluación? Después podés gestionar el reintegro con tu obra social."
+    )
+    return (_nuevo + "\n" + _oferta).strip() if _nuevo else _oferta

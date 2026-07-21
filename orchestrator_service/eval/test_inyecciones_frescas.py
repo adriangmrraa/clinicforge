@@ -16,6 +16,7 @@ from services.inyecciones_frescas import (
     candado_avance,
     candado_compactar_cimo,
     candado_coseguro_frio,
+    candado_issn_no_deriva,
     candado_encuadre_valor,
     candado_formato,
     candado_mencion_coseguro,
@@ -649,6 +650,50 @@ CASOS = [
         "quiere-antes-salida v2: la línea agregada es la versión amable (sin 'si preferís no esperar')",
         lambda: candado_quiere_antes_salida("Por tu cobertura, la primera fecha disponible es a partir del 09/08.\n1️⃣ Lunes 10/08 — 15:30 hs"),
         lambda out: "no esperar" not in out and "vía particular" in out and "elegís vos" in out,
+    ),
+    # ------------------- ISSN no se deriva (caso Griselda prod 2026-07-21) -------------------
+    (
+        "issn-no-deriva: Griselda (deriva al equipo sin ofrecer turno) → reconduce a consulta particular, conserva CIMO",
+        lambda: candado_issn_no_deriva(
+            "Para cirugía maxilofacial con ISSN, la atención se realiza a través de CIMO. Podés comunicarte al +54 9 299 329-4089.\n"
+            "Para otros tratamientos, la atención en el consultorio es particular. Ya le pasé tu caso al equipo para que lo revisen y te contacten.",
+            "Obra Social registrada: ISSN",
+            "No no, es otro tipo de cirugía.",
+        ),
+        lambda out: ("pasé tu caso al equipo" not in out and "consulta de evaluación" in out
+                     and "reintegro" in out and "CIMO" in out),
+    ),
+    (
+        "issn-no-deriva: la respuesta YA ofrece consulta particular → NO toca",
+        lambda: candado_issn_no_deriva(
+            "Con ISSN todo es particular en el consultorio. ¿Te agendo una consulta de evaluación? Después gestionás el reintegro.",
+            "ISSN", "dale",
+        ),
+        lambda out: out == "Con ISSN todo es particular en el consultorio. ¿Te agendo una consulta de evaluación? Después gestionás el reintegro.",
+    ),
+    (
+        "issn-no-deriva: paciente pidió la cirugía maxilofacial → NO reconduce (CIMO es correcto)",
+        lambda: candado_issn_no_deriva(
+            "Para la cirugía maxilofacial coordinás con CIMO al 299. Ya le pasé tu caso al equipo.",
+            "ISSN", "necesito la cirugía maxilofacial",
+        ),
+        lambda out: "pasé tu caso al equipo" in out,
+    ),
+    (
+        "issn-no-deriva: sin ISSN en el contexto → NO toca (otra OS deriva legítimamente)",
+        lambda: candado_issn_no_deriva(
+            "Ya le pasé tu caso al equipo para que te contacten.",
+            "Obra Social registrada: OSDE", "hola",
+        ),
+        lambda out: out == "Ya le pasé tu caso al equipo para que te contacten.",
+    ),
+    (
+        "issn-no-deriva: ISSN pero el paciente INSISTE en cobertura → deja derivar (regla de insistencia)",
+        lambda: candado_issn_no_deriva(
+            "Con ISSN es particular. Ya le pasé tu caso al equipo para que lo revisen.",
+            "ISSN", "insisto, la obra social me lo tiene que cubrir",
+        ),
+        lambda out: "pasé tu caso al equipo" in out,
     ),
 ]
 
