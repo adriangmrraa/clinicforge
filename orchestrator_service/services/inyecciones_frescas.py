@@ -803,3 +803,61 @@ def candado_issn_no_deriva(response_text: str, patient_context: str = "", last_u
         "consulta de evaluación? Después podés gestionar el reintegro con tu obra social."
     )
     return (_nuevo + "\n" + _oferta).strip() if _nuevo else _oferta
+
+
+# Aclaración ÚNICA y correcta para ISSN (misma que el mensaje predeterminado de la OS).
+_ISSN_ACLARA = (
+    "Con ISSN, la cirugía maxilofacial se coordina con CIMO 😊 El resto de los tratamientos "
+    "(consultas, coronas, limpieza, etc.) se atiende de forma PARTICULAR en el consultorio, y "
+    "te damos el comprobante para que gestiones el reintegro con tu obra social."
+)
+
+
+def candado_issn_anti_ceder(response_text: str, patient_context: str = "", last_user: str = "") -> str:
+    """ISSN ANTI-CEDER — casos prod 21/07 (4 chats). El paciente pregunta '¿lo cubre ISSN?'
+    / '¿trabajan con ISSN?' y el bot AFIRMA/insinúa cobertura ('sí, trabajamos con ISSN',
+    'la consulta se maneja según tu caso', 'se ve en la evaluación si corresponde') cuando la
+    respuesta correcta es SIEMPRE: cirugía maxilofacial→CIMO, el resto PARTICULAR+reintegro.
+    El prompt lo prohíbe (main.py 14058 'PROHIBIDO CEDER') pero el modelo cede → candado
+    determinista: detecta el ceder y reemplaza por la aclaración clara, preservando la oferta
+    de turnos si la había. NO toca si la respuesta ya aclara 'particular' sin afirmar cobertura."""
+    if not response_text:
+        return response_text
+    if re.search(r"(?i)\[[^\[\]]*silencio[^\[\]]*\]", response_text):
+        return response_text
+    _ctx = (patient_context or "").lower()
+    _lu = (last_user or "").lower()
+    _issn = bool(re.search(r"\bissn\b", _ctx)) or "instituto de seguridad" in _ctx or bool(re.search(r"\bissn\b", _lu))
+    if not _issn:
+        return response_text
+    # ¿la respuesta CEDE (afirma/insinúa cobertura ISSN o es evasiva sobre si cubre)?
+    _cede = bool(re.search(
+        r"(?i)trabajamos con issn"
+        r"|con issn (?:la consulta|el tratamiento|eso)"
+        r"|(?:la consulta|eso) se maneja seg[uú]n tu caso"
+        r"|se maneja seg[uú]n tu caso"
+        r"|(?:se (?:ve|define)|definici[oó]n)[^.\n]{0,30}(?:evaluaci|consulta)"
+        r"|si corresponde cobertura o no"
+        r"|no puedo confirmar\w*[^.\n]{0,45}sin (?:evaluar|ver)",
+        response_text,
+    ))
+    # Afirmación seca "Sí..." a una pregunta directa de cobertura del paciente.
+    if not _cede and re.match(r"(?i)\s*s[íi]\b", response_text) and re.search(
+        r"(?i)(?:lo|la|me) cubre|trabaj\w* con issn|cobertura|cubiert[oa]|coseguro", _lu
+    ):
+        _cede = True
+    if not _cede:
+        return response_text
+    # ¿ya está la aclaración correcta (dice 'particular') y NO afirma cobertura falsa? → dejar.
+    if re.search(r"(?i)particular", response_text) and not re.search(
+        r"(?i)trabajamos con issn|se maneja seg[uú]n tu caso|corresponde cobertura o no", response_text
+    ):
+        return response_text
+    # Preservar la oferta de turnos si la había; reemplazar la parte que cede por la aclaración.
+    _oferta_lineas = [
+        l for l in response_text.split("\n")
+        if re.search(r"[1-3]️⃣|🗓️|ℹ️|opciones disponibles|¿cu[aá]l te|te queda mejor|te viene mejor", l, re.I)
+    ]
+    if _oferta_lineas:
+        return _ISSN_ACLARA + "\n\n" + "\n".join(_oferta_lineas).strip()
+    return _ISSN_ACLARA

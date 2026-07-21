@@ -16,6 +16,7 @@ from services.inyecciones_frescas import (
     candado_avance,
     candado_compactar_cimo,
     candado_coseguro_frio,
+    candado_issn_anti_ceder,
     candado_issn_no_deriva,
     candado_encuadre_valor,
     candado_formato,
@@ -699,6 +700,47 @@ CASOS = [
             "ISSN", "insisto, la obra social me lo tiene que cubrir",
         ),
         lambda out: "pasé tu caso al equipo" in out,
+    ),
+    # ------------------- ISSN anti-ceder (casos prod 21/07: el bot "dice que sí") -------------------
+    (
+        "issn-anti-ceder: 'Sí, para la consulta odontológica trabajamos con ISSN' → forzar particular+CIMO",
+        lambda: candado_issn_anti_ceder(
+            "Sí, para la consulta odontológica trabajamos con ISSN.",
+            "Obra Social registrada: ISSN", "Lo cubre issn?",
+        ),
+        lambda out: "trabajamos con issn" not in out.lower() and "particular" in out.lower() and "CIMO" in out,
+    ),
+    (
+        "issn-anti-ceder: 'con ISSN la consulta se maneja según tu caso' → forzar aclaración",
+        lambda: candado_issn_anti_ceder(
+            "Sí, con ISSN la consulta se maneja según tu caso y en la clínica te confirman si corresponde coseguro 😊",
+            "ISSN", "La consulta la cubre issn?",
+        ),
+        lambda out: "se maneja según tu caso" not in out.lower() and "particular" in out.lower(),
+    ),
+    (
+        "issn-anti-ceder: preserva la oferta de turnos al reemplazar el ceder",
+        lambda: candado_issn_anti_ceder(
+            "Sí, para la consulta trabajamos con ISSN.\n\n1️⃣ Martes 28/07 — 18:30 hs\n2️⃣ Miércoles 29/07 — 10:45 hs\n¿Cuál te queda mejor?",
+            "ISSN", "la consulta la cubre?",
+        ),
+        lambda out: "particular" in out.lower() and "1️⃣" in out and "28/07" in out,
+    ),
+    (
+        "issn-anti-ceder: respuesta que YA dice 'de forma particular' → NO toca",
+        lambda: candado_issn_anti_ceder(
+            "La consulta con ISSN sería de forma particular 😊",
+            "ISSN", "la cubre?",
+        ),
+        lambda out: out == "La consulta con ISSN sería de forma particular 😊",
+    ),
+    (
+        "issn-anti-ceder: sin ISSN → NO toca (otra OS con convenio real puede decir 'sí trabajamos')",
+        lambda: candado_issn_anti_ceder(
+            "Sí, trabajamos con OSDE.",
+            "Obra Social registrada: OSDE", "trabajan con osde?",
+        ),
+        lambda out: out == "Sí, trabajamos con OSDE.",
     ),
 ]
 

@@ -397,8 +397,11 @@ async def main() -> int:
             from services.inyecciones_frescas import candado_compactar_cimo as _c_cimo
             from services.inyecciones_frescas import candado_dia_sin_consultar as _c_dsc
             from services.inyecciones_frescas import candado_issn_no_deriva as _c_issn
+            from services.inyecciones_frescas import candado_issn_anti_ceder as _c_issn_ac
             # ISSN no se deriva (caso Griselda): reconduce a turno particular ANTES de compactar CIMO.
             answer = _c_issn(answer, c.get("patient_context", ""), c.get("user", ""))
+            # ISSN anti-ceder (casos prod 21/07): el bot "dice que sí" ante "¿lo cubre?" → forzar particular+CIMO.
+            answer = _c_issn_ac(answer, c.get("patient_context", ""), c.get("user", ""))
             answer = _c_cimo(answer)
             answer = _c_dsc(answer, _tool_names_turn)
             answer = _c_mencos(answer, c.get("user", ""), c.get("patient_context", ""))
