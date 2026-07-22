@@ -27,6 +27,26 @@ def _get_vision_client() -> AsyncOpenAI:
         _aclient = AsyncOpenAI(api_key=api_key, base_url=base_url)
     return _aclient
 
+
+def _extract_pdf_text(local_path: str) -> Optional[str]:
+    """Extrae texto de un PDF con pypdf (determinístico, sin API de visión). Devuelve el
+    texto concatenado (hasta 10 páginas) o None si no hay texto legible / falla (típico de
+    un PDF escaneado, que cae al fallback de visión)."""
+    try:
+        from pypdf import PdfReader
+        reader = PdfReader(local_path)
+        parts = []
+        for page in reader.pages[:10]:
+            try:
+                parts.append(page.extract_text() or "")
+            except Exception:
+                pass
+        text = "\n".join(parts).strip()
+        return text or None
+    except Exception as e:
+        logger.warning(f"⚠️ pypdf text extraction failed: {e}")
+        return None
+
 # Límites para procesamiento de adjuntos
 MAX_IMAGES = 10
 MAX_PDFS = 5
@@ -230,11 +250,20 @@ async def analyze_pdf_url(pdf_url: str, tenant_id: int) -> Optional[str]:
                 )
                 return None
 
-            # 3. Leer y codificar en base64
+            # 2.5 PRIMARIO: extraer texto del PDF localmente (determinístico, sin API de visión).
+            # La mayoría de PDF de la clínica (comprobantes, informes, estudios) tienen texto →
+            # lo devolvemos directo. Confiable y sin costo de tokens de visión.
+            _pdf_text = _extract_pdf_text(local_path)
+            if _pdf_text and len(_pdf_text) >= 40:
+                logger.info(f"📄 PDF texto extraído localmente ({len(_pdf_text)} chars) — sin visión")
+                return f"[Contenido del PDF]\n{_pdf_text[:3000]}"
+
+            # 3. Leer y codificar en base64 (fallback visión 'file': PDF escaneado sin texto)
             with open(local_path, "rb") as pdf_file:
                 base64_pdf = base64.b64encode(pdf_file.read()).decode("utf-8")
 
-            # 4. Construir payload visión con mime type application/pdf
+            # 4. Construir payload visión con content-part 'file' (así OpenAI/OpenRouter
+            # leen PDFs de verdad; mandarlo como 'image_url' da 400 "Only image types are supported").
             vision_messages = [
                 {
                     "role": "user",
@@ -244,9 +273,10 @@ async def analyze_pdf_url(pdf_url: str, tenant_id: int) -> Optional[str]:
                             "text": "Actúa como un asistente dental experto. Describe este documento detalladamente con enfoque clínico. Detecta: 1) Tipo de documento (estudio, receta, presupuesto, informe médico, radiografía). 2) Información relevante como fechas, nombres, diagnósticos, tratamientos. 3) Sellos, firmas, logotipos de clínicas o profesionales. 4) Si es un comprobante de pago, indica banco, monto, fecha. Sé muy preciso y profesional.",
                         },
                         {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:application/pdf;base64,{base64_pdf}"
+                            "type": "file",
+                            "file": {
+                                "filename": "documento.pdf",
+                                "file_data": f"data:application/pdf;base64,{base64_pdf}",
                             },
                         },
                     ],
