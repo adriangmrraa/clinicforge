@@ -8,13 +8,16 @@ import json
 logger = logging.getLogger(__name__)
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+# Modelo de transcripción (reversible por env). Con prefijo 'proveedor/'
+# (ej. 'openai/whisper-1') va por OpenRouter; sin '/', por OpenAI directo.
+WHISPER_MODEL = os.getenv("WHISPER_MODEL", "whisper-1")
 
 async def transcribe_audio_url(url: str, tenant_id: int, conversation_id: str, external_user_id: str):
     """
     Downloads audio from url (or reads from local disk), transcribes it via Whisper, and updates chat_messages.
     """
-    if not OPENAI_API_KEY:
-        logger.warning("❌ OPENAI_API_KEY not set. Skipping transcription.")
+    if not os.getenv("OPENAI_API_KEY") and not os.getenv("OPENROUTER_API_KEY"):
+        logger.warning("❌ No AI API key set (OPENAI/OPENROUTER). Skipping transcription.")
         return
 
     original_url = url  # Preserve for DB lookup
@@ -68,14 +71,17 @@ async def transcribe_audio_url(url: str, tenant_id: int, conversation_id: str, e
         if "." not in filename:
             filename += ".ogg"
 
+        from core.aux_provider import resolve_aux_provider
+        api_key, base_url, provider = resolve_aux_provider(WHISPER_MODEL)
+
         files = {"file": (filename, audio_data)}
-        headers = {"Authorization": f"Bearer {OPENAI_API_KEY}"}
+        headers = {"Authorization": f"Bearer {api_key}"}
 
         async with httpx.AsyncClient(timeout=60.0) as client:
             whisper_resp = await client.post(
-                "https://api.openai.com/v1/audio/transcriptions",
+                f"{base_url}/audio/transcriptions",
                 headers=headers,
-                data={"model": "whisper-1"},
+                data={"model": WHISPER_MODEL},
                 files=files
             )
 
@@ -97,7 +103,7 @@ async def transcribe_audio_url(url: str, tenant_id: int, conversation_id: str, e
             est_tokens = max(int(audio_size_kb / 5), 10)
             from dashboard.token_tracker import track_service_usage
             from db import db as _db_ref
-            await track_service_usage(_db_ref.pool, tenant_id, "whisper-1", est_tokens, 0, source="whisper_transcription", phone=external_user_id)
+            await track_service_usage(_db_ref.pool, tenant_id, WHISPER_MODEL.split("/")[-1], est_tokens, 0, source="whisper_transcription", phone=external_user_id)
         except Exception:
             pass
 

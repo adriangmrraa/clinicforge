@@ -8,16 +8,22 @@ import urllib.parse
 
 logger = logging.getLogger(__name__)
 
-# Lazy client — avoids crash at import time when OPENAI_API_KEY is not yet set
+# Modelo de visión (reversible por env). Con prefijo 'proveedor/' (ej. 'openai/gpt-4o')
+# la llamada va por OpenRouter; sin '/', por OpenAI directo (comportamiento original).
+VISION_MODEL = os.getenv("VISION_MODEL", "gpt-4o")
+_VISION_MODEL_TRACK = VISION_MODEL.split("/")[-1]
+
+# Lazy client — avoids crash at import time when the API key is not yet set
 _aclient: Optional[AsyncOpenAI] = None
 
 def _get_vision_client() -> AsyncOpenAI:
     global _aclient
     if _aclient is None:
-        api_key = os.getenv("OPENAI_API_KEY")
+        from core.aux_provider import resolve_aux_provider
+        api_key, base_url, provider = resolve_aux_provider(VISION_MODEL)
         if not api_key:
-            raise RuntimeError("OPENAI_API_KEY not set — cannot use vision service")
-        _aclient = AsyncOpenAI(api_key=api_key)
+            raise RuntimeError(f"No API key for vision (provider={provider}) — cannot use vision service")
+        _aclient = AsyncOpenAI(api_key=api_key, base_url=base_url)
     return _aclient
 
 # Límites para procesamiento de adjuntos
@@ -135,7 +141,7 @@ async def analyze_image_url(image_url: str, tenant_id: int) -> Optional[str]:
 
         # Llamada a OpenAI GPT-4o ("gpt-4o" tiene capacidades visuales nativas)
         response = await _get_vision_client().chat.completions.create(
-            model="gpt-4o",
+            model=VISION_MODEL,
             messages=vision_messages,
             max_tokens=300,
         )
@@ -149,7 +155,7 @@ async def analyze_image_url(image_url: str, tenant_id: int) -> Optional[str]:
             if usage:
                 from dashboard.token_tracker import track_service_usage
                 from db import db as _db
-                await track_service_usage(_db.pool, tenant_id, "gpt-4o", usage.prompt_tokens, usage.completion_tokens, source="vision_image", phone="system")
+                await track_service_usage(_db.pool, tenant_id, _VISION_MODEL_TRACK, usage.prompt_tokens, usage.completion_tokens, source="vision_image", phone="system")
         except Exception:
             pass
 
@@ -264,7 +270,7 @@ async def analyze_pdf_url(pdf_url: str, tenant_id: int) -> Optional[str]:
 
         # Llamada a OpenAI GPT-4o ("gpt-4o" tiene capacidades visuales nativas)
         response = await _get_vision_client().chat.completions.create(
-            model="gpt-4o",
+            model=VISION_MODEL,
             messages=vision_messages,
             max_tokens=300,
         )
@@ -277,7 +283,7 @@ async def analyze_pdf_url(pdf_url: str, tenant_id: int) -> Optional[str]:
             if usage:
                 from dashboard.token_tracker import track_service_usage
                 from db import db as _db
-                await track_service_usage(_db.pool, tenant_id, "gpt-4o", usage.prompt_tokens, usage.completion_tokens, source="vision_pdf", phone="system")
+                await track_service_usage(_db.pool, tenant_id, _VISION_MODEL_TRACK, usage.prompt_tokens, usage.completion_tokens, source="vision_pdf", phone="system")
         except Exception:
             pass
 

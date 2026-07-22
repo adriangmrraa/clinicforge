@@ -449,19 +449,21 @@ async def _process_with_nova(
 async def _transcribe_audio(audio_bytes: bytes, filename: str = "voice.ogg", tenant_id: int = 0) -> str:
     """Transcribe audio bytes using OpenAI Whisper API. Returns transcribed text or None on error."""
     try:
-        client = _get_openai_client()
+        from core.aux_provider import get_aux_async_client
+        _wmodel = os.getenv("WHISPER_MODEL", "whisper-1")
+        client = get_aux_async_client(_wmodel)
 
         audio_file = io.BytesIO(audio_bytes)
         audio_file.name = filename
 
         transcript = await client.audio.transcriptions.create(
-            model="whisper-1",
+            model=_wmodel,
             file=audio_file,
         )
         # Whisper doesn't return token counts — track the call symbolically
         if tenant_id:
             asyncio.get_running_loop().create_task(_track_telegram_tokens(
-                tenant_id, "whisper-1", 0, 0, source="telegram_whisper"
+                tenant_id, _wmodel.split("/")[-1], 0, 0, source="telegram_whisper"
             ))
         return transcript.text
     except Exception as e:
@@ -476,7 +478,9 @@ async def _analyze_image_bytes(
     Analyze image bytes with GPT-4o vision.
     Returns {description, is_payment, is_medical}.
     """
-    client = _get_openai_client()
+    from core.aux_provider import get_aux_async_client
+    _vmodel = os.getenv("VISION_MODEL", "gpt-4o")
+    client = get_aux_async_client(_vmodel)
 
     b64 = base64.b64encode(image_bytes).decode()
     prompt_text = VISION_PROMPT
@@ -484,7 +488,7 @@ async def _analyze_image_bytes(
         prompt_text += f"\nCaption del usuario: {caption}"
 
     response = await client.chat.completions.create(
-        model="gpt-4o",
+        model=_vmodel,
         messages=[{
             "role": "user",
             "content": [
@@ -496,7 +500,7 @@ async def _analyze_image_bytes(
     )
     if tenant_id and response.usage:
         asyncio.get_running_loop().create_task(_track_telegram_tokens(
-            tenant_id, "gpt-4o",
+            tenant_id, _vmodel.split("/")[-1],
             response.usage.prompt_tokens,
             response.usage.completion_tokens,
             source="telegram_vision",
@@ -527,12 +531,14 @@ async def _analyze_pdf_bytes(pdf_bytes: bytes, filename: str = "document.pdf", t
     Returns a textual description of the document, or None on error.
     """
     try:
-        client = _get_openai_client()
+        from core.aux_provider import get_aux_async_client
+        _vmodel = os.getenv("VISION_MODEL", "gpt-4o")
+        client = get_aux_async_client(_vmodel)
 
         b64 = base64.b64encode(pdf_bytes).decode()
 
         response = await client.chat.completions.create(
-            model="gpt-4o",
+            model=_vmodel,
             messages=[{
                 "role": "user",
                 "content": [
