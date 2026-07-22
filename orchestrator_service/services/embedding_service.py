@@ -57,28 +57,36 @@ async def _get_config(key: str, default: str) -> str:
 
 
 async def generate_embedding(text: str) -> Optional[List[float]]:
-    """Generate embedding vector for a text string using OpenAI API."""
+    """Generate embedding vector for a text string.
+
+    Modelo: env EMBEDDING_MODEL → system_config MODEL_EMBEDDINGS → default.
+    Si el modelo lleva prefijo 'proveedor/' (ej. 'openai/text-embedding-3-small')
+    la llamada va por OpenRouter; si no, por OpenAI directo. Reversible por env.
+    IMPORTANTE: mantener el MISMO modelo de embeddings (text-embedding-3-small,
+    1536 dims) para no romper la compatibilidad con los vectores ya guardados.
+    """
     try:
-        import openai
-        api_key = os.getenv("OPENAI_API_KEY")
+        from core.aux_provider import resolve_aux_provider, get_aux_async_client, track_name
+
+        model = os.getenv("EMBEDDING_MODEL") or await _get_config("MODEL_EMBEDDINGS", DEFAULT_EMBEDDING_MODEL)
+        api_key, _base_url, provider = resolve_aux_provider(model)
         if not api_key:
-            logger.warning("OPENAI_API_KEY not set — cannot generate embeddings")
+            logger.warning(f"No API key for embeddings (provider={provider}) — cannot generate embeddings")
             return None
 
-        model = await _get_config("MODEL_EMBEDDINGS", DEFAULT_EMBEDDING_MODEL)
-        client = openai.AsyncOpenAI(api_key=api_key)
+        client = get_aux_async_client(model)
         response = await client.embeddings.create(
             input=text,
             model=model
         )
 
-        # Track embedding usage
+        # Track embedding usage (nombre pelado para que el pricing lo reconozca)
         try:
             usage = response.usage
             if usage:
                 from dashboard.token_tracker import track_service_usage
                 from db import db as _db
-                await track_service_usage(_db.pool, 0, model, usage.total_tokens, 0, source="rag_embedding", phone="system")
+                await track_service_usage(_db.pool, 0, track_name(model), usage.total_tokens, 0, source="rag_embedding", phone="system")
         except Exception:
             pass
 

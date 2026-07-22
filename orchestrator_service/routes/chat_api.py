@@ -981,11 +981,14 @@ async def transcribe_audio_upload(
 
     # 4. Llamar a Whisper sincrónicamente
     try:
+        from core.aux_provider import resolve_aux_provider
+        _wmodel = os.getenv("WHISPER_MODEL", "whisper-1")
+        _wkey, _wbase, _wprov = resolve_aux_provider(_wmodel)
         async with httpx.AsyncClient(timeout=60.0) as client:
             whisper_resp = await client.post(
-                "https://api.openai.com/v1/audio/transcriptions",
-                headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
-                data={"model": "whisper-1"},
+                f"{_wbase}/audio/transcriptions",
+                headers={"Authorization": f"Bearer {_wkey}"},
+                data={"model": _wmodel},
                 files={"file": (filename, audio_data)},
             )
             if whisper_resp.status_code != 200:

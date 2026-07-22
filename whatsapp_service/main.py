@@ -282,9 +282,9 @@ async def transcribe_audio(audio_url: str, correlation_id: str) -> Optional[str]
         )
         return None
 
-    if not OPENAI_API_KEY:
+    if not OPENAI_API_KEY and not os.getenv("OPENROUTER_API_KEY"):
         logger.error(
-            "missing_openai_api_key", note="Transcription requires OpenAI API key"
+            "missing_ai_api_key", note="Transcription requires OpenAI or OpenRouter API key"
         )
         return None
 
@@ -297,12 +297,20 @@ async def transcribe_audio(audio_url: str, correlation_id: str) -> Optional[str]
 
             # 2. Transcribe with Whisper
             files = {"file": ("audio.ogg", audio_data, "audio/ogg")}
-            v_openai = await get_config("OPENAI_API_KEY", OPENAI_API_KEY)
-            headers = {"Authorization": f"Bearer {v_openai}"}
-            data = {"model": "whisper-1"}
+            # Ruteo OpenRouter/OpenAI por nombre de modelo (reversible por env WHISPER_MODEL).
+            _wmodel = os.getenv("WHISPER_MODEL", "whisper-1")
+            _or_key = os.getenv("OPENROUTER_API_KEY", "")
+            if "/" in _wmodel and _or_key:
+                _wkey = _or_key
+                _wbase = "https://openrouter.ai/api/v1"
+            else:
+                _wkey = await get_config("OPENAI_API_KEY", OPENAI_API_KEY)
+                _wbase = "https://api.openai.com/v1"
+            headers = {"Authorization": f"Bearer {_wkey}"}
+            data = {"model": _wmodel}
 
             trans_res = await client.post(
-                "https://api.openai.com/v1/audio/transcriptions",
+                f"{_wbase}/audio/transcriptions",
                 headers=headers,
                 files=files,
                 data=data,
