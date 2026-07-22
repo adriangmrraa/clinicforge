@@ -2607,6 +2607,45 @@ async def process_buffer_task(
                 "7) Tono: como quien atiende a un cliente de años — cálido, directo y SIN interrogatorio."
             )
 
+        # P6 (caso 3-B Emanuel): "PACIENTE CONOCIDO" como señal de 1ª clase. La inyección de
+        # arriba exige "Paciente recurrente" (2+ turnos). Un paciente con FICHA (cobertura
+        # registrada: OS o particular) pero <2 turnos NO la dispara → el bot lo re-interroga
+        # (le re-pregunta OS, le pide datos que ya tiene). Ampliamos el reconocimiento SOLO en
+        # escenarios SEGUROS donde NO hace falta un interrogatorio clínico nuevo: registrado
+        # PARTICULAR, o el mensaje es de CONTINUIDAD o ESTÉTICA. Para un tratamiento NUEVO con
+        # OS (ej. ortodoncia) NO se amplía (ahí puede haber preguntas clínicas legítimas). Es
+        # mutuamente excluyente con la inyección recurrente (solo corre si NO es recurrente).
+        try:
+            _pc_recurrente = bool(patient_context) and "HISTORIAL: Paciente recurrente" in patient_context
+            if patient_context and not _pc_recurrente:
+                _pc_particular_ficha = "este paciente es PARTICULAR" in patient_context
+                _pc_os_ficha = "Obra Social registrada" in patient_context
+                _pc_conocido = _pc_particular_ficha or _pc_os_ficha
+                _pc_last = " ".join(messages).lower() if isinstance(messages, list) else str(messages or "").lower()
+                _pc_cont = any(
+                    w in _pc_last
+                    for w in ("a terminar", "terminar", "seguir con", "continuar", "en curso",
+                              "retomar", "seguimiento", "control")
+                )
+                _pc_estet = bool(re.search(
+                    r"(?i)\b(blanquea\w*|carilla\w*|dise[nñ]o de sonrisa|est[eé]tic\w*)\b", _pc_last
+                ))
+                if _pc_conocido and (_pc_particular_ficha or _pc_cont or _pc_estet):
+                    patient_context += (
+                        "\n⛔ PACIENTE CONOCIDO (ya tiene ficha: datos, cobertura e historial arriba): "
+                        "1) NO le re-pidas ni re-confirmes datos que YA figuran (nombre, DNI, cobertura): usalos. "
+                        "2) NO le des el VALOR de la consulta si no lo preguntó explícitamente. "
+                        "3) NO repitas opciones de turno ya ofrecidas: referite a ellas o confirmá la elegida. "
+                        "4) Resolvé DIRECTO lo que pide — continuidad/estética/particular no requieren re-interrogatorio "
+                        "de datos. Podés hacer las preguntas CLÍNICAS puntuales que el tratamiento requiera, pero SIN "
+                        "repetir el interrogatorio de datos ya cargados."
+                    )
+                    logger.info(
+                        f"⛔ P6: inyección PACIENTE CONOCIDO (no-recurrente, escenario seguro) para {external_user_id}"
+                    )
+        except Exception as _pc_err:
+            logger.warning(f"P6 paciente-conocido skipped (non-fatal): {_pc_err}")
+
         # Molestia/dolor (caso Luis, parte a): candado fresco para que el bot CONTENGA (F2) antes
         # de saltar a agendar/precio cuando el paciente reporta dolor/molestia. Fix D vive en el
         # prompt (lejano) y el mini lo dropea; la inyección fresca cercana tiene mucha más adherencia.
