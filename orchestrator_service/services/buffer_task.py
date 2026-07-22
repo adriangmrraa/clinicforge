@@ -5100,19 +5100,29 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                     _cq_last,
                 )
             ) or bool(re.search(r"\b(tengo|con|soy de)\s+(la\s+)?(obra social|prepaga)\b", _cq_last))
-            if _cq_named:
+            # P3 (caso 3 prod 22/07): estética = SIEMPRE particular → ninguna OS la cubre.
+            # No corresponde preguntar cobertura para blanqueamiento/carillas/diseño de sonrisa.
+            _cq_estetica = bool(re.search(
+                r"(?i)\b(blanquea\w*|carilla\w*|dise[nñ]o de sonrisa|est[eé]tic\w*)\b", _cq_last
+            ))
+            if _cq_named or _cq_estetica:
                 _cq_pre = response_text
                 response_text = re.sub(
                     r"(?im)^.*cont[aá]s con alguna obra social.*$\n?", "", response_text
                 ).strip()
                 response_text = re.sub(r"\n{3,}", "\n\n", response_text).strip()
                 if _cq_pre != response_text:
+                    _cq_motivo = "estética (siempre particular)" if (_cq_estetica and not _cq_named) else "cobertura ya nombrada"
                     logger.warning(
-                        f"🔒 CANDADO COBERTURA-CHAT: el paciente ya nombró su cobertura en el mensaje → "
-                        f"recorté la re-pregunta ({len(_cq_pre)}→{len(response_text)} chars) para {external_user_id}"
+                        f"🔒 CANDADO COBERTURA-CHAT ({_cq_motivo}): recorté la re-pregunta "
+                        f"({len(_cq_pre)}→{len(response_text)} chars) para {external_user_id}"
                     )
                 if not response_text:
-                    response_text = "Contame qué necesitás y te lo coordino 😊"
+                    response_text = (
+                        "Perfecto, eso se hace de forma particular 😊 ¿Te paso opciones de turno?"
+                        if (_cq_estetica and not _cq_named)
+                        else "Contame qué necesitás y te lo coordino 😊"
+                    )
     except Exception as _cq_err:
         logger.warning(f"candado-cobertura-chat skipped (non-fatal): {_cq_err}")
 
