@@ -5863,7 +5863,19 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                     "ayuda", "seguimos", "pendiente", "reprogram", "cancel", "cambia", "avisame", "avísame",
                 )
                 _has_action = any(w in _last_user for w in _action_words)
-                _looks_courtesy = (
+                # Un mensaje que es SOLO emojis/símbolos (😍 ❤️ 😊 😘 🥰 👌 …, sin letras
+                # ni dígitos ni "?") es SIEMPRE una reacción / cierre de cortesía — nunca una
+                # pregunta ni un pedido. El [SILENCIO] es correcto y NO es un misfire. Esto
+                # cubre CUALQUIER emoji sin depender de una lista fija (que siempre queda
+                # incompleta). Caso Graciela (prod 2026-07-22): confirmó y mandó "😍" → se
+                # marcaba falso 'Bot falló' porque 😍 no estaba en _pure_courtesy.
+                _stripped_user = _last_user.strip()
+                _only_symbols = (
+                    bool(_stripped_user)
+                    and not any(c.isalnum() for c in _stripped_user)
+                    and "?" not in _stripped_user
+                )
+                _looks_courtesy = _only_symbols or (
                     "?" not in _last_user
                     and len(_last_user.split()) <= 12
                     and not _has_action
