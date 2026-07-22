@@ -32,6 +32,9 @@ from eval.judge import judge_case
 DEFAULT_MODEL = os.getenv("DEFAULT_OPENAI_MODEL", "gpt-5.4-mini")
 DEEPSEEK_MODELS = {"deepseek-chat", "deepseek-reasoner"}
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
+# OpenRouter: una sola cuenta/key da acceso a TODOS los modelos (Claude, GPT, DeepSeek…).
+# Se reconocen por el prefijo "proveedor/modelo" (ej. "anthropic/claude-3.5-haiku").
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 # Precio aproximado por 1M de tokens (USD) — solo para estimar. Actualizar según tarifas.
 PRICE_PER_1M = {
@@ -64,6 +67,14 @@ async def _resolve_model(pool, tenant_id: int, override: str | None) -> dict:
             "model": model,
             "api_key": os.getenv("DEEPSEEK_API_KEY", "") or os.getenv("OPENAI_API_KEY", ""),
             "base_url": DEEPSEEK_BASE_URL,
+        }
+    # OpenRouter: modelos con proveedor adelante ("anthropic/…", "deepseek/…", "openai/…").
+    # Una sola key (OPENROUTER_API_KEY) enruta a cualquiera de ellos.
+    if "/" in model:
+        return {
+            "model": model,
+            "api_key": os.getenv("OPENROUTER_API_KEY", ""),
+            "base_url": OPENROUTER_BASE_URL,
         }
     return {"model": model, "api_key": os.getenv("OPENAI_API_KEY", ""), "base_url": None}
 
