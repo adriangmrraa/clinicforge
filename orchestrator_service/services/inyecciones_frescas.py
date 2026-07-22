@@ -842,14 +842,19 @@ def candado_issn_anti_ceder(response_text: str, patient_context: str = "", last_
         response_text,
     ))
     # Afirmación seca "Sí..." a una pregunta directa de cobertura del paciente.
-    if not _cede and re.match(r"(?i)\s*s[íi]\b", response_text) and re.search(
+    # (flag reutilizado en la escotilla de abajo: si ABRE con "Sí" a "¿me cubre?", ni siquiera
+    #  aclarar "particular" después alcanza — el "Sí" inicial ya engaña.)
+    _abre_si = bool(re.match(r"(?i)\s*s[íi]\b", response_text)) and bool(re.search(
         r"(?i)(?:lo|la|me) cubre|trabaj\w* con issn|cobertura|cubiert[oa]|coseguro", _lu
-    ):
+    ))
+    if not _cede and _abre_si:
         _cede = True
     if not _cede:
         return response_text
     # ¿ya está la aclaración correcta (dice 'particular') y NO afirma cobertura falsa? → dejar.
-    if re.search(r"(?i)particular", response_text) and not re.search(
+    # OJO (caso 1 prod 22/07): NO tomar este escape si la respuesta ABRE con "Sí" pelado a una
+    # pregunta de cobertura ("Sí, ... de forma particular") — el "Sí" inicial engaña igual.
+    if re.search(r"(?i)particular", response_text) and not _abre_si and not re.search(
         r"(?i)trabajamos con issn|se maneja seg[uú]n tu caso|corresponde cobertura o no", response_text
     ):
         return response_text
