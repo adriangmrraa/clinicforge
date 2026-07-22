@@ -5095,6 +5095,29 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
     except Exception as _oc_err:
         logger.warning(f"candado-salida-recurrente skipped (non-fatal): {_oc_err}")
 
+    # --- P5 (caso 2a): PERSISTIR "cobertura ya nombrada en la charla" ---
+    # El candado de abajo solo mira el turno ACTUAL. Si el paciente nombró su OS en un turno
+    # ANTERIOR, la re-pregunta se escapaba. Acá, en CUALQUIER turno donde el paciente nombra
+    # su OS o dice "particular", persistimos una marca (helper mark_insurance_asked, hasta hoy
+    # sin usar) para que un turno posterior sepa que la cobertura ya está dicha. Excepción:
+    # turnos de tercero/menor (su cobertura es una pregunta nueva, distinta al interlocutor).
+    try:
+        _p5_last = " ".join(messages).lower() if isinstance(messages, list) else str(messages or "").lower()
+        _p5_named = "particular" in _p5_last or bool(
+            re.search(
+                r"\b(osde|sancor|swiss|galeno|ioma|issn|osdepym|sosunc|osseg|jer[aá]rquicos|medif[eé]|omint|luis pasteur|prevenci[oó]n|apsot|mca|am[eé]rica|bancarios|siaco|credi.?gu[ií]a|federada|medicus|poder judicial)\b",
+                _p5_last,
+            )
+        ) or bool(re.search(r"\b(tengo|con|soy de)\s+(la\s+)?(obra social|prepaga)\b", _p5_last))
+        _p5_tercero = bool(patient_context) and (
+            "[INTERNAL_BOOKING_CONTEXT]" in patient_context or "HIJO/A MENOR" in patient_context
+        )
+        if _p5_named and not _p5_tercero:
+            from services.conversation_state import mark_insurance_asked as _mark_ins
+            await _mark_ins(tenant_id, external_user_id)
+    except Exception as _p5_err:
+        logger.warning(f"P5 persist cobertura-conocida skipped (non-fatal): {_p5_err}")
+
     # --- CANDADO: NO RE-PREGUNTAR LA COBERTURA DICHA EN EL CHAT (caso Sancor del banco) ---
     # El candado recurrente cubre la cobertura de FICHA; este cubre la dicha EN el turno:
     # si el paciente acaba de nombrar su OS o dijo "particular" en su mensaje, la pregunta
@@ -5113,14 +5136,41 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
             _cq_estetica = bool(re.search(
                 r"(?i)\b(blanquea\w*|carilla\w*|dise[nñ]o de sonrisa|est[eé]tic\w*)\b", _cq_last
             ))
-            if _cq_named or _cq_estetica:
+            # P5 (caso 2a): señal CROSS-TURNO — la cobertura ya se resolvió/nombró antes en
+            # ESTA charla (ficha con OS registrada, tool check_insurance_coverage, o la marca
+            # persistida arriba). Excepción: tercero/menor (cobertura propia, pregunta nueva).
+            _cq_tercero = bool(patient_context) and (
+                "[INTERNAL_BOOKING_CONTEXT]" in patient_context or "HIJO/A MENOR" in patient_context
+            )
+            _cq_cross_turn = False
+            if not _cq_tercero:
+                try:
+                    if patient_context and "Obra Social registrada" in patient_context:
+                        _cq_cross_turn = True
+                    else:
+                        from services.conversation_state import (
+                            get_insurance_resolved as _get_ins_res,
+                            has_insurance_been_asked as _has_ins_asked,
+                        )
+                        if await _get_ins_res(tenant_id, external_user_id):
+                            _cq_cross_turn = True
+                        elif await _has_ins_asked(tenant_id, external_user_id):
+                            _cq_cross_turn = True
+                except Exception as _cq_ct_err:
+                    logger.warning(f"cobertura-chat cross-turn check skipped: {_cq_ct_err}")
+            if _cq_named or _cq_estetica or _cq_cross_turn:
                 _cq_pre = response_text
                 response_text = re.sub(
                     r"(?im)^.*cont[aá]s con alguna obra social.*$\n?", "", response_text
                 ).strip()
                 response_text = re.sub(r"\n{3,}", "\n\n", response_text).strip()
                 if _cq_pre != response_text:
-                    _cq_motivo = "estética (siempre particular)" if (_cq_estetica and not _cq_named) else "cobertura ya nombrada"
+                    if _cq_estetica and not _cq_named and not _cq_cross_turn:
+                        _cq_motivo = "estética (siempre particular)"
+                    elif _cq_named:
+                        _cq_motivo = "cobertura ya nombrada (este turno)"
+                    else:
+                        _cq_motivo = "cobertura ya resuelta antes (cross-turno)"
                     logger.warning(
                         f"🔒 CANDADO COBERTURA-CHAT ({_cq_motivo}): recorté la re-pregunta "
                         f"({len(_cq_pre)}→{len(response_text)} chars) para {external_user_id}"
