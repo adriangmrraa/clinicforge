@@ -3149,7 +3149,7 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                 """
                 SELECT COUNT(*) FROM chat_messages
                 WHERE conversation_id = $1 AND tenant_id = $2
-                AND content_attributes::text LIKE '%image%'
+                AND (content_attributes::text LIKE '%image%' OR content_attributes::text LIKE '%application/pdf%')
                 AND content_attributes::text !~ '"description"\\s*:\\s*"'
                 AND created_at > NOW() - INTERVAL '30 seconds'
             """,
@@ -3166,7 +3166,7 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                         """
                         SELECT COUNT(*) FROM chat_messages
                         WHERE conversation_id = $1 AND tenant_id = $2
-                        AND content_attributes::text LIKE '%image%'
+                        AND (content_attributes::text LIKE '%image%' OR content_attributes::text LIKE '%application/pdf%')
                         AND content_attributes::text !~ '"description"\\s*:\\s*"'
                         AND created_at > NOW() - INTERVAL '30 seconds'
                     """,
