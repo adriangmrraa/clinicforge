@@ -342,6 +342,12 @@ current_tenant_id: ContextVar[int] = ContextVar("current_tenant_id", default=1)
 current_source_channel: ContextVar[Optional[str]] = ContextVar(
     "current_source_channel", default=None
 )
+# P4 (caso Rodrigo/prod): el mensaje CRUDO del turno actual del paciente. Lo setea
+# buffer_task ANTES de invocar al agente. book_appointment lo lee para el candado
+# DÍA-CONFIRMADO+HORA-DISTINTA (si el paciente pidió una hora y el LLM agenda otra).
+current_user_message: ContextVar[Optional[str]] = ContextVar(
+    "current_user_message", default=None
+)
 
 
 # ── Patient resolution helper for tools ──
@@ -4249,6 +4255,69 @@ async def check_availability(
         )
 
 
+def _extract_requested_hours(msg: Optional[str]) -> set:
+    """P4 (caso Rodrigo): extrae las HORAS (0-23) que el paciente pidió EXPLÍCITAMENTE
+    como horario de turno en su mensaje. CONSERVADOR: solo cuenta números con contexto
+    horario claro ('a las 16', '16 hs', '16:30', '4 de la tarde') para no confundir
+    DNI/fechas/números de opción. Devuelve un set de horas ENTERAS (ignora los minutos
+    a propósito, para no rechazar de más). Para horas ambiguas 1-11 SIN período explícito
+    agrega también h+12 (ej: 'a las 4' → {4,16}) → así el candado solo rechaza mismatches
+    groseros (pidió 16/17 y agenda 13), nunca una interpretación am/pm razonable.
+    """
+    if not msg:
+        return set()
+    m = msg.lower()
+    hours: set = set()
+
+    def _add(h_raw, period=None):
+        try:
+            h = int(h_raw)
+        except Exception:
+            return
+        if h < 0 or h > 23:
+            return
+        if period in ("tarde", "noche") and h < 12:
+            h += 12
+        elif period == "mediodia" and h < 12:
+            h = 12
+        if h > 23:
+            return
+        if period is None and 1 <= h <= 11:
+            # ambiguo am/pm → agrego ambas (dirección segura: menos rechazos)
+            hours.add(h)
+            hours.add(h + 12)
+        else:
+            hours.add(h)
+
+    def _tail_range(end_pos, period=None):
+        # rango adyacente: "16 o 17", "16 y 17", "16 a 17"
+        tail = m[end_pos:end_pos + 12]
+        mr = re.match(r"\s*(?:o|y|a)\s*(\d{1,2})\b", tail)
+        if mr:
+            _add(mr.group(1), period)
+
+    # 1) "a las 16", "a las 16:30", "a las 4 de la tarde", "a las 16 o 17"
+    for mt in re.finditer(
+        r"\ba\s+las?\s+(\d{1,2})(?::(\d{2}))?\s*(de la (tarde|mañana|noche)|del mediod[ií]a)?", m
+    ):
+        period = None
+        if mt.group(3):
+            period = "mediodia" if "mediod" in mt.group(3) else mt.group(4)
+        _add(mt.group(1), period)
+        _tail_range(mt.end(), period)
+
+    # 2) "16 hs", "16:30 hs", "16 horas", "16h" (sufijo horario explícito)
+    for mt in re.finditer(r"\b(\d{1,2})(?::(\d{2}))?\s*(?:hs|hrs|horas|hora|h)\b", m):
+        _add(mt.group(1))
+        _tail_range(mt.end())
+
+    # 3) "4 de la tarde", "10 de la mañana", "8 de la noche" (sin 'a las' ni 'hs')
+    for mt in re.finditer(r"\b(\d{1,2})(?::(\d{2}))?\s*de la (tarde|mañana|noche)\b", m):
+        _add(mt.group(1), mt.group(3))
+
+    return hours
+
+
 def _match_option_number(patient_text: str, offered_slots: list) -> Optional[int]:
     """
     Resuelve qué opción eligió el paciente según el texto.
@@ -4277,8 +4346,23 @@ def _match_option_number(patient_text: str, offered_slots: list) -> Optional[int
             if s.get("date") and date.fromisoformat(s["date"]).weekday() == day_num
         ]
         if len(matching) == 1:
-            logger.debug(f"_match_option_number R1 (day): text={patient_text!r} -> idx={matching[0][0]}")
-            return matching[0][0]
+            # P4 (caso Rodrigo): si además del día el paciente pidió una HORA explícita que
+            # NO es la del único slot de ese día, NO es un match limpio (confirma el día pero
+            # quiere otra hora). No devolver el slot viejo → dejar caer para re-verificar.
+            _req_h = _extract_requested_hours(text)
+            _slot_h = None
+            try:
+                _slot_h = int((matching[0][1].get("time") or "").split(":")[0])
+            except Exception:
+                _slot_h = None
+            if _req_h and _slot_h is not None and _slot_h not in _req_h:
+                logger.debug(
+                    f"_match_option_number R1 SKIP (día ok pero hora pedida {sorted(_req_h)} "
+                    f"!= slot {_slot_h}): text={patient_text!r}"
+                )
+            else:
+                logger.debug(f"_match_option_number R1 (day): text={patient_text!r} -> idx={matching[0][0]}")
+                return matching[0][0]
 
     # R2 - Día de semana + número de día (ej: "martes dos", "martes 2 de junio")
     if mentioned_days:
@@ -5142,6 +5226,36 @@ async def book_appointment(
         # No agendar en el pasado
         if apt_datetime < get_now_arg():
             return "❌ No se pueden agendar turnos para horarios que ya pasaron. Indicá un día y hora futuros. Formato esperado: date_time como 'día 17:00' (ej. miércoles 17:00)."
+
+        # 🛡️ CANDADO P4 (caso Rodrigo/prod 2026-07-22): DÍA-CONFIRMADO + HORA-DISTINTA.
+        # El paciente confirma un día ofrecido PERO en el mismo mensaje pide una HORA
+        # distinta a la ofrecida (ej: ofreciste "Miércoles 13:00" y dijo "el miércoles pero
+        # a las 16 o 17"). El LLM a veces agenda la hora vieja (13:00) ignorando la pedida.
+        # El validador R1 (slot_offer) NO lo caza porque 13:00 SÍ fue ofrecido. Acá
+        # comparamos la(s) hora(s) que pidió el paciente EN su mensaje contra la hora a
+        # agendar: si pidió hora(s) explícita(s) y NINGUNA coincide con apt_datetime → NO
+        # agendo, mando a re-verificar disponibilidad a la hora pedida. Determinista,
+        # fail-open (ante cualquier error deja pasar el agendado).
+        try:
+            _p4_raw = current_user_message.get()
+            _p4_req_hours = _extract_requested_hours(_p4_raw) if _p4_raw else set()
+            if _p4_req_hours and apt_datetime.hour not in _p4_req_hours:
+                _p4_req_str = " o ".join(f"{h:02d}:00" for h in sorted(_p4_req_hours) if h < 24)
+                _p4_first = f"{sorted(_p4_req_hours)[0]:02d}:00"
+                logger.warning(
+                    f"🔒 CANDADO P4 DÍA+HORA: el paciente pidió {sorted(_p4_req_hours)} pero se "
+                    f"iba a agendar {apt_datetime.strftime('%H:%M')} → rechazo y re-verifico ({chat_phone})"
+                )
+                return (
+                    f"❌ El paciente pidió el turno a las {_p4_req_str}, pero estás por agendar a las "
+                    f"{apt_datetime.strftime('%H:%M')} — esa NO es la hora que pidió. PROHIBIDO agendar esa hora. "
+                    f"Verificá disponibilidad en el día elegido a la hora pedida: llamá "
+                    f"check_availability(interpreted_date='{apt_datetime.strftime('%Y-%m-%d')}', "
+                    f"specific_time='{_p4_first}', search_mode='exact'). Si esa hora está ocupada, la tool te "
+                    f"devuelve alternativas cercanas para ofrecer — NO agendes sin que el paciente confirme la hora."
+                )
+        except Exception as _p4_err:
+            logger.warning(f"candado P4 día+hora skipped (non-fatal): {_p4_err}")
 
         # SEMÁFORO OS EN ESCRITURA: espejo del plazo de check_availability. Si la
         # cobertura tiene días de espera (ej. OSDE + 40), NO se puede RESERVAR antes
@@ -13840,10 +13954,12 @@ PASO 4: CONSULTAR DISPONIBILIDAD — Llamá 'check_availability' con treatment_n
   • Hora exacta mostrada: "a las 12:30" cuando 12:30 estaba EN las opciones mostradas
   • Día + hora: "martes a las 12:30" cuando esa combinación exacta estaba en las opciones
   • Día de semana (match único): "martes" cuando EXACTAMENTE UNA opción cae ese día
-  • Confirmación genérica: "dale", "sí", "ese", "agendame ahí", "va", "listo", "perfecto", "ese me va", "me queda bien" — SOLO cuando hay UNA opción mostrada o la referencia es inequívoca. Con 2+ opciones y confirmación genérica sin aclarar cuál: NO hay match todavía → preguntá UNA sola vez "¿El 1 o el 2?" (si reafirma sin aclarar, tomá la opción 1).
+  • Confirmación genérica: "dale", "sí", "ese", "agendame ahí", "va", "listo", "perfecto", "ese me va", "me queda bien" — SOLO cuando hay UNA opción mostrada o la referencia es inequívoca. Con 2+ opciones y confirmación genérica sin aclarar cuál: NO hay match todavía → preguntá UNA sola vez "¿El 1 o el 2?" (si reafirma sin aclarar, tomá la opción 1). ⚠️ Si la confirmación viene acompañada de OTRA hora ("dale pero a las 16", "el miércoles me sirve pero a las 17"), NO confirma el slot → aplicá "DÍA-CONFIRMADO + HORA-DISTINTA" (abajo).
   • Single-option + confirmación: solo 1 opción mostrada y paciente confirma
 
   ⚠️ NO-DISPARO (REGLA DE NO AUTO-CONFIRMACIÓN): Si el paciente propone o pide una hora o día que NO coincide exactamente con las opciones mostradas (ej: mostraste 13:00 y 13:45, y el paciente dice "a las 16 hs si tenés", "16 hs", "prefiero a la tarde", "tenés a las 10?", "se puede otro día?"), NO hay match. La Priority Gate NO se activa y queda ESTRICTAMENTE PROHIBIDO llamar a confirm_slot o book_appointment. Debés interpretar el mensaje como una nueva búsqueda de disponibilidad y llamar a check_availability.
+
+  ⚠️ DÍA-CONFIRMADO + HORA-DISTINTA (PRECEDENCIA — GANA LA HORA PEDIDA): si el paciente nombra/confirma un DÍA de las opciones PERO en el MISMO mensaje pide una HORA que NO es la ofrecida para ese día (ej: ofreciste "Miércoles 22/07 13:00" y dice "el miércoles me queda bien pero a las 16", "sí el miércoles pero a las 17", "dale, tenés 16 o 17?"), NO hay match: GANA la hora pedida. Las frases "me queda bien / dale / sí / perfecto / ese" NO cuentan como confirmación del slot si vienen acompañadas de OTRA hora. QUEDA PROHIBIDO confirm_slot/book_appointment con la opción vieja. Re-buscá en ESE día a la hora pedida: check_availability(interpreted_date=[fecha del día elegido], specific_time=[hora pedida, ej "16:00"], search_mode="exact"). Si pidió 2 horas ("16 o 17"), buscá la primera y ofrecé lo disponible.
 
   RESOLUCIÓN POR SLOT_INDEX (cuando el paciente elige opción numerada):
   • SIEMPRE usá slot_index=1 o slot_index=2 en confirm_slot y book_appointment.
