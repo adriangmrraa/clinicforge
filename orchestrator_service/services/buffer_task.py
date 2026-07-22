@@ -5278,29 +5278,56 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
             _gp_estetico = any(
                 k in _gp_last for k in ("carilla", "blanqueamiento", "diseño de sonrisa", "estetic", "estétic")
             )
-            # Fix caso Sancor (banco 2026-07-20): si el paciente NOMBRÓ su cobertura EN el
-            # mensaje, la cobertura se está resolviendo en este turno — el gate NO debe
-            # strippear el valor ni re-inyectar la pregunta (deshacía al candado
-            # cobertura-chat: un candado sacaba la pregunta y este la volvía a poner).
+            # Caso 2b (prod 2026-07-22): antes, si el paciente NOMBRABA cualquier OS en el
+            # mensaje se apagaba el gate entero → a un paciente CON convenio (ej. Sancor) se
+            # le escapaba el valor PARTICULAR de la consulta. Fix P2: separar en 2 baldes.
+            #   • OS FUERA de panel (Swiss/IOMA/OSDEPYM/Omint/Luis Pasteur/Prevención): la
+            #     atención SÍ es particular → el valor sale (lo encuadra el CANDADO REINTEGRO).
+            #   • OS CON convenio (Sancor, OSDE, Galeno, etc.): NO se da el valor particular →
+            #     el gate recorta el valor y anexa la línea de cobertura SIN cifra, sin
+            #     re-preguntar (el paciente ya nombró su OS).
+            # Mismo set "fuera de panel" que el CANDADO REINTEGRO (~5148) para no divergir.
             _gp_os_en_msg = bool(
                 re.search(
                     r"\b(osde|sancor|swiss|galeno|ioma|issn|osdepym|sosunc|osseg|jer[aá]rquicos|medif[eé]|omint|luis pasteur|prevenci[oó]n|apsot|mca|am[eé]rica|bancarios|siaco|credi.?gu[ií]a|federada|medicus|poder judicial)\b",
                     _gp_last,
                 )
             )
-            if (_gp_minor or not _gp_cov_resuelta) and not _gp_pidio_particular and not _gp_estetico and not _gp_os_en_msg:
+            _gp_os_fuera_panel = bool(
+                re.search(r"\b(swiss(?:\s+medical)?|ioma|osdepym|omint|luis pasteur|prevenci[oó]n)\b", _gp_last)
+            )
+            # nombró una OS CON convenio (no está fuera de panel) → no debe salir el particular
+            _gp_os_convenio = _gp_os_en_msg and not _gp_os_fuera_panel
+            if (_gp_minor or not _gp_cov_resuelta or _gp_os_convenio) and not _gp_pidio_particular and not _gp_estetico and not _gp_os_fuera_panel:
                 _gp_pre = response_text
                 response_text = re.sub(
                     r"(?is)la consulta de evaluaci[oó]n tiene un valor.*?presupuesto correspondiente\.?",
                     "", response_text,
                 ).strip()
                 response_text = re.sub(r"\n{3,}", "\n\n", response_text).strip()
-                if "obra social" not in response_text.lower():
+                _gp_stripped = (_gp_pre != response_text)
+                if _gp_os_convenio:
+                    # Nombró OS con convenio: NO re-preguntar. Si se recortó el valor, anexar
+                    # la línea canónica de cobertura (sin cifra, ver main.py:12061/12082).
+                    if _gp_stripped and not re.search(
+                        r"(?i)va con tu obra social|seg[uú]n tu plan|coseguro", response_text
+                    ):
+                        _gp_coseg = (
+                            "La consulta de evaluación va con tu obra social 😊 Si corresponde algún "
+                            "coseguro, se evalúa según tu plan y se confirma en la clínica el día del turno. "
+                            "¿Te paso opciones de turno?"
+                        )
+                        response_text = (
+                            (response_text.rstrip() + "\n" + _gp_coseg).strip()
+                            if response_text.strip() else _gp_coseg
+                        )
+                elif "obra social" not in response_text.lower():
                     _gp_q = "¿Contás con alguna obra social o te atenderías de forma particular?"
                     response_text = (response_text + "\n" + _gp_q).strip() if response_text else _gp_q
                 if _gp_pre != response_text:
                     logger.warning(
-                        f"🔒 CANDADO GATE-PRECIO: valor con cobertura no resuelta → recorté y pregunté cobertura "
+                        f"🔒 CANDADO GATE-PRECIO: valor sin cobertura resuelta → recorté"
+                        f"{' + línea cobertura (OS con convenio)' if _gp_os_convenio else ' y pregunté cobertura'} "
                         f"({len(_gp_pre)}→{len(response_text)} chars) para {external_user_id}"
                     )
     except Exception as _gp_err:
