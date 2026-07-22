@@ -449,8 +449,8 @@ async def _process_with_nova(
 async def _transcribe_audio(audio_bytes: bytes, filename: str = "voice.ogg", tenant_id: int = 0) -> str:
     """Transcribe audio bytes using OpenAI Whisper API. Returns transcribed text or None on error."""
     try:
-        from core.aux_provider import get_aux_async_client
-        _wmodel = os.getenv("WHISPER_MODEL", "whisper-1")
+        from core.aux_provider import get_aux_async_client, sanitize_aux_model
+        _wmodel = sanitize_aux_model(os.getenv("WHISPER_MODEL", "whisper-1"))
         client = get_aux_async_client(_wmodel)
 
         audio_file = io.BytesIO(audio_bytes)
@@ -478,8 +478,8 @@ async def _analyze_image_bytes(
     Analyze image bytes with GPT-4o vision.
     Returns {description, is_payment, is_medical}.
     """
-    from core.aux_provider import get_aux_async_client
-    _vmodel = os.getenv("VISION_MODEL", "gpt-4o")
+    from core.aux_provider import get_aux_async_client, sanitize_aux_model
+    _vmodel = sanitize_aux_model(os.getenv("VISION_MODEL", "gpt-4o"))
     client = get_aux_async_client(_vmodel)
 
     b64 = base64.b64encode(image_bytes).decode()
@@ -532,7 +532,7 @@ async def _analyze_pdf_bytes(pdf_bytes: bytes, filename: str = "document.pdf", t
     """
     try:
         from core.aux_provider import get_aux_async_client
-        _vmodel = os.getenv("VISION_MODEL", "gpt-4o")
+        _vmodel = "gpt-4o"  # PDFs SIEMPRE por OpenAI (OpenRouter usa otro formato para PDF)
         client = get_aux_async_client(_vmodel)
 
         b64 = base64.b64encode(pdf_bytes).decode()

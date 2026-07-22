@@ -10,7 +10,8 @@ logger = logging.getLogger(__name__)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 # Modelo de transcripción (reversible por env). Con prefijo 'proveedor/'
 # (ej. 'openai/whisper-1') va por OpenRouter; sin '/', por OpenAI directo.
-WHISPER_MODEL = os.getenv("WHISPER_MODEL", "whisper-1")
+from core.aux_provider import sanitize_aux_model
+WHISPER_MODEL = sanitize_aux_model(os.getenv("WHISPER_MODEL", "whisper-1"))
 
 async def transcribe_audio_url(url: str, tenant_id: int, conversation_id: str, external_user_id: str):
     """
