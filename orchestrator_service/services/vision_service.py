@@ -401,17 +401,41 @@ async def analyze_attachments_batch(
     return sorted_results
 
 
-async def process_vision_task(message_id: int, image_url: str, tenant_id: int):
+async def process_vision_task(message_id: int, image_url: str, tenant_id: int, is_document: bool = False):
     """
     Tarea de fondo (Background Task):
-    1. Analiza la imagen.
+    1. Analiza la imagen O el PDF/documento (despacho por tipo).
     2. Si tiene éxito, actualiza el mensaje en la DB agregando la descripción al attribute.
     """
     if not message_id:
         logger.warning("vision_task_skipped: no message_id provided")
         return
 
-    description = await analyze_image_url(image_url, tenant_id)
+    # Despacho por tipo: PDF/documento → analyze_pdf_url (lee el PDF de verdad);
+    # el resto → analyze_image_url. (Antes SIEMPRE iba a analyze_image_url, así que
+    # los PDF se mandaban como 'imagen JPEG' y nunca se leían.)
+    _clean_url = (image_url or "").split("?")[0].lower()
+    _is_pdf = is_document or _clean_url.endswith(".pdf")
+    if _is_pdf:
+        # analyze_pdf_url lee el archivo LOCAL; la tarea pudo agendarse con la URL remota,
+        # así que resolvemos el path local ya descargado desde la ficha del mensaje.
+        _analyze_url = image_url
+        try:
+            from db import get_pool as _get_pool_pdf
+            import json as _json_pdf
+            _r = await _get_pool_pdf().fetchrow(
+                "SELECT content_attributes FROM chat_messages WHERE id = $1", message_id
+            )
+            if _r and _r["content_attributes"]:
+                for _a in _json_pdf.loads(_r["content_attributes"]):
+                    if _a.get("original_url") == image_url or _a.get("url") == image_url:
+                        _analyze_url = _a.get("url") or image_url
+                        break
+        except Exception:
+            pass
+        description = await analyze_pdf_url(_analyze_url, tenant_id)
+    else:
+        description = await analyze_image_url(image_url, tenant_id)
     if not description:
         return
 

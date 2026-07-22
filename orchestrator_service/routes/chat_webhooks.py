@@ -744,7 +744,7 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                         )
                     except:
                         logger.warning("whisper_service not available")
-                elif m_item.type == MediaType.IMAGE:
+                elif m_item.type in (MediaType.IMAGE, MediaType.DOCUMENT):
                     try:
                         from services.vision_service import process_vision_task
 
@@ -753,6 +753,7 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                             message_id=msg_id,
                             image_url=m_item.url,
                             tenant_id=tenant_id,
+                            is_document=(m_item.type == MediaType.DOCUMENT),
                         )
                     except:
                         logger.warning("vision_service not available")

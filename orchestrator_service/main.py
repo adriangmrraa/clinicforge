@@ -15014,6 +15014,7 @@ async def chat_endpoint(
                             message_id=message_id,
                             image_url=att["url"],
                             tenant_id=tenant_id,
+                            is_document=(att_type == "document"),
                         )
                         logger.info(
                             f"👁️ Vision task queued for {att_type} (YCloud/API): {att['url']}"
