@@ -14430,9 +14430,23 @@ DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 # DeepSeek models use the same OpenAI-compatible API
 DEEPSEEK_MODELS = {"deepseek-chat", "deepseek-reasoner"}
 
+# OpenRouter: una sola cuenta/key da acceso a TODOS los modelos (Claude, GPT, DeepSeek…)
+# por una API OpenAI-compatible. Se reconocen por el prefijo "proveedor/modelo"
+# (ej. "anthropic/claude-3.5-haiku", "deepseek/deepseek-chat"). Si el modelo configurado
+# NO tiene "/", este bloque nunca se activa y el flujo OpenAI queda 100% intacto.
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+
+
+def _is_openrouter_model(model: str) -> bool:
+    """Un modelo de OpenRouter lleva el proveedor adelante: 'anthropic/…', 'deepseek/…'."""
+    return "/" in (model or "")
+
 
 def _resolve_provider(model: str):
     """Returns (api_key, base_url) based on model name."""
+    if _is_openrouter_model(model):
+        return OPENROUTER_API_KEY, OPENROUTER_BASE_URL
     if model in DEEPSEEK_MODELS:
         return DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL
     return OPENAI_API_KEY, None  # None = default OpenAI base URL
@@ -14445,7 +14459,14 @@ def get_agent_executable(
     model_str = (model or "").strip() or DEFAULT_OPENAI_MODEL
 
     # Auto-detect provider from model name
-    if model_str in DEEPSEEK_MODELS:
+    if _is_openrouter_model(model_str):
+        llm = ChatOpenAI(
+            model=model_str,
+            temperature=0,
+            api_key=OPENROUTER_API_KEY or key,
+            base_url=OPENROUTER_BASE_URL,
+        )
+    elif model_str in DEEPSEEK_MODELS:
         key = DEEPSEEK_API_KEY or key
         llm = ChatOpenAI(
             model=model_str,
@@ -14512,13 +14533,20 @@ async def get_agent_executable_for_tenant(tenant_id: int):
         )
         logger.warning(f"🤖 MODEL: Falling back to default: '{DEFAULT_OPENAI_MODEL}'")
 
-    # If DeepSeek model, override key
-    if model in DEEPSEEK_MODELS:
+    # Auto-detect provider and override key accordingly
+    if _is_openrouter_model(model):
+        key = OPENROUTER_API_KEY or key
+        logger.info("🤖 MODEL: OpenRouter detected, using OpenRouter API key")
+    elif model in DEEPSEEK_MODELS:
         key = DEEPSEEK_API_KEY
         logger.info(f"🤖 MODEL: DeepSeek detected, using DeepSeek API key")
 
+    _provider = (
+        "openrouter" if _is_openrouter_model(model)
+        else ("deepseek" if model in DEEPSEEK_MODELS else "openai")
+    )
     logger.info(
-        f"🤖 MODEL FINAL: tenant={tenant_id} model='{model}' provider={'deepseek' if model in DEEPSEEK_MODELS else 'openai'}"
+        f"🤖 MODEL FINAL: tenant={tenant_id} model='{model}' provider={_provider}"
     )
     return get_agent_executable(openai_api_key=key, model=model)
 

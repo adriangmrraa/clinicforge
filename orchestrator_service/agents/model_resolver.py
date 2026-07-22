@@ -32,6 +32,9 @@ logger = logging.getLogger(__name__)
 DEFAULT_OPENAI_MODEL = os.getenv("DEFAULT_OPENAI_MODEL", "gpt-5.4-mini")
 DEEPSEEK_MODELS = {"deepseek-chat", "deepseek-reasoner"}
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
+# OpenRouter: modelos con prefijo "proveedor/modelo" (ej. "anthropic/claude-3.5-haiku",
+# "deepseek/deepseek-chat"). Una sola OPENROUTER_API_KEY enruta a cualquier modelo.
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 
 async def resolve_tenant_model(tenant_id: int) -> dict[str, Any]:
@@ -103,7 +106,20 @@ async def resolve_tenant_model(tenant_id: int) -> dict[str, Any]:
             f"model_resolver: tenant={tenant_id} falling back to default '{DEFAULT_OPENAI_MODEL}'"
         )
 
-    # ---- 3. Auto-detect provider (OpenAI vs DeepSeek) ----
+    # ---- 3. Auto-detect provider (OpenAI / DeepSeek / OpenRouter) ----
+    if "/" in model:  # OpenRouter: modelo con prefijo "proveedor/modelo"
+        or_key = os.getenv("OPENROUTER_API_KEY", "")
+        if or_key:
+            api_key = or_key
+        logger.info(
+            f"model_resolver: tenant={tenant_id} OpenRouter detected, switching key+base_url"
+        )
+        return {
+            "model": model,
+            "api_key": api_key,
+            "base_url": OPENROUTER_BASE_URL,
+            "provider": "openrouter",
+        }
     if model in DEEPSEEK_MODELS:
         deepseek_key = os.getenv("DEEPSEEK_API_KEY", "")
         if deepseek_key:
