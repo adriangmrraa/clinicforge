@@ -50,3 +50,19 @@ def get_aux_async_client(model: str):
 def track_name(model: str) -> str:
     """Nombre 'pelado' del modelo para el tracker de costos (saca el prefijo 'proveedor/')."""
     return (model or "").split("/")[-1]
+
+
+def sanitize_aux_model(model: str) -> str:
+    """Blindaje anti-footgun: si el modelo lleva prefijo 'proveedor/' pero NO hay
+    OPENROUTER_API_KEY, saca el prefijo (así NO se manda un id con barra a la API
+    de OpenAI, que lo rechazaría con 404) y avisa por log. Con OPENROUTER_API_KEY
+    presente, o sin prefijo, devuelve el modelo tal cual."""
+    m = model or ""
+    if "/" in m and not os.getenv("OPENROUTER_API_KEY", ""):
+        import logging
+        logging.getLogger(__name__).warning(
+            f"aux_provider: modelo '{m}' con prefijo pero SIN OPENROUTER_API_KEY — "
+            f"uso OpenAI con el nombre pelado '{m.split('/')[-1]}'"
+        )
+        return m.split("/")[-1]
+    return m

@@ -66,9 +66,9 @@ async def generate_embedding(text: str) -> Optional[List[float]]:
     1536 dims) para no romper la compatibilidad con los vectores ya guardados.
     """
     try:
-        from core.aux_provider import resolve_aux_provider, get_aux_async_client, track_name
+        from core.aux_provider import resolve_aux_provider, get_aux_async_client, track_name, sanitize_aux_model
 
-        model = os.getenv("EMBEDDING_MODEL") or await _get_config("MODEL_EMBEDDINGS", DEFAULT_EMBEDDING_MODEL)
+        model = sanitize_aux_model(os.getenv("EMBEDDING_MODEL") or await _get_config("MODEL_EMBEDDINGS", DEFAULT_EMBEDDING_MODEL))
         api_key, _base_url, provider = resolve_aux_provider(model)
         if not api_key:
             logger.warning(f"No API key for embeddings (provider={provider}) — cannot generate embeddings")

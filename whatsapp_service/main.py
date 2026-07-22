@@ -306,6 +306,8 @@ async def transcribe_audio(audio_url: str, correlation_id: str) -> Optional[str]
             else:
                 _wkey = await get_config("OPENAI_API_KEY", OPENAI_API_KEY)
                 _wbase = "https://api.openai.com/v1"
+                if "/" in _wmodel:
+                    _wmodel = _wmodel.split("/")[-1]  # sin OpenRouter, OpenAI no entiende el prefijo
             headers = {"Authorization": f"Bearer {_wkey}"}
             data = {"model": _wmodel}
 

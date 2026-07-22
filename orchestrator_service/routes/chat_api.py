@@ -981,8 +981,8 @@ async def transcribe_audio_upload(
 
     # 4. Llamar a Whisper sincrónicamente
     try:
-        from core.aux_provider import resolve_aux_provider
-        _wmodel = os.getenv("WHISPER_MODEL", "whisper-1")
+        from core.aux_provider import resolve_aux_provider, sanitize_aux_model
+        _wmodel = sanitize_aux_model(os.getenv("WHISPER_MODEL", "whisper-1"))
         _wkey, _wbase, _wprov = resolve_aux_provider(_wmodel)
         async with httpx.AsyncClient(timeout=60.0) as client:
             whisper_resp = await client.post(
