@@ -1004,6 +1004,39 @@ async def _flag_agent_failure_and_alert(pool, tenant_id, conversation_id, phone,
         logger.warning(f"agent-failure: email fallo (non-blocking): {e}")
 
 
+def _dijo_particular(text: str) -> bool:
+    """True si el paciente EXPRESA que se atiende/paga PARTICULAR (cobertura), no la mera
+    aparición de la palabra. El substring `"particular" in msg` dispara con idioms que NO
+    son cobertura ('en particular', 'algo en particular', 'un dolor particular') y con la
+    pregunta '¿es particular?'. Reglas: cuenta cualquier 'particular' como declaración de
+    auto-pago SALVO que sea (a) 'en particular', (b) adjetivo de un sustantivo no-cobertura,
+    (c) 'es/sería particular' SIN afirmación previa ('sí, sería particular' SÍ cuenta), o
+    (d) 'particular o ...' (ofrece alternativa). 'sin obra social' también cuenta.
+    (Portado de PRUEBAS 2026-07-23, validado offline + banco.)"""
+    t = (text or "").lower()
+    if re.search(r"\bsin\s+(?:obra\s+social|cobertura|prepaga)\b|\bno\s+tengo\s+(?:obra\s+social|cobertura|prepaga)\b", t):
+        return True
+    for mt in re.finditer(r"\bparticular\b", t):
+        pre = t[max(0, mt.start() - 24):mt.start()]
+        post = t[mt.end():mt.end() + 6]
+        if re.search(r"\ben\s+$", pre):                       # "en particular"
+            continue
+        # sustantivos donde 'particular' es adjetivo NO-cobertura ('un dolor particular').
+        # OJO: 'consulta particular' NO se excluye — en la clínica = la consulta de auto-pago.
+        if re.search(r"\b(algo|nada|cosa|caso|dolor|molestia|muela|diente|tema|situaci[oó]n|"
+                     r"detalle|pregunta|duda|zona|parte|problema)\s+$", pre):
+            continue
+        # 'X es/sería particular': descripción o pregunta, no elección — salvo afirmación previa.
+        if re.search(r"\b(es|sea|ser[aá]|ser[ií]a)\s+$", pre):
+            pre2 = t[max(0, mt.start() - 30):mt.start()]
+            if not re.search(r"\b(s[íi]|dale|ok|okay|bueno|buen[ií]simo|perfecto|claro|correcto|listo|va|obvio)\b", pre2):
+                continue
+        if re.search(r"^\s*o\b", post):                        # "particular o (me cubre)"
+            continue
+        return True
+    return False
+
+
 async def process_buffer_task(
     tenant_id: int,
     conversation_id: str,
@@ -4757,6 +4790,47 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                 response_text = "Contame qué necesitás y te lo coordino 😊"
     except Exception as _oc_err:
         logger.warning(f"candado-salida-recurrente skipped (non-fatal): {_oc_err}")
+
+    # --- CANDADO: NO RE-PREGUNTAR LA COBERTURA DICHA EN EL CHAT (caso Azul/SOSUNC prod 23/07) ---
+    # El candado recurrente cubre la cobertura de FICHA; este cubre la dicha EN el turno:
+    # el paciente arrancó "necesito extraerme las muelas por Obra social SOSUNC" y el bot
+    # igual le preguntó "¿contás con alguna obra social o te atenderías de forma particular?".
+    # Si el paciente acaba de nombrar su OS o eligió particular en su mensaje, la pregunta
+    # canónica NO puede volver a salir. Determinista. (Portado de PRUEBAS, validado en banco:
+    # sancor-extraccion-no-repreguntar / sancor-limpieza-no-repreguntar / en-particular.)
+    try:
+        if response_text and re.search(r"cont[aá]s con alguna obra social", response_text, re.I):
+            _cq_last = " ".join(messages).lower() if isinstance(messages, list) else str(messages or "").lower()
+            _cq_named = _dijo_particular(_cq_last) or bool(
+                re.search(
+                    r"\b(osde|sancor|swiss|galeno|ioma|issn|osdepym|sosunc|osseg|jer[aá]rquicos|medif[eé]|omint|luis pasteur|prevenci[oó]n|apsot|mca|am[eé]rica|bancarios|siaco|credi.?gu[ií]a|federada|medicus|poder judicial)\b",
+                    _cq_last,
+                )
+            ) or bool(re.search(r"\b(tengo|con|soy de)\s+(la\s+)?(obra social|prepaga)\b", _cq_last))
+            # Estética = SIEMPRE particular → tampoco corresponde preguntar cobertura.
+            _cq_estetica = bool(re.search(
+                r"(?i)\b(blanquea\w*|carilla\w*|dise[nñ]o de sonrisa|est[eé]tic\w*)\b", _cq_last
+            ))
+            if _cq_named or _cq_estetica:
+                _cq_pre = response_text
+                response_text = re.sub(
+                    r"(?im)^.*cont[aá]s con alguna obra social.*$\n?", "", response_text
+                ).strip()
+                response_text = re.sub(r"\n{3,}", "\n\n", response_text).strip()
+                if _cq_pre != response_text:
+                    _cq_motivo = "estética (siempre particular)" if (_cq_estetica and not _cq_named) else "cobertura ya nombrada"
+                    logger.warning(
+                        f"🔒 CANDADO COBERTURA-CHAT ({_cq_motivo}): recorté la re-pregunta "
+                        f"({len(_cq_pre)}→{len(response_text)} chars) para {external_user_id}"
+                    )
+                if not response_text:
+                    response_text = (
+                        "Perfecto, eso se hace de forma particular 😊 ¿Te paso opciones de turno?"
+                        if (_cq_estetica and not _cq_named)
+                        else "Contame qué necesitás y te lo coordino 😊"
+                    )
+    except Exception as _cq_err:
+        logger.warning(f"candado-cobertura-chat skipped (non-fatal): {_cq_err}")
 
     # --- AGENT FAILURE GUARD (blindaje "esto no puede pasar") ---
     # Si el motor cayó y quedó el fallback de error, NO lo mandamos como mensaje
