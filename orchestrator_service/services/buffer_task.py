@@ -5500,6 +5500,48 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
     except Exception as _rf_err:
         logger.warning(f"candado-reserva-fantasma skipped (non-fatal): {_rf_err}")
 
+    # --- CANDADO: NO RE-PEDIR NOMBRE/DNI YA DADOS EN ESTE TURNO (caso #9a Azul, 23/07) ---
+    # Azul mandó "azul frabotta 40293560" y el bot, en el MISMO turno, le volvió a pedir
+    # "necesito tu nombre y apellido, y tu DNI" (y encima confirmó el turno con esos datos
+    # a la vez — pidió y usó al mismo tiempo). Determinista: si el mensaje del turno trae un
+    # DNI (7-8 dígitos) Y al menos dos palabras de nombre, la línea que re-pide nombre/DNI
+    # se recorta. NO toca pedidos para OTRA persona (tercero/menor: "el nombre de tu hija")
+    # ni cuando el paciente dio SOLO el DNI (pedir el nombre ahí es legítimo).
+    try:
+        if response_text and re.search(
+            r"(?i)(?:me faltan?|necesito|pasame|me pas[aá]s|dejame|indicame|decime)[^\n]{0,50}"
+            r"(?:nombre[^\n]{0,30}(?:dni|documento)|(?:dni|documento)[^\n]{0,30}nombre)",
+            response_text,
+        ):
+            _rd_last = " ".join(messages) if isinstance(messages, list) else str(messages or "")
+            _rd_dni = bool(re.search(r"\b\d{7,8}\b", _rd_last))
+            # ≥2 palabras alfabéticas de 2+ letras (nombre y apellido) en el turno
+            _rd_palabras = re.findall(r"\b[a-záéíóúñA-ZÁÉÍÓÚÑ]{2,}\b", _rd_last)
+            _rd_nombre = len(_rd_palabras) >= 2
+            # ¿la petición es para OTRA persona? (tercero/menor → legítima, no tocar)
+            _rd_tercero = bool(re.search(
+                r"(?i)(?:nombre|dni|documento|datos)[^\n]{0,30}\bde (?:tu|su|el|la|los)\b"
+                r"|del?\s+(?:paciente|menor|nen[ea]|chic[oa])\b",
+                response_text,
+            ))
+            if _rd_dni and _rd_nombre and not _rd_tercero:
+                _rd_pre = response_text
+                response_text = re.sub(
+                    r"(?im)^.*(?:me faltan?|necesito|pasame|me pas[aá]s|dejame|indicame|decime)[^\n]{0,50}"
+                    r"(?:nombre[^\n]{0,30}(?:dni|documento)|(?:dni|documento)[^\n]{0,30}nombre).*$\n?",
+                    "", response_text,
+                ).strip()
+                response_text = re.sub(r"\n{3,}", "\n\n", response_text).strip()
+                if _rd_pre != response_text:
+                    logger.warning(
+                        f"🔒 CANDADO RE-PIDE-DATOS: el paciente YA dio nombre+DNI en este turno → recorté la re-petición "
+                        f"({len(_rd_pre)}→{len(response_text)} chars) para {external_user_id}"
+                    )
+                if not response_text:
+                    response_text = "¡Gracias! Ya tomé tus datos 😊"
+    except Exception as _rd_err:
+        logger.warning(f"candado-re-pide-datos skipped (non-fatal): {_rd_err}")
+
     # --- CANDADO: GATE DE PRECIO PARA COBERTURA NO RESUELTA (enforcement del A1) ---
     # El gate A1 (texto, ~2448) le dice al modelo que NO dé el valor de la consulta si la
     # cobertura no está resuelta — pero el mini lo saltea a veces (fallo edge-triple del
