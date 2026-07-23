@@ -8539,17 +8539,39 @@ async def derivhumano(reason: str):
             if fallback:
                 emails.add(fallback)
 
-        email_sent = email_service.send_handoff_email(
-            to_emails=list(emails),
-            patient_name=patient_name,
-            phone=phone,
-            reason=reason,
-            chat_history_html=chat_history_html,
-            patient_info=patient_info,
-            anamnesis_data=anamnesis_data,
-            next_appointment=next_appointment,
-            suggestions=suggestions,
-        )
+        # ¿Mail de derivación habilitado para este tenant? (pedido Carlos 2026-07-23:
+        # "Paula no entra al mail" → para Laura la derivación vive en Pendientes + aviso
+        # Telegram, no en mail). Default ON para no cambiar al resto de los tenants; se
+        # apaga por clínica con tenants.config->>'derivation_email_enabled' = 'false'.
+        # El AUTO-PENDIENTE ya se creó más arriba, así que la derivación queda registrada igual.
+        _deriv_mail_on = True
+        try:
+            _dm = await db.pool.fetchval(
+                "SELECT config->>'derivation_email_enabled' FROM tenants WHERE id = $1",
+                tenant_id,
+            )
+            if _dm is not None and str(_dm).strip().lower() in ("false", "0", "no", "off"):
+                _deriv_mail_on = False
+        except Exception:
+            pass
+
+        if _deriv_mail_on:
+            email_sent = email_service.send_handoff_email(
+                to_emails=list(emails),
+                patient_name=patient_name,
+                phone=phone,
+                reason=reason,
+                chat_history_html=chat_history_html,
+                patient_info=patient_info,
+                anamnesis_data=anamnesis_data,
+                next_appointment=next_appointment,
+                suggestions=suggestions,
+            )
+        else:
+            email_sent = False
+            logger.info(
+                f"derivhumano: mail de derivación OFF para tenant {tenant_id} — queda en Pendientes + Telegram"
+            )
 
         if email_sent:
             return "He notificado al equipo de la clínica. Un profesional te contactará por WhatsApp en breve."

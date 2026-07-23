@@ -47,6 +47,22 @@ async def check_overdue_pendings():
 async def _remind_tenant_overdue(tenant_id: int):
     from db import db
 
+    # --- Pieza 3: escalada por tiempo ---
+    # Un pendiente 'media' que está por vencer (o ya venció) sube a 'urgente' para que
+    # salte primero en la lista y en el aviso. 'tranqui' se deja (baja prioridad a propósito).
+    try:
+        await db.pool.execute(
+            """
+            UPDATE clinic_pendings
+            SET priority = 'urgente', updated_at = NOW()
+            WHERE tenant_id = $1 AND status = 'abierto' AND priority = 'media'
+              AND due_at IS NOT NULL AND due_at < NOW() + INTERVAL '1 hour'
+            """,
+            tenant_id,
+        )
+    except Exception as _esc_err:
+        logger.warning(f"escalada por tiempo skipped tenant {tenant_id} (non-fatal): {_esc_err}")
+
     rows = await db.pool.fetch(
         """
         SELECT cp.id, cp.title, cp.due_at, cp.priority, cp.source,

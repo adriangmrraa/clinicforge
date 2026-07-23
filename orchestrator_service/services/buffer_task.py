@@ -894,10 +894,37 @@ async def _send_blocked_autoreply(tenant_id, conversation_id, phone, provider, c
     )
 
 
-# Marcador de tarea de la Dra. (pedido Carlos 2026-07-23): "Tarea: ...", "Tareas: ...",
-# "Tarea urgente: ...", "Tarea para Paula: ...". Hasta 40 chars entre 'tarea' y los dos
-# puntos para tolerar variantes; 'urgente' en ese tramo sube la prioridad.
-_STAFF_TASK_RE = re.compile(r"^\s*tareas?\s*([^:：\n]{0,40})[:：]\s*(.+)", re.IGNORECASE | re.DOTALL)
+# Marcador de tarea de la Dra. (pedido Carlos 2026-07-23). Dos formas:
+#  - ESTRICTA (texto con dos puntos): "Tarea: ...", "Tarea urgente: ...", "Tarea para Paula: ..."
+#    → hasta 40 chars entre 'tarea' y los ':' para tolerar variantes; 'urgente' ahí sube prioridad.
+#  - LAXA (audio transcripto SIN dos puntos): "tarea mandar mensaje...", "tarea. mandar...".
+#    Cubre los AUDIOS de la Dra.: Whisper transcribe sin ":". Se le pide a Laura que arranque
+#    el audio/mensaje diciendo "tarea".
+_TASK_STRICT_RE = re.compile(r"^\s*tareas?\s*([^:：\n]{0,40})[:：]\s*(.+)", re.IGNORECASE | re.DOTALL)
+_TASK_LOOSE_RE = re.compile(r"^\s*tareas?\b[\s:：,.\-]+(.+)", re.IGNORECASE | re.DOTALL)
+
+
+def _parse_staff_task(text):
+    """Devuelve (urgente: bool, title: str, note: str|None), o None si no es una tarea.
+    Prueba primero la forma estricta (texto con ':') y si no, la laxa (audio sin ':')."""
+    m = _TASK_STRICT_RE.match(text or "")
+    if m:
+        urgente = "urgente" in (m.group(1) or "").lower()
+        body = (m.group(2) or "").strip()
+    else:
+        m = _TASK_LOOSE_RE.match(text or "")
+        if not m:
+            return None
+        body = (m.group(1) or "").strip()  # la laxa tiene UN solo grupo
+        urgente = bool(re.match(r"(?i)urgente\b", body))
+        if urgente:
+            body = re.sub(r"(?i)^urgente\b[\s:：,.\-]*", "", body).strip()
+    if not body:
+        return None
+    first, _, rest = body.partition("\n")
+    title = (first.strip() or body.strip())[:200] or "Tarea"
+    note = rest.strip() or None
+    return urgente, title, note
 
 
 async def _maybe_create_staff_task(
@@ -908,9 +935,9 @@ async def _maybe_create_staff_task(
     'Tarea:', lo carga a clinic_pendings y responde una confirmación. Devuelve True si
     lo manejó (el caller corta y NO corre el agente → cero costo de tokens/Meta salvo
     la confirmación). Fail-safe: cualquier error → False y sigue el flujo normal."""
-    text = "\n".join(m for m in messages if m) if isinstance(messages, list) else str(messages or "")
-    m = _STAFF_TASK_RE.match(text or "")
-    if not m:
+    text = "\n".join(x for x in messages if x) if isinstance(messages, list) else str(messages or "")
+    parsed = _parse_staff_task(text)
+    if not parsed:
         return False
 
     # --- allowlist de números autorizados (editable por tenant, sin tocar código) ---
@@ -941,12 +968,8 @@ async def _maybe_create_staff_task(
     if not authorized:
         return False
 
-    # --- parseo: prioridad + título + nota ---
-    urgente = "urgente" in (m.group(1) or "").lower()
-    body = (m.group(2) or "").strip()
-    first, _, rest = body.partition("\n")
-    title = (first.strip() or body.strip())[:200] or "Tarea"
-    note = rest.strip() or None
+    # --- prioridad + título + nota (ya parseado arriba) ---
+    urgente, title, note = parsed
     priority = "urgente" if urgente else "media"
     due_interval = "2 hours" if urgente else "24 hours"
 
