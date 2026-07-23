@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Agenda {{ rango_titulo }}</title>
+<style>
+  @page { size: A4 portrait; margin: 14mm 12mm; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Liberation Sans", "DejaVu Sans", Arial, sans-serif;
+    color: #1a1a1a; font-size: 10.5pt; line-height: 1.35;
+  }
+  .head { display: flex; justify-content: space-between; align-items: baseline;
+          border-bottom: 2.5pt solid #1a1a1a; padding-bottom: 6pt; margin-bottom: 8pt; }
+  .head h1 { font-size: 15pt; letter-spacing: .2pt; }
+  .head .fecha { font-size: 11.5pt; font-weight: bold; }
+  .resumen { display: flex; gap: 12pt; margin-bottom: 12pt; font-size: 9.5pt; }
+  .resumen .chip { border: 1pt solid #999; border-radius: 3pt; padding: 2pt 7pt; }
+  .resumen .chip b { font-size: 11pt; }
+  .chip.ok   { border-color: #2e7d32; color: #2e7d32; }
+  .chip.warn { border-color: #b26a00; color: #b26a00; }
+
+  .dia { margin-bottom: 14pt; page-break-inside: avoid; }
+  .dia-head { display: flex; justify-content: space-between; align-items: baseline;
+              background: #1a1a1a; color: #fff; padding: 4pt 8pt; border-radius: 3pt 3pt 0 0; }
+  .dia-head h2 { font-size: 11pt; }
+  .dia-head .mini { font-size: 8.5pt; opacity: .85; }
+
+  table { width: 100%; border-collapse: collapse; }
+  thead th {
+    text-align: left; font-size: 8pt; text-transform: uppercase; letter-spacing: .5pt;
+    color: #555; border-bottom: 1.2pt solid #1a1a1a; padding: 3pt 5pt;
+  }
+  tbody td { padding: 4.5pt 5pt; border-bottom: .6pt solid #ccc; vertical-align: top; }
+  tbody tr:nth-child(even) { background: #f4f4f4; }
+  td.hora { font-weight: bold; font-size: 11pt; white-space: nowrap; width: 52pt; }
+  td.hora .dur { display: block; font-weight: normal; font-size: 7.5pt; color: #777; }
+  td.paciente { font-weight: bold; }
+  td.paciente .tel { display: block; font-weight: normal; font-size: 8pt; color: #555; }
+  .estado { display: inline-block; font-size: 8pt; font-weight: bold; border-radius: 3pt;
+            padding: 1.5pt 6pt; border: 1pt solid; white-space: nowrap; }
+  .estado.ok   { color: #2e7d32; border-color: #2e7d32; background: #e9f4ea; }
+  .estado.warn { color: #b26a00; border-color: #b26a00; background: #fdf3e3; }
+  .estado.done { color: #33529e; border-color: #33529e; background: #ebeffa; }
+  .estado.off  { color: #888;    border-color: #aaa;    background: #f1f1f1; text-decoration: line-through; }
+  .vacio { text-align: center; color: #777; padding: 30pt 0; font-size: 12pt; }
+  .pie { margin-top: 10pt; font-size: 8pt; color: #999; text-align: right; }
+</style>
+</head>
+<body>
+  <div class="head">
+    <h1>{{ clinic_name }}</h1>
+    <div class="fecha">Agenda — {{ rango_titulo }}</div>
+  </div>
+
+  <div class="resumen">
+    <span class="chip"><b>{{ total }}</b> turno{{ 's' if total != 1 else '' }}</span>
+    <span class="chip ok"><b>{{ confirmados }}</b> confirmado{{ 's' if confirmados != 1 else '' }}</span>
+    <span class="chip warn"><b>{{ sin_confirmar }}</b> sin confirmar</span>
+  </div>
+
+  {% if dias %}
+    {% for d in dias %}
+    <div class="dia">
+      <div class="dia-head">
+        <h2>{{ d.titulo }}</h2>
+        <span class="mini">{{ d.turnos|length }} turno{{ 's' if d.turnos|length != 1 else '' }} · ✓ {{ d.confirmados }} · ⚠ {{ d.sin_confirmar }}</span>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Hora</th>
+            <th>Paciente</th>
+            <th>Tratamiento</th>
+            <th>Profesional</th>
+            <th>Estado</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for t in d.turnos %}
+          <tr>
+            <td class="hora">{{ t.hora }}<span class="dur">{{ t.duracion }} min</span></td>
+            <td class="paciente">{{ t.paciente }}<span class="tel">{{ t.telefono }}</span></td>
+            <td>{{ t.tratamiento }}</td>
+            <td>{{ t.profesional }}</td>
+            <td><span class="estado {{ t.estado_clase }}">{{ t.estado }}</span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endfor %}
+  {% else %}
+  <div class="vacio">No hay turnos agendados en este período.</div>
+  {% endif %}
+
+  <div class="pie">Generado el {{ generado }} — ClinicForge</div>
+</body>
+</html>

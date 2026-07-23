@@ -410,6 +410,100 @@ def render_day_html(data: dict) -> str:
     return template.render(**data)
 
 
+async def gather_range_data(
+    pool,
+    tenant_id: int,
+    start_date: str,
+    end_date: str,
+    professional_id: Optional[int] = None,
+    include_cancelled: bool = False,
+) -> dict:
+    """Turnos de un RANGO (semana/mes/período), agrupados por día — para la
+    plantilla lista multi-día (reemplaza a la grilla semanal, que 'no se
+    entendía' — pedido Carlos 2026-07-23). Solo días CON turnos."""
+    start_dt = datetime.strptime(start_date, "%Y-%m-%d").replace(hour=0, minute=0, second=0)
+    end_dt = datetime.strptime(end_date, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
+
+    sql = """
+        SELECT
+            a.appointment_datetime,
+            a.duration_minutes,
+            a.status,
+            COALESCE(NULLIF(tt.name, ''), NULLIF(a.appointment_type, ''), 'Consulta') AS treatment,
+            (p.first_name || ' ' || COALESCE(p.last_name, '')) AS patient_name,
+            COALESCE(p.phone_number, '') AS patient_phone,
+            (COALESCE(prof.first_name, '') || ' ' || COALESCE(prof.last_name, '')) AS professional_name
+        FROM appointments a
+        JOIN patients p ON a.patient_id = p.id AND p.tenant_id = $1
+        LEFT JOIN professionals prof ON a.professional_id = prof.id AND prof.tenant_id = $1
+        LEFT JOIN treatment_types tt ON a.appointment_type = tt.code AND tt.tenant_id = a.tenant_id
+        WHERE a.tenant_id = $1
+          AND a.appointment_datetime BETWEEN $2 AND $3
+    """
+    if not include_cancelled:
+        sql += "\n          AND a.status NOT IN ('cancelled')"
+    args: list = [tenant_id, start_dt, end_dt]
+    if professional_id is not None:
+        sql += " AND a.professional_id = $4"
+        args.append(professional_id)
+    sql += "\n        ORDER BY a.appointment_datetime ASC"
+
+    rows = await pool.fetch(sql, *args)
+    clinic_name = await pool.fetchval(
+        "SELECT clinic_name FROM tenants WHERE id = $1", tenant_id
+    ) or "Clínica"
+
+    dias_sem = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+    grupos: dict = {}
+    tot = conf = unconf = 0
+    for r in rows:
+        dt = r["appointment_datetime"]
+        key = dt.strftime("%Y-%m-%d")
+        if key not in grupos:
+            grupos[key] = {
+                "titulo": f"{dias_sem[dt.weekday()]} {dt.strftime('%d/%m/%Y')}",
+                "turnos": [],
+                "confirmados": 0,
+                "sin_confirmar": 0,
+            }
+        st_label, st_class = _STATUS_ES.get(r["status"], (r["status"] or "?", "warn"))
+        if r["status"] == "confirmed":
+            grupos[key]["confirmados"] += 1
+            conf += 1
+        elif r["status"] in ("scheduled", "pending"):
+            grupos[key]["sin_confirmar"] += 1
+            unconf += 1
+        tot += 1
+        grupos[key]["turnos"].append({
+            "hora": dt.strftime("%H:%M"),
+            "duracion": r["duration_minutes"] or 30,
+            "paciente": (r["patient_name"] or "").strip() or "—",
+            "telefono": r["patient_phone"] or "—",
+            "tratamiento": r["treatment"],
+            "profesional": (r["professional_name"] or "").strip() or "—",
+            "estado": st_label,
+            "estado_clase": st_class,
+        })
+
+    sd = datetime.strptime(start_date, "%Y-%m-%d")
+    ed = datetime.strptime(end_date, "%Y-%m-%d")
+    return {
+        "clinic_name": clinic_name,
+        "rango_titulo": f"{sd.strftime('%d/%m/%Y')} – {ed.strftime('%d/%m/%Y')}",
+        "dias": [grupos[k] for k in sorted(grupos.keys())],
+        "total": tot,
+        "confirmados": conf,
+        "sin_confirmar": unconf,
+        "generado": datetime.now().strftime("%d/%m/%Y %H:%M"),
+    }
+
+
+def render_range_html(data: dict) -> str:
+    """Render de la plantilla lista multi-día."""
+    template = _jinja_env.get_template("agenda_lista.html")
+    return template.render(**data)
+
+
 async def generate_agenda_pdf(
     pool,
     tenant_id: int,
@@ -439,9 +533,15 @@ async def generate_agenda_pdf(
     if view_type == "day" or start_date == end_date:
         data = await gather_day_data(pool, tenant_id, start_date, professional_id, include_cancelled)
         html = render_day_html(data)
-    else:
+    elif view_type == "grid":
+        # Grilla semanal vieja — solo si se pide explícito (Carlos 2026-07-23: "no se
+        # entiende" → dejó de ser el default para rangos).
         data = await gather_agenda_data(pool, tenant_id, start_date, end_date, professional_id, include_cancelled, view_type=view_type)
         html = render_agenda_html(data)
+    else:
+        # Cualquier rango (semana/mes/período): lista agrupada por día — legible.
+        data = await gather_range_data(pool, tenant_id, start_date, end_date, professional_id, include_cancelled)
+        html = render_range_html(data)
 
     result = await asyncio.to_thread(_generate_pdf_sync, html, pdf_path)
     return result
