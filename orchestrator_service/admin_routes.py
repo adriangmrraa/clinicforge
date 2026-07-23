@@ -19887,3 +19887,28 @@ async def export_agenda(
 
     filename = f"Agenda_{start_date}_{end_date}.pdf"
     return FileResponse(file_path, media_type="application/pdf", filename=filename)
+
+
+@router.post(
+    "/agenda/report/send-now",
+    dependencies=[Depends(verify_admin_token)],
+    tags=["Agenda"],
+    summary="Mandar YA el reporte de agenda del día siguiente al Telegram del equipo",
+)
+async def send_agenda_report_now(
+    resolved_tenant_id: int = Depends(get_resolved_tenant_id),
+):
+    """
+    Dispara a demanda el reporte del día siguiente (resumen + PDF) al Telegram
+    del equipo (telegram_authorized_users) — el mismo que el job de las 14hs,
+    sin esperar la hora ni el dedup. Útil para probar y para re-enviarlo.
+    Requiere que el bot de Telegram del tenant esté activo en este proceso.
+    """
+    try:
+        from jobs.agenda_report import send_tenant_report_now
+
+        await send_tenant_report_now(resolved_tenant_id)
+        return {"ok": True, "detail": "Reporte enviado al Telegram del equipo (si el bot está activo)."}
+    except Exception as exc:
+        logger.error("send_agenda_report_now error: %s", exc)
+        raise HTTPException(status_code=500, detail=f"Error enviando el reporte: {exc}")

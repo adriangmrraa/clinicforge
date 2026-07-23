@@ -96,6 +96,35 @@ async def _maybe_send_tenant_report(tenant_id: int):
     except Exception:
         pass  # sin Redis: se manda igual (peor caso: doble envío tras restart)
 
+    await send_tenant_report_now(tenant_id, tenant_tz=tenant_tz)
+
+
+async def send_tenant_report_now(tenant_id: int, tenant_tz=None):
+    """Arma y manda el reporte del día siguiente YA (sin gate de hora ni dedup).
+    Usado por el job horario (tras sus chequeos) y por el endpoint de disparo
+    manual POST /admin/agenda/report/send-now (prueba / re-envío a demanda)."""
+    from db import db
+
+    if tenant_tz is None:
+        tz_str = "America/Argentina/Buenos_Aires"
+        try:
+            tz_row = await db.fetchrow(
+                "SELECT COALESCE(config->>'timezone', 'America/Argentina/Buenos_Aires') AS tz "
+                "FROM tenants WHERE id = $1",
+                tenant_id,
+            )
+            if tz_row and tz_row.get("tz"):
+                tz_str = tz_row["tz"]
+        except Exception:
+            pass
+        from zoneinfo import ZoneInfo
+
+        try:
+            tenant_tz = ZoneInfo(tz_str)
+        except Exception:
+            tenant_tz = ZoneInfo("America/Argentina/Buenos_Aires")
+
+    now_local = datetime.now(tenant_tz)
     tomorrow = (now_local + timedelta(days=1)).strftime("%Y-%m-%d")
 
     # --- datos del día siguiente (mismo gather de la vista diaria) ---
