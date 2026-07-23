@@ -5244,6 +5244,42 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
     except Exception as _io_err:
         logger.warning(f"candado-issn-oferta skipped (non-fatal): {_io_err}")
 
+    # --- CANDADO: SEÑA PROACTIVA FUERA DE LUGAR (caso #13 Marcela, decisión Carlos 23/07) ---
+    # La paciente preguntó su próximo turno y el bot le ofreció "¿te recuerdo cómo venís con
+    # la seña?" — la seña es OPCIONAL: mencionarla sin que el paciente pregunte siembra dudas
+    # ("¿debo algo? ¿es obligatoria?") y hace perder gente. Determinista: si el paciente NO
+    # habló de seña/pago/transferencia en su mensaje, los ofrecimientos de "recordar la seña /
+    # los datos de pago" se recortan. NO toca el mensaje post-agendado de la seña (ese dice
+    # "podés adelantar una seña", no "te recuerdo") ni respuestas a preguntas del paciente.
+    try:
+        if response_text and re.search(
+            r"(?i)(?:te (?:recuerdo|puedo recordar)|quer[eé]s que te recuerde)[^\n]{0,60}"
+            r"(?:se[ñn]a|transferencia|datos de (?:pago|transferencia))",
+            response_text,
+        ):
+            _sp_last = " ".join(messages).lower() if isinstance(messages, list) else str(messages or "").lower()
+            _sp_hablo_pago = bool(re.search(
+                r"(?i)\b(se[ñn]a|pag\w*|transferen\w*|abonar|abono|comprobante|cbu|alias|dep[oó]sit\w*|mercado ?pago)\b",
+                _sp_last,
+            ))
+            if not _sp_hablo_pago:
+                _sp_pre = response_text
+                response_text = re.sub(
+                    r"(?im)^.*(?:te (?:recuerdo|puedo recordar)|quer[eé]s que te recuerde)[^\n]{0,60}"
+                    r"(?:se[ñn]a|transferencia|datos de (?:pago|transferencia)).*$\n?",
+                    "", response_text,
+                ).strip()
+                response_text = re.sub(r"\n{3,}", "\n\n", response_text).strip()
+                if _sp_pre != response_text:
+                    logger.warning(
+                        f"🔒 CANDADO SEÑA-PROACTIVA: recorté el ofrecimiento de seña no pedido "
+                        f"({len(_sp_pre)}→{len(response_text)} chars) para {external_user_id}"
+                    )
+                if not response_text:
+                    response_text = "¿Necesitás algo más? 😊"
+    except Exception as _sp_err:
+        logger.warning(f"candado-sena-proactiva skipped (non-fatal): {_sp_err}")
+
     # --- AGENT FAILURE GUARD (blindaje "esto no puede pasar") ---
     # Si el motor cayó y quedó el fallback de error, NO lo mandamos como mensaje
     # robótico al paciente, PERO tampoco lo dejamos en silencio invisible:

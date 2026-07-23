@@ -9867,10 +9867,11 @@ async def verify_payment_receipt(
                     f"con {apt['prof_name'] or 'el profesional'} queda CONFIRMADO. ¡Te esperamos!"
                 )
 
+            # Caso #10 (decisión Carlos 2026-07-23): al paciente NO se le comenta el
+            # sobrepago — se registra internamente (receipt_data['overpaid'] arriba) y chau.
+            # Motivo: puede ser un monto pactado en la clínica que la secretaria no cargó;
+            # decirle "transferiste $X de más" confunde y genera reclamos por algo correcto.
             overpaid_msg = ""
-            if amount_overpaid > 0:
-                overpaid_str = f"${int(amount_overpaid):,}".replace(",", ".")
-                overpaid_msg = f"\n\n📝 Nota: transferiste {overpaid_str} de más sobre la seña. Queda registrado para que la clínica lo tenga en cuenta."
 
             # Send payment confirmation email if patient has email
             # Task 6.3: If no email, return flag so agent can ask for it
@@ -9918,9 +9919,13 @@ async def verify_payment_receipt(
 
                 return f"{_verified_msg}{overpaid_msg}"
 
-            # No email - return flag for agent to request it
+            # Sin email registrado — caso #11 (decisión Carlos 2026-07-23): NO se pide el
+            # mail. Antes se retornaba email_required=True y el agente ofrecía "pasame tu
+            # mail y te mando la confirmación" — pero si el paciente lo daba, el email solo
+            # se GUARDABA (la confirmación nunca se re-enviaba): se ofrecía algo que no
+            # llegaba. La confirmación por WhatsApp alcanza.
             logger.info(
-                f"⚠️ Patient {patient_name} has no email, returning email_required flag"
+                f"ℹ️ Patient {patient_name} has no email — skipping email confirmation (por decisión, no se pide)"
             )
 
             # Bug #4 Phase B: Set conversation state to PAYMENT_VERIFIED
@@ -9933,11 +9938,7 @@ async def verify_payment_receipt(
                     f"[conversation_state] set_state in verify_payment_receipt (no email case) failed (non-blocking): {state_err}"
                 )
 
-            return {
-                "message": f"{_verified_msg}{overpaid_msg}",
-                "email_required": True,
-                "summary": f"Pago verificado. Seña de ${amount_str or '0'} confirmada. Turno: {treatment_display} el {fecha}.",
-            }
+            return f"{_verified_msg}{overpaid_msg}"
 
         elif not holder_match:
             # Save failed attempt for manual review

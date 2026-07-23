@@ -314,5 +314,19 @@ class ResponseSender:
                         current_bubble = sentence
                 if current_bubble:
                     result.append(current_bubble)
-                    
+
+        # CONSOLIDACIÓN DE GLOBITOS (caso #9-lite, decisión Carlos 2026-07-23, ahorro Meta):
+        # cada mensaje saliente cuesta plata (Meta cobra por mensaje desde el 1-oct). Antes,
+        # cada párrafo era un globito aunque fueran 3 líneas cortas → chorrera de mensajes.
+        # Fusionamos burbujas CONSECUTIVAS mientras el resultado quepa en max_length,
+        # preservando el doble salto (misma legibilidad, MENOS mensajes). No cambia el texto.
+        if len(result) > 1:
+            merged = [result[0]]
+            for b in result[1:]:
+                if len(merged[-1]) + 2 + len(b) <= max_length:
+                    merged[-1] = merged[-1] + "\n\n" + b
+                else:
+                    merged.append(b)
+            result = merged
+
         return result
