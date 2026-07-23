@@ -176,7 +176,7 @@ export default function AgendaView() {
   });
   const [showExportMenu, setShowExportMenu] = useState(false);
   // Qué período imprimir/descargar (pedido Carlos 2026-07-23: elegir explícito y claro)
-  const [exportRange, setExportRange] = useState<'today' | 'week' | 'month' | 'custom'>('today');
+  const [exportRange, setExportRange] = useState<'today' | 'tomorrow' | 'week' | 'month' | 'custom'>('today');
   const [exportStart, setExportStart] = useState('');
   const [exportEnd, setExportEnd] = useState('');
   const [exporting, setExporting] = useState(false);
@@ -709,6 +709,10 @@ export default function AgendaView() {
     if (exportRange === 'today') {
       start = end = formatLocalDate(today);
       viewType = 'day';
+    } else if (exportRange === 'tomorrow') {
+      const tomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+      start = end = formatLocalDate(tomorrow);
+      viewType = 'day';
     } else if (exportRange === 'week') {
       // Semana del día visible: lunes a domingo
       const base = view?.type === 'timeGridWeek' && view?.activeStart ? new Date(view.activeStart) : today;
@@ -1027,6 +1031,7 @@ export default function AgendaView() {
                       <div className="grid grid-cols-2 gap-1.5 mb-2">
                         {([
                           ['today', 'Hoy'],
+                          ['tomorrow', 'Mañana'],
                           ['week', 'Semana'],
                           ['month', 'Mes'],
                           ['custom', 'Rango…'],
