@@ -4310,18 +4310,32 @@ def _extract_requested_hours(msg: Optional[str]) -> set:
         if mr:
             _add(mr.group(1), period)
 
-    # 0) RANGOS/VENTANAS: "de 2 a 4", "entre las 14 y las 16", "de las 9 a las 11" → TODO el
+    # 0) RANGOS/VENTANAS: "de las 14 a las 16", "entre las 9 y las 11", "de 16 a 17" → TODO el
     #    intervalo cuenta como pedido (el paciente aceptaría cualquier hora dentro). Evita el
-    #    falso positivo de capturar solo un extremo y rechazar el otro.
+    #    falso positivo de capturar solo un extremo y rechazar el otro. CRÍTICO (audit
+    #    2026-07-23): aplica el MISMO guard de contexto que los otros patrones Y exige una MARCA
+    #    horaria real (la palabra 'las', un período en la cola, o ambos números ≥12 = hora-del-día
+    #    inequívoca) para NO confundir cantidades/duraciones: 'de 2 a 3 caries', 'dura de 2 a 3
+    #    horas', 'de 3 a 4 sesiones', 'sale de 2 a 4 mil' NO deben generar horas fantasma.
     for rm in re.finditer(
-        r"\b(?:de|entre)\s+(?:las?\s+)?(\d{1,2})\s+(?:a|y|hasta)\s+(?:las?\s+)?(\d{1,2})\b", m
+        r"\b(?:de|entre)\s+(las?\s+)?(\d{1,2})\s+(?:a|y|hasta)\s+(las?\s+)?(\d{1,2})\b", m
     ):
+        if _excluded_before(rm.start()):
+            continue
         try:
-            a, b = int(rm.group(1)), int(rm.group(2))
+            a, b = int(rm.group(2)), int(rm.group(4))
         except Exception:
             continue
         tailp = m[rm.end():rm.end() + 16]
         per = "pm" if ("tarde" in tailp or "noche" in tailp) else ("am" if "mañana" in tailp else None)
+        _has_las = bool(rm.group(1) or rm.group(3))
+        _time_marker = (
+            _has_las or per is not None
+            or bool(re.match(r"\s*(?:hs|hrs)\b", tailp))
+            or (a >= 12 and b >= 12)
+        )
+        if not _time_marker:
+            continue
         lo = a + 12 if (per == "pm" and a < 12) else a
         hi = b + 12 if (per == "pm" and b < 12) else b
         if 0 <= lo <= 23 and 0 <= hi <= 23 and lo <= hi and (hi - lo) <= 14:

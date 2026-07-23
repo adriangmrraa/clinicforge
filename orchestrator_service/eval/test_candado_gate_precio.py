@@ -75,7 +75,7 @@ def candado_gate_precio(response_text: str, patient_context: str, last_user_msg:
         response_text = re.sub(r"\n{3,}", "\n\n", response_text).strip()
         if _os_convenio:
             if re.search(r"(?i)tiene un valor", response_text):
-                response_text = re.sub(r"(?is)[^.\n!?]*tiene un valor[^.\n!?]*[.!?\n]?", "", response_text).strip()
+                response_text = re.sub(r"(?im)^.*\btiene un valor\b.*$\n?", "", response_text).strip()
                 response_text = re.sub(r"\n{3,}", "\n\n", response_text).strip()
             response_text = re.sub(r"(?im)^.*(?:reintegro|comprobante).*$\n?", "", response_text).strip()
             response_text = re.sub(r"(?im)^.*\b(?:es|ser[ií]a|de forma|forma)\s+particular\b.*$\n?", "", response_text).strip()
@@ -170,6 +170,13 @@ CASOS = [
         "",
         "tengo Sancor pero quiero atenderme particular, ¿cuánto sale?",
         lambda out: "$60.000" in out,
+    ),
+    (
+        "SANCOR forma-corta '$60.000' → recorte por LÍNEA, sin dejar basura '000' (separador de miles)",
+        "Con Sancor la consulta tiene un valor de $60.000, pero podés verlo con tu obra social.",
+        "",
+        "tengo Sancor, ¿cuánto sale la consulta?",
+        lambda out: "$60.000" not in out and "000," not in out and not out.strip().startswith("000"),
     ),
 ]
 

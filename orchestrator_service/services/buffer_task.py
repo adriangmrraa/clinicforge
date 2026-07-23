@@ -416,7 +416,9 @@ def _dijo_particular(text: str) -> bool:
         if re.search(r"\b(algo|nada|cosa|caso|dolor|molestia|muela|diente|tema|situaci[oó]n|"
                      r"detalle|pregunta|duda|zona|parte|problema)\s+$", pre):
             continue
-        if re.search(r"\b(es|sea|ser[aá]|ser[ií]a)\s+$", pre):  # "¿es particular?" interrogativo
+        # "¿es particular?" INTERROGATIVO → no es elección (audit 2026-07-23: no matar el
+        # afirmativo 'sí, sería particular'; solo excluir si el mensaje es una pregunta).
+        if re.search(r"\b(es|sea|ser[aá]|ser[ií]a)\s+$", pre) and "?" in t:
             continue
         if re.search(r"^\s*o\b", post):                        # "particular o (me cubre)"
             continue
@@ -2658,10 +2660,19 @@ async def process_buffer_task(
                 or "HIJO/A MENOR" in patient_context
                 or "MULTI_BOOKING" in patient_context
             )
+            # CRÍTICO (audit 2026-07-23): NO usar 'para un/una' pelado — matchea 'para una
+            # limpieza'/'para un control' (tratamiento, no persona) y apagaba P6 de más. Exigir
+            # una PERSONA real después de 'para (un/una/mi)' o 'mi'. Stems cerrados con [oa]/\b
+            # para no colisionar con 'primera'(prim)/'noviembre'(novi).
+            _pc_persona = (
+                r"(?:hij[oa]s?|amig[oa]s?|esposa|marido|pareja|novi[oa]|mam[aá]|pap[aá]|"
+                r"madre|padre|herman[oa]s?|se[nñ]ora|suegr[oa]|cu[nñ]ad[oa]|abuel[oa]|"
+                r"niet[oa]s?|t[ií]a|t[ií]o|prim[oa])\b"
+            )
             _pc_tercero_msg = bool(re.search(
-                r"(?i)\bpara\s+(?:un[ao]?|otr[ao])\b|\bpara\s+otra?\s+persona\b|"
-                r"\b(?:para\s+mi|mi)\s+(?:hij|amig|esposa|marido|pareja|novi|mam|pap|madre|padre|"
-                r"herman|se[nñ]or|suegr|cu[nñ]ad|abuel|niet|t[ií]a|t[ií]o|prim)",
+                r"(?i)\bpara\s+otra?\s+persona\b|"
+                r"\bpara\s+(?:un[ao]?\s+|mi\s+)?" + _pc_persona + r"|"
+                r"\bmi\s+" + _pc_persona,
                 _pc_last,
             ))
             _pc_tercero = _pc_tercero_ctx or _pc_tercero_msg
@@ -5474,8 +5485,11 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                     # recortar igual la oración con el valor (audit: la protección dependía del
                     # match exacto de la plantilla).
                     if re.search(r"(?i)tiene un valor", response_text):
+                        # Recorte por LÍNEA (no por 'oración'): el precio argentino '$60.000' tiene
+                        # un punto de miles que una clase [^.] partiría, dejando basura '000,' (audit
+                        # 2026-07-23). Sacar la línea entera con el valor es limpio y seguro.
                         response_text = re.sub(
-                            r"(?is)[^.\n!?]*tiene un valor[^.\n!?]*[.!?\n]?", "", response_text
+                            r"(?im)^.*\btiene un valor\b.*$\n?", "", response_text
                         ).strip()
                         response_text = re.sub(r"\n{3,}", "\n\n", response_text).strip()
                     # Sancor/OSDE/etc. SÍ tienen convenio → NO corresponde ofrecer reintegro/
