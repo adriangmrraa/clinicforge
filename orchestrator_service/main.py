@@ -8366,6 +8366,44 @@ async def save_patient_birth_date(
     if parsed_date.year < 1900:
         return "❌ Fecha de nacimiento fuera de rango. Verificá el año."
 
+    # 🛡️ GUARD AÑO IMPLAUSIBLE (caso placas/prod 2026-07-23): la paciente dijo "tengo dos
+    # placas de kranex hechas en 2023 y 2025" y el LLM guardó esos años como fecha de
+    # NACIMIENTO (bebé imposible) y encima le expuso el error. Determinista:
+    # 1) Si el mensaje del turno habla de ESTUDIOS (placas/radiografías/panorámica...) y la
+    #    edad calculada es <5 años → ese año es del ESTUDIO, no un nacimiento: rechazar.
+    # 2) Edad <1 año → nunca es un alta real por chat: rechazar siempre.
+    # (Edades 1-4 SIN contexto de estudio se dejan pasar: puede ser el alta legítima de
+    # un menor chiquito para odontopediatría.)
+    try:
+        _bd_edad = (today - parsed_date).days / 365.25
+        _bd_msg = (current_user_message.get() or "").lower()
+        _bd_estudio = bool(
+            re.search(
+                r"\b(placa\w*|radiograf[ií]\w*|panor[aá]mica\w*|estudio\w*|resonancia\w*|"
+                r"tomograf[ií]\w*|rx\b|kranex|an[aá]lisis)\b",
+                _bd_msg,
+            )
+        )
+        if _bd_edad < 5 and _bd_estudio:
+            logger.warning(
+                f"🛡️ BIRTH-GUARD: {parsed_date} parece el año de un ESTUDIO (mensaje menciona "
+                f"placas/radiografías), no un nacimiento — rechazado para {phone}"
+            )
+            return (
+                "❌ Esa fecha parece ser de un ESTUDIO (placa/radiografía), NO una fecha de "
+                "nacimiento — NO la guardes como nacimiento. Si el paciente ofrece mandar "
+                "placas o estudios, decile que los envíe por este mismo chat y quedan "
+                "guardados en su ficha. NO le menciones este error interno."
+            )
+        if _bd_edad < 1:
+            return (
+                "❌ Esa fecha daría un bebé recién nacido — casi seguro NO es la fecha de "
+                "nacimiento real. NO la guardes; si de verdad necesitás la fecha de nacimiento, "
+                "pedila de nuevo con amabilidad (formato DD/MM/AAAA). NO le menciones este error."
+            )
+    except Exception as _bd_err:
+        logger.warning(f"birth-guard skipped (non-fatal): {_bd_err}")
+
     try:
         # If patient_phone explicitly provided (third party / minor), use existing phone-based flow
         if patient_phone and patient_phone.strip():

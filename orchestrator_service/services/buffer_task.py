@@ -5207,6 +5207,43 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
     except Exception as _issn_err:
         logger.warning(f"candado-issn-anti-ceder skipped (non-fatal): {_issn_err}")
 
+    # --- CANDADO: ISSN — OFERTA DE TURNO SIN ENCUADRE PARTICULAR (caso #8, banco issn-cirugía) ---
+    # El bot derivó bien la cirugía a CIMO pero después ofreció turnos de consultorio
+    # ("¿qué día te queda cómodo? te busco opciones") SIN aclarar que en el consultorio la
+    # atención con ISSN es PARTICULAR — puede insinuar cobertura. Aditivo: ISSN activo +
+    # la respuesta ofrece turnos/opciones + no menciona 'particular' ni comprobante →
+    # anexa UNA línea con el encuadre correcto. Nunca recorta.
+    try:
+        _io_ctx = (patient_context or "").lower()
+        _io_last = " ".join(messages).lower() if isinstance(messages, list) else str(messages or "").lower()
+        _io_issn = (
+            bool(re.search(r"\bissn\b", _io_ctx))
+            or "instituto de seguridad" in _io_ctx
+            or bool(re.search(r"\bissn\b", _io_last))
+        )
+        if (
+            _io_issn
+            and response_text
+            and not re.search(r"(?i)\[[^\[\]]*silencio[^\[\]]*\]", response_text)
+            and not re.search(r"(?i)particular|comprobante|reintegro", response_text)
+            and re.search(
+                r"(?i)[1-3]️⃣|te paso (?:turnos|opciones)|te busco opciones|¿qu[eé] d[ií]a"
+                r"|qu[eé] d[ií]a y horario|te queda mejor|te viene mejor|¿te agendo"
+                r"|quer[eé]s que te agende",
+                response_text,
+            )
+        ):
+            response_text = (
+                response_text.rstrip()
+                + "\nTe aclaro: en el consultorio la atención con ISSN es particular — te damos el "
+                "comprobante para que gestiones el reintegro con tu obra social 😊"
+            )
+            logger.warning(
+                f"🔒 CANDADO ISSN-OFERTA: anexé el encuadre particular a la oferta de turnos para {external_user_id}"
+            )
+    except Exception as _io_err:
+        logger.warning(f"candado-issn-oferta skipped (non-fatal): {_io_err}")
+
     # --- AGENT FAILURE GUARD (blindaje "esto no puede pasar") ---
     # Si el motor cayó y quedó el fallback de error, NO lo mandamos como mensaje
     # robótico al paciente, PERO tampoco lo dejamos en silencio invisible:
