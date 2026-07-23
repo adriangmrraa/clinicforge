@@ -3,6 +3,7 @@ import uuid
 import json
 import csv
 import io
+import hmac
 import html as html_module
 import asyncio
 import asyncpg
@@ -19472,11 +19473,12 @@ async def export_agenda(
 
 @router.post(
     "/agenda/report/send-now",
-    dependencies=[Depends(verify_admin_token)],
     tags=["Agenda"],
     summary="Mandar YA el reporte de agenda del día siguiente al Telegram del equipo",
 )
 async def send_agenda_report_now(
+    request: Request,
+    x_admin_token: str = Header(None),
     tenant_id: int = 1,
 ):
     """
@@ -19484,13 +19486,22 @@ async def send_agenda_report_now(
     del equipo (telegram_authorized_users) — el mismo que el job de las 14hs,
     sin esperar la hora ni el dedup. Útil para probar y para re-enviarlo.
 
-    Auth: SOLO X-Admin-Token (verify_admin_token en el decorador) — es un
-    disparador OPERATIVO pensado para consola/cron, sin sesión de panel. El
-    tenant_id por query (default 1) es aceptable acá: no devuelve datos del
-    tenant — solo dispara el envío al Telegram de los usuarios autorizados DE
-    ESE tenant (telegram_authorized_users filtra por tenant_id adentro).
+    Auth: SOLO X-Admin-Token (chequeo manual, SIN JWT) — verify_admin_token
+    exige ADEMÁS un JWT de sesión (capa 2), imposible desde consola/cron. Este
+    es un disparador OPERATIVO: no devuelve ni modifica datos del tenant, solo
+    dispara el envío al Telegram de sus usuarios autorizados. El X-Admin-Token
+    es secreto de infraestructura → riesgo acotado. tenant_id por query (default
+    1); telegram_authorized_users filtra por tenant_id adentro.
     Requiere que el bot de Telegram del tenant esté activo en este proceso.
     """
+    # Capa de infraestructura (X-Admin-Token) — comparación en tiempo constante.
+    if not x_admin_token or not hmac.compare_digest(x_admin_token, ADMIN_TOKEN):
+        _ip = request.client.host if request.client else "unknown"
+        logger.warning(f"❌ 401 send-now: X-Admin-Token inválido/ausente. IP: {_ip}")
+        raise HTTPException(
+            status_code=401,
+            detail="Token de infraestructura (X-Admin-Token) inválido o inexistente.",
+        )
     try:
         from jobs.agenda_report import send_tenant_report_now
 
