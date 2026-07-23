@@ -45,6 +45,12 @@ except ImportError as e:
     logger.warning(f"⚠️ No se pudo importar job smart_alerts: {e}")
 
 try:
+    from . import pending_reminders
+    logger.info("✅ Job de aviso de pendientes vencidos (Telegram) importado correctamente")
+except ImportError as e:
+    logger.warning(f"⚠️ No se pudo importar job pending_reminders: {e}")
+
+try:
     from . import expire_unpaid
     logger.info("✅ Job de expiración de seña importado correctamente")
 except ImportError as e:
