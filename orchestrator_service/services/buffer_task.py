@@ -393,6 +393,37 @@ def _detect_period_change(msg: str) -> bool:
     return _PERIOD_CHANGE_PATTERN.search(msg.strip()) is not None
 
 
+def _dijo_particular(text: str) -> bool:
+    """True si el paciente EXPRESA que se atiende/paga PARTICULAR (cobertura), no la mera
+    aparición de la palabra. Endurecido tras auditoría 2026-07-22: el substring `"particular"
+    in msg` disparaba con idioms que NO son cobertura ('en particular', 'algo en particular',
+    'una consulta particular', 'un dolor particular') y con la pregunta '¿es particular?'.
+    Reglas: cuenta cualquier 'particular' como declaración de auto-pago SALVO que sea (a) 'en
+    particular', (b) adjetivo de un sustantivo no-cobertura, (c) interrogativo 'es/sea/será
+    particular', o (d) 'particular o ...' (ofrece alternativa). 'sin obra social' también cuenta.
+    """
+    t = (text or "").lower()
+    if re.search(r"\bsin\s+(?:obra\s+social|cobertura|prepaga)\b|\bno\s+tengo\s+(?:obra\s+social|cobertura|prepaga)\b", t):
+        return True
+    for mt in re.finditer(r"\bparticular\b", t):
+        pre = t[max(0, mt.start() - 24):mt.start()]
+        post = t[mt.end():mt.end() + 6]
+        if re.search(r"\ben\s+$", pre):                       # "en particular"
+            continue
+        # sustantivos donde 'particular' es adjetivo NO-cobertura ('un dolor particular').
+        # OJO: 'consulta particular' NO se excluye — en la clínica = la consulta de auto-pago
+        # (el idiom real es 'consulta EN particular', cazado por la regla 'en' de arriba).
+        if re.search(r"\b(algo|nada|cosa|caso|dolor|molestia|muela|diente|tema|situaci[oó]n|"
+                     r"detalle|pregunta|duda|zona|parte|problema)\s+$", pre):
+            continue
+        if re.search(r"\b(es|sea|ser[aá]|ser[ií]a)\s+$", pre):  # "¿es particular?" interrogativo
+            continue
+        if re.search(r"^\s*o\b", post):                        # "particular o (me cubre)"
+            continue
+        return True
+    return False
+
+
 def classify_intent(messages: list) -> set:
     """
     Classify patient message intent via keyword detection (<1ms, no LLM).
@@ -2617,11 +2648,27 @@ async def process_buffer_task(
         # mutuamente excluyente con la inyección recurrente (solo corre si NO es recurrente).
         try:
             _pc_recurrente = bool(patient_context) and "HISTORIAL: Paciente recurrente" in patient_context
-            if patient_context and not _pc_recurrente:
+            _pc_last = " ".join(messages).lower() if isinstance(messages, list) else str(messages or "").lower()
+            # GUARDA de tercero/menor (audit 2026-07-22): P6 habla de los DATOS del INTERLOCUTOR.
+            # Si el turno es para OTRA persona (menor, tercero adulto), NO aplica — sus datos y
+            # cobertura son una pregunta nueva. Se detecta por contexto (marcadores de booking)
+            # y por el mensaje ("para mi hija", "para un amigo"). Ante la duda, NO inyecta (seguro).
+            _pc_tercero_ctx = bool(patient_context) and (
+                "[INTERNAL_BOOKING_CONTEXT]" in patient_context
+                or "HIJO/A MENOR" in patient_context
+                or "MULTI_BOOKING" in patient_context
+            )
+            _pc_tercero_msg = bool(re.search(
+                r"(?i)\bpara\s+(?:un[ao]?|otr[ao])\b|\bpara\s+otra?\s+persona\b|"
+                r"\b(?:para\s+mi|mi)\s+(?:hij|amig|esposa|marido|pareja|novi|mam|pap|madre|padre|"
+                r"herman|se[nñ]or|suegr|cu[nñ]ad|abuel|niet|t[ií]a|t[ií]o|prim)",
+                _pc_last,
+            ))
+            _pc_tercero = _pc_tercero_ctx or _pc_tercero_msg
+            if patient_context and not _pc_recurrente and not _pc_tercero:
                 _pc_particular_ficha = "este paciente es PARTICULAR" in patient_context
                 _pc_os_ficha = "Obra Social registrada" in patient_context
                 _pc_conocido = _pc_particular_ficha or _pc_os_ficha
-                _pc_last = " ".join(messages).lower() if isinstance(messages, list) else str(messages or "").lower()
                 _pc_cont = any(
                     w in _pc_last
                     for w in ("a terminar", "terminar", "seguir con", "continuar", "en curso",
@@ -2631,14 +2678,16 @@ async def process_buffer_task(
                     r"(?i)\b(blanquea\w*|carilla\w*|dise[nñ]o de sonrisa|est[eé]tic\w*)\b", _pc_last
                 ))
                 if _pc_conocido and (_pc_particular_ficha or _pc_cont or _pc_estet):
+                    # NOTA: P6 NO toca cobertura (audit): eso lo manejan P3/P5/cov_gate. Solo evita
+                    # re-pedir DATOS ya cargados del interlocutor. Así no contradice ningún gate de
+                    # cobertura (menor/tercero) ni asume la OS del interlocutor para otro paciente.
                     patient_context += (
-                        "\n⛔ PACIENTE CONOCIDO (ya tiene ficha: datos, cobertura e historial arriba): "
-                        "1) NO le re-pidas ni re-confirmes datos que YA figuran (nombre, DNI, cobertura): usalos. "
+                        "\n⛔ PACIENTE CONOCIDO (ya tiene ficha: sus datos e historial están arriba): "
+                        "1) NO le re-pidas ni re-confirmes DATOS que YA figuran (nombre, DNI): usalos. "
                         "2) NO le des el VALOR de la consulta si no lo preguntó explícitamente. "
                         "3) NO repitas opciones de turno ya ofrecidas: referite a ellas o confirmá la elegida. "
-                        "4) Resolvé DIRECTO lo que pide — continuidad/estética/particular no requieren re-interrogatorio "
-                        "de datos. Podés hacer las preguntas CLÍNICAS puntuales que el tratamiento requiera, pero SIN "
-                        "repetir el interrogatorio de datos ya cargados."
+                        "4) Resolvé DIRECTO lo que pide. Podés hacer las preguntas CLÍNICAS puntuales que el "
+                        "tratamiento requiera, pero SIN repetir el interrogatorio de DATOS ya cargados."
                     )
                     logger.info(
                         f"⛔ P6: inyección PACIENTE CONOCIDO (no-recurrente, escenario seguro) para {external_user_id}"
@@ -5142,14 +5191,19 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
     # turnos de tercero/menor (su cobertura es una pregunta nueva, distinta al interlocutor).
     try:
         _p5_last = " ".join(messages).lower() if isinstance(messages, list) else str(messages or "").lower()
-        _p5_named = "particular" in _p5_last or bool(
+        # 'particular' por INTENCIÓN (no substring: 'en particular'/'consulta particular' NO cuentan).
+        _p5_named = _dijo_particular(_p5_last) or bool(
             re.search(
                 r"\b(osde|sancor|swiss|galeno|ioma|issn|osdepym|sosunc|osseg|jer[aá]rquicos|medif[eé]|omint|luis pasteur|prevenci[oó]n|apsot|mca|am[eé]rica|bancarios|siaco|credi.?gu[ií]a|federada|medicus|poder judicial)\b",
                 _p5_last,
             )
         ) or bool(re.search(r"\b(tengo|con|soy de)\s+(la\s+)?(obra social|prepaga)\b", _p5_last))
+        # Excepción: tercero/menor (cobertura propia, pregunta nueva) — incluye tercero ADULTO
+        # (MULTI_BOOKING) además de menor/[INTERNAL_BOOKING_CONTEXT].
         _p5_tercero = bool(patient_context) and (
-            "[INTERNAL_BOOKING_CONTEXT]" in patient_context or "HIJO/A MENOR" in patient_context
+            "[INTERNAL_BOOKING_CONTEXT]" in patient_context
+            or "HIJO/A MENOR" in patient_context
+            or "MULTI_BOOKING" in patient_context
         )
         if _p5_named and not _p5_tercero:
             from services.conversation_state import mark_insurance_asked as _mark_ins
@@ -5164,7 +5218,7 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
     try:
         if response_text and re.search(r"cont[aá]s con alguna obra social", response_text, re.I):
             _cq_last = " ".join(messages).lower() if isinstance(messages, list) else str(messages or "").lower()
-            _cq_named = "particular" in _cq_last or bool(
+            _cq_named = _dijo_particular(_cq_last) or bool(
                 re.search(
                     r"\b(osde|sancor|swiss|galeno|ioma|issn|osdepym|sosunc|osseg|jer[aá]rquicos|medif[eé]|omint|luis pasteur|prevenci[oó]n|apsot|mca|am[eé]rica|bancarios|siaco|credi.?gu[ií]a|federada|medicus|poder judicial)\b",
                     _cq_last,
@@ -5179,7 +5233,9 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
             # ESTA charla (ficha con OS registrada, tool check_insurance_coverage, o la marca
             # persistida arriba). Excepción: tercero/menor (cobertura propia, pregunta nueva).
             _cq_tercero = bool(patient_context) and (
-                "[INTERNAL_BOOKING_CONTEXT]" in patient_context or "HIJO/A MENOR" in patient_context
+                "[INTERNAL_BOOKING_CONTEXT]" in patient_context
+                or "HIJO/A MENOR" in patient_context
+                or "MULTI_BOOKING" in patient_context
             )
             _cq_cross_turn = False
             if not _cq_tercero:
@@ -5371,7 +5427,8 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                 "HIJO/A MENOR" in _gp_ctx or "[INTERNAL_BOOKING_CONTEXT]" in _gp_ctx
             )
             _gp_last = " ".join(messages).lower() if isinstance(messages, list) else str(messages or "").lower()
-            _gp_pidio_particular = "particular" in _gp_last
+            # Intención real de particular (no el substring 'en particular' / '¿es particular?').
+            _gp_pidio_particular = _dijo_particular(_gp_last)
             _gp_estetico = any(
                 k in _gp_last for k in ("carilla", "blanqueamiento", "diseño de sonrisa", "estetic", "estétic")
             )
@@ -5390,8 +5447,16 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                     _gp_last,
                 )
             )
+            # Fuera de panel = OS sin convenio → la atención ES particular (el valor SÍ sale,
+            # lo encuadra REINTEGRO). ISSN incluida (audit 2026-07-22): ISSN NO tiene convenio
+            # fuera de cirugía → es particular/derivación (igual que la trata el CANDADO REINTEGRO,
+            # comentario ~5228). Antes ISSN caía en el balde 'convenio' y el gate afirmaba
+            # cobertura falsa + borraba el valor legítimo.
             _gp_os_fuera_panel = bool(
-                re.search(r"\b(swiss(?:\s+medical)?|ioma|osdepym|omint|luis pasteur|prevenci[oó]n)\b", _gp_last)
+                re.search(
+                    r"\b(swiss(?:\s+medical)?|ioma|osdepym|omint|luis pasteur|prevenci[oó]n|issn|instituto de seguridad)\b",
+                    _gp_last,
+                )
             )
             # nombró una OS CON convenio (no está fuera de panel) → no debe salir el particular
             _gp_os_convenio = _gp_os_en_msg and not _gp_os_fuera_panel
@@ -5404,11 +5469,29 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                 response_text = re.sub(r"\n{3,}", "\n\n", response_text).strip()
                 _gp_stripped = (_gp_pre != response_text)
                 if _gp_os_convenio:
-                    # Nombró OS con convenio: NO re-preguntar. Si se recortó el valor, anexar
-                    # la línea canónica de cobertura (sin cifra, ver main.py:12061/12082).
-                    if _gp_stripped and not re.search(
-                        r"(?i)va con tu obra social|seg[uú]n tu plan|coseguro", response_text
-                    ):
+                    # OS CON convenio: el valor particular NO debe salir de NINGUNA forma. Si la
+                    # plantilla canónica no matcheó (forma corta 'la consulta tiene un valor de $X'),
+                    # recortar igual la oración con el valor (audit: la protección dependía del
+                    # match exacto de la plantilla).
+                    if re.search(r"(?i)tiene un valor", response_text):
+                        response_text = re.sub(
+                            r"(?is)[^.\n!?]*tiene un valor[^.\n!?]*[.!?\n]?", "", response_text
+                        ).strip()
+                        response_text = re.sub(r"\n{3,}", "\n\n", response_text).strip()
+                    # Sancor/OSDE/etc. SÍ tienen convenio → NO corresponde ofrecer reintegro/
+                    # comprobante (eso es para OS sin convenio). Si REINTEGRO ya lo anexó o el mini
+                    # lo dijo, se recorta para no contradecir la línea de cobertura (audit [5]/[16]).
+                    response_text = re.sub(
+                        r"(?im)^.*(?:reintegro|comprobante).*$\n?", "", response_text
+                    ).strip()
+                    # Frase residual del mini 'con X la consulta es/sería particular' (contradice convenio).
+                    response_text = re.sub(
+                        r"(?im)^.*\b(?:es|ser[ií]a|de forma|forma)\s+particular\b.*$\n?", "", response_text
+                    ).strip()
+                    response_text = re.sub(r"\n{3,}", "\n\n", response_text).strip()
+                    _gp_stripped = True
+                    # Anexar la línea canónica de cobertura (sin cifra, ver main.py:12061/12082).
+                    if not re.search(r"(?i)va con tu obra social|seg[uú]n tu plan|coseguro", response_text):
                         _gp_coseg = (
                             "La consulta de evaluación va con tu obra social 😊 Si corresponde algún "
                             "coseguro, se evalúa según tu plan y se confirma en la clínica el día del turno. "

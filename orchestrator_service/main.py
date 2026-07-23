@@ -4255,19 +4255,33 @@ async def check_availability(
         )
 
 
+_P4_EXCL_CTX = re.compile(
+    # Palabras que, si preceden de cerca al número, indican que NO es una hora de turno
+    # pedida: contexto de agenda del paciente, duración, o límites (hasta/desde = min/max).
+    r"\b(?:sal[a-z]*|entr[a-z]*|vuelv[a-z]*|volv[a-z]*|regres[a-z]*|trabaj[a-z]*|labur[a-z]*|"
+    r"curr[a-z]*|termin[a-z]*|empiez[a-z]*|empez[a-z]*|abre[a-z]*|abren|cierr[a-z]*|cerr[a-z]*|"
+    r"hasta|desde|hace|dur[a-z]*|cada|durante|lleg[a-z]*|necesit[a-z]*|tard[a-z]*|m[ií]nim[a-z]*|son)\b"
+)
+
+
 def _extract_requested_hours(msg: Optional[str]) -> set:
     """P4 (caso Rodrigo): extrae las HORAS (0-23) que el paciente pidió EXPLÍCITAMENTE
-    como horario de turno en su mensaje. CONSERVADOR: solo cuenta números con contexto
-    horario claro ('a las 16', '16 hs', '16:30', '4 de la tarde') para no confundir
-    DNI/fechas/números de opción. Devuelve un set de horas ENTERAS (ignora los minutos
-    a propósito, para no rechazar de más). Para horas ambiguas 1-11 SIN período explícito
-    agrega también h+12 (ej: 'a las 4' → {4,16}) → así el candado solo rechaza mismatches
-    groseros (pidió 16/17 y agenda 13), nunca una interpretación am/pm razonable.
+    como horario de TURNO. ALTA PRECISIÓN (endurecido tras auditoría 2026-07-22): descarta
+    números que son DURACIÓN ('2 horas de tratamiento'), CONTEXTO de agenda del paciente
+    ('salgo a las 18', 'trabajo hasta las 20') y toma los RANGOS/VENTANAS ('de 2 a 4') como
+    intervalo completo (no como una sola hora). Ignora minutos a propósito. Horas ambiguas
+    1-11 sin período → am+pm (dirección segura). Filosofía: un falso NEGATIVO solo revierte
+    al comportamiento previo (no rechaza el turno); un falso POSITIVO bloquearía un turno
+    legítimo — por eso preferimos perder recall antes que precisión.
     """
     if not msg:
         return set()
     m = msg.lower()
     hours: set = set()
+
+    def _excluded_before(start_pos):
+        pre = m[max(0, start_pos - 22):start_pos]
+        return bool(_P4_EXCL_CTX.search(pre))
 
     def _add(h_raw, period=None):
         try:
@@ -4290,29 +4304,56 @@ def _extract_requested_hours(msg: Optional[str]) -> set:
             hours.add(h)
 
     def _tail_range(end_pos, period=None):
-        # rango adyacente: "16 o 17", "16 y 17", "16 a 17"
+        # rango adyacente contiguo: "16 o 17", "16 y 17" (la 'a' se maneja como ventana abajo)
         tail = m[end_pos:end_pos + 12]
-        mr = re.match(r"\s*(?:o|y|a)\s*(\d{1,2})\b", tail)
+        mr = re.match(r"\s*(?:o|y)\s*(\d{1,2})\b", tail)
         if mr:
             _add(mr.group(1), period)
+
+    # 0) RANGOS/VENTANAS: "de 2 a 4", "entre las 14 y las 16", "de las 9 a las 11" → TODO el
+    #    intervalo cuenta como pedido (el paciente aceptaría cualquier hora dentro). Evita el
+    #    falso positivo de capturar solo un extremo y rechazar el otro.
+    for rm in re.finditer(
+        r"\b(?:de|entre)\s+(?:las?\s+)?(\d{1,2})\s+(?:a|y|hasta)\s+(?:las?\s+)?(\d{1,2})\b", m
+    ):
+        try:
+            a, b = int(rm.group(1)), int(rm.group(2))
+        except Exception:
+            continue
+        tailp = m[rm.end():rm.end() + 16]
+        per = "pm" if ("tarde" in tailp or "noche" in tailp) else ("am" if "mañana" in tailp else None)
+        lo = a + 12 if (per == "pm" and a < 12) else a
+        hi = b + 12 if (per == "pm" and b < 12) else b
+        if 0 <= lo <= 23 and 0 <= hi <= 23 and lo <= hi and (hi - lo) <= 14:
+            for h in range(lo, hi + 1):
+                hours.add(h)
+                if per is None and 1 <= h <= 11:
+                    hours.add(h + 12)
 
     # 1) "a las 16", "a las 16:30", "a las 4 de la tarde", "a las 16 o 17"
     for mt in re.finditer(
         r"\ba\s+las?\s+(\d{1,2})(?::(\d{2}))?\s*(de la (tarde|mañana|noche)|del mediod[ií]a)?", m
     ):
+        if _excluded_before(mt.start()):
+            continue
         period = None
         if mt.group(3):
             period = "mediodia" if "mediod" in mt.group(3) else mt.group(4)
         _add(mt.group(1), period)
         _tail_range(mt.end(), period)
 
-    # 2) "16 hs", "16:30 hs", "16 horas", "16h" (sufijo horario explícito)
-    for mt in re.finditer(r"\b(\d{1,2})(?::(\d{2}))?\s*(?:hs|hrs|horas|hora|h)\b", m):
+    # 2) "16 hs", "16:30 hs", "16 hrs" — sufijo FUERTE de hora-del-día. 'horas'/'hora'/'h'
+    #    NO se cuentan: suelen ser DURACIÓN ('2 horas de tratamiento', 'hace 2 horas').
+    for mt in re.finditer(r"\b(\d{1,2})(?::(\d{2}))?\s*(?:hs|hrs)\b", m):
+        if _excluded_before(mt.start()):
+            continue
         _add(mt.group(1))
         _tail_range(mt.end())
 
-    # 3) "4 de la tarde", "10 de la mañana", "8 de la noche" (sin 'a las' ni 'hs')
+    # 3) "4 de la tarde", "10 de la mañana", "8 de la noche"
     for mt in re.finditer(r"\b(\d{1,2})(?::(\d{2}))?\s*de la (tarde|mañana|noche)\b", m):
+        if _excluded_before(mt.start()):
+            continue
         _add(mt.group(1), mt.group(3))
 
     return hours
