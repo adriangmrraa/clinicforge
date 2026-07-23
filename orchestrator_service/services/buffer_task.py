@@ -1182,6 +1182,21 @@ async def process_buffer_task(
     if not messages:
         return
 
+    # ========== TAREA DE LA DRA. → PENDIENTE (marcador "Tarea:", solo autorizados) ==========
+    # Pedido Carlos 2026-07-23: la Dra. manda tareas al número de la clínica para que la
+    # secretaria las haga y hoy se pierden en el chat. Es un COMANDO de la Dra., no una
+    # conversación de paciente → se procesa ANTES de override humano y de la lista de bloqueo
+    # (siempre debe entrar). Si viene de un número autorizado (tenants.config->'staff_task_phones')
+    # y arranca con "Tarea:" → carga a Pendientes y responde "📌 Anotado", SIN correr el
+    # agente (determinista, cero costo de LLM). Fail-safe: cualquier error sigue el flujo normal.
+    try:
+        if await _maybe_create_staff_task(
+            pool, tenant_id, conversation_id, external_user_id, provider, channel, messages
+        ):
+            return
+    except Exception as _st_err:
+        logger.warning(f"staff-task intake skipped (non-fatal): {_st_err}")
+
     # Spec 24: Human Override Check (Parity)
     # Check if human took control during buffer wait
     override_row = await pool.fetchrow(
@@ -1203,19 +1218,6 @@ async def process_buffer_task(
                 f"🔇 Buffer task silenced by Human Override until {override_until} for {external_user_id}"
             )
             return
-
-    # ========== TAREA DE LA DRA. → PENDIENTE (marcador "Tarea:", solo autorizados) ==========
-    # Pedido Carlos 2026-07-23: la Dra. manda tareas al número de la clínica para que la
-    # secretaria las haga y hoy se pierden en el chat. Si viene de un número autorizado
-    # (tenants.config->'staff_task_phones') y arranca con "Tarea:" → se carga a Pendientes
-    # y se responde "📌 Anotado", SIN correr el agente (determinista, sin costo de LLM).
-    try:
-        if await _maybe_create_staff_task(
-            pool, tenant_id, conversation_id, external_user_id, provider, channel, messages
-        ):
-            return
-    except Exception as _st_err:
-        logger.warning(f"staff-task intake skipped (non-fatal): {_st_err}")
 
     # ========== LISTA DE BLOQUEO ==========
     # Numeros que la clinica marco para que Paula NO conteste (labs, proveedores, spam,
