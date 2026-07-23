@@ -112,7 +112,7 @@ async def gather_agenda_data(
             a.appointment_datetime,
             a.duration_minutes,
             a.status,
-            COALESCE(NULLIF(a.appointment_name, ''), NULLIF(a.appointment_type, ''), 'Consulta') AS treatment,
+            COALESCE(NULLIF(tt.name, ''), NULLIF(a.appointment_type, ''), 'Consulta') AS treatment,
             (p.first_name || ' ' || COALESCE(p.last_name, '')) AS patient_name,
             COALESCE(p.phone_number, '') AS patient_phone,
             COALESCE(p.dni, '') AS patient_dni,
@@ -122,6 +122,7 @@ async def gather_agenda_data(
         FROM appointments a
         JOIN patients p ON a.patient_id = p.id AND p.tenant_id = $1
         LEFT JOIN professionals prof ON a.professional_id = prof.id AND prof.tenant_id = $1
+        LEFT JOIN treatment_types tt ON a.appointment_type = tt.code AND tt.tenant_id = a.tenant_id
         WHERE a.tenant_id = $1
           AND a.appointment_datetime BETWEEN $2 AND $3
     """
@@ -348,13 +349,14 @@ async def gather_day_data(
             a.appointment_datetime,
             a.duration_minutes,
             a.status,
-            COALESCE(NULLIF(a.appointment_name, ''), NULLIF(a.appointment_type, ''), 'Consulta') AS treatment,
+            COALESCE(NULLIF(tt.name, ''), NULLIF(a.appointment_type, ''), 'Consulta') AS treatment,
             (p.first_name || ' ' || COALESCE(p.last_name, '')) AS patient_name,
             COALESCE(p.phone_number, '') AS patient_phone,
             (COALESCE(prof.first_name, '') || ' ' || COALESCE(prof.last_name, '')) AS professional_name
         FROM appointments a
         JOIN patients p ON a.patient_id = p.id AND p.tenant_id = $1
         LEFT JOIN professionals prof ON a.professional_id = prof.id AND prof.tenant_id = $1
+        LEFT JOIN treatment_types tt ON a.appointment_type = tt.code AND tt.tenant_id = a.tenant_id
         WHERE a.tenant_id = $1
           AND a.appointment_datetime BETWEEN $2 AND $3
     """
