@@ -19896,18 +19896,24 @@ async def export_agenda(
     summary="Mandar YA el reporte de agenda del día siguiente al Telegram del equipo",
 )
 async def send_agenda_report_now(
-    resolved_tenant_id: int = Depends(get_resolved_tenant_id),
+    tenant_id: int = 1,
 ):
     """
     Dispara a demanda el reporte del día siguiente (resumen + PDF) al Telegram
     del equipo (telegram_authorized_users) — el mismo que el job de las 14hs,
     sin esperar la hora ni el dedup. Útil para probar y para re-enviarlo.
+
+    Auth: SOLO X-Admin-Token (verify_admin_token en el decorador) — es un
+    disparador OPERATIVO pensado para consola/cron, sin sesión de panel. El
+    tenant_id por query (default 1) es aceptable acá: no devuelve datos del
+    tenant — solo dispara el envío al Telegram de los usuarios autorizados DE
+    ESE tenant (telegram_authorized_users filtra por tenant_id adentro).
     Requiere que el bot de Telegram del tenant esté activo en este proceso.
     """
     try:
         from jobs.agenda_report import send_tenant_report_now
 
-        await send_tenant_report_now(resolved_tenant_id)
+        await send_tenant_report_now(tenant_id)
         return {"ok": True, "detail": "Reporte enviado al Telegram del equipo (si el bot está activo)."}
     except Exception as exc:
         logger.error("send_agenda_report_now error: %s", exc)

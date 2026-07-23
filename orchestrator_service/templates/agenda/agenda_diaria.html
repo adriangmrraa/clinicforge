@@ -24,18 +24,18 @@
     text-align: left; font-size: 8.5pt; text-transform: uppercase; letter-spacing: .5pt;
     color: #555; border-bottom: 1.5pt solid #1a1a1a; padding: 4pt 5pt;
   }
-  tbody td { padding: 5pt; border-bottom: .6pt solid #ccc; vertical-align: top; }
-  tbody tr:nth-child(even) { background: #f4f4f4; }
+  /* Ahorro de tinta (pedido Carlos): sin fondos sólidos ni zebra — solo líneas y texto. */
+  tbody td { padding: 5pt; border-bottom: .6pt solid #bbb; vertical-align: top; }
   td.hora { font-weight: bold; font-size: 11.5pt; white-space: nowrap; width: 52pt; }
   td.hora .dur { display: block; font-weight: normal; font-size: 8pt; color: #777; }
   td.paciente { font-weight: bold; }
   td.paciente .tel { display: block; font-weight: normal; font-size: 8.5pt; color: #555; }
   .estado { display: inline-block; font-size: 8.5pt; font-weight: bold; border-radius: 3pt;
             padding: 1.5pt 6pt; border: 1pt solid; white-space: nowrap; }
-  .estado.ok   { color: #2e7d32; border-color: #2e7d32; background: #e9f4ea; }
-  .estado.warn { color: #b26a00; border-color: #b26a00; background: #fdf3e3; }
-  .estado.done { color: #33529e; border-color: #33529e; background: #ebeffa; }
-  .estado.off  { color: #888;    border-color: #aaa;    background: #f1f1f1; text-decoration: line-through; }
+  .estado.ok   { color: #2e7d32; border-color: #2e7d32; }
+  .estado.warn { color: #b26a00; border-color: #b26a00; }
+  .estado.done { color: #33529e; border-color: #33529e; }
+  .estado.off  { color: #888;    border-color: #aaa;    text-decoration: line-through; }
   .vacio { text-align: center; color: #777; padding: 30pt 0; font-size: 12pt; }
   .pie { margin-top: 12pt; font-size: 8pt; color: #999; text-align: right; }
 </style>

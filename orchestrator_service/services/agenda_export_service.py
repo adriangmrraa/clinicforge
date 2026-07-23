@@ -331,6 +331,38 @@ _STATUS_ES = {
 }
 
 
+async def _tenant_tz(pool, tenant_id: int):
+    """Timezone del tenant (config->>'timezone', default Argentina). Caso Carlos
+    2026-07-23: los turnos se guardan en UTC y el PDF salía con +3hs — TODO
+    formateo/agrupado de horas debe pasar por esta zona."""
+    from zoneinfo import ZoneInfo
+
+    tz_str = "America/Argentina/Buenos_Aires"
+    try:
+        row_tz = await pool.fetchval(
+            "SELECT COALESCE(config->>'timezone', 'America/Argentina/Buenos_Aires') "
+            "FROM tenants WHERE id = $1",
+            tenant_id,
+        )
+        if row_tz:
+            tz_str = row_tz
+    except Exception:
+        pass
+    try:
+        return ZoneInfo(tz_str)
+    except Exception:
+        return ZoneInfo("America/Argentina/Buenos_Aires")
+
+
+def _to_local(dt, tz):
+    """Convierte un appointment_datetime (UTC o naive-UTC) a hora local del tenant."""
+    if dt.tzinfo is None:
+        from datetime import timezone as _tzu
+
+        dt = dt.replace(tzinfo=_tzu.utc)
+    return dt.astimezone(tz)
+
+
 async def gather_day_data(
     pool,
     tenant_id: int,
@@ -339,10 +371,12 @@ async def gather_day_data(
     include_cancelled: bool = False,
 ) -> dict:
     """Lista plana de los turnos de UN día, ordenada por hora, con tratamiento,
-    teléfono y estado legible. Filtrada por tenant (Sovereignty Protocol §1)."""
+    teléfono y estado legible. Filtrada por tenant (Sovereignty Protocol §1).
+    El 'día' es el día LOCAL del tenant (filtro y horas en su timezone)."""
+    tz = await _tenant_tz(pool, tenant_id)
     day_dt = datetime.strptime(day, "%Y-%m-%d")
-    start_dt = day_dt.replace(hour=0, minute=0, second=0)
-    end_dt = day_dt.replace(hour=23, minute=59, second=59)
+    start_dt = day_dt.replace(hour=0, minute=0, second=0, tzinfo=tz)
+    end_dt = day_dt.replace(hour=23, minute=59, second=59, tzinfo=tz)
 
     sql = """
         SELECT
@@ -383,7 +417,7 @@ async def gather_day_data(
         elif r["status"] in ("scheduled", "pending"):
             n_unconf += 1
         turnos.append({
-            "hora": r["appointment_datetime"].strftime("%H:%M"),
+            "hora": _to_local(r["appointment_datetime"], tz).strftime("%H:%M"),
             "duracion": r["duration_minutes"] or 30,
             "paciente": (r["patient_name"] or "").strip() or "—",
             "telefono": r["patient_phone"] or "—",
@@ -420,9 +454,11 @@ async def gather_range_data(
 ) -> dict:
     """Turnos de un RANGO (semana/mes/período), agrupados por día — para la
     plantilla lista multi-día (reemplaza a la grilla semanal, que 'no se
-    entendía' — pedido Carlos 2026-07-23). Solo días CON turnos."""
-    start_dt = datetime.strptime(start_date, "%Y-%m-%d").replace(hour=0, minute=0, second=0)
-    end_dt = datetime.strptime(end_date, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
+    entendía' — pedido Carlos 2026-07-23). Solo días CON turnos. Días y horas
+    en la timezone LOCAL del tenant (fix +3hs)."""
+    tz = await _tenant_tz(pool, tenant_id)
+    start_dt = datetime.strptime(start_date, "%Y-%m-%d").replace(hour=0, minute=0, second=0, tzinfo=tz)
+    end_dt = datetime.strptime(end_date, "%Y-%m-%d").replace(hour=23, minute=59, second=59, tzinfo=tz)
 
     sql = """
         SELECT
@@ -457,7 +493,7 @@ async def gather_range_data(
     grupos: dict = {}
     tot = conf = unconf = 0
     for r in rows:
-        dt = r["appointment_datetime"]
+        dt = _to_local(r["appointment_datetime"], tz)
         key = dt.strftime("%Y-%m-%d")
         if key not in grupos:
             grupos[key] = {
