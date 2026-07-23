@@ -175,6 +175,10 @@ export default function AgendaView() {
     return window.innerWidth >= 1024 ? 'timeGridWeek' : (window.innerWidth >= 768 ? 'resourceTimeGridDay' : 'timeGridDay');
   });
   const [showExportMenu, setShowExportMenu] = useState(false);
+  // Qué período imprimir/descargar (pedido Carlos 2026-07-23: elegir explícito y claro)
+  const [exportRange, setExportRange] = useState<'today' | 'week' | 'month' | 'custom'>('today');
+  const [exportStart, setExportStart] = useState('');
+  const [exportEnd, setExportEnd] = useState('');
   const [exporting, setExporting] = useState(false);
 
   // Mobile Detection
@@ -682,9 +686,10 @@ export default function AgendaView() {
   };
 
   const getExportParams = () => {
+    // Período EXPLÍCITO elegido por el usuario (pedido Carlos 2026-07-23) — nada de
+    // inferir del calendario visible (era confuso: en vista mes salía "desde hoy").
     const calApi = calendarRef.current?.getApi();
     const view = calApi?.view;
-    const viewType = view?.type === 'dayGridMonth' ? 'month' : 'week';
     // DLD-71: usar fecha local sin conversión a UTC para evitar desfasaje de día
     const formatLocalDate = (d: Date) => {
       const y = d.getFullYear();
@@ -693,27 +698,37 @@ export default function AgendaView() {
       return `${y}-${m}-${day}`;
     };
 
+    // Fecha de referencia: el día/mes que se está VIENDO en el calendario (o hoy)
+    const refDate = view?.currentStart ? new Date(view.currentStart) : new Date();
+    const today = new Date();
+
     let start: string | undefined;
     let end: string | undefined;
+    let viewType = 'list';
 
-    if (viewType === 'month' && view?.activeStart) {
-      // Vista mensual: desde HOY hasta fin del mes visualizado
-      const today = new Date();
-      // activeStart puede ser del mes anterior (padding de grilla) — avanzar 7 días para entrar al mes real
-      const midMonth = new Date(view.activeStart);
-      midMonth.setDate(midMonth.getDate() + 7);
-      const firstOfMonth = new Date(midMonth.getFullYear(), midMonth.getMonth(), 1);
-      const lastOfMonth = new Date(midMonth.getFullYear(), midMonth.getMonth() + 1, 0);
-      // Usar max(today, firstOfMonth) para no incluir turnos pasados
-      const effectiveStart = today > firstOfMonth ? today : firstOfMonth;
-      start = formatLocalDate(effectiveStart);
+    if (exportRange === 'today') {
+      start = end = formatLocalDate(today);
+      viewType = 'day';
+    } else if (exportRange === 'week') {
+      // Semana del día visible: lunes a domingo
+      const base = view?.type === 'timeGridWeek' && view?.activeStart ? new Date(view.activeStart) : today;
+      const dow = (base.getDay() + 6) % 7; // 0 = lunes
+      const monday = new Date(base.getFullYear(), base.getMonth(), base.getDate() - dow);
+      const sunday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 6);
+      start = formatLocalDate(monday);
+      end = formatLocalDate(sunday);
+    } else if (exportRange === 'month') {
+      // Mes visible COMPLETO (del 1 al último — para imprimir el mes entero)
+      const firstOfMonth = new Date(refDate.getFullYear(), refDate.getMonth(), 1);
+      const lastOfMonth = new Date(refDate.getFullYear(), refDate.getMonth() + 1, 0);
+      start = formatLocalDate(firstOfMonth);
       end = formatLocalDate(lastOfMonth);
     } else {
-      // Vista semanal: semana completa Lun-Sáb (comportamiento existente)
-      start = view?.activeStart ? formatLocalDate(view.activeStart) : undefined;
-      const rawEnd = view?.activeEnd;
-      const adjustedEnd = rawEnd ? new Date(rawEnd.getFullYear(), rawEnd.getMonth(), rawEnd.getDate() - 1) : undefined;
-      end = adjustedEnd ? formatLocalDate(adjustedEnd) : undefined;
+      // Rango personalizado
+      if (!exportStart || !exportEnd || exportStart > exportEnd) return null;
+      start = exportStart;
+      end = exportEnd;
+      viewType = exportStart === exportEnd ? 'day' : 'list';
     }
 
     if (!start || !end) return null;
@@ -739,8 +754,8 @@ export default function AgendaView() {
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      const prefix = ep.viewType === 'month' ? 'agenda_mensual' : 'agenda_semanal';
-      link.setAttribute('download', `${prefix}_${ep.start}.pdf`);
+      const fname = ep.start === ep.end ? `Agenda_${ep.start}.pdf` : `Agenda_${ep.start}_a_${ep.end}.pdf`;
+      link.setAttribute('download', fname);
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -1007,17 +1022,57 @@ export default function AgendaView() {
                 {showExportMenu && (
                   <>
                     <div className="fixed inset-0 z-40" onClick={() => setShowExportMenu(false)} />
-                    <div className="absolute right-0 top-10 z-50 bg-[#1a1f2e] border border-white/[0.1] rounded-lg shadow-xl py-1 min-w-[180px]">
+                    <div className="absolute right-0 top-10 z-50 bg-[#1a1f2e] border border-white/[0.1] rounded-lg shadow-xl p-3 min-w-[240px]">
+                      <div className="text-[11px] uppercase tracking-wider text-white/40 mb-2">¿Qué imprimir?</div>
+                      <div className="grid grid-cols-2 gap-1.5 mb-2">
+                        {([
+                          ['today', 'Hoy'],
+                          ['week', 'Semana'],
+                          ['month', 'Mes'],
+                          ['custom', 'Rango…'],
+                        ] as const).map(([val, label]) => (
+                          <button
+                            key={val}
+                            onClick={() => setExportRange(val)}
+                            className={`px-3 py-1.5 rounded-md text-sm border transition-colors ${
+                              exportRange === val
+                                ? 'bg-white text-[#0a0e1a] border-white font-medium'
+                                : 'bg-white/[0.04] text-white/70 border-white/[0.08] hover:bg-white/[0.08]'
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                      {exportRange === 'custom' && (
+                        <div className="flex items-center gap-1.5 mb-2">
+                          <input
+                            type="date"
+                            value={exportStart}
+                            onChange={(e) => setExportStart(e.target.value)}
+                            className="flex-1 min-w-0 px-2 py-1.5 rounded-md text-xs bg-white/[0.04] border border-white/[0.08] text-white"
+                          />
+                          <span className="text-white/40 text-xs">a</span>
+                          <input
+                            type="date"
+                            value={exportEnd}
+                            onChange={(e) => setExportEnd(e.target.value)}
+                            className="flex-1 min-w-0 px-2 py-1.5 rounded-md text-xs bg-white/[0.04] border border-white/[0.08] text-white"
+                          />
+                        </div>
+                      )}
+                      <div className="border-t border-white/[0.06] my-1.5" />
                       <button
                         onClick={handleExport}
-                        className="w-full px-4 py-2 text-left text-sm text-white/80 hover:bg-white/[0.06] flex items-center gap-2"
+                        disabled={exportRange === 'custom' && (!exportStart || !exportEnd || exportStart > exportEnd)}
+                        className="w-full px-3 py-2 text-left text-sm text-white/80 hover:bg-white/[0.06] rounded-md flex items-center gap-2 disabled:opacity-40"
                       >
                         <FileText size={14} /> Descargar PDF
                       </button>
-                      <div className="border-t border-white/[0.06] my-1" />
                       <button
                         onClick={handlePrint}
-                        className="w-full px-4 py-2 text-left text-sm text-white/80 hover:bg-white/[0.06] flex items-center gap-2"
+                        disabled={exportRange === 'custom' && (!exportStart || !exportEnd || exportStart > exportEnd)}
+                        className="w-full px-3 py-2 text-left text-sm text-white/80 hover:bg-white/[0.06] rounded-md flex items-center gap-2 disabled:opacity-40"
                       >
                         <Printer size={14} /> Imprimir
                       </button>
