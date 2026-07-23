@@ -13,11 +13,34 @@ import re
 import sys
 
 
+def _dijo_particular(text: str) -> bool:
+    """Espejo de buffer_task._dijo_particular: intención de auto-pago, no el substring."""
+    t = (text or "").lower()
+    if re.search(r"\bsin\s+(?:obra\s+social|cobertura|prepaga)\b|\bno\s+tengo\s+(?:obra\s+social|cobertura|prepaga)\b", t):
+        return True
+    for mt in re.finditer(r"\bparticular\b", t):
+        pre = t[max(0, mt.start() - 24):mt.start()]
+        post = t[mt.end():mt.end() + 6]
+        if re.search(r"\ben\s+$", pre):
+            continue
+        if re.search(r"\b(algo|nada|cosa|caso|dolor|molestia|muela|diente|tema|situaci[oó]n|"
+                     r"detalle|pregunta|duda|zona|parte|problema)\s+$", pre):
+            continue
+        if re.search(r"\b(es|sea|ser[aá]|ser[ií]a)\s+$", pre):
+            pre2 = t[max(0, mt.start() - 30):mt.start()]
+            if not re.search(r"\b(s[íi]|dale|ok|okay|bueno|buen[ií]simo|perfecto|claro|correcto|listo|va|obvio)\b", pre2):
+                continue
+        if re.search(r"^\s*o\b", post):
+            continue
+        return True
+    return False
+
+
 def candado_cobertura_chat(response_text: str, last_user_msg: str) -> str:
     if not (response_text and re.search(r"cont[aá]s con alguna obra social", response_text, re.I)):
         return response_text
     _last = (last_user_msg or "").lower()
-    _named = "particular" in _last or bool(
+    _named = _dijo_particular(_last) or bool(
         re.search(
             r"\b(osde|sancor|swiss|galeno|ioma|issn|osdepym|sosunc|osseg|jer[aá]rquicos|medif[eé]|omint|luis pasteur|prevenci[oó]n|apsot|mca|am[eé]rica|bancarios|siaco|credi.?gu[ií]a|federada|medicus|poder judicial)\b",
             _last,
