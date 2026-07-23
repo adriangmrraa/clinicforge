@@ -1037,6 +1037,69 @@ def _dijo_particular(text: str) -> bool:
     return False
 
 
+# Aclaración ÚNICA y correcta para ISSN (misma que el mensaje predeterminado de la OS).
+_ISSN_ACLARA = (
+    "Con ISSN, la cirugía maxilofacial se coordina con CIMO 😊 El resto de los tratamientos "
+    "(consultas, coronas, limpieza, etc.) se atiende de forma PARTICULAR en el consultorio, y "
+    "te damos el comprobante para que gestiones el reintegro con tu obra social."
+)
+
+
+def _candado_issn_anti_ceder(response_text: str, patient_context: str = "", last_user: str = "") -> str:
+    """ISSN ANTI-CEDER — caso Lucas/prod. El paciente pregunta '¿lo cubre ISSN?' / '¿trabajan
+    con ISSN?' y el bot AFIRMA/insinúa cobertura ('sí, trabajamos con ISSN', 'se maneja según
+    tu caso', 'se ve en la evaluación') cuando la respuesta correcta es SIEMPRE: cirugía
+    maxilofacial→CIMO, el resto PARTICULAR+reintegro. El prompt lo prohíbe pero el modelo
+    cede → candado determinista: detecta el ceder y reemplaza por la aclaración clara,
+    preservando la oferta de turnos si la había. NO toca si la respuesta ya aclara
+    'particular' sin afirmar cobertura. Incluye el fix del 'Sí' pelado (caso 1, 22/07):
+    si ABRE con 'Sí' a una pregunta de cobertura, ni aclarar 'particular' después alcanza.
+    (Portado de PRUEBAS commit 54d05fc, validado offline con 4 casos.)"""
+    if not response_text:
+        return response_text
+    if re.search(r"(?i)\[[^\[\]]*silencio[^\[\]]*\]", response_text):
+        return response_text
+    _ctx = (patient_context or "").lower()
+    _lu = (last_user or "").lower()
+    _issn = bool(re.search(r"\bissn\b", _ctx)) or "instituto de seguridad" in _ctx or bool(re.search(r"\bissn\b", _lu))
+    if not _issn:
+        return response_text
+    # ¿la respuesta CEDE (afirma/insinúa cobertura ISSN o es evasiva sobre si cubre)?
+    _cede = bool(re.search(
+        r"(?i)trabajamos con issn"
+        r"|con issn (?:la consulta|el tratamiento|eso)"
+        r"|(?:la consulta|eso) se maneja seg[uú]n tu caso"
+        r"|se maneja seg[uú]n tu caso"
+        r"|(?:se (?:ve|define)|definici[oó]n)[^.\n]{0,30}(?:evaluaci|consulta)"
+        r"|si corresponde cobertura o no"
+        r"|no puedo confirmar\w*[^.\n]{0,45}sin (?:evaluar|ver)",
+        response_text,
+    ))
+    # Afirmación seca "Sí..." a una pregunta directa de cobertura del paciente.
+    _abre_si = bool(re.match(r"(?i)\s*s[íi]\b", response_text)) and bool(re.search(
+        r"(?i)(?:lo|la|me) cubre|trabaj\w* con issn|cobertura|cubiert[oa]|coseguro", _lu
+    ))
+    if not _cede and _abre_si:
+        _cede = True
+    if not _cede:
+        return response_text
+    # ¿ya está la aclaración correcta (dice 'particular') y NO afirma cobertura falsa? → dejar.
+    # OJO: NO tomar este escape si la respuesta ABRE con "Sí" pelado a una pregunta de
+    # cobertura ("Sí, ... de forma particular") — el "Sí" inicial engaña igual.
+    if re.search(r"(?i)particular", response_text) and not _abre_si and not re.search(
+        r"(?i)trabajamos con issn|se maneja seg[uú]n tu caso|corresponde cobertura o no", response_text
+    ):
+        return response_text
+    # Preservar la oferta de turnos si la había; reemplazar la parte que cede por la aclaración.
+    _oferta_lineas = [
+        l for l in response_text.split("\n")
+        if re.search(r"[1-3]️⃣|🗓️|ℹ️|opciones disponibles|¿cu[aá]l te|te queda mejor|te viene mejor", l, re.I)
+    ]
+    if _oferta_lineas:
+        return _ISSN_ACLARA + "\n\n" + "\n".join(_oferta_lineas).strip()
+    return _ISSN_ACLARA
+
+
 async def process_buffer_task(
     tenant_id: int,
     conversation_id: str,
@@ -2503,17 +2566,78 @@ async def process_buffer_task(
                 "7) Tono: como quien atiende a un cliente de años — cálido, directo y SIN interrogatorio."
             )
 
+        # P6 (caso Emanuel/prod): "PACIENTE CONOCIDO" como señal de 1ª clase. La inyección de
+        # arriba exige "Paciente recurrente" (2+ turnos). Un paciente con FICHA (cobertura
+        # registrada: OS o particular) pero <2 turnos NO la dispara → el bot lo re-interroga.
+        # Ampliamos el reconocimiento SOLO en escenarios SEGUROS donde NO hace falta un
+        # interrogatorio clínico nuevo: registrado PARTICULAR, o mensaje de CONTINUIDAD o
+        # ESTÉTICA. Para un tratamiento NUEVO con OS (ej. ortodoncia) NO se amplía. Mutuamente
+        # excluyente con la recurrente. (Portado de PRUEBAS, versión final con guarda de
+        # tercero/menor de la auditoría — validado offline 13/13 + genéricos.)
+        try:
+            _pc_recurrente = bool(patient_context) and "HISTORIAL: Paciente recurrente" in patient_context
+            _pc_last = " ".join(messages).lower() if isinstance(messages, list) else str(messages or "").lower()
+            # GUARDA de tercero/menor: P6 habla de los DATOS del INTERLOCUTOR. Si el turno es
+            # para OTRA persona (menor, tercero adulto), NO aplica — sus datos y cobertura son
+            # una pregunta nueva. Se detecta por contexto y por el mensaje. Ante la duda, NO inyecta.
+            _pc_tercero_ctx = bool(patient_context) and (
+                "[INTERNAL_BOOKING_CONTEXT]" in patient_context
+                or "HIJO/A MENOR" in patient_context
+                or "MULTI_BOOKING" in patient_context
+            )
+            _pc_persona = (
+                r"(?:hij[oa]s?|amig[oa]s?|esposa|marido|pareja|novi[oa]|mam[aá]|pap[aá]|"
+                r"madre|padre|herman[oa]s?|se[nñ]ora|suegr[oa]|cu[nñ]ad[oa]|abuel[oa]|"
+                r"niet[oa]s?|t[ií]a|t[ií]o|prim[oa]|sobrin[oa]s?|yerno|nuera|"
+                r"persona|familiar|compa[nñ]er[oa]s?|conocid[oa]s?|vecin[oa]s?|colega|jefe|jefa)\b"
+            )
+            _pc_tercero_msg = bool(re.search(
+                r"(?i)\bpara\s+otra?\s+persona\b|"
+                r"\bpara\s+(?:un[ao]?\s+|mi\s+)?" + _pc_persona + r"|"
+                r"\bmi\s+" + _pc_persona,
+                _pc_last,
+            ))
+            _pc_tercero = _pc_tercero_ctx or _pc_tercero_msg
+            if patient_context and not _pc_recurrente and not _pc_tercero:
+                _pc_particular_ficha = "este paciente es PARTICULAR" in patient_context
+                _pc_os_ficha = "Obra Social registrada" in patient_context
+                _pc_conocido = _pc_particular_ficha or _pc_os_ficha
+                _pc_cont = any(
+                    w in _pc_last
+                    for w in ("a terminar", "terminar", "seguir con", "continuar", "en curso",
+                              "retomar", "seguimiento", "control")
+                )
+                _pc_estet = bool(re.search(
+                    r"(?i)\b(blanquea\w*|carilla\w*|dise[nñ]o de sonrisa|est[eé]tic\w*)\b", _pc_last
+                ))
+                if _pc_conocido and (_pc_particular_ficha or _pc_cont or _pc_estet):
+                    # NOTA: P6 NO toca cobertura (eso lo maneja el gate de cobertura). Solo evita
+                    # re-pedir DATOS ya cargados del interlocutor.
+                    patient_context += (
+                        "\n⛔ PACIENTE CONOCIDO (ya tiene ficha: sus datos e historial están arriba): "
+                        "1) NO le re-pidas ni re-confirmes DATOS que YA figuran (nombre, DNI): usalos. "
+                        "2) NO le des el VALOR de la consulta si no lo preguntó explícitamente. "
+                        "3) NO repitas opciones de turno ya ofrecidas: referite a ellas o confirmá la elegida. "
+                        "4) Resolvé DIRECTO lo que pide. Podés hacer las preguntas CLÍNICAS puntuales que el "
+                        "tratamiento requiera, pero SIN repetir el interrogatorio de DATOS ya cargados."
+                    )
+                    logger.info(
+                        f"⛔ P6: inyección PACIENTE CONOCIDO (no-recurrente, escenario seguro) para {external_user_id}"
+                    )
+        except Exception as _pc_err:
+            logger.warning(f"P6 paciente-conocido skipped (non-fatal): {_pc_err}")
+
         # Molestia/dolor (caso Luis, parte a): candado fresco para que el bot CONTENGA (F2) antes
         # de saltar a agendar/precio cuando el paciente reporta dolor/molestia. Fix D vive en el
         # prompt (lejano) y el mini lo dropea; la inyección fresca cercana tiene mucha más adherencia.
         # SEGURO Y CONDICIONAL: solo si el ÚLTIMO mensaje menciona dolor/molestia (no una negación
         # "sin molestias") Y NO hay SEGUIMIENTO POST-TRATAMIENTO activo (ahí manda ESE protocolo, no F2).
         try:
-            _last_user_l = ""
-            for _m in reversed(messages or []):
-                if isinstance(_m, dict) and _m.get("role") == "user":
-                    _last_user_l = str(_m.get("content", "")).lower()
-                    break
+            # FIX (portado de PRUEBAS, banco v2 2026-07-20): `messages` acá es List[str] (el
+            # buffer de mensajes del paciente), NO dicts con role — el loop anterior buscaba
+            # dicts y dejaba _last_user_l vacío SIEMPRE: la inyección de dolor estaba MUERTA
+            # en prod. Con esto revive.
+            _last_user_l = str(messages[-1] if messages else "").lower()
             # Señal FUERTE de dolor (casi nunca es cortesía): dispara directo.
             _strong_pain = any(k in _last_user_l for k in ("duele", "dolor", "no aguanto", "inflam", "hinch", "sangr", "flemón", "flemon", "absceso"))
             # "molestia" es AMBIGUA (cortesía/negación) → solo cuenta si NO es cortesía ni negación.
@@ -2531,6 +2655,79 @@ async def process_buffer_task(
                 patient_context = (patient_context + "\n" + _pain_note) if patient_context else _pain_note
         except Exception as _pain_err:
             logger.debug(f"pain-gate injection skipped (non-fatal): {_pain_err}")
+
+        # 🚨 URGENCIA — SE LE SALIÓ/CAYÓ UNA RESTAURACIÓN (caso Adriana/prod 2026-07-23):
+        # "se me salió el arreglo/carilla/empaste de los dientes de frente" es urgencia (funcional
+        # + estética), pero el bot lo trató de rutina y ofreció turnos lejanos sin derivar. Red
+        # DETERMINISTA (no depende de que el LLM llame triage_urgency): si el mensaje nombra una
+        # restauración Y un verbo de pérdida (y no es negación), inyecta la conducta emergency —
+        # ofrecer HOY + derivhumano para sobreturno si no hay lugar (lo que la secretaria hizo a
+        # mano). Ofrecer HOY es válido: la búsqueda arranca desde hoy (no hay piso duro de 24h).
+        try:
+            _urg_txt = " ".join(messages).lower() if isinstance(messages, list) else str(messages or "").lower()
+            _urg_restauracion = bool(re.search(
+                r"\b(arreglo|carilla|empaste|tapadura|incrustaci[oó]n|perno|funda|provisori[oa]|"
+                r"resina|obturaci[oó]n|composite|corona|puente|pr[oó]tesis|tornillo)\b",
+                _urg_txt,
+            ))
+            _urg_perdida = bool(re.search(
+                r"(se me sali[oó]|se sali[oó]|se me cay[oó]|se cay[oó]|se me despeg|se despeg|"
+                r"se me solt[oó]|se solt[oó]|se me desprend|se desprend|se me afloj|se afloj|"
+                r"se me rompi[oó]|se rompi[oó]|perd[ií]\s+(?:el|la|un|una)|se me vino)",
+                _urg_txt,
+            ))
+            _urg_neg = bool(re.search(r"\bno\s+se\s+me\s+(?:sali|cay|despeg|solt|rompi|afloj)|\btodav[ií]a no\b", _urg_txt))
+            if _urg_restauracion and _urg_perdida and not _urg_neg:
+                _urg_note = (
+                    "🚨 URGENCIA (se le salió/cayó una restauración): tratá esto como EMERGENCIA. "
+                    "1) Contené brevemente con empatía (entiendo, lo resolvemos cuanto antes) — sin precio. "
+                    "2) Buscá turno HOY MISMO con check_availability. "
+                    "3) Si NO hay lugar hoy/mañana, NO ofrezcas una fecha lejana como solución: llamá "
+                    "derivhumano (motivo 'Urgencia: se le salió una restauración — el equipo debe evaluar un "
+                    "sobreturno hoy/mañana') y respondé SOLO con contención cálida ('ya elevé tu caso al equipo "
+                    "para que te vean lo antes posible'), SIN mencionar la fecha lejana ni un emoji."
+                )
+                patient_context = (patient_context + "\n" + _urg_note) if patient_context else _urg_note
+                logger.info(f"🚨 URGENCIA-RESTAURACIÓN inyectada para {external_user_id}")
+        except Exception as _urg_err:
+            logger.debug(f"urgencia-restauracion injection skipped (non-fatal): {_urg_err}")
+
+        # 🗓️ PACIENTE CON TURNO PIDE ENTRAR ANTES (caso María Luz/prod 2026-07-23): tenía turno
+        # HOY 12:00 y preguntó si podía ser vista ANTES ('para las 11 estamos libres, si la doc
+        # la ve antes buenísimo, sino vamos a las 12'). El bot lo tomó como turno NUEVO, dijo
+        # 'para hoy no me quedan lugares' y ofreció fechas lejanas — nonsense y RIESGO de romper
+        # la agenda. Decisión Carlos: DERIVAR al equipo — NO tocar la agenda, NO prometer, NO
+        # ofrecer fechas nuevas. Solo si tiene PRÓXIMO TURNO y NO pide reprogramar/cancelar.
+        try:
+            _ma_txt = " ".join(messages).lower() if isinstance(messages, list) else str(messages or "").lower()
+            _ma_tiene_turno = bool(patient_context) and "PRÓXIMO TURNO" in patient_context
+            _ma_quiere_antes = bool(re.search(
+                r"(?:vea|ver|verla|verlo|atend\w*|entrar|pasar|recib\w*|posibilidad|casualidad|chance|"
+                r"puede\w*|podr\w*|libre\w*)\s+(?:\w+\s+){0,3}(?:antes|m[aá]s temprano|temprano)\b"
+                r"|(?:antes|m[aá]s temprano|temprano)\s+(?:\w+\s+){0,2}(?:de mi turno|del turno|de la (?:hora|cita))"
+                r"|\badelantar\s+(?:el |mi )?turno\b|\bm[aá]s temprano\b"
+                r"|\b(?:hay|ten[eé]s|tienen)\s+\w{0,8}\s*antes\b",
+                _ma_txt,
+            ))
+            _ma_reprog = bool(re.search(
+                r"(?i)\b(reprogram\w*|cambiar (?:el |mi )?turno|cancel\w*|correr (?:el |mi )?turno|"
+                r"otro d[ií]a|otra fecha|pasar(?:lo|la)? para (?:el |otro))\b",
+                _ma_txt,
+            ))
+            if _ma_tiene_turno and _ma_quiere_antes and not _ma_reprog:
+                _ma_note = (
+                    "🗓️ EL PACIENTE YA TIENE UN TURNO (ver PRÓXIMO TURNO arriba) y pregunta si puede ser "
+                    "atendido ANTES / más temprano. ⛔ PROHIBIDO ofrecerle turnos o fechas nuevas, decir "
+                    "'no hay lugar' / 'tengo disponibilidad a partir de', o mover/cancelar su turno. Reconocé "
+                    "su turno con calidez y, como pide venir antes, llamá derivhumano (motivo 'Paciente con "
+                    "turno pide ser atendido antes — el equipo evalúa si hay chance de adelantar') y respondé "
+                    "UNA vez: que le pasás la consulta al equipo para ver si hay chance de verlo antes, y que "
+                    "igual lo esperan a la hora de su turno. NO prometas que se va a poder."
+                )
+                patient_context = (patient_context + "\n" + _ma_note) if patient_context else _ma_note
+                logger.info(f"🗓️ QUIERE-ANTES-CON-TURNO (deriva) inyectada para {external_user_id}")
+        except Exception as _ma_err:
+            logger.debug(f"quiere-antes-con-turno injection skipped (non-fatal): {_ma_err}")
 
         system_prompt = build_system_prompt(
             clinic_name=clinic_name,
@@ -4987,6 +5184,20 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                     )
     except Exception as _gp_err:
         logger.warning(f"candado-gate-precio skipped (non-fatal): {_gp_err}")
+
+    # --- CANDADO: ISSN ANTI-CEDER (caso #3 Lucas/prod) ---
+    # El bot "dice que sí" ante "¿lo cubre ISSN?" o es evasivo ('se maneja según tu caso') →
+    # forzar la aclaración correcta (cirugía maxilofacial→CIMO, el resto particular+reintegro).
+    try:
+        _issn_last = str(messages[-1] if messages else "")
+        _issn_ac_pre = response_text
+        response_text = _candado_issn_anti_ceder(response_text, patient_context or "", _issn_last)
+        if _issn_ac_pre != response_text:
+            logger.warning(
+                f"🔒 CANDADO ISSN ANTI-CEDER: el bot afirmaba cobertura ISSN → forcé 'particular + CIMO' para {external_user_id}"
+            )
+    except Exception as _issn_err:
+        logger.warning(f"candado-issn-anti-ceder skipped (non-fatal): {_issn_err}")
 
     # --- AGENT FAILURE GUARD (blindaje "esto no puede pasar") ---
     # Si el motor cayó y quedó el fallback de error, NO lo mandamos como mensaje

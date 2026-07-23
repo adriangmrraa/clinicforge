@@ -6529,6 +6529,34 @@ async def triage_urgency(symptoms: str):
             "diente flojo",
             "diente suelto",
             "se me movió un diente",
+            # Restauración que se salió/cayó (caso Adriana/prod 2026-07-23): urgencia funcional
+            # + estética (sobre todo dientes de frente). Consistente con 'corona se despegó' que
+            # ya estaba. Decisión Carlos: clasificar como EMERGENCY (turno hoy + derivar si
+            # no hay lugar). Cubre las variantes más comunes; refuerza la inyección determinista.
+            "se me salió el arreglo",
+            "se me salió un arreglo",
+            "se me cayó el arreglo",
+            "se salió el arreglo",
+            "se me despegó el arreglo",
+            "se me salió la carilla",
+            "se me cayó la carilla",
+            "se me despegó la carilla",
+            "se me soltó la carilla",
+            "carilla se despegó",
+            "se me salió el empaste",
+            "se me cayó el empaste",
+            "se salió un empaste",
+            "se me salió la tapadura",
+            "se me cayó la tapadura",
+            "se me salió la incrustación",
+            "se me cayó la incrustación",
+            "se me salió el perno",
+            "se me salió la funda",
+            "se me salió el provisorio",
+            "se me cayó el provisorio",
+            "se me salió la resina",
+            "se me cayó la obturación",
+            "se me salió la obturación",
         ],
     ]
 
