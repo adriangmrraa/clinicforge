@@ -1245,6 +1245,7 @@ async def process_buffer_task(
             current_family_patient_ids,
             current_source_channel,
             current_tenant_tz,
+            current_user_message,
         )
 
         # C3: Engine router for dual-engine system (solo/multi)
@@ -3255,6 +3256,13 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
 
         # Append buffered messages as ONE block
         user_input = "\n".join(messages)
+
+        # Caso Rodrigo: exponer el mensaje CRUDO del turno a book_appointment para el
+        # candado DÍA-CONFIRMADO+HORA-DISTINTA (compara la hora pedida vs la hora a agendar).
+        try:
+            current_user_message.set(user_input)
+        except Exception:
+            pass
 
         if vision_context_str:
             logger.info(
