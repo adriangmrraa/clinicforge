@@ -4832,6 +4832,162 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
     except Exception as _cq_err:
         logger.warning(f"candado-cobertura-chat skipped (non-fatal): {_cq_err}")
 
+    # --- CANDADO: MENCIONAR EL COMPROBANTE/REINTEGRO con atención particular por OS ---
+    # Regla fija de la clínica: cuando la atención es PARTICULAR porque la OS no tiene
+    # convenio (o es ISSN fuera de cirugía), SIEMPRE se menciona que se entrega el
+    # comprobante/recibo para gestionar reintegro. Si la respuesta dice "particular" en ese
+    # contexto y no lo menciona, se agrega UNA línea. Determinista, aditivo (nunca recorta).
+    # (Portado de PRUEBAS 2026-07-23, validado en banco — par acoplado con GATE-PRECIO.)
+    try:
+        _ri_ctx_low = (patient_context or "").lower()
+        # Solo el comprobante/recibo desactiva — decir "reintegro" sin nombrar el
+        # comprobante quedaba a medias.
+        _ri_ya_comprobante = bool(re.search(r"(?i)comprobante|recibo|factura", response_text or ""))
+        _ri_ya_reintegro = bool(re.search(r"(?i)reintegro", response_text or ""))
+        _ri_last = " ".join(messages).lower() if isinstance(messages, list) else str(messages or "").lower()
+        # El paciente nombra una OS SIN convenio y la respuesta da el valor sin el encuadre
+        # particular → también dispara (y abajo se agrega el encuadre COMPLETO).
+        # Set = OS FUERA del panel real. Sancor NO va: es restringida (SÍ tiene convenio) —
+        # afirmarle "no tenemos convenio" sería falso.
+        _ri_os_msg_rechazada = re.search(
+            r"(?i)\b(swiss(?:\s+medical)?|ioma|osdepym|omint|luis pasteur|prevenci[oó]n)\b", _ri_last
+        )
+        _ri_dispara = bool(response_text) and not _ri_ya_comprobante and (
+            bool(re.search(r"(?i)(ser[íi]a de forma particular|atenci[oó]n.*particular|consulta particular|es particular)", response_text or ""))
+            # Con ISSN activo, dar el VALOR de la consulta también exige la línea del
+            # comprobante aunque la respuesta no use la palabra 'particular'.
+            or (bool(re.search(r"\bissn\b", _ri_ctx_low)) and bool(re.search(r"(?i)tiene un valor", response_text or "")))
+            or (bool(_ri_os_msg_rechazada) and bool(re.search(r"(?i)tiene un valor", response_text or "")))
+        )
+        if _ri_dispara:
+            _ri_ctx = _ri_ctx_low
+            _ri_os_context = (
+                bool(re.search(r"\bissn\b", _ri_ctx)) or "instituto de seguridad" in _ri_ctx
+                or bool(re.search(r"\b(swiss|sancor|prevenci[oó]n|no trabajamos)\b", (response_text or "").lower()))
+                or bool(re.search(r"\b(issn|swiss|prevenci[oó]n)\b", _ri_last))
+                or bool(_ri_os_msg_rechazada)
+            )
+            if _ri_os_context:
+                if _ri_os_msg_rechazada and not re.search(r"(?i)particular", response_text or ""):
+                    # Dio el valor sin aclarar el encuadre particular: se agrega COMPLETO.
+                    _ri_os_nombre = _ri_os_msg_rechazada.group(1).title()
+                    response_text = (
+                        response_text.rstrip()
+                        + f"\nTe aclaro: con {_ri_os_nombre} no tenemos convenio directo, así que la atención es particular — igual te entregamos el comprobante para que puedas gestionar el reintegro con tu cobertura."
+                    )
+                elif _ri_ya_reintegro:
+                    # Ya habló del reintegro pero sin el comprobante: completa sin repetir.
+                    response_text = (
+                        response_text.rstrip()
+                        + "\nEl comprobante para gestionarlo te lo entregamos nosotros en la clínica."
+                    )
+                else:
+                    response_text = (
+                        response_text.rstrip()
+                        + "\nIgual te entregamos el comprobante para que puedas gestionar reintegro con tu cobertura, si te corresponde."
+                    )
+                logger.warning(f"🔒 CANDADO REINTEGRO: agregué la línea del comprobante para {external_user_id}")
+    except Exception as _ri_err:
+        logger.warning(f"candado-reintegro skipped (non-fatal): {_ri_err}")
+
+    # --- CANDADO: GATE DE PRECIO PARA COBERTURA NO RESUELTA (caso #2 Sancor, prod) ---
+    # El prompt le dice al modelo que NO dé el valor de la consulta si la cobertura no está
+    # resuelta — pero el mini lo saltea a veces y regala "$60.000". Este es el enforcement
+    # DETERMINISTA: sin cobertura resuelta (o agendando para un menor, o nombró OS CON
+    # convenio) → si la respuesta trae el párrafo del valor, se recorta. Excepciones (el
+    # valor SÍ sale): pidió explícitamente particular, tratamiento ESTÉTICO, u OS FUERA
+    # de panel (Swiss/IOMA/OSDEPYM/Omint/Luis Pasteur/Prevención/ISSN → la atención ES
+    # particular; REINTEGRO la encuadra). (Portado de PRUEBAS 2026-07-23, validado en
+    # banco: cobertura-sancor-convenio-no-fuga-valor / cobertura-issn-no-afirma-convenio.)
+    try:
+        if response_text and re.search(r"tiene un valor", response_text, re.I):
+            _gp_ctx = patient_context or ""
+            _gp_cov_resuelta = bool(_gp_ctx) and (
+                "Obra Social registrada" in _gp_ctx
+                or bool(re.search(r"\bissn\b", _gp_ctx, re.I))
+                or "instituto de seguridad" in _gp_ctx.lower()
+                or "particular" in _gp_ctx.lower()
+            )
+            _gp_minor = bool(_gp_ctx) and (
+                "HIJO/A MENOR" in _gp_ctx or "[INTERNAL_BOOKING_CONTEXT]" in _gp_ctx
+            )
+            _gp_last = " ".join(messages).lower() if isinstance(messages, list) else str(messages or "").lower()
+            # Intención real de particular (no el substring 'en particular' / '¿es particular?').
+            _gp_pidio_particular = _dijo_particular(_gp_last)
+            _gp_estetico = any(
+                k in _gp_last for k in ("carilla", "blanqueamiento", "diseño de sonrisa", "estetic", "estétic")
+            )
+            # 2 baldes: OS FUERA de panel → el valor sale (REINTEGRO lo encuadra). OS CON
+            # convenio (Sancor, OSDE, Galeno...) → NO se da el valor particular: se recorta
+            # y se anexa la línea de cobertura SIN cifra, sin re-preguntar.
+            _gp_os_en_msg = bool(
+                re.search(
+                    r"\b(osde|sancor|swiss|galeno|ioma|issn|osdepym|sosunc|osseg|jer[aá]rquicos|medif[eé]|omint|luis pasteur|prevenci[oó]n|apsot|mca|am[eé]rica|bancarios|siaco|credi.?gu[ií]a|federada|medicus|poder judicial)\b",
+                    _gp_last,
+                )
+            )
+            # ISSN incluida: NO tiene convenio fuera de cirugía → es particular/derivación
+            # (igual que la trata el CANDADO REINTEGRO).
+            _gp_os_fuera_panel = bool(
+                re.search(
+                    r"\b(swiss(?:\s+medical)?|ioma|osdepym|omint|luis pasteur|prevenci[oó]n|issn|instituto de seguridad)\b",
+                    _gp_last,
+                )
+            )
+            _gp_os_convenio = _gp_os_en_msg and not _gp_os_fuera_panel
+            if (_gp_minor or not _gp_cov_resuelta or _gp_os_convenio) and not _gp_pidio_particular and not _gp_estetico and not _gp_os_fuera_panel:
+                _gp_pre = response_text
+                response_text = re.sub(
+                    r"(?is)la consulta de evaluaci[oó]n tiene un valor.*?presupuesto correspondiente\.?",
+                    "", response_text,
+                ).strip()
+                response_text = re.sub(r"\n{3,}", "\n\n", response_text).strip()
+                _gp_stripped = (_gp_pre != response_text)
+                if _gp_os_convenio:
+                    # OS CON convenio: el valor particular NO debe salir de NINGUNA forma. Si la
+                    # plantilla canónica no matcheó (forma corta 'la consulta tiene un valor de $X'),
+                    # recortar igual la LÍNEA con el valor (por línea, no por 'oración': el punto
+                    # de miles de '$60.000' partiría la oración y dejaría basura '000,').
+                    if re.search(r"(?i)tiene un valor", response_text):
+                        response_text = re.sub(
+                            r"(?im)^.*\btiene un valor\b.*$\n?", "", response_text
+                        ).strip()
+                        response_text = re.sub(r"\n{3,}", "\n\n", response_text).strip()
+                    # Sancor/OSDE/etc. SÍ tienen convenio → NO corresponde ofrecer reintegro/
+                    # comprobante. Si REINTEGRO ya lo anexó o el mini lo dijo, se recorta para
+                    # no contradecir la línea de cobertura.
+                    response_text = re.sub(
+                        r"(?im)^.*(?:reintegro|comprobante).*$\n?", "", response_text
+                    ).strip()
+                    # Frase residual del mini 'con X la consulta es/sería particular' (contradice convenio).
+                    response_text = re.sub(
+                        r"(?im)^.*\b(?:es|ser[ií]a|de forma|forma)\s+particular\b.*$\n?", "", response_text
+                    ).strip()
+                    response_text = re.sub(r"\n{3,}", "\n\n", response_text).strip()
+                    _gp_stripped = True
+                    # Anexar la línea canónica de cobertura (sin cifra).
+                    if not re.search(r"(?i)va con tu obra social|seg[uú]n tu plan|coseguro", response_text):
+                        _gp_coseg = (
+                            "La consulta de evaluación va con tu obra social 😊 Si corresponde algún "
+                            "coseguro, se evalúa según tu plan y se confirma en la clínica el día del turno. "
+                            "¿Te paso opciones de turno?"
+                        )
+                        response_text = (
+                            (response_text.rstrip() + "\n" + _gp_coseg).strip()
+                            if response_text.strip() else _gp_coseg
+                        )
+                elif "obra social" not in response_text.lower():
+                    _gp_q = "¿Contás con alguna obra social o te atenderías de forma particular?"
+                    response_text = (response_text + "\n" + _gp_q).strip() if response_text else _gp_q
+                if _gp_pre != response_text:
+                    logger.warning(
+                        f"🔒 CANDADO GATE-PRECIO: valor sin cobertura resuelta → recorté"
+                        f"{' + línea cobertura (OS con convenio)' if _gp_os_convenio else ' y pregunté cobertura'} "
+                        f"({len(_gp_pre)}→{len(response_text)} chars) para {external_user_id}"
+                    )
+    except Exception as _gp_err:
+        logger.warning(f"candado-gate-precio skipped (non-fatal): {_gp_err}")
+
     # --- AGENT FAILURE GUARD (blindaje "esto no puede pasar") ---
     # Si el motor cayó y quedó el fallback de error, NO lo mandamos como mensaje
     # robótico al paciente, PERO tampoco lo dejamos en silencio invisible:
