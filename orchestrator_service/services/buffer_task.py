@@ -5011,6 +5011,56 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
             response_text,
         ).strip()
 
+        # --- CANDADO ANTI-FUGA: nombre de herramienta interna filtrado como texto ---
+        # Caso prod 23/07 (paciente "reenviar la solicitud del pedido"): el modelo escribió
+        # el nombre pelado de la tool ('derivhumano') como una burbuja visible ANTES del
+        # mensaje real. Ningún nombre de herramienta (snake_case / 'derivhumano') aparece
+        # jamás en texto natural para un paciente → se puede borrar sin riesgo. Determinista,
+        # fail-open. Corre ANTES del split en globitos, así la burbuja pelada nunca se envía.
+        _TOOL_LEAK_ALT = (
+            r"derivhumano|check_availability|book_appointment|confirm_slot|triage_urgency|"
+            r"list_my_appointments|cancel_appointment|reschedule_appointment|list_professionals|"
+            r"list_services|get_service_details|save_patient_anamnesis|save_patient_email|"
+            r"get_patient_anamnesis|verify_payment_receipt"
+        )
+        # Borde propio (no \b): \b trata el '_' como letra, así que un token envuelto en
+        # markdown de guion bajo (__confirm_slot__) no se detectaría. Con lookarounds que solo
+        # miran letras/dígitos se respeta el '_' interno del token y se corta bien el borde,
+        # sin falsos positivos dentro de palabras más largas (p. ej. 'xconfirm_sloty').
+        _TL_B = rf"(?<![A-Za-z0-9])(?:{_TOOL_LEAK_ALT})(?![A-Za-z0-9])"
+        _leaked_tools = _re_safety.findall(rf"(?i){_TL_B}", response_text)
+        if _leaked_tools:
+            # 1) línea entera que es SOLO el nombre de la tool (la burbuja pelada, caso típico);
+            #    come también markdown (**, __, ~~, `), viñetas (-, >) y llamada vacía tool().
+            response_text = _re_safety.sub(
+                rf"(?im)^[ \t>*_~`\[\(\-]*(?:{_TOOL_LEAK_ALT})[ \t]*(?:\([^)\n]*\))?[ \t*_~`\]\)]*$",
+                "", response_text,
+            )
+            # 2) residuo inline suelto (por si vino en medio de una oración), con su markdown
+            response_text = _re_safety.sub(
+                rf"(?i)[*_~`]*{_TL_B}(?:\([^)\n]*\))?[*_~`]*", "", response_text
+            )
+            response_text = _re_safety.sub(r"(?m)^[ \t]+$", "", response_text)
+            response_text = _re_safety.sub(r"[ \t]{2,}", " ", response_text)
+            response_text = _re_safety.sub(r"\n{3,}", "\n\n", response_text).strip()
+            # ¿Derivación-FANTASMA? El token 'derivhumano' se filtró como TEXTO pero la
+            # herramienta NO se llamó de verdad este turno → el "ya lo pasé al equipo" sería
+            # falso: el equipo nunca se enteró. Se loguea como ERROR para cazarlo.
+            try:
+                _leak_called = list(_tools_names)
+            except NameError:
+                _leak_called = []
+            if any(t.lower() == "derivhumano" for t in _leaked_tools) and "derivhumano" not in _leak_called:
+                logger.error(
+                    f"🚨 FUGA+FANTASMA: el modelo escribió 'derivhumano' como TEXTO pero NO llamó la "
+                    f"herramienta → la derivación NO se realizó para {external_user_id}. Revisar a mano."
+                )
+            else:
+                logger.warning(
+                    f"🔒 ANTI-FUGA: nombre(s) de herramienta {_leaked_tools} borrado(s) de la "
+                    f"respuesta a {external_user_id}"
+                )
+
     # --- CANDADO DE SALIDA: PACIENTE RECURRENTE CON COBERTURA REGISTRADA (determinista) ---
     # Decisión 2026-07-17 (Carlos: "dejemos de tirar plata"): los candados de TEXTO para
     # estas dos conductas no alcanzan — el mini pattern-matchea la plantilla del precio y
