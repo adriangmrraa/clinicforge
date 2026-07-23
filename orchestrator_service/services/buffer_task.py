@@ -2743,6 +2743,43 @@ async def process_buffer_task(
         except Exception as _pain_err:
             logger.debug(f"pain-gate injection skipped (non-fatal): {_pain_err}")
 
+        # 🚨 URGENCIA — SE LE SALIÓ/CAYÓ UNA RESTAURACIÓN (caso Adriana/prod 2026-07-23):
+        # "se me salió el arreglo/carilla/empaste de los dientes de frente" es urgencia (funcional
+        # + estética), pero el bot lo trató de rutina y ofreció turnos lejanos sin derivar. triage_
+        # urgency cubría corona/diente pero NO arreglo/empaste/carilla, y el modelo ni siquiera lo
+        # triageaba. Red DETERMINISTA (no depende del LLM): si el mensaje nombra una restauración Y
+        # un verbo de pérdida (y no es negación), inyecta la MISMA conducta que el branch emergency
+        # del triage — ofrecer HOY + derivhumano para sobreturno si no hay lugar (lo que Carlos hizo
+        # a mano). Ofrecer HOY es válido: la búsqueda arranca desde hoy (no hay piso duro de 24h).
+        try:
+            _urg_txt = " ".join(messages).lower() if isinstance(messages, list) else str(messages or "").lower()
+            _urg_restauracion = bool(re.search(
+                r"\b(arreglo|carilla|empaste|tapadura|incrustaci[oó]n|perno|funda|provisori[oa]|"
+                r"resina|obturaci[oó]n|composite|corona|puente|pr[oó]tesis|tornillo)\b",
+                _urg_txt,
+            ))
+            _urg_perdida = bool(re.search(
+                r"(se me sali[oó]|se sali[oó]|se me cay[oó]|se cay[oó]|se me despeg|se despeg|"
+                r"se me solt[oó]|se solt[oó]|se me desprend|se desprend|se me afloj|se afloj|"
+                r"se me rompi[oó]|se rompi[oó]|perd[ií]\s+(?:el|la|un|una)|se me vino)",
+                _urg_txt,
+            ))
+            _urg_neg = bool(re.search(r"\bno\s+se\s+me\s+(?:sali|cay|despeg|solt|rompi|afloj)|\btodav[ií]a no\b", _urg_txt))
+            if _urg_restauracion and _urg_perdida and not _urg_neg:
+                _urg_note = (
+                    "🚨 URGENCIA (se le salió/cayó una restauración): tratá esto como EMERGENCIA. "
+                    "1) Contené brevemente con empatía (entiendo, lo resolvemos cuanto antes) — sin precio. "
+                    "2) Buscá turno HOY MISMO con check_availability. "
+                    "3) Si NO hay lugar hoy/mañana, NO ofrezcas una fecha lejana como solución: llamá "
+                    "derivhumano (motivo 'Urgencia: se le salió una restauración — el equipo debe evaluar un "
+                    "sobreturno hoy/mañana') y respondé SOLO con contención cálida ('ya elevé tu caso al equipo "
+                    "para que te vean lo antes posible'), SIN mencionar la fecha lejana ni un emoji."
+                )
+                patient_context = (patient_context + "\n" + _urg_note) if patient_context else _urg_note
+                logger.info(f"🚨 URGENCIA-RESTAURACIÓN inyectada para {external_user_id}")
+        except Exception as _urg_err:
+            logger.debug(f"urgencia-restauracion injection skipped (non-fatal): {_urg_err}")
+
         # INYECCIONES FRESCAS COMPARTIDAS (banco v2, 2026-07-20): derivación explícita
         # ("quiero hablar con una persona" → derivhumano YA), pide-cancelar (ejecutar,
         # no re-preguntar), dos personas (dos turnos + cobertura de cada uno), queja de
