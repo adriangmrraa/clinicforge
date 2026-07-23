@@ -116,6 +116,10 @@
     "f_priority": "Priority",
     "change_priority": "Change priority",
     "from_bot": "From bot",
+    "origin_dra": "From the doctor",
+    "origin_bot_failed": "Bot failed",
+    "origin_from_chat": "From chat",
+    "origin_manual": "Manual",
     "open_total": "Open"
   },
   "nav": {

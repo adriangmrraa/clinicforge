@@ -3,7 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import {
     ListTodo, Plus, RefreshCw, X, CheckCircle2, Clock,
     AlertTriangle, MessageSquare, MessageCircle, Bot, User as UserIcon, Pin,
+    CalendarClock, CircleDashed, Stethoscope,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
 import PageHeader from '../components/PageHeader';
@@ -92,6 +94,29 @@ function fmtDateTime(iso: string | null): string {
     if (!iso) return '—';
     const d = new Date(iso);
     return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+// Tono por sección (solo color; el ícono se pasa por prop). Vencidas=rose, hoy=amber, resto=neutro.
+type SectionTone = 'red' | 'amber' | 'neutral';
+const SECTION_TONE: Record<SectionTone, { title: string; iconWrap: string; count: string; rule: string }> = {
+    red: { title: 'text-rose-300', iconWrap: 'bg-rose-500/10 text-rose-300', count: 'bg-rose-500/15 text-rose-200', rule: 'from-rose-500/25' },
+    amber: { title: 'text-amber-300', iconWrap: 'bg-amber-500/10 text-amber-300', count: 'bg-amber-500/15 text-amber-200', rule: 'from-amber-500/25' },
+    neutral: { title: 'text-white/70', iconWrap: 'bg-white/[0.05] text-white/45', count: 'bg-white/[0.06] text-white/55', rule: 'from-white/[0.08]' },
+};
+
+// Origen del pendiente → de dónde salió, para que la secretaria lo lea de un vistazo.
+// Orden: primero lo específico; el fallback created_by='bot' va al final.
+type OriginInfo = { labelKey: string; cls: string; icon: LucideIcon };
+function originBadge(r: PendingRow): OriginInfo | null {
+    const by = r.created_by;
+    const src = r.source;
+    if (by === 'dra' || src === 'whatsapp_dra') return { labelKey: 'pendientes.origin_dra', cls: 'bg-sky-500/15 text-sky-200', icon: Stethoscope };
+    if (src === 'bot_fallo') return { labelKey: 'pendientes.origin_bot_failed', cls: 'bg-amber-500/10 text-amber-300', icon: AlertTriangle };
+    if (src === 'derivhumano') return { labelKey: 'pendientes.from_bot', cls: 'bg-violet-500/10 text-violet-300', icon: Bot };
+    if (src === 'chat' || src === 'chat_colgado') return { labelKey: 'pendientes.origin_from_chat', cls: 'bg-white/[0.05] text-white/45', icon: MessageSquare };
+    if (by === 'staff' || src === 'manual') return { labelKey: 'pendientes.origin_manual', cls: 'bg-white/[0.05] text-white/45', icon: UserIcon };
+    if (by === 'bot') return { labelKey: 'pendientes.from_bot', cls: 'bg-violet-500/10 text-violet-300', icon: Bot };
+    return null;
 }
 
 export default function PendientesView() {
@@ -221,6 +246,19 @@ export default function PendientesView() {
         );
     };
 
+    // Etiqueta de origen: la secretaria ve de dónde salió (De la Dra., Del bot, Bot falló, etc.).
+    const OriginBadge = ({ r }: { r: PendingRow }) => {
+        const o = originBadge(r);
+        if (!o) return null;
+        const Icon = o.icon;
+        return (
+            <span className={`inline-flex items-center gap-1 pl-1.5 pr-2 py-1 rounded-full text-[10px] font-medium ${o.cls}`}>
+                <Icon size={11} className="shrink-0" />
+                {t(o.labelKey)}
+            </span>
+        );
+    };
+
     // Vencimiento como "tiempo que tenés": prominente y en rojo si ya venció.
     const DueBadge = ({ r }: { r: PendingRow }) => {
         if (!r.due_at) {
@@ -265,11 +303,7 @@ export default function PendientesView() {
                         <div className="flex items-center justify-between gap-2 mt-3">
                             <div className="flex items-center flex-wrap gap-1.5 min-w-0">
                                 <PriorityChip r={r} />
-                                {r.created_by === 'bot' && (
-                                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-medium bg-violet-500/10 text-violet-300">
-                                        <Bot size={11} /> {t('pendientes.from_bot')}
-                                    </span>
-                                )}
+                                <OriginBadge r={r} />
                                 {r.assigned_to && <span className="text-[11px] text-white/35 truncate">→ {r.assigned_to}</span>}
                             </div>
                             <div className="flex items-center gap-0.5 shrink-0 -mr-1">
@@ -328,16 +362,21 @@ export default function PendientesView() {
         );
     };
 
-    const Section = ({ title, items, tone }: { title: string; items: PendingRow[]; tone?: 'red' | 'amber' }) => {
+    const Section = ({ title, items, icon: Icon, tone = 'neutral' }: { title: string; items: PendingRow[]; icon: LucideIcon; tone?: SectionTone }) => {
         if (!items.length) return null;
+        const st = SECTION_TONE[tone];
         return (
-            <div>
-                <h3 className={`text-[11px] font-semibold uppercase tracking-widest mb-3 flex items-center gap-2 ${tone === 'red' ? 'text-rose-400/90' : tone === 'amber' ? 'text-amber-400/90' : 'text-white/40'}`}>
-                    {title}
-                    <span className={`px-1.5 py-0.5 rounded-md text-[10px] ${tone === 'red' ? 'bg-rose-500/10 text-rose-300' : tone === 'amber' ? 'bg-amber-500/10 text-amber-300' : 'bg-white/[0.06] text-white/50'}`}>{items.length}</span>
-                </h3>
-                <div className="space-y-3">{items.map((r) => <Card key={r.id} r={r} />)}</div>
-            </div>
+            <section>
+                <div className="flex items-center gap-2.5 mb-3.5">
+                    <span className={`shrink-0 grid place-items-center w-7 h-7 rounded-lg ${st.iconWrap}`}>
+                        <Icon size={15} />
+                    </span>
+                    <h3 className={`text-[13px] font-semibold tracking-tight ${st.title}`}>{title}</h3>
+                    <span className={`shrink-0 min-w-[20px] text-center px-1.5 py-0.5 rounded-md text-[11px] font-semibold tabular-nums ${st.count}`}>{items.length}</span>
+                    <span className={`flex-1 h-px bg-gradient-to-r to-transparent ${st.rule}`} />
+                </div>
+                <div className="space-y-2.5">{items.map((r) => <Card key={r.id} r={r} />)}</div>
+            </section>
         );
     };
 
@@ -360,6 +399,9 @@ export default function PendientesView() {
 
     return (
         <div className="h-full flex flex-col overflow-hidden">
+            {/* Header DENTRO del scroll con padding completo (patrón de LaboratorioView) —
+                antes colgaba pelado de la raíz y quedaba pegado/cortado contra el borde. */}
+            <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 pb-8 space-y-6">
             <PageHeader
                 title={t('nav.pendientes')}
                 subtitle={t('pendientes.subtitle')}
@@ -392,7 +434,6 @@ export default function PendientesView() {
                 }
             />
 
-            <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-8 space-y-6">
                 {error && (
                     <div className="rounded-lg border border-red-500/30 bg-red-500/10 text-red-300 text-sm px-3 py-2">
                         {error}
@@ -450,11 +491,13 @@ export default function PendientesView() {
                     </div>
                 )}
 
-                <Section title={t('pendientes.bucket_overdue')} items={buckets.vencidas} tone="red" />
-                <Section title={t('pendientes.bucket_today')} items={buckets.hoy} tone="amber" />
-                <Section title={t('pendientes.bucket_upcoming')} items={buckets.proximas} />
-                <Section title={t('pendientes.bucket_no_date')} items={buckets.sinFecha} />
-                {showClosed && <Section title={t('pendientes.bucket_closed')} items={buckets.cerradas} />}
+                <div className="space-y-8">
+                    <Section title={t('pendientes.bucket_overdue')} items={buckets.vencidas} tone="red" icon={AlertTriangle} />
+                    <Section title={t('pendientes.bucket_today')} items={buckets.hoy} tone="amber" icon={Clock} />
+                    <Section title={t('pendientes.bucket_upcoming')} items={buckets.proximas} tone="neutral" icon={CalendarClock} />
+                    <Section title={t('pendientes.bucket_no_date')} items={buckets.sinFecha} tone="neutral" icon={CircleDashed} />
+                    {showClosed && <Section title={t('pendientes.bucket_closed')} items={buckets.cerradas} tone="neutral" icon={CheckCircle2} />}
+                </div>
 
                 {!loading && !rows.length && !unanswered.length && (
                     <div className="text-center py-16">

@@ -116,6 +116,10 @@
     "f_priority": "Priorité",
     "change_priority": "Changer la priorité",
     "from_bot": "Du bot",
+    "origin_dra": "De la Dre.",
+    "origin_bot_failed": "Le bot a échoué",
+    "origin_from_chat": "Depuis le chat",
+    "origin_manual": "Manuel",
     "open_total": "Ouvertes"
   },
   "nav": {
