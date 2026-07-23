@@ -416,10 +416,15 @@ def _dijo_particular(text: str) -> bool:
         if re.search(r"\b(algo|nada|cosa|caso|dolor|molestia|muela|diente|tema|situaci[oó]n|"
                      r"detalle|pregunta|duda|zona|parte|problema)\s+$", pre):
             continue
-        # "¿es particular?" INTERROGATIVO → no es elección (audit 2026-07-23: no matar el
-        # afirmativo 'sí, sería particular'; solo excluir si el mensaje es una pregunta).
-        if re.search(r"\b(es|sea|ser[aá]|ser[ií]a)\s+$", pre) and "?" in t:
-            continue
+        # 'X es/sería particular': casi nunca es una ELECCIÓN — es descripción o pregunta
+        # ('la consulta es particular', '¿es particular?'). Se excluye SALVO que venga con una
+        # afirmación explícita ('sí, sería particular', 'dale es particular' = elección). Audit
+        # 2026-07-23 (round 3): el '?' fallaba con la pregunta indirecta SIN signo ('tengo
+        # Sancor, la consulta es particular') → fugaba precio; el marcador de afirmación es robusto.
+        if re.search(r"\b(es|sea|ser[aá]|ser[ií]a)\s+$", pre):
+            pre2 = t[max(0, mt.start() - 30):mt.start()]
+            if not re.search(r"\b(s[íi]|dale|ok|okay|bueno|buen[ií]simo|perfecto|claro|correcto|listo|va|obvio)\b", pre2):
+                continue
         if re.search(r"^\s*o\b", post):                        # "particular o (me cubre)"
             continue
         return True
@@ -2664,10 +2669,14 @@ async def process_buffer_task(
             # limpieza'/'para un control' (tratamiento, no persona) y apagaba P6 de más. Exigir
             # una PERSONA real después de 'para (un/una/mi)' o 'mi'. Stems cerrados con [oa]/\b
             # para no colisionar con 'primera'(prim)/'noviembre'(novi).
+            # Personas: relaciones + genéricos ('familiar','persona','compañero','conocido',
+            # 'vecino'...) para NO perder terceros reales (audit round 3: 'para un familiar'/'una
+            # persona'/'un compañero' se colaban como propios). NO incluye tratamientos.
             _pc_persona = (
                 r"(?:hij[oa]s?|amig[oa]s?|esposa|marido|pareja|novi[oa]|mam[aá]|pap[aá]|"
                 r"madre|padre|herman[oa]s?|se[nñ]ora|suegr[oa]|cu[nñ]ad[oa]|abuel[oa]|"
-                r"niet[oa]s?|t[ií]a|t[ií]o|prim[oa])\b"
+                r"niet[oa]s?|t[ií]a|t[ií]o|prim[oa]|sobrin[oa]s?|yerno|nuera|"
+                r"persona|familiar|compa[nñ]er[oa]s?|conocid[oa]s?|vecin[oa]s?|colega|jefe|jefa)\b"
             )
             _pc_tercero_msg = bool(re.search(
                 r"(?i)\bpara\s+otra?\s+persona\b|"

@@ -4329,10 +4329,13 @@ def _extract_requested_hours(msg: Optional[str]) -> set:
         tailp = m[rm.end():rm.end() + 16]
         per = "pm" if ("tarde" in tailp or "noche" in tailp) else ("am" if "mañana" in tailp else None)
         _has_las = bool(rm.group(1) or rm.group(3))
+        # Marca horaria REAL exigida: 'las', período (tarde/mañana/noche) o sufijo hs/hrs. Se
+        # QUITÓ el heurístico 'ambos>=12' (audit round 3: 'de 12 a 14 días/mil' colaba horas
+        # fantasma). Un rango sin marca ('de 16 a 17' pelado) NO cuenta → falso negativo seguro
+        # (a lo sumo no rechaza; nunca bloquea un turno legítimo).
         _time_marker = (
             _has_las or per is not None
             or bool(re.match(r"\s*(?:hs|hrs)\b", tailp))
-            or (a >= 12 and b >= 12)
         )
         if not _time_marker:
             continue

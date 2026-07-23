@@ -35,7 +35,9 @@ def _dijo_particular(text: str) -> bool:
                      r"detalle|pregunta|duda|zona|parte|problema)\s+$", pre):
             continue
         if re.search(r"\b(es|sea|ser[aá]|ser[ií]a)\s+$", pre):
-            continue
+            pre2 = t[max(0, mt.start() - 30):mt.start()]
+            if not re.search(r"\b(s[íi]|dale|ok|okay|bueno|buen[ií]simo|perfecto|claro|correcto|listo|va|obvio)\b", pre2):
+                continue
         if re.search(r"^\s*o\b", post):
             continue
         return True
