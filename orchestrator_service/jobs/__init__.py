@@ -33,6 +33,12 @@ except ImportError as e:
     logger.warning(f"⚠️ No se pudo importar job nova_morning: {e}")
 
 try:
+    from . import agenda_report
+    logger.info("✅ Job de reporte diario de agenda (Telegram) importado correctamente")
+except ImportError as e:
+    logger.warning(f"⚠️ No se pudo importar job agenda_report: {e}")
+
+try:
     from . import smart_alerts
     logger.info("✅ Job de alertas inteligentes importado correctamente")
 except ImportError as e:

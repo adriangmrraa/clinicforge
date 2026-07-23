@@ -112,7 +112,9 @@ async def gather_agenda_data(
             a.appointment_datetime,
             a.duration_minutes,
             a.status,
+            COALESCE(NULLIF(a.appointment_name, ''), NULLIF(a.appointment_type, ''), 'Consulta') AS treatment,
             (p.first_name || ' ' || COALESCE(p.last_name, '')) AS patient_name,
+            COALESCE(p.phone_number, '') AS patient_phone,
             COALESCE(p.dni, '') AS patient_dni,
             COALESCE(prof.first_name, '') AS professional_first_name,
             COALESCE(prof.last_name, '') AS professional_last_name,
@@ -312,6 +314,100 @@ def _generate_image_sync(html: str, image_path: str) -> str:
     return _generate_pdf_sync(html, pdf_path)
 
 
+# ── Vista DIARIA (lista imprimible) — pedido Carlos 2026-07-23 ────────────────
+# La semanal en grilla no le sirve al equipo para organizarse: necesitan la agenda
+# de UN día como LISTA clara (hora · paciente · teléfono · tratamiento · profesional
+# · estado confirmado/sin confirmar). La usa el botón Imprimir (vista día) y el
+# reporte diario por Telegram (jobs/agenda_report.py).
+
+_STATUS_ES = {
+    "scheduled": ("Sin confirmar", "warn"),
+    "pending": ("Sin confirmar", "warn"),
+    "confirmed": ("Confirmado", "ok"),
+    "completed": ("Atendido", "done"),
+    "cancelled": ("Cancelado", "off"),
+    "no_show": ("No vino", "off"),
+}
+
+
+async def gather_day_data(
+    pool,
+    tenant_id: int,
+    day: str,
+    professional_id: Optional[int] = None,
+    include_cancelled: bool = False,
+) -> dict:
+    """Lista plana de los turnos de UN día, ordenada por hora, con tratamiento,
+    teléfono y estado legible. Filtrada por tenant (Sovereignty Protocol §1)."""
+    day_dt = datetime.strptime(day, "%Y-%m-%d")
+    start_dt = day_dt.replace(hour=0, minute=0, second=0)
+    end_dt = day_dt.replace(hour=23, minute=59, second=59)
+
+    sql = """
+        SELECT
+            a.appointment_datetime,
+            a.duration_minutes,
+            a.status,
+            COALESCE(NULLIF(a.appointment_name, ''), NULLIF(a.appointment_type, ''), 'Consulta') AS treatment,
+            (p.first_name || ' ' || COALESCE(p.last_name, '')) AS patient_name,
+            COALESCE(p.phone_number, '') AS patient_phone,
+            (COALESCE(prof.first_name, '') || ' ' || COALESCE(prof.last_name, '')) AS professional_name
+        FROM appointments a
+        JOIN patients p ON a.patient_id = p.id AND p.tenant_id = $1
+        LEFT JOIN professionals prof ON a.professional_id = prof.id AND prof.tenant_id = $1
+        WHERE a.tenant_id = $1
+          AND a.appointment_datetime BETWEEN $2 AND $3
+    """
+    if not include_cancelled:
+        sql += "\n          AND a.status NOT IN ('cancelled')"
+    args: list = [tenant_id, start_dt, end_dt]
+    if professional_id is not None:
+        sql += " AND a.professional_id = $4"
+        args.append(professional_id)
+    sql += "\n        ORDER BY a.appointment_datetime ASC"
+
+    rows = await pool.fetch(sql, *args)
+    clinic_name = await pool.fetchval(
+        "SELECT clinic_name FROM tenants WHERE id = $1", tenant_id
+    ) or "Clínica"
+
+    dias = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+    turnos = []
+    n_conf = n_unconf = 0
+    for r in rows:
+        st_label, st_class = _STATUS_ES.get(r["status"], (r["status"] or "?", "warn"))
+        if r["status"] == "confirmed":
+            n_conf += 1
+        elif r["status"] in ("scheduled", "pending"):
+            n_unconf += 1
+        turnos.append({
+            "hora": r["appointment_datetime"].strftime("%H:%M"),
+            "duracion": r["duration_minutes"] or 30,
+            "paciente": (r["patient_name"] or "").strip() or "—",
+            "telefono": r["patient_phone"] or "—",
+            "tratamiento": r["treatment"],
+            "profesional": (r["professional_name"] or "").strip() or "—",
+            "estado": st_label,
+            "estado_clase": st_class,
+        })
+
+    return {
+        "clinic_name": clinic_name,
+        "fecha_titulo": f"{dias[day_dt.weekday()]} {day_dt.strftime('%d/%m/%Y')}",
+        "turnos": turnos,
+        "total": len(turnos),
+        "confirmados": n_conf,
+        "sin_confirmar": n_unconf,
+        "generado": datetime.now().strftime("%d/%m/%Y %H:%M"),
+    }
+
+
+def render_day_html(data: dict) -> str:
+    """Render de la plantilla diaria (lista imprimible)."""
+    template = _jinja_env.get_template("agenda_diaria.html")
+    return template.render(**data)
+
+
 async def generate_agenda_pdf(
     pool,
     tenant_id: int,
@@ -322,7 +418,10 @@ async def generate_agenda_pdf(
     view_type: str = "week",
 ) -> str:
     """
-    Generate a weekly agenda PDF and save it to disk.
+    Generate an agenda PDF and save it to disk.
+
+    view_type="day" (o rango de UN solo día) → lista diaria imprimible.
+    Cualquier otro caso → grilla semanal.
 
     Output path: /app/uploads/agenda/{tenant_id}/agenda_{start_date}_{end_date}.pdf
 
@@ -334,8 +433,13 @@ async def generate_agenda_pdf(
     suffix = f"_prof{professional_id}" if professional_id is not None else ""
     pdf_path = str(upload_dir / f"agenda_{safe_start}_{safe_end}{suffix}.pdf")
 
-    data = await gather_agenda_data(pool, tenant_id, start_date, end_date, professional_id, include_cancelled, view_type=view_type)
-    html = render_agenda_html(data)
+    # Vista DIARIA: pedida explícitamente o inferida (rango de un solo día).
+    if view_type == "day" or start_date == end_date:
+        data = await gather_day_data(pool, tenant_id, start_date, professional_id, include_cancelled)
+        html = render_day_html(data)
+    else:
+        data = await gather_agenda_data(pool, tenant_id, start_date, end_date, professional_id, include_cancelled, view_type=view_type)
+        html = render_agenda_html(data)
 
     result = await asyncio.to_thread(_generate_pdf_sync, html, pdf_path)
     return result
