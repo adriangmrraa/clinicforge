@@ -102,11 +102,43 @@ async def evaluate_smart_alerts():
 async def _check_unconfirmed_tomorrow(tenant_id: int):
     """
     Alert if there are unconfirmed appointments for tomorrow.
-    Fires once per day at most (24h TTL). Ideally fires during the evening
-    run of the 4h job.
+    Fires once per day at most (24h TTL).
+
+    Caso Carlos 2026-07-23: el job corre cada 4h y el aviso salía en la PRIMERA
+    corrida del día (~10hs) — prematuro y "obvio": a esa hora el Escudo
+    Anti-Ausencias todavía no mandó las plantillas de confirmación y los
+    pacientes van confirmando durante el día. Ahora NO dispara antes de la hora
+    del reporte de agenda (system_config AGENDA_REPORT_HOUR, default 14, hora
+    local del tenant): a la tarde el dato es real y accionable, y llega en la
+    misma franja que el reporte del día siguiente (jobs/agenda_report.py).
     """
     from db import db
     from services.telegram_notifier import send_proactive_message
+
+    # Gate horario: nada de avisos prematuros a la mañana.
+    try:
+        report_hour = 14
+        _rh_row = await db.fetchrow(
+            "SELECT value FROM system_config WHERE key = 'AGENDA_REPORT_HOUR' AND tenant_id = $1",
+            tenant_id,
+        )
+        if _rh_row and _rh_row.get("value"):
+            report_hour = int(_rh_row["value"])
+        tz_str = "America/Argentina/Buenos_Aires"
+        _tz_row = await db.fetchrow(
+            "SELECT COALESCE(config->>'timezone', 'America/Argentina/Buenos_Aires') AS tz "
+            "FROM tenants WHERE id = $1",
+            tenant_id,
+        )
+        if _tz_row and _tz_row.get("tz"):
+            tz_str = _tz_row["tz"]
+        from zoneinfo import ZoneInfo
+        from datetime import datetime as _dt_now
+
+        if _dt_now.now(ZoneInfo(tz_str)).hour < report_hour:
+            return  # sin marcar dedup: la corrida de la tarde lo evalúa de nuevo
+    except Exception:
+        pass  # ante cualquier error, comportamiento previo (no bloquear el aviso)
 
     tomorrow = _hoy_arg() + timedelta(days=1)
     alert_key = f"unconfirmed_{tomorrow.isoformat()}"
