@@ -894,6 +894,86 @@ async def _send_blocked_autoreply(tenant_id, conversation_id, phone, provider, c
     )
 
 
+# Marcador de tarea de la Dra. (pedido Carlos 2026-07-23): "Tarea: ...", "Tareas: ...",
+# "Tarea urgente: ...", "Tarea para Paula: ...". Hasta 40 chars entre 'tarea' y los dos
+# puntos para tolerar variantes; 'urgente' en ese tramo sube la prioridad.
+_STAFF_TASK_RE = re.compile(r"^\s*tareas?\s*([^:：\n]{0,40})[:：]\s*(.+)", re.IGNORECASE | re.DOTALL)
+
+
+async def _maybe_create_staff_task(
+    pool, tenant_id, conversation_id, external_user_id, provider, channel, messages
+) -> bool:
+    """Tarea de la Dra. → Pendiente (determinista, sin LLM). Si el mensaje viene de un
+    número autorizado (tenants.config->'staff_task_phones') y arranca con el marcador
+    'Tarea:', lo carga a clinic_pendings y responde una confirmación. Devuelve True si
+    lo manejó (el caller corta y NO corre el agente → cero costo de tokens/Meta salvo
+    la confirmación). Fail-safe: cualquier error → False y sigue el flujo normal."""
+    text = "\n".join(m for m in messages if m) if isinstance(messages, list) else str(messages or "")
+    m = _STAFF_TASK_RE.match(text or "")
+    if not m:
+        return False
+
+    # --- allowlist de números autorizados (editable por tenant, sin tocar código) ---
+    import json as _json
+
+    def _digits(s):
+        return re.sub(r"\D", "", s or "")
+
+    sender = _digits(external_user_id)
+    cfg_row = await pool.fetchrow(
+        "SELECT config->'staff_task_phones' AS phones FROM tenants WHERE id = $1", tenant_id
+    )
+    raw = cfg_row["phones"] if cfg_row else None
+    if raw is None:
+        return False  # feature apagada para el tenant (sin números configurados)
+    try:
+        phones = raw if isinstance(raw, list) else _json.loads(raw)
+    except Exception:
+        phones = []
+    allow = {_digits(p) for p in phones if p}
+    if not allow:
+        return False
+    # match tolerante a prefijos 549/54/0/15: por los últimos 10 dígitos.
+    authorized = any(
+        sender == a or (len(a) >= 10 and len(sender) >= 10 and sender[-10:] == a[-10:])
+        for a in allow
+    )
+    if not authorized:
+        return False
+
+    # --- parseo: prioridad + título + nota ---
+    urgente = "urgente" in (m.group(1) or "").lower()
+    body = (m.group(2) or "").strip()
+    first, _, rest = body.partition("\n")
+    title = (first.strip() or body.strip())[:200] or "Tarea"
+    note = rest.strip() or None
+    priority = "urgente" if urgente else "media"
+    due_interval = "2 hours" if urgente else "24 hours"
+
+    pend_id = await pool.fetchval(
+        f"""
+        INSERT INTO clinic_pendings
+            (tenant_id, title, note, due_at, created_by, source, priority)
+        VALUES ($1, $2, $3, NOW() + INTERVAL '{due_interval}', 'dra', 'whatsapp_dra', $4)
+        RETURNING id
+        """,
+        tenant_id, title, note, priority,
+    )
+    logger.info(
+        f"📌 Tarea de la Dra. → pendiente #{pend_id} (prio={priority}) tenant={tenant_id} de {external_user_id}"
+    )
+
+    # confirmación por el mismo canal (reusa el sender multicanal).
+    _conf = f"📌 Anotado en Pendientes{' (🔴 urgente)' if urgente else ''}:\n« {title} »"
+    try:
+        await _send_blocked_autoreply(
+            tenant_id, conversation_id, external_user_id, provider, channel, _conf, pool
+        )
+    except Exception as _cf_err:
+        logger.warning(f"staff-task: confirmación no enviada (non-fatal): {_cf_err}")
+    return True
+
+
 async def _notify_blocked_contact_email(tenant_id, phone, blocked, messages, pool):
     """Avisa por mail al derivation_email del tenant que un numero bloqueado escribio.
     No bloqueante: cualquier error solo se loguea."""
@@ -1123,6 +1203,19 @@ async def process_buffer_task(
                 f"🔇 Buffer task silenced by Human Override until {override_until} for {external_user_id}"
             )
             return
+
+    # ========== TAREA DE LA DRA. → PENDIENTE (marcador "Tarea:", solo autorizados) ==========
+    # Pedido Carlos 2026-07-23: la Dra. manda tareas al número de la clínica para que la
+    # secretaria las haga y hoy se pierden en el chat. Si viene de un número autorizado
+    # (tenants.config->'staff_task_phones') y arranca con "Tarea:" → se carga a Pendientes
+    # y se responde "📌 Anotado", SIN correr el agente (determinista, sin costo de LLM).
+    try:
+        if await _maybe_create_staff_task(
+            pool, tenant_id, conversation_id, external_user_id, provider, channel, messages
+        ):
+            return
+    except Exception as _st_err:
+        logger.warning(f"staff-task intake skipped (non-fatal): {_st_err}")
 
     # ========== LISTA DE BLOQUEO ==========
     # Numeros que la clinica marco para que Paula NO conteste (labs, proveedores, spam,
