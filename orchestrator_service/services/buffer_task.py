@@ -1037,6 +1037,59 @@ def _dijo_particular(text: str) -> bool:
     return False
 
 
+def _candado_issn_no_deriva(response_text: str, patient_context: str = "", last_user: str = "") -> str:
+    """ISSN NO SE DERIVA — caso Griselda (prod 2026-07-21). El prompt ordena 'con ISSN no
+    derivar, ofrecé turno particular con reintegro' pero el modelo igual promete derivar
+    ('ya le pasé tu caso al equipo'). Con ISSN activo, si la respuesta promete DERIVAR al
+    equipo SIN ofrecer el turno particular, y el paciente NO insiste en cobertura ni pidió
+    la cirugía maxilofacial → se recorta la promesa y se ofrece la consulta particular con
+    reintegro. Conserva la info de CIMO (esa es correcta).
+    ⚠️ El CALLER debe saltear este candado si derivhumano fue llamado REALMENTE este turno
+    (derivación real = el aviso es verdadero; esto ataca solo la promesa-FANTASMA).
+    (Portado de PRUEBAS 2026-07-23 con esa mejora — evita chocar con las derivaciones
+    reales de urgencia/quiere-antes.)"""
+    if not response_text:
+        return response_text
+    if re.search(r"(?i)\[[^\[\]]*silencio[^\[\]]*\]", response_text):
+        return response_text
+    _ctx = (patient_context or "").lower()
+    if not (re.search(r"\bissn\b", _ctx) or "instituto de seguridad" in _ctx):
+        return response_text
+    # ¿la respuesta deriva al equipo? (promesa-fantasma de handoff)
+    if not re.search(
+        r"(?i)(?:ya )?(?:le |te )?pas[eé] tu caso al equipo|elev[eé] tu caso"
+        r"|el equipo[^.\n]{0,30}(?:lo revis|te contact|te va a contactar)"
+        r"|para que (?:lo revisen|te contacten)",
+        response_text,
+    ):
+        return response_text
+    # Si YA ofrece el turno/consulta particular, no hace falta reconducir
+    if re.search(
+        r"(?i)consulta particular|evaluaci[oó]n particular|te paso turnos|te agendo"
+        r"|¿te paso|turno[^.\n]{0,20}particular|te busco (?:un )?turno",
+        response_text,
+    ):
+        return response_text
+    # Excepción: pidió la cirugía maxilofacial EN LA CLÍNICA o insiste en cobertura → dejar derivar
+    if re.search(
+        r"(?i)maxilofacial|insist|me lo cubr|tiene que cubrir|s[ií] o s[ií] por (?:la )?obra|exijo|reclamo",
+        last_user or "",
+    ):
+        return response_text
+    # Reconducir: recortar SOLO la frase de derivación (conserva CIMO + 'el resto es particular')
+    _nuevo = re.sub(
+        r"(?i)[^.\n]*(?:ya )?(?:le |te )?pas[eé] tu caso al equipo[^.\n]*[.\n]?", "", response_text)
+    _nuevo = re.sub(
+        r"(?i)[^.\n]*el equipo[^.\n]{0,30}(?:lo revis|te contact|te va a contactar)[^.\n]*[.\n]?", "", _nuevo)
+    _nuevo = re.sub(r"(?i)[^.\n]*para que (?:lo revisen|te contacten)[^.\n]*[.\n]?", "", _nuevo)
+    _nuevo = re.sub(r"\n{3,}", "\n\n", _nuevo).strip()
+    _oferta = (
+        "Con ISSN, cualquier tratamiento en el consultorio es particular 😊 ¿Te agendo una "
+        "consulta de evaluación? Después podés gestionar el reintegro con tu obra social."
+    )
+    return (_nuevo + "\n" + _oferta).strip() if _nuevo else _oferta
+
+
 # Aclaración ÚNICA y correcta para ISSN (misma que el mensaje predeterminado de la OS).
 _ISSN_ACLARA = (
     "Con ISSN, la cirugía maxilofacial se coordina con CIMO 😊 El resto de los tratamientos "
@@ -5193,11 +5246,26 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
     except Exception as _gp_err:
         logger.warning(f"candado-gate-precio skipped (non-fatal): {_gp_err}")
 
-    # --- CANDADO: ISSN ANTI-CEDER (caso #3 Lucas/prod) ---
-    # El bot "dice que sí" ante "¿lo cubre ISSN?" o es evasivo ('se maneja según tu caso') →
-    # forzar la aclaración correcta (cirugía maxilofacial→CIMO, el resto particular+reintegro).
+    # --- CANDADO: ISSN NO SE DERIVA (caso Griselda/prod) + ANTI-CEDER (caso #3 Lucas/prod) ---
+    # 1) NO-DERIVA: con ISSN, la promesa-FANTASMA de derivar ('ya pasé tu caso al equipo' SIN
+    #    haber llamado derivhumano) se reconduce a la consulta particular con reintegro.
+    #    SKIP si derivhumano fue llamado REALMENTE este turno (derivación real de urgencia/
+    #    quiere-antes/handoff = el aviso es verdadero, no se toca).
+    # 2) ANTI-CEDER: el bot "dice que sí" ante "¿lo cubre ISSN?" o es evasivo → forzar la
+    #    aclaración correcta (cirugía maxilofacial→CIMO, el resto particular+reintegro).
     try:
         _issn_last = str(messages[-1] if messages else "")
+        try:
+            _issn_tools = list(_tools_names)
+        except NameError:
+            _issn_tools = []
+        if "derivhumano" not in _issn_tools:
+            _issn_nd_pre = response_text
+            response_text = _candado_issn_no_deriva(response_text, patient_context or "", _issn_last)
+            if _issn_nd_pre != response_text:
+                logger.warning(
+                    f"🔒 CANDADO ISSN NO-DERIVA: promesa-fantasma de derivación reconducida a turno particular para {external_user_id}"
+                )
         _issn_ac_pre = response_text
         response_text = _candado_issn_anti_ceder(response_text, patient_context or "", _issn_last)
         if _issn_ac_pre != response_text:
