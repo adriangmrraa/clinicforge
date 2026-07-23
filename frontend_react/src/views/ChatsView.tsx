@@ -1844,6 +1844,7 @@ export default function ChatsView() {
                       value={pinNote}
                       onChange={(e) => setPinNote(e.target.value)}
                     />
+                    <p className="text-[11px] text-white/40 mb-1.5">{t('pendientes.pin_when')}</p>
                     <div className="flex flex-wrap gap-1.5 mb-3">
                       {([
                         ['today', t('pendientes.preset_today')],
@@ -1854,28 +1855,30 @@ export default function ChatsView() {
                         <button
                           key={key}
                           onClick={() => setPinDue(key)}
-                          className={`px-2.5 py-1 rounded-full text-[11px] border transition-all ${pinDue === key
-                            ? 'bg-blue-500/20 text-blue-300 border-blue-500/40'
-                            : 'bg-white/[0.04] text-white/50 border-white/[0.08] hover:bg-white/[0.08]'}`}
+                          className={`px-3 py-1.5 rounded-full text-[11px] font-medium transition-all ${pinDue === key
+                            ? 'bg-blue-500/15 text-blue-300'
+                            : 'bg-white/[0.04] text-white/50 hover:bg-white/[0.08]'}`}
                         >
                           {label}
                         </button>
                       ))}
                     </div>
+                    <p className="text-[11px] text-white/40 mb-1.5">{t('pendientes.f_priority')}</p>
                     <div className="flex flex-wrap gap-1.5 mb-4">
                       {([
-                        ['urgente', '🔴', 'bg-red-500/15 text-red-300 border-red-500/40'],
-                        ['media', '🟡', 'bg-amber-500/15 text-amber-300 border-amber-500/40'],
-                        ['tranqui', '🟢', 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'],
-                      ] as const).map(([key, dot, activeCls]) => (
+                        ['urgente', 'bg-rose-500/10 text-rose-300', 'bg-rose-400'],
+                        ['media', 'bg-amber-500/10 text-amber-300', 'bg-amber-400'],
+                        ['tranqui', 'bg-sky-500/10 text-sky-300', 'bg-sky-400'],
+                      ] as const).map(([key, activeCls, dotCls]) => (
                         <button
                           key={key}
                           onClick={() => setPinPriority(key)}
-                          className={`px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all ${pinPriority === key
+                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-medium transition-all ${pinPriority === key
                             ? activeCls
-                            : 'bg-white/[0.04] text-white/40 border-white/[0.08] hover:bg-white/[0.08]'}`}
+                            : 'bg-white/[0.04] text-white/40 hover:bg-white/[0.08]'}`}
                         >
-                          {dot} {t(`pendientes.priority_${key}`)}
+                          <span className={`w-1.5 h-1.5 rounded-full ${dotCls}`} />
+                          {t(`pendientes.priority_${key}`)}
                         </button>
                       ))}
                     </div>

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     ListTodo, Plus, RefreshCw, X, CheckCircle2, Clock,
-    AlertTriangle, MessageSquare, Bot, User as UserIcon, Pin,
+    AlertTriangle, MessageSquare, MessageCircle, Bot, User as UserIcon, Pin,
 } from 'lucide-react';
 import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
@@ -51,12 +51,25 @@ interface UnansweredChat {
 const inputCls =
     'w-full px-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-lg text-white text-sm focus:border-blue-500 focus:ring-0 outline-none placeholder-white/30';
 
-// Estética por prioridad: barra de acento + chip.
-const PRIORITY_STYLE: Record<Priority, { bar: string; chip: string; dot: string; next: Priority }> = {
-    urgente: { bar: 'border-l-red-500', chip: 'bg-red-500/15 text-red-300 border-red-500/30', dot: '🔴', next: 'media' },
-    media: { bar: 'border-l-amber-400', chip: 'bg-amber-500/15 text-amber-300 border-amber-500/30', dot: '🟡', next: 'tranqui' },
-    tranqui: { bar: 'border-l-emerald-500', chip: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30', dot: '🟢', next: 'urgente' },
+// Estética por prioridad: acento lateral + chip suave sin borde + punto CSS (no emoji) +
+// tinte del avatar. Sin emoji (pedido Carlos 2026-07-23). Baja = celeste (calmo/profesional).
+const PRIORITY_STYLE: Record<Priority, { accent: string; chip: string; dotColor: string; avatar: string; next: Priority }> = {
+    urgente: { accent: 'bg-rose-500/70', chip: 'bg-rose-500/10 text-rose-300', dotColor: 'bg-rose-400', avatar: 'bg-rose-500/15 text-rose-200', next: 'media' },
+    media: { accent: 'bg-amber-400/70', chip: 'bg-amber-500/10 text-amber-300', dotColor: 'bg-amber-400', avatar: 'bg-amber-500/15 text-amber-200', next: 'tranqui' },
+    tranqui: { accent: 'bg-sky-500/50', chip: 'bg-sky-500/10 text-sky-300', dotColor: 'bg-sky-400', avatar: 'bg-sky-500/15 text-sky-200', next: 'urgente' },
 };
+
+// Iniciales para el avatar (ancla visual por persona → "diferenciar los nombres").
+function initialsOf(s: string): string {
+    const parts = s.trim().split(/\s+/).filter(Boolean);
+    if (!parts.length) return '?';
+    return (parts[0][0] + (parts.length > 1 ? parts[1][0] : '')).toUpperCase();
+}
+
+function fmtPhonePretty(p: string): string {
+    const d = p.replace(/\D/g, '');
+    return d ? `+${d}` : p;
+}
 
 function fmtDueRelative(dueAt: string | null, t: (k: string) => string): string {
     if (!dueAt) return t('pendientes.no_due');
@@ -200,79 +213,115 @@ export default function PendientesView() {
             <button
                 onClick={() => void cyclePriority(r)}
                 title={t('pendientes.change_priority')}
-                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide border ${st.chip}`}
+                className={`inline-flex items-center gap-1.5 pl-2 pr-2.5 py-1 rounded-full text-[10px] font-semibold uppercase tracking-wider ${st.chip}`}
             >
-                {st.dot} {t(`pendientes.priority_${r.priority}`)}
+                <span className={`w-1.5 h-1.5 rounded-full ${st.dotColor}`} />
+                {t(`pendientes.priority_${r.priority}`)}
             </button>
+        );
+    };
+
+    // Vencimiento como "tiempo que tenés": prominente y en rojo si ya venció.
+    const DueBadge = ({ r }: { r: PendingRow }) => {
+        if (!r.due_at) {
+            return <span className="shrink-0 text-[11px] text-white/25 pt-0.5">{t('pendientes.no_due')}</span>;
+        }
+        return (
+            <span
+                className={`shrink-0 inline-flex items-center px-2.5 py-1 rounded-lg text-[11px] font-semibold tabular-nums ${
+                    r.is_overdue ? 'bg-rose-500/15 text-rose-300' : 'bg-white/[0.05] text-white/55'
+                }`}
+                title={fmtDateTime(r.due_at)}
+            >
+                {fmtDueRelative(r.due_at, t)}
+            </span>
         );
     };
 
     const Card = ({ r }: { r: PendingRow }) => {
         const pst = PRIORITY_STYLE[r.priority] || PRIORITY_STYLE.media;
+        const waDigits = (r.chat_phone || '').replace(/\D/g, '');
+        const person = r.patient_name?.trim() || (r.chat_phone ? fmtPhonePretty(r.chat_phone) : null);
+        const heading = person || r.title;   // sin persona → la tarea es el título
+        const task = person ? r.title : null; // con persona → el título es la tarea/problema
         return (
-            <div className={`rounded-xl border border-white/[0.06] border-l-4 ${pst.bar} p-3.5 bg-white/[0.02] hover:bg-white/[0.04] transition-colors ${r.is_overdue ? 'ring-1 ring-red-500/20' : ''}`}>
-                <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                        <div className="flex items-center flex-wrap gap-2 mb-1">
-                            <PriorityChip r={r} />
-                            {r.created_by === 'bot' && (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] bg-violet-500/15 text-violet-300 border border-violet-500/30">
-                                    <Bot size={10} /> {t('pendientes.from_bot')}
-                                </span>
-                            )}
-                            {r.is_overdue && (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-red-500/20 text-red-300 border border-red-500/40">
-                                    <AlertTriangle size={10} /> {t('pendientes.bucket_overdue')}
-                                </span>
-                            )}
-                        </div>
-                        <p className="text-[15px] text-white font-medium leading-snug">{r.title}</p>
-                        {r.note && <p className="text-xs text-white/45 mt-1 line-clamp-2">{r.note}</p>}
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-[11px] text-white/40">
-                            <span className={`inline-flex items-center gap-1 ${r.is_overdue ? 'text-red-400 font-medium' : ''}`}>
-                                <Clock size={11} /> {fmtDueRelative(r.due_at, t)}{r.due_at ? ` · ${fmtDateTime(r.due_at)}` : ''}
-                            </span>
-                            {r.patient_name?.trim() && (
-                                <span className="inline-flex items-center gap-1"><UserIcon size={11} /> {r.patient_name}</span>
-                            )}
-                            {r.assigned_to && <span>→ {r.assigned_to}</span>}
-                        </div>
+            <div className="group relative overflow-hidden rounded-2xl border border-white/[0.06] bg-white/[0.025] hover:bg-white/[0.05] transition-colors">
+                <span className={`absolute left-0 top-0 bottom-0 w-1 ${pst.accent}`} />
+                <div className="flex gap-3.5 p-4 pl-5">
+                    {/* Avatar: ancla visual por persona (iniciales), teñido por prioridad */}
+                    <div className={`shrink-0 w-10 h-10 rounded-full grid place-items-center text-[13px] font-semibold ${pst.avatar}`}>
+                        {person ? initialsOf(person) : <span className={`w-2 h-2 rounded-full ${pst.dotColor}`} />}
                     </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                        {r.chat_phone && (
-                            <button
-                                onClick={() => goToChat(r.chat_phone)}
-                                title={t('pendientes.go_chat')}
-                                className="p-2 rounded-lg bg-white/[0.04] hover:bg-blue-500/20 text-white/50 hover:text-blue-300 transition-colors"
-                            >
-                                <MessageSquare size={15} />
-                            </button>
-                        )}
-                        {r.status === 'abierto' ? (
-                            <>
-                                <button
-                                    onClick={() => void setStatus(r.id, 'hecho')}
-                                    title={t('pendientes.mark_done')}
-                                    className="p-2 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/25 text-emerald-400 transition-colors"
-                                >
-                                    <CheckCircle2 size={15} />
-                                </button>
-                                <button
-                                    onClick={() => void setStatus(r.id, 'cancelado')}
-                                    title={t('pendientes.cancel')}
-                                    className="p-2 rounded-lg bg-white/[0.04] hover:bg-red-500/20 text-white/35 hover:text-red-400 transition-colors"
-                                >
-                                    <X size={15} />
-                                </button>
-                            </>
-                        ) : (
-                            <button
-                                onClick={() => void setStatus(r.id, 'abierto')}
-                                className="px-2 py-1 rounded-lg bg-white/[0.04] hover:bg-white/[0.1] text-[11px] text-white/50"
-                            >
-                                {t('pendientes.reopen')}
-                            </button>
-                        )}
+                    <div className="flex-1 min-w-0">
+                        {/* Fila 1: NOMBRE grande (quién) + vencimiento a la derecha (cuánto tiempo tenés) */}
+                        <div className="flex items-start justify-between gap-3">
+                            <h4 className="text-[15px] font-semibold text-white leading-tight truncate">{heading}</h4>
+                            <DueBadge r={r} />
+                        </div>
+                        {/* Fila 2: la TAREA / el problema (qué hay que hacer) */}
+                        {task && <p className="text-[13.5px] text-white/70 mt-1 leading-snug line-clamp-2">{task}</p>}
+                        {r.note && <p className="text-[12px] text-white/40 mt-1 leading-relaxed line-clamp-2">{r.note}</p>}
+                        {/* Fila 3: prioridad + origen + acciones */}
+                        <div className="flex items-center justify-between gap-2 mt-3">
+                            <div className="flex items-center flex-wrap gap-1.5 min-w-0">
+                                <PriorityChip r={r} />
+                                {r.created_by === 'bot' && (
+                                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-medium bg-violet-500/10 text-violet-300">
+                                        <Bot size={11} /> {t('pendientes.from_bot')}
+                                    </span>
+                                )}
+                                {r.assigned_to && <span className="text-[11px] text-white/35 truncate">→ {r.assigned_to}</span>}
+                            </div>
+                            <div className="flex items-center gap-0.5 shrink-0 -mr-1">
+                                {r.chat_phone && (
+                                    <>
+                                        <button
+                                            onClick={() => goToChat(r.chat_phone)}
+                                            title={t('pendientes.go_chat')}
+                                            className="p-2 rounded-lg text-white/40 hover:text-blue-300 hover:bg-blue-500/10 transition-colors"
+                                        >
+                                            <MessageSquare size={16} />
+                                        </button>
+                                        {waDigits && (
+                                            <a
+                                                href={`https://wa.me/${waDigits}`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                title={t('pendientes.go_whatsapp')}
+                                                className="p-2 rounded-lg text-white/40 hover:text-emerald-300 hover:bg-emerald-500/10 transition-colors"
+                                            >
+                                                <MessageCircle size={16} />
+                                            </a>
+                                        )}
+                                    </>
+                                )}
+                                {r.status === 'abierto' ? (
+                                    <>
+                                        <button
+                                            onClick={() => void setStatus(r.id, 'hecho')}
+                                            title={t('pendientes.mark_done')}
+                                            className="p-2 rounded-lg text-emerald-400/80 hover:text-emerald-300 hover:bg-emerald-500/15 transition-colors"
+                                        >
+                                            <CheckCircle2 size={16} />
+                                        </button>
+                                        <button
+                                            onClick={() => void setStatus(r.id, 'cancelado')}
+                                            title={t('pendientes.cancel')}
+                                            className="p-2 rounded-lg text-white/30 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                                        >
+                                            <X size={16} />
+                                        </button>
+                                    </>
+                                ) : (
+                                    <button
+                                        onClick={() => void setStatus(r.id, 'abierto')}
+                                        className="px-2.5 py-1 rounded-lg bg-white/[0.04] hover:bg-white/[0.1] text-[11px] text-white/50"
+                                    >
+                                        {t('pendientes.reopen')}
+                                    </button>
+                                )}
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -283,11 +332,11 @@ export default function PendientesView() {
         if (!items.length) return null;
         return (
             <div>
-                <h3 className={`text-[11px] font-semibold uppercase tracking-widest mb-2.5 flex items-center gap-2 ${tone === 'red' ? 'text-red-400' : tone === 'amber' ? 'text-amber-400' : 'text-white/40'}`}>
+                <h3 className={`text-[11px] font-semibold uppercase tracking-widest mb-3 flex items-center gap-2 ${tone === 'red' ? 'text-rose-400/90' : tone === 'amber' ? 'text-amber-400/90' : 'text-white/40'}`}>
                     {title}
-                    <span className={`px-1.5 py-0.5 rounded-md text-[10px] ${tone === 'red' ? 'bg-red-500/15' : tone === 'amber' ? 'bg-amber-500/15' : 'bg-white/[0.06]'}`}>{items.length}</span>
+                    <span className={`px-1.5 py-0.5 rounded-md text-[10px] ${tone === 'red' ? 'bg-rose-500/10 text-rose-300' : tone === 'amber' ? 'bg-amber-500/10 text-amber-300' : 'bg-white/[0.06] text-white/50'}`}>{items.length}</span>
                 </h3>
-                <div className="space-y-2">{items.map((r) => <Card key={r.id} r={r} />)}</div>
+                <div className="space-y-3">{items.map((r) => <Card key={r.id} r={r} />)}</div>
             </div>
         );
     };
@@ -298,11 +347,12 @@ export default function PendientesView() {
                 <button
                     key={p}
                     onClick={() => onChange(p)}
-                    className={`px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all ${value === p
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-medium transition-all ${value === p
                         ? PRIORITY_STYLE[p].chip
-                        : 'bg-white/[0.04] text-white/40 border-white/[0.08] hover:bg-white/[0.08]'}`}
+                        : 'bg-white/[0.04] text-white/40 hover:bg-white/[0.08]'}`}
                 >
-                    {PRIORITY_STYLE[p].dot} {t(`pendientes.priority_${p}`)}
+                    <span className={`w-1.5 h-1.5 rounded-full ${PRIORITY_STYLE[p].dotColor}`} />
+                    {t(`pendientes.priority_${p}`)}
                 </button>
             ))}
         </div>
