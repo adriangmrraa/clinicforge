@@ -2780,6 +2780,44 @@ async def process_buffer_task(
         except Exception as _urg_err:
             logger.debug(f"urgencia-restauracion injection skipped (non-fatal): {_urg_err}")
 
+        # 🗓️ PACIENTE CON TURNO PIDE ENTRAR ANTES (caso María Luz/prod 2026-07-23): un paciente que
+        # YA tiene turno (hoy/próximo) preguntó si podía ser vista ANTES ('para las 11 estamos libres,
+        # si la doc la ve antes buenísimo, sino vamos a las 12'). El bot lo tomó como turno NUEVO, dijo
+        # 'para hoy no me quedan lugares' y ofreció fechas lejanas (28/07, 06/08) — nonsense (ya tiene
+        # turno hoy) y RIESGO de romper la agenda. Decisión Carlos: DERIVAR al equipo — NO tocar la
+        # agenda, NO prometer, NO ofrecer fechas nuevas. Solo si tiene PRÓXIMO TURNO y NO pide
+        # reprogramar/cancelar (esos tienen su propio flujo). Determinista en la detección.
+        try:
+            _ma_txt = " ".join(messages).lower() if isinstance(messages, list) else str(messages or "").lower()
+            _ma_tiene_turno = bool(patient_context) and "PRÓXIMO TURNO" in patient_context
+            _ma_quiere_antes = bool(re.search(
+                r"(?:vea|ver|verla|verlo|atend\w*|entrar|pasar|recib\w*|posibilidad|casualidad|chance|"
+                r"puede\w*|podr\w*|libre\w*)\s+(?:\w+\s+){0,3}(?:antes|m[aá]s temprano|temprano)\b"
+                r"|(?:antes|m[aá]s temprano|temprano)\s+(?:\w+\s+){0,2}(?:de mi turno|del turno|de la (?:hora|cita))"
+                r"|\badelantar\s+(?:el |mi )?turno\b|\bm[aá]s temprano\b"
+                r"|\b(?:hay|ten[eé]s|tienen)\s+\w{0,8}\s*antes\b",
+                _ma_txt,
+            ))
+            _ma_reprog = bool(re.search(
+                r"(?i)\b(reprogram\w*|cambiar (?:el |mi )?turno|cancel\w*|correr (?:el |mi )?turno|"
+                r"otro d[ií]a|otra fecha|pasar(?:lo|la)? para (?:el |otro))\b",
+                _ma_txt,
+            ))
+            if _ma_tiene_turno and _ma_quiere_antes and not _ma_reprog:
+                _ma_note = (
+                    "🗓️ EL PACIENTE YA TIENE UN TURNO (ver PRÓXIMO TURNO arriba) y pregunta si puede ser "
+                    "atendido ANTES / más temprano. ⛔ PROHIBIDO ofrecerle turnos o fechas nuevas, decir "
+                    "'no hay lugar' / 'tengo disponibilidad a partir de', o mover/cancelar su turno. Reconocé "
+                    "su turno con calidez y, como pide venir antes, llamá derivhumano (motivo 'Paciente con "
+                    "turno pide ser atendido antes — el equipo evalúa si hay chance de adelantar') y respondé "
+                    "UNA vez: que le pasás la consulta al equipo para ver si hay chance de verlo antes, y que "
+                    "igual lo esperan a la hora de su turno. NO prometas que se va a poder."
+                )
+                patient_context = (patient_context + "\n" + _ma_note) if patient_context else _ma_note
+                logger.info(f"🗓️ QUIERE-ANTES-CON-TURNO (deriva) inyectada para {external_user_id}")
+        except Exception as _ma_err:
+            logger.debug(f"quiere-antes-con-turno injection skipped (non-fatal): {_ma_err}")
+
         # INYECCIONES FRESCAS COMPARTIDAS (banco v2, 2026-07-20): derivación explícita
         # ("quiero hablar con una persona" → derivhumano YA), pide-cancelar (ejecutar,
         # no re-preguntar), dos personas (dos turnos + cobertura de cada uno), queja de
