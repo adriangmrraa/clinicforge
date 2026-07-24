@@ -120,7 +120,12 @@
     "origin_bot_failed": "Bot failed",
     "origin_from_chat": "From chat",
     "origin_manual": "Manual",
-    "open_total": "Open"
+    "open_total": "Open",
+    "filter_all": "All",
+    "bucket_tomorrow": "Tomorrow",
+    "filter_empty": "No pending tasks in this filter.",
+    "expand": "Show detail",
+    "collapse": "Hide"
   },
   "nav": {
     "pendientes": "Tasks",

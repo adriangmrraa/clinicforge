@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
     ListTodo, Plus, RefreshCw, X, CheckCircle2, Clock,
     AlertTriangle, MessageSquare, MessageCircle, Bot, User as UserIcon, Pin,
-    CalendarClock, CircleDashed, Stethoscope,
+    CalendarClock, CircleDashed, Stethoscope, ChevronDown, Sunrise,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import api from '../api/axios';
@@ -128,6 +128,9 @@ export default function PendientesView() {
     const [loading, setLoading] = useState(false);
     const [showClosed, setShowClosed] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    // Filtro rápido: qué bucket mostrar (mobile-friendly + cartas colapsables).
+    type Filtro = 'todas' | 'vencidas' | 'hoy' | 'manana' | 'por_vencer' | 'sin_fecha';
+    const [filter, setFilter] = useState<Filtro>('todas');
 
     const [modal, setModal] = useState<boolean>(false);
     const [saving, setSaving] = useState(false);
@@ -159,10 +162,14 @@ export default function PendientesView() {
     const buckets = useMemo(() => {
         const open = rows.filter((r) => r.status === 'abierto');
         const todayStr = new Date().toDateString();
+        const tmr = new Date(); tmr.setDate(tmr.getDate() + 1);
+        const tomorrowStr = tmr.toDateString();
+        const dstr = (r: PendingRow) => (r.due_at ? new Date(r.due_at).toDateString() : '');
         return {
             vencidas: open.filter((r) => r.is_overdue),
-            hoy: open.filter((r) => !r.is_overdue && r.due_at && new Date(r.due_at).toDateString() === todayStr),
-            proximas: open.filter((r) => !r.is_overdue && r.due_at && new Date(r.due_at).toDateString() !== todayStr),
+            hoy: open.filter((r) => !r.is_overdue && r.due_at && dstr(r) === todayStr),
+            manana: open.filter((r) => !r.is_overdue && r.due_at && dstr(r) === tomorrowStr),
+            porVencer: open.filter((r) => !r.is_overdue && r.due_at && dstr(r) !== todayStr && dstr(r) !== tomorrowStr),
             sinFecha: open.filter((r) => !r.due_at),
             cerradas: rows.filter((r) => r.status !== 'abierto'),
             abiertas: open.length,
@@ -277,87 +284,98 @@ export default function PendientesView() {
     };
 
     const Card = ({ r }: { r: PendingRow }) => {
+        const [open, setOpen] = useState(false);
         const pst = PRIORITY_STYLE[r.priority] || PRIORITY_STYLE.media;
         const waDigits = (r.chat_phone || '').replace(/\D/g, '');
         const person = r.patient_name?.trim() || (r.chat_phone ? fmtPhonePretty(r.chat_phone) : null);
         const heading = person || r.title;   // sin persona → la tarea es el título
         const task = person ? r.title : null; // con persona → el título es la tarea/problema
         return (
-            <div className="group relative overflow-hidden rounded-2xl border border-white/[0.06] bg-white/[0.025] hover:bg-white/[0.05] transition-colors">
+            <div className="relative overflow-hidden rounded-2xl border border-white/[0.06] bg-white/[0.025]">
                 <span className={`absolute left-0 top-0 bottom-0 w-1 ${pst.accent}`} />
-                <div className="flex gap-3.5 p-4 pl-5">
-                    {/* Avatar: ancla visual por persona (iniciales), teñido por prioridad */}
-                    <div className={`shrink-0 w-10 h-10 rounded-full grid place-items-center text-[13px] font-semibold ${pst.avatar}`}>
-                        {person ? initialsOf(person) : <span className={`w-2 h-2 rounded-full ${pst.dotColor}`} />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                        {/* Fila 1: NOMBRE grande (quién) + vencimiento a la derecha (cuánto tiempo tenés) */}
-                        <div className="flex items-start justify-between gap-3">
-                            <h4 className="text-[15px] font-semibold text-white leading-tight truncate">{heading}</h4>
-                            <DueBadge r={r} />
+                {/* Cabecera COMPACTA (colapsada): quién + prioridad + origen + vencimiento de un vistazo */}
+                <div className="flex items-center gap-2.5 sm:gap-3 p-3 pl-4 sm:pl-5">
+                    <button
+                        onClick={() => setOpen((o) => !o)}
+                        className="flex items-center gap-2.5 sm:gap-3 flex-1 min-w-0 text-left"
+                    >
+                        <div className={`shrink-0 w-9 h-9 rounded-full grid place-items-center text-[12px] font-semibold ${pst.avatar}`}>
+                            {person ? initialsOf(person) : <span className={`w-2 h-2 rounded-full ${pst.dotColor}`} />}
                         </div>
-                        {/* Fila 2: la TAREA / el problema (qué hay que hacer) */}
-                        {task && <p className="text-[13.5px] text-white/70 mt-1 leading-snug line-clamp-2">{task}</p>}
-                        {r.note && <p className="text-[12px] text-white/40 mt-1 leading-relaxed line-clamp-2">{r.note}</p>}
-                        {/* Fila 3: prioridad + origen + acciones */}
-                        <div className="flex items-center justify-between gap-2 mt-3">
-                            <div className="flex items-center flex-wrap gap-1.5 min-w-0">
+                        <div className="flex-1 min-w-0">
+                            <h4 className="text-[14px] sm:text-[15px] font-semibold text-white leading-tight truncate">{heading}</h4>
+                            <div className="flex items-center flex-wrap gap-1.5 mt-1.5">
                                 <PriorityChip r={r} />
                                 <OriginBadge r={r} />
-                                {r.assigned_to && <span className="text-[11px] text-white/35 truncate">→ {r.assigned_to}</span>}
-                            </div>
-                            <div className="flex items-center gap-0.5 shrink-0 -mr-1">
-                                {r.chat_phone && (
-                                    <>
-                                        <button
-                                            onClick={() => goToChat(r.chat_phone)}
-                                            title={t('pendientes.go_chat')}
-                                            className="p-2 rounded-lg text-white/40 hover:text-blue-300 hover:bg-blue-500/10 transition-colors"
-                                        >
-                                            <MessageSquare size={16} />
-                                        </button>
-                                        {waDigits && (
-                                            <a
-                                                href={`https://wa.me/${waDigits}`}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                title={t('pendientes.go_whatsapp')}
-                                                className="p-2 rounded-lg text-white/40 hover:text-emerald-300 hover:bg-emerald-500/10 transition-colors"
-                                            >
-                                                <MessageCircle size={16} />
-                                            </a>
-                                        )}
-                                    </>
-                                )}
-                                {r.status === 'abierto' ? (
-                                    <>
-                                        <button
-                                            onClick={() => void setStatus(r.id, 'hecho')}
-                                            title={t('pendientes.mark_done')}
-                                            className="p-2 rounded-lg text-emerald-400/80 hover:text-emerald-300 hover:bg-emerald-500/15 transition-colors"
-                                        >
-                                            <CheckCircle2 size={16} />
-                                        </button>
-                                        <button
-                                            onClick={() => void setStatus(r.id, 'cancelado')}
-                                            title={t('pendientes.cancel')}
-                                            className="p-2 rounded-lg text-white/30 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
-                                        >
-                                            <X size={16} />
-                                        </button>
-                                    </>
-                                ) : (
-                                    <button
-                                        onClick={() => void setStatus(r.id, 'abierto')}
-                                        className="px-2.5 py-1 rounded-lg bg-white/[0.04] hover:bg-white/[0.1] text-[11px] text-white/50"
-                                    >
-                                        {t('pendientes.reopen')}
-                                    </button>
-                                )}
                             </div>
                         </div>
+                    </button>
+                    <div className="shrink-0 flex items-center gap-1">
+                        <DueBadge r={r} />
+                        {r.status === 'abierto' && (
+                            <button
+                                onClick={() => void setStatus(r.id, 'hecho')}
+                                title={t('pendientes.mark_done')}
+                                className="p-2 rounded-lg text-emerald-400/70 hover:text-emerald-300 hover:bg-emerald-500/15 transition-colors"
+                            >
+                                <CheckCircle2 size={17} />
+                            </button>
+                        )}
+                        <button
+                            onClick={() => setOpen((o) => !o)}
+                            className="p-1.5 rounded-lg text-white/30 hover:text-white/60 hover:bg-white/[0.06] transition-colors"
+                            title={open ? t('pendientes.collapse') : t('pendientes.expand')}
+                        >
+                            <ChevronDown size={16} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+                        </button>
                     </div>
                 </div>
+                {/* Detalle (se abre): la tarea, la nota completa y el resto de acciones */}
+                {open && (
+                    <div className="px-4 sm:px-5 pb-3.5 pt-3 space-y-2.5 border-t border-white/[0.05]">
+                        {task && <p className="text-[13px] text-white/80 leading-snug">{task}</p>}
+                        {r.note && <p className="text-[12.5px] text-white/45 leading-relaxed whitespace-pre-wrap">{r.note}</p>}
+                        {r.assigned_to && <p className="text-[11px] text-white/35">→ {r.assigned_to}</p>}
+                        <div className="flex items-center flex-wrap gap-1.5 pt-0.5">
+                            {r.chat_phone && (
+                                <>
+                                    <button
+                                        onClick={() => goToChat(r.chat_phone)}
+                                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/[0.04] text-white/60 hover:text-blue-300 hover:bg-blue-500/10 text-[12px] transition-colors"
+                                    >
+                                        <MessageSquare size={14} /> {t('pendientes.go_chat')}
+                                    </button>
+                                    {waDigits && (
+                                        <a
+                                            href={`https://wa.me/${waDigits}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/[0.04] text-white/60 hover:text-emerald-300 hover:bg-emerald-500/10 text-[12px] transition-colors"
+                                        >
+                                            <MessageCircle size={14} /> WhatsApp
+                                        </a>
+                                    )}
+                                </>
+                            )}
+                            <div className="flex-1" />
+                            {r.status === 'abierto' ? (
+                                <button
+                                    onClick={() => void setStatus(r.id, 'cancelado')}
+                                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/[0.04] text-white/40 hover:text-rose-400 hover:bg-rose-500/10 text-[12px] transition-colors"
+                                >
+                                    <X size={14} /> {t('pendientes.cancel')}
+                                </button>
+                            ) : (
+                                <button
+                                    onClick={() => void setStatus(r.id, 'abierto')}
+                                    className="px-2.5 py-1.5 rounded-lg bg-white/[0.04] hover:bg-white/[0.1] text-[12px] text-white/50"
+                                >
+                                    {t('pendientes.reopen')}
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                )}
             </div>
         );
     };
@@ -440,17 +458,44 @@ export default function PendientesView() {
                     </div>
                 )}
 
-                {/* Resumen: 3 contadores de un vistazo */}
-                <div className="grid grid-cols-3 gap-3">
-                    {[
-                        { n: buckets.vencidas.length, label: t('pendientes.bucket_overdue'), cls: buckets.vencidas.length ? 'text-red-400 border-red-500/25 bg-red-500/[0.06]' : 'text-white/30 border-white/[0.06] bg-white/[0.02]' },
-                        { n: buckets.hoy.length, label: t('pendientes.bucket_today'), cls: buckets.hoy.length ? 'text-amber-300 border-amber-500/25 bg-amber-500/[0.06]' : 'text-white/30 border-white/[0.06] bg-white/[0.02]' },
-                        { n: buckets.abiertas, label: t('pendientes.open_total'), cls: 'text-white/70 border-white/[0.08] bg-white/[0.02]' },
-                    ].map((c, i) => (
-                        <div key={i} className={`rounded-xl border px-4 py-3 ${c.cls}`}>
-                            <div className="text-2xl font-bold tabular-nums">{c.n}</div>
-                            <div className="text-[11px] uppercase tracking-wide opacity-80">{c.label}</div>
-                        </div>
+                {/* Resumen: 3 contadores TAPPABLES (filtran). Número blanco + punto de color (sin neón). */}
+                <div className="grid grid-cols-3 gap-2 sm:gap-3">
+                    {([
+                        { key: 'vencidas', n: buckets.vencidas.length, label: t('pendientes.bucket_overdue'), dot: 'bg-rose-400', ring: 'ring-rose-500/40' },
+                        { key: 'hoy', n: buckets.hoy.length, label: t('pendientes.bucket_today'), dot: 'bg-amber-400', ring: 'ring-amber-500/40' },
+                        { key: 'todas', n: buckets.abiertas, label: t('pendientes.open_total'), dot: 'bg-white/40', ring: 'ring-white/25' },
+                    ] as const).map((c) => (
+                        <button
+                            key={c.key}
+                            onClick={() => setFilter((f) => (f === c.key ? 'todas' : (c.key as Filtro)))}
+                            className={`text-left rounded-xl border bg-white/[0.02] px-3 py-3 sm:px-5 sm:py-4 transition-all hover:bg-white/[0.04] ${filter === c.key && c.key !== 'todas' ? `border-transparent ring-1 ${c.ring}` : 'border-white/[0.06]'}`}
+                        >
+                            <div className="flex items-center gap-1.5">
+                                <span className={`w-1.5 h-1.5 rounded-full ${c.dot}`} />
+                                <span className="text-2xl sm:text-3xl font-bold tabular-nums text-white leading-none">{c.n}</span>
+                            </div>
+                            <div className="text-[10px] sm:text-[11px] uppercase tracking-wider text-white/40 mt-1.5">{c.label}</div>
+                        </button>
+                    ))}
+                </div>
+
+                {/* Filtros rápidos — envuelven en el celular */}
+                <div className="flex flex-wrap gap-1.5">
+                    {([
+                        ['todas', t('pendientes.filter_all')],
+                        ['vencidas', t('pendientes.bucket_overdue')],
+                        ['hoy', t('pendientes.bucket_today')],
+                        ['manana', t('pendientes.bucket_tomorrow')],
+                        ['por_vencer', t('pendientes.bucket_upcoming')],
+                        ['sin_fecha', t('pendientes.bucket_no_date')],
+                    ] as const).map(([key, label]) => (
+                        <button
+                            key={key}
+                            onClick={() => setFilter(key as Filtro)}
+                            className={`px-3 py-1.5 rounded-full text-[12px] font-medium transition-all ${filter === key ? 'bg-white text-[#0a0e1a]' : 'bg-white/[0.04] text-white/50 hover:bg-white/[0.08]'}`}
+                        >
+                            {label}
+                        </button>
                     ))}
                 </div>
 
@@ -492,12 +537,24 @@ export default function PendientesView() {
                 )}
 
                 <div className="space-y-8">
-                    <Section title={t('pendientes.bucket_overdue')} items={buckets.vencidas} tone="red" icon={AlertTriangle} />
-                    <Section title={t('pendientes.bucket_today')} items={buckets.hoy} tone="amber" icon={Clock} />
-                    <Section title={t('pendientes.bucket_upcoming')} items={buckets.proximas} tone="neutral" icon={CalendarClock} />
-                    <Section title={t('pendientes.bucket_no_date')} items={buckets.sinFecha} tone="neutral" icon={CircleDashed} />
-                    {showClosed && <Section title={t('pendientes.bucket_closed')} items={buckets.cerradas} tone="neutral" icon={CheckCircle2} />}
+                    {(filter === 'todas' || filter === 'vencidas') && <Section title={t('pendientes.bucket_overdue')} items={buckets.vencidas} tone="red" icon={AlertTriangle} />}
+                    {(filter === 'todas' || filter === 'hoy') && <Section title={t('pendientes.bucket_today')} items={buckets.hoy} tone="amber" icon={Clock} />}
+                    {(filter === 'todas' || filter === 'manana') && <Section title={t('pendientes.bucket_tomorrow')} items={buckets.manana} tone="neutral" icon={Sunrise} />}
+                    {(filter === 'todas' || filter === 'por_vencer') && <Section title={t('pendientes.bucket_upcoming')} items={buckets.porVencer} tone="neutral" icon={CalendarClock} />}
+                    {(filter === 'todas' || filter === 'sin_fecha') && <Section title={t('pendientes.bucket_no_date')} items={buckets.sinFecha} tone="neutral" icon={CircleDashed} />}
+                    {showClosed && filter === 'todas' && <Section title={t('pendientes.bucket_closed')} items={buckets.cerradas} tone="neutral" icon={CheckCircle2} />}
                 </div>
+
+                {/* Estado vacío del filtro activo (hay pendientes, pero ninguno en este corte) */}
+                {!loading && filter !== 'todas' && (() => {
+                    const map: Record<string, PendingRow[]> = {
+                        vencidas: buckets.vencidas, hoy: buckets.hoy, manana: buckets.manana,
+                        por_vencer: buckets.porVencer, sin_fecha: buckets.sinFecha,
+                    };
+                    return (map[filter] || []).length === 0 ? (
+                        <div className="text-center py-10 text-white/30 text-sm">{t('pendientes.filter_empty')}</div>
+                    ) : null;
+                })()}
 
                 {!loading && !rows.length && !unanswered.length && (
                     <div className="text-center py-16">

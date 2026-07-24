@@ -120,7 +120,12 @@
     "origin_bot_failed": "Bot falló",
     "origin_from_chat": "Desde chat",
     "origin_manual": "Manual",
-    "open_total": "Abiertas"
+    "open_total": "Abiertas",
+    "filter_all": "Todas",
+    "bucket_tomorrow": "Mañana",
+    "filter_empty": "No hay pendientes en este filtro.",
+    "expand": "Ver detalle",
+    "collapse": "Ocultar"
   },
   "nav": {
     "pendientes": "Pendientes",

@@ -120,7 +120,12 @@
     "origin_bot_failed": "Le bot a échoué",
     "origin_from_chat": "Depuis le chat",
     "origin_manual": "Manuel",
-    "open_total": "Ouvertes"
+    "open_total": "Ouvertes",
+    "filter_all": "Toutes",
+    "bucket_tomorrow": "Demain",
+    "filter_empty": "Aucune tâche dans ce filtre.",
+    "expand": "Voir le détail",
+    "collapse": "Masquer"
   },
   "nav": {
     "pendientes": "Tâches",
