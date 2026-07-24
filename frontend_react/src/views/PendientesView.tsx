@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     ListTodo, Plus, RefreshCw, X, CheckCircle2, Clock,
-    AlertTriangle, MessageSquare, MessageCircle, Bot, User as UserIcon, Pin,
+    AlertTriangle, MessageSquare, MessageCircle, Bot, User as UserIcon,
     CalendarClock, CircleDashed, Stethoscope, ChevronDown, Sunrise,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -37,17 +37,6 @@ interface PendingRow {
     is_overdue: boolean;
     patient_name: string | null;
     chat_phone: string | null;
-}
-
-interface UnansweredChat {
-    conversation_id: string;
-    chat_phone: string;
-    display_name: string | null;
-    last_message_at: string;
-    last_message_preview: string | null;
-    patient_id: number | null;
-    patient_name: string | null;
-    hours_waiting: number;
 }
 
 const inputCls =
@@ -124,7 +113,6 @@ export default function PendientesView() {
     const navigate = useNavigate();
 
     const [rows, setRows] = useState<PendingRow[]>([]);
-    const [unanswered, setUnanswered] = useState<UnansweredChat[]>([]);
     const [loading, setLoading] = useState(false);
     const [showClosed, setShowClosed] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -147,12 +135,8 @@ export default function PendientesView() {
         setLoading(true);
         setError(null);
         try {
-            const [pendings, chats] = await Promise.all([
-                api.get(`/admin/pendings?bucket=todas&include_closed=${showClosed}`),
-                api.get('/admin/pendings/unanswered-chats?hours=2'),
-            ]);
+            const pendings = await api.get(`/admin/pendings?bucket=todas&include_closed=${showClosed}`);
             setRows(pendings.data as PendingRow[]);
-            setUnanswered(chats.data as UnansweredChat[]);
         } catch {
             setError(t('pendientes.load_error'));
         } finally {
@@ -226,24 +210,6 @@ export default function PendientesView() {
     const goToChat = (phone: string | null) => {
         if (phone) navigate(`/chats?phone=${encodeURIComponent(phone)}`);
         else navigate('/chats');
-    };
-
-    // Convertir un chat-colgado en pendiente con UN clic (vence en 3 horas, prioridad media).
-    const convertChatToPending = async (c: UnansweredChat) => {
-        try {
-            const due = new Date(Date.now() + 3 * 3_600_000).toISOString();
-            await api.post('/admin/pendings', {
-                title: `${t('pendientes.reply_to')} ${c.patient_name?.trim() || c.display_name || c.chat_phone}`,
-                note: c.last_message_preview ? `“${c.last_message_preview}”` : null,
-                due_at: due,
-                chat_phone: c.chat_phone,
-                priority: 'media',
-                source: 'chat_colgado',
-            });
-            void fetchAll();
-        } catch {
-            setError(t('pendientes.save_error'));
-        }
     };
 
     const PriorityChip = ({ r }: { r: PendingRow }) => {
@@ -511,42 +477,10 @@ export default function PendientesView() {
                     ))}
                 </div>
 
-                {/* Chats esperando respuesta (caso Pau): detección en vivo + convertir en 1 clic */}
-                {unanswered.length > 0 && (
-                    <div className="rounded-xl border border-amber-500/25 bg-amber-500/[0.05] p-3.5">
-                        <h3 className="text-[11px] font-semibold uppercase tracking-widest text-amber-400 mb-2.5 flex items-center gap-1.5">
-                            <AlertTriangle size={13} /> {t('pendientes.unanswered_title')}
-                            <span className="px-1.5 py-0.5 rounded-md text-[10px] bg-amber-500/15">{unanswered.length}</span>
-                        </h3>
-                        <div className="space-y-1.5">
-                            {unanswered.map((c) => (
-                                <div
-                                    key={c.conversation_id}
-                                    className="w-full rounded-lg bg-white/[0.03] hover:bg-white/[0.06] px-3 py-2 flex items-center justify-between gap-3 transition-colors"
-                                >
-                                    <button onClick={() => goToChat(c.chat_phone)} className="min-w-0 text-left flex-1">
-                                        <span className="text-sm text-white font-medium">
-                                            {c.patient_name?.trim() || c.display_name || c.chat_phone}
-                                        </span>
-                                        {c.last_message_preview && (
-                                            <p className="text-xs text-white/40 truncate">“{c.last_message_preview}”</p>
-                                        )}
-                                    </button>
-                                    <span className="text-[11px] text-amber-400 font-medium shrink-0 tabular-nums">
-                                        {Math.round(c.hours_waiting)} h {t('pendientes.waiting')}
-                                    </span>
-                                    <button
-                                        onClick={() => void convertChatToPending(c)}
-                                        title={t('pendientes.pin_button')}
-                                        className="p-2 rounded-lg bg-blue-500/10 hover:bg-blue-500/25 text-blue-400 shrink-0 transition-colors"
-                                    >
-                                        <Pin size={14} />
-                                    </button>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
+                {/* La lista automática de "chats esperando respuesta" se quitó (pedido Carlos
+                    2026-07-24): metía chats que nunca se derivaron. Pendientes muestra SOLO cosas
+                    deliberadas — derivaciones del bot, "Tarea:" de la Dra, lo convertido desde un
+                    chat con 📌, y lo creado a mano. */}
 
                 <div className="space-y-8">
                     {(filter === 'todas' || filter === 'vencidas') && <Section title={t('pendientes.bucket_overdue')} items={buckets.vencidas} tone="red" icon={AlertTriangle} />}
@@ -568,7 +502,7 @@ export default function PendientesView() {
                     ) : null;
                 })()}
 
-                {!loading && !rows.length && !unanswered.length && (
+                {!loading && !rows.length && (
                     <div className="text-center py-16">
                         <ListTodo size={36} className="mx-auto text-white/15 mb-3" />
                         <p className="text-white/30 text-sm">{t('pendientes.empty')}</p>

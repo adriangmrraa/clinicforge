@@ -11,6 +11,7 @@ del request (patient_id, conversation_id) se valida contra el tenant (ADR D6).
 """
 
 import logging
+import re
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
@@ -26,6 +27,48 @@ router = APIRouter()
 VALID_STATUSES = ("abierto", "hecho", "cancelado")
 VALID_PRIORITIES = ("urgente", "media", "tranqui")
 VALID_BUCKETS = ("vencidas", "hoy", "proximas", "sin_fecha", "todas")
+
+# Señales de que el paciente SÍ está esperando algo (pregunta/pedido): si el último
+# mensaje tiene alguna de estas, NUNCA es un cierre por más que también diga "gracias".
+_WAITING_SIGNALS = re.compile(
+    r"\?|\b(turno|cancel|reprogram|precio|presupuesto|cu[aá]nto|cu[aá]ndo|puedo|quiero|"
+    r"necesito|quer[ií]a|d[oó]nde|c[oó]mo|llam|whats|manda|env[ií]|pas[aá]|pasame|confirm|"
+    r"reserv|saca|agenda|duda|consulta|horario|direcci|ubicaci|disponib|seña|abonar|pagar|"
+    r"transfer|foto|comprobante|estudio|radiograf)\b",
+    re.IGNORECASE,
+)
+# Palabras de cierre/cortesía. Si el mensaje (corto) es SOLO esto → conversación cerrada.
+_CLOSER_WORDS = re.compile(
+    r"\b(gracias|graci|ok+|oka?y|dale|perfecto|genial|buen[ií]simo|listo|barbaro|bárbaro|joya|"
+    r"correcto|entendido|igualmente|saludos|abrazo|excelente|de nada|nada|copado|"
+    r"buen[ií]sima|de acuerdo|va|vale|👍|👌|🙏|😊|🙌|👏|❤|💕|😀|🤗)\b",
+    re.IGNORECASE,
+)
+_GREETING_ONLY = re.compile(
+    r"^(hola|buen d[ií]a|buenas|buenas tardes|buenas noches|buen dia|hey|holis)\W*$",
+    re.IGNORECASE,
+)
+
+
+def _is_courtesy_closer(text: Optional[str]) -> bool:
+    """True si el último mensaje del paciente es solo un cierre/cortesía (gracias, 👍,
+    'todo ok', un saludo suelto) → la conversación está cerrada, NO esperando respuesta.
+    Conservador: ante la duda (pregunta, pedido, mensaje largo) devuelve False (lo deja)."""
+    t = (text or "").strip().lower()
+    if not t:
+        return False  # sin preview no podemos saber → lo dejamos
+    if _WAITING_SIGNALS.search(t):
+        return False  # tiene pregunta/pedido → sigue esperando
+    # sacar emojis y signos para ver el "core" de palabras
+    core = re.sub(r"[^\w\sáéíóúñü]", "", t, flags=re.UNICODE).strip()
+    if not core:
+        return True  # solo emojis (👍, 🙏) → cierre
+    if _GREETING_ONLY.match(t) and len(core.split()) <= 3:
+        return True  # saludo suelto ("buen día")
+    # cierre puro y corto (hasta ~7 palabras) que matchea cortesía
+    if len(core.split()) <= 7 and _CLOSER_WORDS.search(t):
+        return True
+    return False
 
 
 async def _validate_refs(tenant_id: int, patient_id, conversation_id):
@@ -186,6 +229,11 @@ async def unanswered_chats(
             ]
     except Exception:
         pass
+
+    # Filtro de CORTESÍA: sacar los cierres (gracias / 👍 / "todo ok" / saludo suelto). No son
+    # casos esperando respuesta sino conversaciones ya terminadas (pedido Carlos 2026-07-24:
+    # "hay falsos casos fijados, son casos cerrados"). Los reales (pregunta, pedido, "?") quedan.
+    result = [r for r in result if not _is_courtesy_closer(r.get("last_message_preview"))]
     return result
 
 
@@ -246,6 +294,27 @@ async def create_pending(
                 "ORDER BY updated_at DESC LIMIT 1",
                 tenant_id, chat_phone,
             )
+    # Dedupe de pendientes ligados a un chat/paciente (pedido Carlos 2026-07-24: "deben
+    # aparecer una vez"): si ya hay uno ABIERTO igual creado hace poco, devolver ese en vez
+    # de duplicar. Cubre doble-clic y reintentos por timeout (caso 3× "Seguir chat con Lucas").
+    if patient_id or conversation_id:
+        _dup = await db.pool.fetchval(
+            """
+            SELECT id FROM clinic_pendings
+            WHERE tenant_id = $1 AND status = 'abierto' AND lower(title) = lower($2)
+              AND created_at > NOW() - INTERVAL '6 hours'
+              AND ( ($3::int IS NOT NULL AND patient_id = $3::int)
+                 OR ($4::uuid IS NOT NULL AND conversation_id = $4::uuid) )
+            ORDER BY created_at DESC LIMIT 1
+            """,
+            tenant_id, title[:200],
+            int(patient_id) if patient_id else None,
+            conversation_id,
+        )
+        if _dup:
+            logger.info("pendiente DEDUP: ya existe #%s '%s' tenant=%s → no duplico", _dup, title[:50], tenant_id)
+            return {"id": _dup, "deduped": True}
+
     row = await db.pool.fetchrow(
         """
         INSERT INTO clinic_pendings
