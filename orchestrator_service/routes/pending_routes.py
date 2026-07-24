@@ -140,13 +140,42 @@ async def unanswered_chats(
           AND cc.last_user_message_at IS NOT NULL
           AND cc.last_user_message_at >= cc.last_message_at - INTERVAL '5 seconds'
           AND cc.last_user_message_at < NOW() - ($2 || ' hours')::interval
+          -- Excluir números BLOQUEADOS (la clínica decidió no responderles → no son
+          -- "esperando respuesta"). Cubre a la Dra./staff, que van en la lista de bloqueo.
+          AND NOT EXISTS (
+              SELECT 1 FROM blocked_phone_numbers b
+              WHERE b.tenant_id = cc.tenant_id AND b.is_active = true
+                AND RIGHT(REGEXP_REPLACE(COALESCE(b.phone_digits, ''), '[^0-9]', '', 'g'), 10)
+                    = RIGHT(REGEXP_REPLACE(COALESCE(cc.external_user_id, ''), '[^0-9]', '', 'g'), 10)
+          )
         ORDER BY cc.last_user_message_at ASC
         LIMIT 50
         """,
         tenant_id,
         str(hours),
     )
-    return [dict(r) for r in rows]
+    result = [dict(r) for r in rows]
+
+    # Excluir también los números autorizados para TAREAS (tenants.config->'staff_task_phones'):
+    # sus "Tarea:" son comandos de la Dra./staff, no consultas de paciente esperando respuesta.
+    # (Caso Carlos 2026-07-24: su "Tarea:" desde el teléfono quedaba fijado acá sin poder sacarlo.)
+    try:
+        import json as _json
+        import re as _re
+
+        cfg = await db.pool.fetchval(
+            "SELECT config->'staff_task_phones' FROM tenants WHERE id = $1", tenant_id
+        )
+        phones = (cfg if isinstance(cfg, list) else _json.loads(cfg)) if cfg else []
+        staff10 = {_re.sub(r"\D", "", str(p))[-10:] for p in phones if p}
+        if staff10:
+            result = [
+                r for r in result
+                if _re.sub(r"\D", "", str(r.get("chat_phone") or ""))[-10:] not in staff10
+            ]
+    except Exception:
+        pass
+    return result
 
 
 @router.get(
