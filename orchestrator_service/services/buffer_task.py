@@ -1004,14 +1004,9 @@ async def _maybe_create_staff_task(
         f"📌 Tarea de la Dra. → pendiente #{pend_id} (prio={priority}) tenant={tenant_id} de {external_user_id}"
     )
 
-    # confirmación por el mismo canal (reusa el sender multicanal).
-    _conf = f"📌 Anotado en Pendientes{' (🔴 urgente)' if urgente else ''}:\n« {title} »"
-    try:
-        await _send_blocked_autoreply(
-            tenant_id, conversation_id, external_user_id, provider, channel, _conf, pool
-        )
-    except Exception as _cf_err:
-        logger.warning(f"staff-task: confirmación no enviada (non-fatal): {_cf_err}")
+    # SIN confirmación por WhatsApp (decisión Carlos 2026-07-24): cada mensaje saliente lo
+    # cobra Meta. La tarea se crea en silencio y la Dra. la ve en el panel de Pendientes.
+    # (Si en el futuro se quiere feedback gratis, se puede avisar por Telegram, no por WhatsApp.)
     return True
 
 
