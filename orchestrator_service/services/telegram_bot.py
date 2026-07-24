@@ -834,6 +834,39 @@ async def _handle_text(update: Update, context) -> None:
         )
         return
 
+    # --- TAREA a Pendientes (marcador "Tarea:") — determinista, SIN Nova/LLM (0 tokens) ---
+    # Pedido Carlos 2026-07-24: la Dra. carga tareas por Telegram. Quien llega acá YA pasó
+    # _verify_user (es staff autorizado por Telegram), así que el marcador alcanza — la
+    # autorización de Telegram ES el gate. La tarea se crea SUELTA: SIN patient_id ni
+    # conversation_id, para que NUNCA se mezcle con la ficha de un paciente. Telegram es
+    # gratis → acá SÍ confirmamos (a diferencia de WhatsApp, que Meta cobra cada saliente).
+    try:
+        from services.buffer_task import _parse_staff_task
+
+        _parsed = _parse_staff_task(text)
+        if _parsed:
+            _urg, _title, _note = _parsed
+            _prio = "urgente" if _urg else "media"
+            _due_iv = "2 hours" if _urg else "24 hours"
+            from db import db as _db
+
+            _pid = await _db.pool.fetchval(
+                f"""
+                INSERT INTO clinic_pendings
+                    (tenant_id, title, note, due_at, created_by, source, priority)
+                VALUES ($1, $2, $3, NOW() + INTERVAL '{_due_iv}', 'dra', 'telegram_dra', $4)
+                RETURNING id
+                """,
+                tenant_id, _title, _note, _prio,
+            )
+            logger.info(f"📌 Tarea de la Dra. (Telegram) → pendiente #{_pid} tenant={tenant_id}")
+            await update.message.reply_text(
+                f"📌 Anotado en Pendientes{' 🔴 (urgente)' if _urg else ''}:\n« {_title} »"
+            )
+            return
+    except Exception as _tt_err:
+        logger.warning(f"telegram staff-task skipped (non-fatal): {_tt_err}")
+
     await _enqueue_to_buffer(
         tenant_id=tenant_id,
         chat_id=chat_id,
