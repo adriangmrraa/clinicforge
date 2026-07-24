@@ -2865,6 +2865,37 @@ async def process_buffer_task(
         except Exception as _pain_err:
             logger.debug(f"pain-gate injection skipped (non-fatal): {_pain_err}")
 
+        # 🕐 HORARIO DE ATENCIÓN / "¿está abierto? / me acerco?" (caso prod 2026-07-24):
+        # el paciente pide el horario de la clínica y el bot desvía con "trabajamos con turnos
+        # programados" SIN dar el horario real (que SÍ está en el prompt, sección «Horarios de
+        # atención»). La DIRECCIÓN tiene regla fuerte; los HORARIOS no → inyección determinista.
+        # Excluye "mi turno" (eso es list_my_appointments, el horario del paciente, no el de la clínica).
+        try:
+            _hs_last = str(messages[-1] if messages else "").lower()
+            _hs_pide_horario = bool(re.search(
+                r"horario de atenci|horarios de atenci|hasta qu[eé] hora|"
+                r"a qu[eé] hora (?:abren|cierran|atienden|abre|cierra)|"
+                r"(?:est[aá]n?|se encuentran?|siguen?) abiert|"
+                r"(?:puedo|podr[ií]a|puede) (?:acercarme|acercarse|pasar)|me acerco|"
+                r"sin turno|por orden de llegada|atienden hoy|abren hoy",
+                _hs_last,
+            ))
+            _hs_es_mi_turno = bool(re.search(r"mi turno|mi cita|mi hora", _hs_last))
+            if _hs_pide_horario and not _hs_es_mi_turno:
+                _hs_note = (
+                    "🕐 EL PACIENTE PREGUNTA EL HORARIO DE ATENCIÓN (o si está abierto / si puede "
+                    "acercarse). RESPONDÉ SÍ O SÍ con los horarios REALES de la sección «Horarios de "
+                    "atención» de arriba: si pregunta por HOY o un día puntual, dá el horario de ESE "
+                    "día (con la sede si corresponde); si es general, dá el esquema de la semana. "
+                    "Aclarale que se atiende CON TURNO (no por orden de llegada) y ofrecé agendarle "
+                    "uno. PROHIBIDO contestar solo «trabajamos con turnos programados» sin el horario "
+                    "concreto. Si por algún motivo no tenés el horario en el prompt, derivá con "
+                    "derivhumano en vez de marear."
+                )
+                patient_context = (patient_context + "\n" + _hs_note) if patient_context else _hs_note
+        except Exception as _hs_err:
+            logger.debug(f"horario-atencion injection skipped (non-fatal): {_hs_err}")
+
         # 🚨 URGENCIA — SE LE SALIÓ/CAYÓ UNA RESTAURACIÓN (caso Adriana/prod 2026-07-23):
         # "se me salió el arreglo/carilla/empaste de los dientes de frente" es urgencia (funcional
         # + estética), pero el bot lo trató de rutina y ofreció turnos lejanos sin derivar. Red
@@ -5215,6 +5246,42 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                     f"🔒 ANTI-FUGA: nombre(s) de herramienta {_leaked_tools} borrado(s) de la "
                     f"respuesta a {external_user_id}"
                 )
+
+    # --- CANDADO: sacar "emergencias médicas de tu zona" cuando NO hay bandera roja real ---
+    # Caso prod 2026-07-24: derivación por molestia/ortodoncia rutinaria y el bot cerró con
+    # "si se suma fiebre/hinchazón/te cuesta tragar → contactá emergencias médicas de tu zona".
+    # En dental eso es raro y CONFUNDE (pedido Carlos). Es una línea de seguridad que el LLM mete
+    # de más: solo tiene sentido si el paciente REPORTÓ un signo severo (respirar/tragar/fiebre
+    # alta/hinchazón facial/desmayo/trauma/sangrado masivo). Si no, se recorta. Fail-safe.
+    try:
+        if response_text and re.search(r"(?i)emergencias?\s+m[eé]dicas?", response_text):
+            _em_last = " ".join(messages).lower() if isinstance(messages, list) else str(messages or "").lower()
+            _em_ctx = (patient_context or "").lower()
+            _em_red_flag = bool(re.search(
+                r"no puedo respirar|dificultad (?:para )?respirar|me falta el aire|"
+                r"no puedo tragar|dificultad (?:para )?tragar|me cuesta (?:mucho )?tragar|no puedo ni tragar|"
+                r"fiebre alta|3[89](?:[.,]\d)?\s*(?:de fiebre|grados|º|°)|40\s*(?:de fiebre|grados|º|°)|"
+                r"hinchaz[oó]n (?:de la |en la )?cara|cara (?:muy )?hinchad|se me hinch[oó] la cara|"
+                r"desmay|inconscien|convuls|"
+                r"sangr[ao] (?:mucho|much[ií]simo|sin parar|a chorros)|no para de sangrar|"
+                r"golpe fuerte|me pegu[eé] (?:fuerte|un golpe)|accidente|trauma",
+                _em_last + " " + _em_ctx,
+            ))
+            if not _em_red_flag:
+                _em_pre = response_text
+                response_text = re.sub(
+                    r"(?im)^.*emergencias?\s+m[eé]dicas?.*$\n?", "", response_text,
+                ).strip()
+                response_text = re.sub(r"\n{3,}", "\n\n", response_text).strip()
+                if _em_pre != response_text:
+                    logger.warning(
+                        f"🔒 CANDADO EMERGENCIAS: saqué la línea de emergencias médicas (sin bandera roja) "
+                        f"para {external_user_id}"
+                    )
+                if not response_text:
+                    response_text = "Ya le pasé tu caso al equipo para que te contacten lo antes posible 😊"
+    except Exception as _em_err:
+        logger.warning(f"candado-emergencias skipped (non-fatal): {_em_err}")
 
     # --- CANDADO DE SALIDA: PACIENTE RECURRENTE CON COBERTURA REGISTRADA (determinista) ---
     # Decisión 2026-07-17 (Carlos: "dejemos de tirar plata"): los candados de TEXTO para
