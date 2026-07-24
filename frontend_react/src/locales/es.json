@@ -53,6 +53,7 @@
     "no_cases": "Sin trabajos",
     "no_labs": "Sin laboratorios cargados",
     "overdue_badge": "VENCIDO",
+    "due_soon_badge": "POR VENCER",
     "advance": "Pasar a",
     "set_placed": "Colocado",
     "set_adjust": "Ajustar",

@@ -254,6 +254,13 @@ async def list_lab_cases(
             (lc.status IN ('enviado', 'a_ajustar')
              AND lc.promised_at IS NOT NULL
              AND lc.promised_at < CURRENT_DATE) AS is_overdue,
+            -- SEMÁFORO AMARILLO (pedido Carlos 2026-07-24): "por vencer" = está afuera y la
+            -- fecha prometida cae dentro de los próximos DUE_SOON_DAYS días. Avisa ANTES de
+            -- que se venza, para poder reclamarle al laboratorio a tiempo.
+            (lc.status IN ('enviado', 'a_ajustar')
+             AND lc.promised_at IS NOT NULL
+             AND lc.promised_at >= CURRENT_DATE
+             AND lc.promised_at <= CURRENT_DATE + INTERVAL '3 days') AS is_due_soon,
             -- LLEGÓ Y NADIE AVISÓ (pedido Carlos 2026-07-24): el aviso lo manda la secretaria a
             -- mano (nada automático, para no gastar fuera de la ventana de 24h), pero el tablero
             -- lo marca para que no se pase por alto.

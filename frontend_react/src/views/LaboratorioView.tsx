@@ -46,6 +46,8 @@ interface LabCaseRow {
     lab_paid: boolean;
     notes: string | null;
     is_overdue: boolean;
+    /** Semáforo amarillo: está afuera y vence dentro de los próximos días. */
+    is_due_soon?: boolean;
     origin_appointment_id: string | null;
     patient_notified_at?: string | null;
     lab_chased_at?: string | null;
@@ -402,7 +404,11 @@ export default function LaboratorioView() {
                                     <div
                                         key={c.id}
                                         className={`rounded-xl border p-3 bg-white/[0.03] hover:bg-white/[0.05] transition-colors ${
-                                            c.is_overdue ? 'border-red-500/40' : 'border-white/[0.06]'
+                                            c.is_overdue
+                                                ? 'border-red-500/40'
+                                                : c.is_due_soon
+                                                    ? 'border-amber-500/30'
+                                                    : 'border-white/[0.06]'
                                         }`}
                                     >
                                         <div className="flex items-start justify-between gap-2">
@@ -450,10 +456,16 @@ export default function LaboratorioView() {
                                                     className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
                                                         c.is_overdue
                                                             ? 'bg-red-500/15 text-red-400'
-                                                            : 'bg-white/[0.06] text-white/40'
+                                                            : c.is_due_soon
+                                                                ? 'bg-amber-500/15 text-amber-400'
+                                                                : 'bg-white/[0.06] text-white/40'
                                                     }`}
                                                 >
-                                                    {c.is_overdue ? `⚠ ${t('lab.overdue_badge')} ` : ''}
+                                                    {c.is_overdue
+                                                        ? `⚠ ${t('lab.overdue_badge')} `
+                                                        : c.is_due_soon
+                                                            ? `⏳ ${t('lab.due_soon_badge')} `
+                                                            : ''}
                                                     {t('lab.promised')} {fmtDate(c.promised_at)}
                                                 </span>
                                             )}
