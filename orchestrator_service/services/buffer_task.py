@@ -5533,7 +5533,27 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
                     and not any(c.isalnum() for c in _stripped_user)
                     and "?" not in _stripped_user
                 )
-                _looks_courtesy = _only_symbols or (
+                # Eco de fecha/hora: el paciente repite/confirma el día u horario del turno
+                # ("28/7", "a las 14:30", "martes 28"). Es un CIERRE — no necesita respuesta.
+                # Caso Paola (prod 2026-07-24): "28/7" y "A las 14:30" daban falso 'Bot falló'
+                # porque tienen dígitos y no traían palabra de cortesía. Si al sacar la fecha/hora
+                # solo quedan palabras de relleno (a/las/el/día/mes) → es un eco, silencio OK.
+                _dt_echo = False
+                if _stripped_user and "?" not in _stripped_user and len(_last_user.split()) <= 6:
+                    _dt_r = re.sub(r"\d{1,2}[:/.\-]\d{1,2}(?:[:/.\-]\d{2,4})?", " ", _last_user.lower())
+                    _dt_r = re.sub(r"\b\d{1,2}\s*(?:hs|h|horas?|am|pm)\b", " ", _dt_r)
+                    _dt_r = re.sub(r"\b\d{1,4}\b", " ", _dt_r)
+                    _dt_r = re.sub(r"[^0-9a-záéíóúñ ]", " ", _dt_r)
+                    _dt_fill = {
+                        "a", "las", "la", "el", "los", "de", "del", "y", "hs", "h", "hora", "horas",
+                        "lunes", "martes", "miercoles", "miércoles", "jueves", "viernes", "sabado",
+                        "sábado", "domingo", "enero", "febrero", "marzo", "abril", "mayo", "junio",
+                        "julio", "agosto", "septiembre", "setiembre", "octubre", "noviembre",
+                        "diciembre", "am", "pm", "media", "menos", "cuarto", "mediodia", "mediodía",
+                    }
+                    _dt_words = _dt_r.split()
+                    _dt_echo = all(w in _dt_fill for w in _dt_words) if _dt_words else True
+                _looks_courtesy = _only_symbols or (_dt_echo and not _has_action) or (
                     "?" not in _last_user
                     and len(_last_user.split()) <= 12
                     and not _has_action
