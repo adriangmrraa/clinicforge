@@ -1145,6 +1145,21 @@ IMPORTANTE — REGLAS QUIRÚRGICAS:
     },
     {
         "type": "function",
+        "name": "ver_pendientes",
+        "description": "Lista los PENDIENTES/TAREAS de la clínica con el vencimiento ya calculado. USALO para responder 'cuáles pendientes tengo', 'cuáles vencieron', 'cuáles están por vencer', 'cuáles urgentes', 'los más recientes'. NO uses obtener_registros para pendientes (el filtro de fecha falla).",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "filtro": {
+                    "type": "string",
+                    "enum": ["resumen", "vencidas", "por_vencer", "urgentes", "recientes"],
+                    "description": "Qué mostrar: 'resumen' (default: vencidos + por vencer), 'vencidas' (ya vencieron), 'por_vencer' (futuras aún sin vencer), 'urgentes' (prioridad urgente), 'recientes' (últimas cargadas).",
+                }
+            },
+        },
+    },
+    {
+        "type": "function",
         "name": "actualizar_registro",
         "description": "Actualiza campos de UN registro en cualquier tabla. Requiere el ID del registro. Solo CEO puede modificar tenants y professionals.",
         "parameters": {
@@ -8323,6 +8338,8 @@ async def execute_nova_tool(
         # J. CRUD genérico
         elif name == "obtener_registros":
             return await _obtener_registros(args, tenant_id, user_role)
+        elif name == "ver_pendientes":
+            return await _ver_pendientes(args, tenant_id)
         elif name == "actualizar_registro":
             return await _actualizar_registro(args, tenant_id, user_role)
         elif name == "crear_registro":
@@ -10061,6 +10078,90 @@ UUID_ID_TABLES = {
 
 # Max results to prevent context explosion
 MAX_RESULTS = 15
+
+
+async def _ver_pendientes(args: Dict, tenant_id: int) -> str:
+    """Lista pendientes/tareas por bucket con el vencimiento calculado EN SQL (evita el filtro
+    de fecha del tool genérico, que fallaba). Pedido Carlos 2026-07-24. Tenant-scoped, fail-safe."""
+    from db import db
+
+    filtro = str(args.get("filtro") or "resumen").strip().lower().replace(" ", "_")
+    _PRIO = {"urgente": "🔴", "media": "🟡", "tranqui": "⚪"}
+
+    async def _q(cond, order="cp.due_at ASC NULLS LAST", limit=15):
+        return await db.pool.fetch(
+            f"""
+            SELECT cp.title, cp.priority, cp.due_at,
+                   EXTRACT(EPOCH FROM (cp.due_at - NOW())) / 3600.0 AS h_to_due
+            FROM clinic_pendings cp
+            WHERE cp.tenant_id = $1 AND cp.status = 'abierto' AND {cond}
+            ORDER BY {order}
+            LIMIT {limit}
+            """,
+            tenant_id,
+        )
+
+    def _when(h):
+        if h is None:
+            return "sin fecha"
+        h = float(h)
+        if h < 0:
+            hh = abs(int(h))
+            return f"venció hace {hh}h" if hh >= 1 else "venció recién"
+        if h < 1:
+            return "vence en <1h"
+        if h < 48:
+            return f"vence en {int(h)}h"
+        return f"vence en {int(h / 24)}d"
+
+    def _line(r):
+        return f"{_PRIO.get(r['priority'], '')} {r['title']} — {_when(r['h_to_due'])}"
+
+    try:
+        if filtro in ("vencidas", "vencidos"):
+            rows = await _q("cp.due_at IS NOT NULL AND cp.due_at < NOW()")
+            if not rows:
+                return "No hay pendientes vencidos 🎉"
+            return "⚠️ Pendientes VENCIDOS:\n" + "\n".join("• " + _line(r) for r in rows)
+
+        if filtro in ("por_vencer", "proximas", "proximos"):
+            rows = await _q("cp.due_at IS NOT NULL AND cp.due_at >= NOW()")
+            if not rows:
+                return "No hay pendientes por vencer."
+            return "📅 Pendientes POR VENCER:\n" + "\n".join("• " + _line(r) for r in rows)
+
+        if filtro in ("urgentes", "urgente"):
+            rows = await _q("cp.priority = 'urgente'")
+            if not rows:
+                return "No hay pendientes urgentes."
+            return "🔴 Pendientes URGENTES:\n" + "\n".join("• " + _line(r) for r in rows)
+
+        if filtro in ("recientes", "reciente"):
+            rows = await _q("TRUE", order="cp.created_at DESC", limit=8)
+            if not rows:
+                return "No hay pendientes cargados."
+            return "🆕 Pendientes RECIENTES:\n" + "\n".join("• " + _line(r) for r in rows)
+
+        # resumen (default): total + vencidos + por vencer
+        total = await db.pool.fetchval(
+            "SELECT COUNT(*) FROM clinic_pendings WHERE tenant_id = $1 AND status = 'abierto'",
+            tenant_id,
+        )
+        venc = await _q("cp.due_at IS NOT NULL AND cp.due_at < NOW()")
+        porv = await _q("cp.due_at IS NOT NULL AND cp.due_at >= NOW()")
+        parts = [f"📋 Tenés {total} pendiente(s) abierto(s)."]
+        if venc:
+            parts.append(f"\n⚠️ VENCIDOS ({len(venc)}):")
+            parts += ["• " + _line(r) for r in venc[:8]]
+        if porv:
+            parts.append(f"\n📅 POR VENCER ({len(porv)}):")
+            parts += ["• " + _line(r) for r in porv[:8]]
+        if not venc and not porv:
+            parts.append("Nada vencido ni por vencer con fecha 🎉")
+        return "\n".join(parts)
+    except Exception as e:
+        logger.warning(f"_ver_pendientes error: {e}")
+        return "No pude leer los pendientes ahora. Probá de nuevo en un momento."
 
 
 async def _obtener_registros(args: Dict, tenant_id: int, user_role: str) -> str:
