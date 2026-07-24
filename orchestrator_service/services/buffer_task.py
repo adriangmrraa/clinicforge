@@ -947,24 +947,42 @@ async def _maybe_create_staff_task(
         return re.sub(r"\D", "", s or "")
 
     sender = _digits(external_user_id)
-    cfg_row = await pool.fetchrow(
-        "SELECT config->'staff_task_phones' AS phones FROM tenants WHERE id = $1", tenant_id
-    )
-    raw = cfg_row["phones"] if cfg_row else None
-    if raw is None:
-        return False  # feature apagada para el tenant (sin números configurados)
+    authorized = False
+
+    # Fuente 1: lista explícita por config (tenants.config->'staff_task_phones').
     try:
-        phones = raw if isinstance(raw, list) else _json.loads(raw)
+        cfg_row = await pool.fetchrow(
+            "SELECT config->'staff_task_phones' AS phones FROM tenants WHERE id = $1", tenant_id
+        )
+        raw = cfg_row["phones"] if cfg_row else None
+        if raw is not None:
+            phones = raw if isinstance(raw, list) else _json.loads(raw)
+            allow = {_digits(p) for p in phones if p}
+            # match tolerante a prefijos 549/54/0/15: por los últimos 10 dígitos.
+            authorized = any(
+                sender == a or (len(a) >= 10 and len(sender) >= 10 and sender[-10:] == a[-10:])
+                for a in allow
+            )
     except Exception:
-        phones = []
-    allow = {_digits(p) for p in phones if p}
-    if not allow:
-        return False
-    # match tolerante a prefijos 549/54/0/15: por los últimos 10 dígitos.
-    authorized = any(
-        sender == a or (len(a) >= 10 and len(sender) >= 10 and sender[-10:] == a[-10:])
-        for a in allow
-    )
+        pass
+
+    # Fuente 2 (pedido Carlos 2026-07-24 — UN SOLO LUGAR): número en la LISTA DE BLOQUEO con
+    # marcador de staff en el label (⭐, "staff" o "tarea"). Como la Dra. igual se bloquea para
+    # silenciarla, con el marcador en el label queda habilitada para cargar tareas, sin mantener
+    # una lista aparte. Un paciente bloqueado por spam SIN el marcador NO queda autorizado.
+    if not authorized and len(sender) >= 10:
+        try:
+            _bl = await pool.fetchrow(
+                "SELECT label FROM blocked_phone_numbers WHERE tenant_id = $1 AND is_active = true "
+                "AND RIGHT(REGEXP_REPLACE(phone_digits, '[^0-9]', '', 'g'), 10) = $2 LIMIT 1",
+                tenant_id, sender[-10:],
+            )
+            _lbl = (_bl["label"] or "").lower() if _bl else ""
+            if _bl and ("⭐" in _lbl or "staff" in _lbl or "tarea" in _lbl):
+                authorized = True
+        except Exception:
+            pass
+
     if not authorized:
         return False
 
