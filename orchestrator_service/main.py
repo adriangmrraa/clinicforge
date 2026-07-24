@@ -8387,13 +8387,19 @@ async def derivhumano(reason: str):
                     )
                     _nom = (" ".join(filter(None, [_dn["first_name"], _dn["last_name"]])).strip() if _dn else "") or phone
                     from services.telegram_notifier import send_proactive_message as _spm
+                    import asyncio as _aio_tg
 
-                    await _spm(
-                        tenant_id,
-                        f"🔔 <b>Derivación nueva</b> — {_nom}\n"
-                        f"📱 {phone}\n"
-                        f"📝 {(reason or '').strip()[:280]}\n\n"
-                        f"<i>Ya está en Pendientes (vence en 24h). Seguilo desde ahí.</i>",
+                    # Timeout de 8s (auditoría 2026-07-24 #7): si Telegram cuelga, la derivación
+                    # NO se traba — el TimeoutError lo atrapa el except de abajo (non-fatal).
+                    await _aio_tg.wait_for(
+                        _spm(
+                            tenant_id,
+                            f"🔔 <b>Derivación nueva</b> — {_nom}\n"
+                            f"📱 {phone}\n"
+                            f"📝 {(reason or '').strip()[:280]}\n\n"
+                            f"<i>Ya está en Pendientes (vence en 24h). Seguilo desde ahí.</i>",
+                        ),
+                        timeout=8,
                     )
                     logger.info(f"🔔 Aviso Telegram de derivación enviado para {phone}")
                 except Exception as _tg_err:

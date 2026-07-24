@@ -164,10 +164,14 @@ export default function PendientesView() {
 
     const buckets = useMemo(() => {
         const open = rows.filter((r) => r.status === 'abierto');
-        const todayStr = new Date().toDateString();
-        const tmr = new Date(); tmr.setDate(tmr.getDate() + 1);
-        const tomorrowStr = tmr.toDateString();
-        const dstr = (r: PendingRow) => (r.due_at ? new Date(r.due_at).toDateString() : '');
+        // Comparar días en la zona horaria de la CLÍNICA (AR), no la del navegador — auditoría
+        // 2026-07-24 #9: cerca de medianoche una tarea caía en el día equivocado en la vista.
+        const AR_TZ = 'America/Argentina/Buenos_Aires';
+        const dayAR = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: AR_TZ }); // YYYY-MM-DD
+        const todayStr = dayAR(new Date());
+        const [yy, mm, dd] = todayStr.split('-').map(Number);
+        const tomorrowStr = dayAR(new Date(Date.UTC(yy, mm - 1, dd + 1, 12))); // +1 día (mediodía UTC, seguro)
+        const dstr = (r: PendingRow) => (r.due_at ? dayAR(new Date(r.due_at)) : '');
         return {
             vencidas: open.filter((r) => r.is_overdue),
             hoy: open.filter((r) => !r.is_overdue && r.due_at && dstr(r) === todayStr),

@@ -912,8 +912,10 @@ def _parse_staff_task(text):
         urgente = "urgente" in (m.group(1) or "").lower()
         body = (m.group(2) or "").strip()
     else:
+        # Forma laxa (audio sin ':'): NO tomar PREGUNTAS como tarea ("tareas para hoy?") —
+        # un '?' delata una consulta, no un comando (auditoría 2026-07-24 #5).
         m = _TASK_LOOSE_RE.match(text or "")
-        if not m:
+        if not m or "?" in (text or ""):
             return None
         body = (m.group(1) or "").strip()  # la laxa tiene UN solo grupo
         urgente = bool(re.match(r"(?i)urgente\b", body))
@@ -978,7 +980,9 @@ async def _maybe_create_staff_task(
                 tenant_id, sender[-10:],
             )
             _lbl = (_bl["label"] or "").lower() if _bl else ""
-            if _bl and ("⭐" in _lbl or "staff" in _lbl or "tarea" in _lbl):
+            # Marcador preciso (auditoría 2026-07-24 #4): '⭐' o la palabra entera 'staff'.
+            # Sacado el 'tarea' suelto: un label como "no responde tareas" no debe autorizar.
+            if _bl and ("⭐" in _lbl or re.search(r"\bstaff\b", _lbl)):
                 authorized = True
         except Exception:
             pass

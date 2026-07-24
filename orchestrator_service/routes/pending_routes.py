@@ -31,16 +31,27 @@ VALID_BUCKETS = ("vencidas", "hoy", "proximas", "sin_fecha", "todas")
 async def _validate_refs(tenant_id: int, patient_id, conversation_id):
     """ADR D6: patient_id y conversation_id, si vienen, deben ser del tenant."""
     if patient_id:
+        # Validar el tipo antes de la query (auditoría 2026-07-24 #6: un valor malformado
+        # reventaba con 500 en vez de un 400 claro).
+        try:
+            _pid = int(patient_id)
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=400, detail="patient_id inválido")
         ok = await db.pool.fetchval(
             "SELECT 1 FROM patients WHERE id = $1 AND tenant_id = $2",
-            int(patient_id), tenant_id,
+            _pid, tenant_id,
         )
         if not ok:
             raise HTTPException(status_code=404, detail="Paciente no encontrado")
     if conversation_id:
+        import uuid as _uuid
+        try:
+            _cid = _uuid.UUID(str(conversation_id))
+        except (ValueError, TypeError, AttributeError):
+            raise HTTPException(status_code=400, detail="conversation_id inválido")
         ok = await db.pool.fetchval(
             "SELECT 1 FROM chat_conversations WHERE id = $1 AND tenant_id = $2",
-            conversation_id, tenant_id,
+            _cid, tenant_id,
         )
         if not ok:
             raise HTTPException(status_code=404, detail="Conversación no encontrada")
