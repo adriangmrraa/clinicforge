@@ -5,31 +5,50 @@ Cierra el hueco más grave del módulo Pendientes: hoy los pendientes (incluidas
 las derivaciones del bot y los 'bot falló') vencen en SILENCIO — el campo
 reminder_sent_at existía pero ningún job lo usaba.
 
-Este job chequea cada 30 min y manda al Telegram del equipo (mismo canal donde
-la Dra. usa Nova) un digest de los pendientes ABIERTOS que ya pasaron su
-vencimiento, ordenados por prioridad. Re-avisa cada REMINDER_EVERY_H horas
-mientras sigan abiertos (para que "no se pierda el cliente"), estampando
-reminder_sent_at para no spamear.
+Este job manda al Telegram del equipo (mismo canal donde la Dra. usa Nova) UN
+digest por día (a la mañana, SEND_HOUR_AR) con los pendientes ABIERTOS que ya
+pasaron su vencimiento, ordenados por prioridad. Cada ítem se avisa como máximo
+una vez por día (dedupe por reminder_sent_at) — sin repetir ni spamear
+(pedido Carlos 2026-07-24: "una vez al día y que no se repitan").
 
 Patrón calcado de jobs/agenda_report.py (chequeo por intervalo, fail-safe,
 tenant-scoped). NO usa LLM: es una query + un mensaje de Telegram (costo ≈ 0).
 """
 
 import logging
+from datetime import datetime
 
 from jobs.scheduler import scheduler
 
 logger = logging.getLogger("jobs.pending_reminders")
 
-REMINDER_EVERY_H = 3   # re-avisar cada 3h mientras el pendiente siga abierto y vencido
+# Pedido Carlos 2026-07-24: el aviso de vencidos va UNA VEZ AL DÍA (no cada 30 min) y sin
+# repetir. Se manda un único digest a la mañana (SEND_HOUR_AR) con los pendientes vencidos
+# reales; cada ítem se avisa como máximo una vez por día (dedupe por reminder_sent_at).
+SEND_HOUR_AR = 9       # hora local Argentina en la que se manda el digest diario
+REMINDER_EVERY_H = 20  # no re-avisar el mismo ítem antes de ~1 día (evita repetir dentro del día)
 MAX_LIST = 15          # máximo de ítems listados en el mensaje (el resto se resume)
 _PRIO_ICON = {"urgente": "🔴", "media": "🟡", "tranqui": "⚪"}
 
 
-async def check_overdue_pendings():
-    """Chequeo por intervalo: avisa los pendientes vencidos de cada tenant con
-    bot de Telegram activo. Fail-safe: un error en un tenant no frena a los otros."""
+def _es_hora_de_avisar() -> bool:
+    """True solo durante la hora local AR configurada → un único envío al día."""
     try:
+        from zoneinfo import ZoneInfo
+
+        return datetime.now(ZoneInfo("America/Argentina/Buenos_Aires")).hour == SEND_HOUR_AR
+    except Exception:
+        # Si falla la zona horaria, no arriesgar spam: no enviar.
+        return False
+
+
+async def check_overdue_pendings():
+    """Chequeo por intervalo: avisa los pendientes vencidos de cada tenant con bot de
+    Telegram activo, pero SOLO una vez al día (durante SEND_HOUR_AR). Fail-safe: un error
+    en un tenant no frena a los otros."""
+    try:
+        if not _es_hora_de_avisar():
+            return
         from services.telegram_bot import _bots
 
         active_tenants = list(_bots.keys())
@@ -125,5 +144,5 @@ async def _remind_tenant_overdue(tenant_id: int):
     logger.info(f"pending reminder tenant {tenant_id}: avisados {len(rows)} vencidos")
 
 
-# Chequeo cada 30 min: la función decide por tenant qué avisar.
+# Corre cada 30 min, pero la función solo envía durante SEND_HOUR_AR → un digest por día.
 scheduler.add_job(check_overdue_pendings, interval_seconds=1800, run_at_startup=False)

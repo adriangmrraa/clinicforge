@@ -294,6 +294,27 @@ async def create_pending(
                 "ORDER BY updated_at DESC LIMIT 1",
                 tenant_id, chat_phone,
             )
+    # Dedupe de pendientes ligados a un chat/paciente (pedido Carlos 2026-07-24: "deben
+    # aparecer una vez"): si ya hay uno ABIERTO igual creado hace poco, devolver ese en vez
+    # de duplicar. Cubre doble-clic y reintentos por timeout (caso 3× "Seguir chat con Lucas").
+    if patient_id or conversation_id:
+        _dup = await db.pool.fetchval(
+            """
+            SELECT id FROM clinic_pendings
+            WHERE tenant_id = $1 AND status = 'abierto' AND lower(title) = lower($2)
+              AND created_at > NOW() - INTERVAL '6 hours'
+              AND ( ($3::int IS NOT NULL AND patient_id = $3::int)
+                 OR ($4::uuid IS NOT NULL AND conversation_id = $4::uuid) )
+            ORDER BY created_at DESC LIMIT 1
+            """,
+            tenant_id, title[:200],
+            int(patient_id) if patient_id else None,
+            conversation_id,
+        )
+        if _dup:
+            logger.info("pendiente DEDUP: ya existe #%s '%s' tenant=%s → no duplico", _dup, title[:50], tenant_id)
+            return {"id": _dup, "deduped": True}
+
     row = await db.pool.fetchrow(
         """
         INSERT INTO clinic_pendings
