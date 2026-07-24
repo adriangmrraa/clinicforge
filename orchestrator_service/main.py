@@ -8351,7 +8351,7 @@ async def derivhumano(reason: str):
         # pendiente ABIERTO de derivhumano para esta conversación en las últimas 24h.
         # Best-effort: si falla (p. ej. la migración aún no corrió), la derivación sigue.
         try:
-            await db.pool.execute(
+            _ins_status = await db.pool.execute(
                 """
                 INSERT INTO clinic_pendings
                     (tenant_id, title, note, due_at, patient_id, conversation_id, created_by, source, priority)
@@ -8371,7 +8371,33 @@ async def derivhumano(reason: str):
                 f"El bot derivó esta conversación al equipo. Motivo: {reason}",
                 phone,
             )
-            logger.info(f"📌 Auto-pendiente de derivación creado/deduplicado para {phone}")
+            # ¿Fue una derivación NUEVA? (status "INSERT 0 1" = insertó; "INSERT 0 0" = deduplicado)
+            _deriv_new = bool(_ins_status) and _ins_status.strip().endswith(" 1")
+            logger.info(f"📌 Auto-pendiente de derivación {'creado' if _deriv_new else 'deduplicado'} para {phone}")
+
+            # Aviso Telegram INMEDIATO al equipo (pedido Carlos 2026-07-24): que se enteren al toque
+            # para no perder el caso. SIN IA → 0 tokens (solo formateo datos que ya tenemos).
+            # Anti-saturación: solo se manda si la derivación es NUEVA (mismo dedup 24h que el pendiente).
+            if _deriv_new:
+                try:
+                    _dn = await db.pool.fetchrow(
+                        "SELECT first_name, last_name FROM patients "
+                        "WHERE tenant_id = $1 AND phone_number = $2 ORDER BY id LIMIT 1",
+                        tenant_id, phone,
+                    )
+                    _nom = (" ".join(filter(None, [_dn["first_name"], _dn["last_name"]])).strip() if _dn else "") or phone
+                    from services.telegram_notifier import send_proactive_message as _spm
+
+                    await _spm(
+                        tenant_id,
+                        f"🔔 <b>Derivación nueva</b> — {_nom}\n"
+                        f"📱 {phone}\n"
+                        f"📝 {(reason or '').strip()[:280]}\n\n"
+                        f"<i>Ya está en Pendientes (vence en 24h). Seguilo desde ahí.</i>",
+                    )
+                    logger.info(f"🔔 Aviso Telegram de derivación enviado para {phone}")
+                except Exception as _tg_err:
+                    logger.warning(f"aviso Telegram de derivación no enviado (non-fatal): {_tg_err}")
         except Exception as _pend_err:
             logger.warning(f"auto-pendiente de derivación no creado (non-fatal): {_pend_err}")
 
