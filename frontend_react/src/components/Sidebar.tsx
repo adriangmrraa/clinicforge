@@ -17,7 +17,6 @@ import {
   X,
   Megaphone,
   Zap,
-  TrendingUp,
   Wallet,
   Ban,
   FlaskConical,
@@ -124,25 +123,32 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle, onCloseMo
   const tooltipTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const menuItems = [
+    // Orden por prioridad (2026-07-24, pedido Carlos): arriba lo de uso DIARIO, abajo lo
+    // administrativo/marketing. El ROI Dashboard se OCULTA (se pisa con Marketing Hub y está
+    // vacío sin datos de ads) — la ruta /roi sigue existiendo; para reponerlo, descomentar.
+    // --- Uso diario ---
     { id: 'dashboard', labelKey: 'nav.dashboard' as const, icon: <Home size={17} />, path: '/', roles: ['ceo', 'professional', 'secretary'], hint: 'Centro de mando con KPIs en tiempo real de la clinica' },
     { id: 'agenda', labelKey: 'nav.agenda' as const, icon: <Calendar size={17} />, path: '/agenda', roles: ['ceo', 'professional', 'secretary'], hint: 'Agenda interactiva de turnos por profesional y sede' },
     { id: 'patients', labelKey: 'nav.patients' as const, icon: <Users size={17} />, path: '/pacientes', roles: ['ceo', 'professional', 'secretary'], hint: 'Base de pacientes con ficha clinica, odontograma y anamnesis' },
     { id: 'chats', labelKey: 'nav.chats' as const, icon: <MessageSquare size={17} />, path: '/chats', roles: ['ceo', 'professional', 'secretary'], hint: 'Conversaciones de WhatsApp, Instagram y Facebook en un solo lugar' },
-    { id: 'blocked', labelKey: 'nav.blocked' as const, icon: <Ban size={17} />, path: '/bloqueados', roles: ['ceo', 'secretary'], hint: 'Numeros que el agente no debe contestar (labs, proveedores, spam)' },
-    { id: 'approvals', labelKey: 'nav.staff' as const, icon: <ShieldCheck size={17} />, path: '/aprobaciones', roles: ['ceo'], hint: 'Aprobar o suspender acceso de profesionales y secretarias' },
-    { id: 'tenants', labelKey: 'nav.clinics' as const, icon: <Stethoscope size={17} />, path: '/sedes', roles: ['ceo'], hint: 'Configurar sedes, horarios por dia, direcciones y datos bancarios' },
-    { id: 'analytics', labelKey: 'nav.strategy' as const, icon: <BarChart3 size={17} />, path: '/analytics/professionals', roles: ['ceo', 'secretary'], hint: 'Rendimiento de cada profesional: turnos, retención, facturación' },
-    { id: 'tokens', labelKey: 'nav.tokens' as const, icon: <Zap size={17} />, path: '/dashboard/status', roles: ['ceo'], hint: 'Consumo de IA por servicio, costos y seleccion de modelos' },
-    { id: 'treatments', labelKey: 'nav.treatments' as const, icon: <Clock size={17} />, path: '/tratamientos', roles: ['ceo', 'secretary'], hint: 'Tipos de tratamiento con precios, duracion e imagenes' },
-    { id: 'laboratorio', labelKey: 'nav.laboratorio' as const, icon: <FlaskConical size={17} />, path: '/laboratorio', roles: ['ceo', 'professional', 'secretary'], hint: 'Trabajos de laboratorio: estados, vencimientos y laboratorios' },
     { id: 'pendientes', labelKey: 'nav.pendientes' as const, icon: <ListTodo size={17} />, path: '/pendientes', roles: ['ceo', 'professional', 'secretary'], hint: 'Tareas con vencimiento y chats esperando respuesta — que nada se olvide' },
+    { id: 'laboratorio', labelKey: 'nav.laboratorio' as const, icon: <FlaskConical size={17} />, path: '/laboratorio', roles: ['ceo', 'professional', 'secretary'], hint: 'Trabajos de laboratorio: estados, vencimientos y laboratorios' },
+    { id: 'blocked', labelKey: 'nav.blocked' as const, icon: <Ban size={17} />, path: '/bloqueados', roles: ['ceo', 'secretary'], hint: 'Numeros que el agente no debe contestar (labs, proveedores, spam)' },
+    // --- Gestión ---
+    { id: 'treatments', labelKey: 'nav.treatments' as const, icon: <Clock size={17} />, path: '/tratamientos', roles: ['ceo', 'secretary'], hint: 'Tipos de tratamiento con precios, duracion e imagenes' },
+    { id: 'analytics', labelKey: 'nav.strategy' as const, icon: <BarChart3 size={17} />, path: '/analytics/professionals', roles: ['ceo', 'secretary'], hint: 'Rendimiento de cada profesional: turnos, retención, facturación' },
+    { id: 'tenants', labelKey: 'nav.clinics' as const, icon: <Stethoscope size={17} />, path: '/sedes', roles: ['ceo'], hint: 'Configurar sedes, horarios por dia, direcciones y datos bancarios' },
+    { id: 'approvals', labelKey: 'nav.staff' as const, icon: <ShieldCheck size={17} />, path: '/aprobaciones', roles: ['ceo'], hint: 'Aprobar o suspender acceso de profesionales y secretarias' },
+    // --- Marketing / Admin ---
+    { id: 'marketing', labelKey: 'nav.marketing' as const, icon: <Megaphone size={17} />, path: '/marketing', roles: ['ceo'], hint: 'ROI real de Meta Ads y Google Ads con atribución de pacientes' },
+    { id: 'leads', labelKey: 'nav.leads' as const, icon: <Users size={17} />, path: '/leads', roles: ['ceo'], hint: 'Leads de formularios de Meta con estado y seguimiento' },
+    { id: 'tokens', labelKey: 'nav.tokens' as const, icon: <Zap size={17} />, path: '/dashboard/status', roles: ['ceo'], hint: 'Consumo de IA por servicio, costos y seleccion de modelos' },
+    { id: 'automation', labelKey: 'nav.automation' as const, icon: <Zap size={17} />, path: '/automation', roles: ['ceo'], hint: 'Estrategias de automatización, logs y plantillas HSM' },
+    // --- Cuenta ---
     { id: 'my-liquidations', labelKey: 'nav.my_liquidations' as const, icon: <Wallet size={17} />, path: '/mis-liquidaciones', roles: ['professional'], hint: 'Tus liquidaciones, comisiones y estado de pagos' },
     { id: 'profile', labelKey: 'nav.profile' as const, icon: <User size={17} />, path: '/perfil', roles: ['ceo', 'professional', 'secretary'], hint: 'Tu perfil y datos de cuenta' },
-    { id: 'marketing', labelKey: 'nav.marketing' as const, icon: <Megaphone size={17} />, path: '/marketing', roles: ['ceo'], hint: 'ROI real de Meta Ads y Google Ads con atribución de pacientes' },
-    { id: 'roi', labelKey: 'nav.roi' as const, icon: <TrendingUp size={17} />, path: '/roi', roles: ['ceo'], hint: 'Dashboard de ROI con atribución, tendencias y campañas top' },
-    { id: 'leads', labelKey: 'nav.leads' as const, icon: <Users size={17} />, path: '/leads', roles: ['ceo'], hint: 'Leads de formularios de Meta con estado y seguimiento' },
-    { id: 'automation', labelKey: 'nav.automation' as const, icon: <Zap size={17} />, path: '/automation', roles: ['ceo'], hint: 'Estrategias de automatización, logs y plantillas HSM' },
     { id: 'settings', labelKey: 'nav.settings' as const, icon: <Settings size={17} />, path: '/configuracion', roles: ['ceo'], hint: 'Configuración general, integraciones y credenciales' },
+    // { id: 'roi', ... } OCULTO — ROI Dashboard (se pisa con Marketing Hub). Ruta /roi sigue viva.
   ];
 
   const filteredItems = menuItems.filter(item => user && item.roles.includes(user.role));
