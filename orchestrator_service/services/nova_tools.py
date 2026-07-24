@@ -1115,13 +1115,13 @@ IMPORTANTE — REGLAS QUIRÚRGICAS:
     {
         "type": "function",
         "name": "obtener_registros",
-        "description": "Obtiene registros de CUALQUIER tabla de la plataforma. Tablas: patients, appointments, professionals, treatment_types, tenants, chat_messages, chat_conversations, patient_documents, clinical_records, automation_logs, patient_memories, meta_ad_insights. Podés filtrar por cualquier campo y limitar resultados.",
+        "description": "Obtiene registros de CUALQUIER tabla de la plataforma. Tablas: patients, appointments, professionals, treatment_types, tenants, chat_messages, chat_conversations, patient_documents, clinical_records, automation_logs, patient_memories, meta_ad_insights, clinic_pendings. Podés filtrar por cualquier campo y limitar resultados. PENDIENTES/TAREAS = tabla clinic_pendings (columnas: title, note, status[abierto/hecho/cancelado], priority[urgente/media/tranqui], due_at=vencimiento, created_at, source). Vencidos = status=abierto AND due_at < NOW(); urgentes = status=abierto AND priority=urgente; recientes = ordená por created_at DESC.",
         "parameters": {
             "type": "object",
             "properties": {
                 "tabla": {
                     "type": "string",
-                    "description": "Nombre de la tabla: patients, appointments, professionals, treatment_types, tenants, clinical_records, patient_documents, automation_logs, chat_conversations, patient_memories",
+                    "description": "Nombre de la tabla: patients, appointments, professionals, treatment_types, tenants, clinical_records, patient_documents, automation_logs, chat_conversations, patient_memories, clinic_pendings",
                 },
                 "filtros": {
                     "type": "string",
@@ -10023,6 +10023,8 @@ ALLOWED_TABLES = frozenset(
         "meta_ad_insights",
         "treatment_type_professionals",
         "users",
+        # Pendientes / tareas de la clínica (para que Nova pueda leerlos y responderlos)
+        "clinic_pendings",
         # Billing / Budget
         "treatment_plans",
         "treatment_plan_items",

@@ -274,7 +274,24 @@ async def _process_with_nova(
         except Exception:
             pass
 
-        client = _get_openai_client()
+        # Ruteo por modelo (mismo criterio que main.py _is_openrouter_model): OpenRouter si el
+        # modelo lleva "/", DeepSeek si es deepseek-*, si no OpenAI directo. Fix 2026-07-24:
+        # Nova-Telegram usaba SIEMPRE OpenAI directo; con la migración a OpenRouter (modelo
+        # 'openai/gpt-5.4-mini' con "/") tiraba "ID de modelo inválido" y Nova no respondía.
+        import openai as _openai_lib
+
+        if "/" in model_name:
+            client = _openai_lib.AsyncOpenAI(
+                api_key=os.getenv("OPENROUTER_API_KEY") or os.getenv("OPENAI_API_KEY"),
+                base_url="https://openrouter.ai/api/v1",
+            )
+        elif model_name in ("deepseek-chat", "deepseek-reasoner"):
+            client = _openai_lib.AsyncOpenAI(
+                api_key=os.getenv("DEEPSEEK_API_KEY") or os.getenv("OPENAI_API_KEY"),
+                base_url="https://api.deepseek.com",
+            )
+        else:
+            client = _get_openai_client()
 
         # Build system prompt — SAME as Nova Realtime, page=telegram
         try:
