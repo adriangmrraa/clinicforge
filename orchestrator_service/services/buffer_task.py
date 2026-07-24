@@ -5644,6 +5644,42 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
     except Exception as _pb_err:
         logger.warning(f"candado-post-booking skipped (non-fatal): {_pb_err}")
 
+    # --- CANDADO: sacar "emergencias médicas de tu zona" cuando NO hay bandera roja real ---
+    # Caso prod 2026-07-24: derivación por molestia/ortodoncia rutinaria y el bot cerró con
+    # "si se suma fiebre/hinchazón/te cuesta tragar → contactá emergencias médicas de tu zona".
+    # En dental eso es raro y CONFUNDE (pedido Carlos). Es una línea de seguridad que el LLM mete
+    # de más: solo tiene sentido si el paciente REPORTÓ un signo severo (respirar/tragar/fiebre
+    # alta/hinchazón facial/desmayo/trauma/sangrado masivo). Si no, se recorta. Fail-safe.
+    try:
+        if response_text and re.search(r"(?i)emergencias?\s+m[eé]dicas?", response_text):
+            _em_last = " ".join(messages).lower() if isinstance(messages, list) else str(messages or "").lower()
+            _em_ctx = (patient_context or "").lower()
+            _em_red_flag = bool(re.search(
+                r"no puedo respirar|dificultad (?:para )?respirar|me falta el aire|"
+                r"no puedo tragar|dificultad (?:para )?tragar|me cuesta (?:mucho )?tragar|no puedo ni tragar|"
+                r"fiebre alta|3[89](?:[.,]\d)?\s*(?:de fiebre|grados|º|°)|40\s*(?:de fiebre|grados|º|°)|"
+                r"hinchaz[oó]n (?:de la |en la )?cara|cara (?:muy )?hinchad|se me hinch[oó] la cara|"
+                r"desmay|inconscien|convuls|"
+                r"sangr[ao] (?:mucho|much[ií]simo|sin parar|a chorros)|no para de sangrar|"
+                r"golpe fuerte|me pegu[eé] (?:fuerte|un golpe)|accidente|trauma",
+                _em_last + " " + _em_ctx,
+            ))
+            if not _em_red_flag:
+                _em_pre = response_text
+                response_text = re.sub(
+                    r"(?im)^.*emergencias?\s+m[eé]dicas?.*$\n?", "", response_text,
+                ).strip()
+                response_text = re.sub(r"\n{3,}", "\n\n", response_text).strip()
+                if _em_pre != response_text:
+                    logger.warning(
+                        f"🔒 CANDADO EMERGENCIAS: saqué la línea de emergencias médicas (sin bandera roja) "
+                        f"para {external_user_id}"
+                    )
+                if not response_text:
+                    response_text = "Ya le pasé tu caso al equipo para que te contacten lo antes posible 😊"
+    except Exception as _em_err:
+        logger.warning(f"candado-emergencias skipped (non-fatal): {_em_err}")
+
     # --- CANDADO: 'RESERVA TEMPORAL' FANTASMA (caso Matías) ---
     # Prod 2026-07-20: el bot dijo "se venció la reserva temporal de ese turno" hablando de
     # un turno REAL ya agendado — la reserva temporal (confirm_slot, 30 min) no existía.
