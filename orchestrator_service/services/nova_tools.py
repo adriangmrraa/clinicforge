@@ -10125,7 +10125,10 @@ async def _crear_pendiente(args: Dict, tenant_id: int) -> str:
         else:
             _m = _re.search(r"(\d+)", vence)
             _n = int(_m.group(1)) if _m else 0
-            if _n > 0 and ("hora" in vence or vence.endswith("h")):
+            if _n > 0 and _re.search(r"minuto|\bmin\b", vence):
+                _n = min(_n, 1440)
+                due_sql, vence_txt = f"NOW() + INTERVAL '{_n} minutes'", f"en {_n} min"
+            elif _n > 0 and ("hora" in vence or vence.endswith("h")):
                 _n = min(_n, 168)
                 due_sql, vence_txt = f"NOW() + INTERVAL '{_n} hours'", f"en {_n} h"
             elif _n > 0:  # días por defecto
@@ -10373,7 +10376,12 @@ async def _actualizar_registro(args: Dict, tenant_id: int, user_role: str) -> st
         _tz = await get_tenant_tz(tenant_id)
         sets = []
         params = [tenant_id]
+        # Nunca dejar que el LLM reasigne la fila a otro tenant ni cambie su id/timestamps
+        # (auditoría 2026-07-24 #1: mover un registro a otro tenant rompe Sovereignty §1).
+        _PROTECTED_FIELDS = {"tenant_id", "id", "created_at", "updated_at"}
         for field, value in campos.items():
+            if field in _PROTECTED_FIELDS:
+                continue
             if not all(c.isalnum() or c == "_" for c in field):
                 continue
             try:

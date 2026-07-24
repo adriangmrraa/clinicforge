@@ -483,14 +483,17 @@ async def send_proactive_document(
         logger.warning(f"send_proactive_document error: {e}")
 
 
-async def send_proactive_message(tenant_id: int, html_text: str):
-    """Send a proactive message to all authorized Telegram users of a tenant."""
+async def send_proactive_message(tenant_id: int, html_text: str) -> bool:
+    """Send a proactive message to all authorized Telegram users of a tenant.
+    Devuelve True si se entregó a AL MENOS un destinatario; False si no hay bot,
+    no hay destinatarios activos, o falló el envío (auditoría 2026-07-24 #2: quien
+    dependa de la entrega —ej. el aviso de pendientes vencidos— debe poder distinguir)."""
     try:
         from services.telegram_bot import _bots
 
         app = _bots.get(tenant_id)
         if not app:
-            return
+            return False
 
         from db import db
 
@@ -500,12 +503,13 @@ async def send_proactive_message(tenant_id: int, html_text: str):
             tenant_id,
         )
         if not rows:
-            return
+            return False
 
         from core.credentials import decrypt_value
         from telegram.constants import ParseMode
 
         bot = app.bot
+        _sent = 0
         for row in rows:
             try:
                 chat_id = int(decrypt_value(row["telegram_chat_id"]))
@@ -514,7 +518,10 @@ async def send_proactive_message(tenant_id: int, html_text: str):
                     text=html_text,
                     parse_mode=ParseMode.HTML,
                 )
+                _sent += 1
             except Exception as e:
                 logger.debug(f"Proactive message skip chat: {e}")
+        return _sent > 0
     except Exception as e:
         logger.warning(f"send_proactive_message error: {e}")
+        return False

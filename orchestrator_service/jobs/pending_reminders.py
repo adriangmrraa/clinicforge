@@ -103,10 +103,18 @@ async def _remind_tenant_overdue(tenant_id: int):
 
     from services.telegram_notifier import send_proactive_message
 
-    await send_proactive_message(tenant_id, "\n".join(lines))
+    sent = await send_proactive_message(tenant_id, "\n".join(lines))
 
-    # Estampar el aviso para no repetir hasta dentro de REMINDER_EVERY_H (todos los
-    # de la corrida, incluidos los resumidos como "y N más").
+    # SOLO estampar reminder_sent_at si el aviso REALMENTE se entregó (auditoría 2026-07-24 #2:
+    # si no hay destinatarios activos o falla Telegram, no marcar como avisado — se reintenta al
+    # próximo ciclo en vez de silenciar el vencido por REMINDER_EVERY_H horas).
+    if not sent:
+        logger.warning(
+            f"pending reminder tenant {tenant_id}: {len(rows)} vencidos NO entregados por Telegram "
+            f"(sin destinatarios o error) — no se estampa, se reintenta en el próximo ciclo"
+        )
+        return
+
     ids = [r["id"] for r in rows]
     await db.pool.execute(
         "UPDATE clinic_pendings SET reminder_sent_at = NOW() "

@@ -131,6 +131,9 @@ export default function PendientesView() {
     // Filtro rápido: qué bucket mostrar (mobile-friendly + cartas colapsables).
     type Filtro = 'todas' | 'vencidas' | 'hoy' | 'manana' | 'por_vencer' | 'sin_fecha';
     const [filter, setFilter] = useState<Filtro>('todas');
+    // Estado "carta abierta" EN EL PADRE (no dentro de Card): Card se recrea en cada render del
+    // padre y React lo remonta, así que un useState local se reseteaba (auditoría 2026-07-24 #3).
+    const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
 
     const [modal, setModal] = useState<boolean>(false);
     const [saving, setSaving] = useState(false);
@@ -284,7 +287,12 @@ export default function PendientesView() {
     };
 
     const Card = ({ r }: { r: PendingRow }) => {
-        const [open, setOpen] = useState(false);
+        const open = expandedIds.has(r.id);
+        const toggle = () => setExpandedIds((prev) => {
+            const next = new Set(prev);
+            if (next.has(r.id)) next.delete(r.id); else next.add(r.id);
+            return next;
+        });
         const pst = PRIORITY_STYLE[r.priority] || PRIORITY_STYLE.media;
         const waDigits = (r.chat_phone || '').replace(/\D/g, '');
         const person = r.patient_name?.trim() || (r.chat_phone ? fmtPhonePretty(r.chat_phone) : null);
@@ -296,7 +304,7 @@ export default function PendientesView() {
                 {/* Cabecera COMPACTA (colapsada): quién + prioridad + origen + vencimiento de un vistazo */}
                 <div className="flex items-center gap-2.5 sm:gap-3 p-3 pl-4 sm:pl-5">
                     <button
-                        onClick={() => setOpen((o) => !o)}
+                        onClick={toggle}
                         className="flex items-center gap-2.5 sm:gap-3 flex-1 min-w-0 text-left"
                     >
                         <div className={`shrink-0 w-9 h-9 rounded-full grid place-items-center text-[12px] font-semibold ${pst.avatar}`}>
@@ -322,7 +330,7 @@ export default function PendientesView() {
                             </button>
                         )}
                         <button
-                            onClick={() => setOpen((o) => !o)}
+                            onClick={toggle}
                             className="p-1.5 rounded-lg text-white/30 hover:text-white/60 hover:bg-white/[0.06] transition-colors"
                             title={open ? t('pendientes.collapse') : t('pendientes.expand')}
                         >
@@ -546,7 +554,7 @@ export default function PendientesView() {
                 </div>
 
                 {/* Estado vacío del filtro activo (hay pendientes, pero ninguno en este corte) */}
-                {!loading && filter !== 'todas' && (() => {
+                {!loading && rows.length > 0 && filter !== 'todas' && (() => {
                     const map: Record<string, PendingRow[]> = {
                         vencidas: buckets.vencidas, hoy: buckets.hoy, manana: buckets.manana,
                         por_vencer: buckets.porVencer, sin_fecha: buckets.sinFecha,
