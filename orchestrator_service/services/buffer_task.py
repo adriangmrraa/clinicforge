@@ -2878,6 +2878,37 @@ async def process_buffer_task(
         except Exception as _pain_err:
             logger.debug(f"pain-gate injection skipped (non-fatal): {_pain_err}")
 
+        # 🕐 HORARIO DE ATENCIÓN / "¿está abierto? / me acerco?" (caso prod 2026-07-24):
+        # el paciente pide el horario de la clínica y el bot desvía con "trabajamos con turnos
+        # programados" SIN dar el horario real (que SÍ está en el prompt, sección «Horarios de
+        # atención»). La DIRECCIÓN tiene regla fuerte; los HORARIOS no → inyección determinista.
+        # Excluye "mi turno" (eso es list_my_appointments, el horario del paciente, no el de la clínica).
+        try:
+            _hs_last = str(messages[-1] if messages else "").lower()
+            _hs_pide_horario = bool(re.search(
+                r"horario de atenci|horarios de atenci|hasta qu[eé] hora|"
+                r"a qu[eé] hora (?:abren|cierran|atienden|abre|cierra)|"
+                r"(?:est[aá]n?|se encuentran?|siguen?) abiert|"
+                r"(?:puedo|podr[ií]a|puede) (?:acercarme|acercarse|pasar)|me acerco|"
+                r"sin turno|por orden de llegada|atienden hoy|abren hoy",
+                _hs_last,
+            ))
+            _hs_es_mi_turno = bool(re.search(r"mi turno|mi cita|mi hora", _hs_last))
+            if _hs_pide_horario and not _hs_es_mi_turno:
+                _hs_note = (
+                    "🕐 EL PACIENTE PREGUNTA EL HORARIO DE ATENCIÓN (o si está abierto / si puede "
+                    "acercarse). RESPONDÉ SÍ O SÍ con los horarios REALES de la sección «Horarios de "
+                    "atención» de arriba: si pregunta por HOY o un día puntual, dá el horario de ESE "
+                    "día (con la sede si corresponde); si es general, dá el esquema de la semana. "
+                    "Aclarale que se atiende CON TURNO (no por orden de llegada) y ofrecé agendarle "
+                    "uno. PROHIBIDO contestar solo «trabajamos con turnos programados» sin el horario "
+                    "concreto. Si por algún motivo no tenés el horario en el prompt, derivá con "
+                    "derivhumano en vez de marear."
+                )
+                patient_context = (patient_context + "\n" + _hs_note) if patient_context else _hs_note
+        except Exception as _hs_err:
+            logger.debug(f"horario-atencion injection skipped (non-fatal): {_hs_err}")
+
         # 🚨 URGENCIA — SE LE SALIÓ/CAYÓ UNA RESTAURACIÓN (caso Adriana/prod 2026-07-23):
         # "se me salió el arreglo/carilla/empaste de los dientes de frente" es urgencia (funcional
         # + estética), pero el bot lo trató de rutina y ofreció turnos lejanos sin derivar. triage_
@@ -5576,11 +5607,21 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
     # dropea. Determinista: contexto con PRÓXIMO TURNO + la respuesta ofrece turnos + el
     # paciente NO pidió un turno nuevo en su mensaje → se recorta la oferta.
     try:
+        # Frases que "ofrecen turno": las clásicas ("te paso turnos/opciones") + la CTA del guion
+        # de PRECIO ("te ayudo a coordinar un turno de evaluación") que se colaba porque el regex
+        # viejo no la cazaba (caso prod 2026-07-24: precio a paciente que YA tiene turno). Un solo
+        # patrón compartido para detección y recorte, así no se desincronizan.
+        _pb_offer = (
+            r"te paso (?:turnos|opciones|las opciones|disponibilidad)"
+            r"|quer[eé]s que te pase turnos"
+            r"|te ayudo a coordinar(?:te)? (?:un turno|una consulta|una evaluaci[oó]n|una cita|el turno)"
+            r"|coordin(?:amos|emos) (?:un turno|una consulta|una evaluaci[oó]n|una cita)"
+        )
         if (
             response_text
             and patient_context
             and "PRÓXIMO TURNO" in patient_context
-            and re.search(r"(?i)te paso (?:turnos|opciones|las opciones|disponibilidad)|quer[eé]s que te pase turnos", response_text)
+            and re.search(r"(?i)" + _pb_offer, response_text)
         ):
             _pb_last = " ".join(messages).lower() if isinstance(messages, list) else str(messages or "").lower()
             _pb_pidio_turno = bool(
@@ -5589,7 +5630,7 @@ Recordá que cada obra social puede tener días de espera adicionales configurad
             if not _pb_pidio_turno:
                 _pb_pre = response_text
                 response_text = re.sub(
-                    r"(?im)^.*(?:te paso (?:turnos|opciones|las opciones|disponibilidad)|quer[eé]s que te pase turnos).*$\n?",
+                    r"(?im)^.*(?:" + _pb_offer + r").*$\n?",
                     "", response_text,
                 ).strip()
                 response_text = re.sub(r"\n{3,}", "\n\n", response_text).strip()

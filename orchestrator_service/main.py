@@ -3802,10 +3802,15 @@ async def check_availability(
             f"📅 DIAG generate_free_slots returned {len(available_slots)} slots: {available_slots[:10]}"
         )
 
-        # Fallback: if time_preference, min_time or max_time filtered ALL slots but there ARE slots without filter,
-        # retry without preference and prepend a note about unavailability in that time range
+        # Fallback de franja horaria. CAMBIO Carlos 2026-07-24 (caso "después de las 17"):
+        # ante un PISO/TECHO horario EXPLÍCITO (min_time/max_time) NO rellenamos con horarios más
+        # temprano del MISMO día (el paciente ya los rechazó). Primero buscamos hacia adelante A
+        # ESA HORA (search_range ampliado + pick_representative_slots respeta min_time), y recién
+        # si NO hay nada en toda la ventana ofrecemos lo más cercano avisando (más abajo). El
+        # relleno inmediato del día base queda SOLO para time_preference (franja mañana/tarde).
         _time_pref_note = ""
-        if not available_slots and (time_preference or min_time or max_time):
+        _floor_emptied_base = bool(not available_slots and (min_time or max_time))
+        if not available_slots and time_preference and not (min_time or max_time):
             all_day_slots = generate_free_slots(
                 target_date,
                 busy_map,
@@ -3820,15 +3825,10 @@ async def check_availability(
             )
             if all_day_slots:
                 available_slots = all_day_slots
-                if min_time:
-                    _time_pref_note = f"No hay turnos disponibles a partir de las {min_time} ese día, pero te ofrezco estas alternativas:\n\n"
-                elif max_time:
-                    _time_pref_note = f"No hay turnos disponibles antes de las {max_time} ese día, pero te ofrezco estas alternativas:\n\n"
-                elif time_preference:
-                    franja = "la mañana" if time_preference == "mañana" else "la tarde" if time_preference == "tarde" else "la noche"
-                    _time_pref_note = f"No hay turnos disponibles por {franja} ese día, pero sí en otros horarios:\n\n"
+                franja = "la mañana" if time_preference == "mañana" else "la tarde" if time_preference == "tarde" else "la noche"
+                _time_pref_note = f"No hay turnos disponibles por {franja} ese día, pero sí en otros horarios:\n\n"
                 logger.info(
-                    f"📅 Filters (pref={time_preference}, min={min_time}, max={max_time}) removed — fallback found {len(all_day_slots)} slots"
+                    f"📅 time_preference={time_preference} removed — fallback found {len(all_day_slots)} slots"
                 )
 
         # Fallback para specific_time: si pidieron una hora exacta y no está disponible, pero hay otros turnos,
@@ -3911,6 +3911,12 @@ async def check_availability(
         if _period_words and search_range < 14:
             search_range = 14
             logger.info("📅 search_range ampliado a 14 días (pedido de parte del mes en date_query)")
+        # Piso/techo horario explícito (caso "después de las 17", pedido Carlos 2026-07-24): buscar
+        # a ESA hora AUNQUE caiga en días lejanos. Ignora el cap de 3 días de high-ticket (corre
+        # DESPUÉS del cap → gana) y asegura ventana amplia aunque search_mode viniera 'exact'/'open'.
+        if _floor_emptied_base and search_range < 14:
+            search_range = 14
+            logger.info("📅 search_range ampliado a 14 días (piso/techo horario — buscar a esa hora hacia adelante)")
 
         # Resolve effective professional name for multi-day search.
         # When the professional was assigned via forced_prof_id or derivation rule
@@ -3988,6 +3994,54 @@ async def check_availability(
             forced_prof_id=forced_prof_id,
             derivation_filter_prof_id=derivation_filter_prof_id,
         )
+
+        # Fallback "LO MÁS CERCANO AVISANDO" (decisión Carlos 2026-07-24): si el paciente pidió un
+        # piso/techo horario y NO hay NADA a esa hora en toda la ventana, recién ACÁ ofrecemos los
+        # turnos más cercanos (aunque sean más temprano de lo pedido), aclarando que no hay a esa
+        # hora. Antes esto pasaba enseguida (sin buscar a futuro); ahora es el ÚLTIMO recurso.
+        if not options and _floor_emptied_base:
+            _near_base = generate_free_slots(
+                target_date,
+                busy_map,
+                duration_minutes=duration,
+                start_time_str=day_start,
+                end_time_str=day_end,
+                time_preference=None,
+                min_time=None,
+                max_time=None,
+                interval_minutes=15,
+                limit=50,
+            )
+            options, total_today = await pick_representative_slots(
+                _near_base,
+                target_date,
+                tenant_id,
+                tenant_wh,
+                tenant_row,
+                professional_name=_effective_prof_name,
+                treatment_name=treatment_name,
+                duration=duration,
+                max_options=2,
+                search_range_days=search_range,
+                time_preference=None,
+                specific_time=specific_time,
+                excluded_weekdays=_excluded_weekdays if _excluded_weekdays else None,
+                excluded_dates=_excluded_dates if _excluded_dates else None,
+                min_time=None,
+                max_time=None,
+                preferred_days=preferred_days,
+                prefer_nearest=True,
+                forced_prof_id=forced_prof_id,
+                derivation_filter_prof_id=derivation_filter_prof_id,
+            )
+            if options:
+                if min_time:
+                    _time_pref_note = f"No tengo turnos a partir de las {min_time} en los próximos días 😔 Pero te ofrezco lo más cercano que tengo:\n\n"
+                elif max_time:
+                    _time_pref_note = f"No tengo turnos antes de las {max_time} en los próximos días 😔 Pero te ofrezco lo más cercano que tengo:\n\n"
+                logger.info(
+                    f"📅 fallback piso/techo horario: sin lugar a esa hora en {search_range}d → ofrezco lo más cercano ({len(options)} opciones)"
+                )
 
         if options:
             # Emoji numbers for WhatsApp-friendly format

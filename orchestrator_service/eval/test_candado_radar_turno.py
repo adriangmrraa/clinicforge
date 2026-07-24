@@ -15,12 +15,21 @@ import re
 import sys
 
 
+# SYNC con buffer_task.py: frases que "ofrecen turno" (clásicas + CTA del guion de precio).
+_PB_OFFER = (
+    r"te paso (?:turnos|opciones|las opciones|disponibilidad)"
+    r"|quer[eé]s que te pase turnos"
+    r"|te ayudo a coordinar(?:te)? (?:un turno|una consulta|una evaluaci[oó]n|una cita|el turno)"
+    r"|coordin(?:amos|emos) (?:un turno|una consulta|una evaluaci[oó]n|una cita)"
+)
+
+
 def candado_post_booking(response_text: str, patient_context: str, last_user_msg: str) -> str:
     if not (
         response_text
         and patient_context
         and "PRÓXIMO TURNO" in patient_context
-        and re.search(r"(?i)te paso (?:turnos|opciones|las opciones|disponibilidad)|quer[eé]s que te pase turnos", response_text)
+        and re.search(r"(?i)" + _PB_OFFER, response_text)
     ):
         return response_text
     _last = (last_user_msg or "").lower()
@@ -28,7 +37,7 @@ def candado_post_booking(response_text: str, patient_context: str, last_user_msg
     if _pidio:
         return response_text
     response_text = re.sub(
-        r"(?im)^.*(?:te paso (?:turnos|opciones|las opciones|disponibilidad)|quer[eé]s que te pase turnos).*$\n?",
+        r"(?im)^.*(?:" + _PB_OFFER + r").*$\n?",
         "", response_text,
     ).strip()
     response_text = re.sub(r"\n{3,}", "\n\n", response_text).strip()
@@ -71,6 +80,24 @@ CASOS = [
             "Consulta, cubre osde cierto? No debo abonar algo adicional",
         ),
         lambda out: "te paso turnos" not in out.lower() and "OSDE" in out and "coseguro" in out,
+    ),
+    (
+        "PRECIO con turno: 'te ayudo a coordinar un turno de evaluación' se recorta (caso prod 24/07)",
+        lambda: candado_post_booking(
+            "El valor de la consulta es $60.000.\nTe ayudo a coordinar un turno de evaluación.",
+            CTX_CON_TURNO,
+            "cuanto sale la consulta?",
+        ),
+        lambda out: "coordinar un turno" not in out.lower() and "60.000" in out,
+    ),
+    (
+        "PRECIO con turno pero PIDE otro turno → la oferta de coordinar SOBREVIVE (legítima)",
+        lambda: candado_post_booking(
+            "El valor es $60.000.\nTe ayudo a coordinar un turno de evaluación.",
+            CTX_CON_TURNO,
+            "quiero sacar otro turno para una evaluación",
+        ),
+        lambda out: "coordinar un turno" in out.lower(),
     ),
     (
         "Con turno PERO pide OTRO turno explícito → la oferta SOBREVIVE (legítima)",
