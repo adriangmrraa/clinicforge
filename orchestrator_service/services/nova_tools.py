@@ -1145,6 +1145,42 @@ IMPORTANTE — REGLAS QUIRÚRGICAS:
     },
     {
         "type": "function",
+        "name": "ver_trabajos_laboratorio",
+        "description": "Lista los TRABAJOS DE LABORATORIO (coronas, prótesis, placas, férulas) con su estado y vencimiento ya calculado. USALO para 'qué trabajos llegaron', 'qué hay en el laboratorio', 'cuáles están vencidos', 'el trabajo de [paciente]'. NO uses obtener_registros para esto.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "filtro": {
+                    "type": "string",
+                    "enum": ["resumen", "vencidos", "por_vencer", "llegaron", "en_laboratorio", "sin_avisar"],
+                    "description": "Qué mostrar: 'resumen' (default: vencidos + llegados), 'vencidos', 'por_vencer', 'llegaron' (recibidos, listos para colocar), 'en_laboratorio' (enviados o en ajuste), 'sin_avisar' (llegaron y falta avisarle al paciente).",
+                },
+                "paciente": {
+                    "type": "string",
+                    "description": "Opcional: nombre o apellido del paciente para filtrar sus trabajos.",
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "name": "cambiar_estado_trabajo",
+        "description": "Cambia el ESTADO de un trabajo de laboratorio (sella la fecha sola). USALO para 'pasá la corona de Fulano a recibido', 'marcá como enviado', 'ya se colocó'. Si no sabés el id, primero usá ver_trabajos_laboratorio.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "trabajo_id": {"type": "string", "description": "ID del trabajo (lo devuelve ver_trabajos_laboratorio)."},
+                "estado": {
+                    "type": "string",
+                    "enum": ["pendiente_envio", "enviado", "recibido", "a_ajustar", "colocado", "cancelado"],
+                    "description": "Nuevo estado del trabajo.",
+                },
+            },
+            "required": ["trabajo_id", "estado"],
+        },
+    },
+    {
+        "type": "function",
         "name": "actualizar_registro",
         "description": "Actualiza campos de UN registro en cualquier tabla. Requiere el ID del registro. Solo CEO puede modificar tenants y professionals.",
         "parameters": {
@@ -8284,6 +8320,10 @@ async def execute_nova_tool(
         # J. CRUD genérico
         elif name == "obtener_registros":
             return await _obtener_registros(args, tenant_id, user_role)
+        elif name == "ver_trabajos_laboratorio":
+            return await _ver_trabajos_laboratorio(args, tenant_id)
+        elif name == "cambiar_estado_trabajo":
+            return await _cambiar_estado_trabajo(args, tenant_id)
         elif name == "ver_pendientes":
             return await _ver_pendientes(args, tenant_id)
         elif name == "crear_pendiente":
@@ -9990,6 +10030,9 @@ ALLOWED_TABLES = frozenset(
         "users",
         # Pendientes / tareas de la clínica (para que Nova pueda leerlos y responderlos)
         "clinic_pendings",
+        # Laboratorio (trabajos protésicos)
+        "lab_cases",
+        "labs",
         # Billing / Budget
         "treatment_plans",
         "treatment_plan_items",
@@ -10083,6 +10126,147 @@ async def _crear_pendiente(args: Dict, tenant_id: int) -> str:
     _cola = f" (vence {vence_txt})" if vence_txt else ""
     logger.info(f"📌 Nova creó pendiente #{pid} (prio={prio}) tenant={tenant_id}")
     return f"📌 Listo, cargué en Pendientes{_cola}:\n{_pico} {titulo}"
+
+
+_LAB_ST_TXT = {
+    "pendiente_envio": "pendiente de envío",
+    "enviado": "en el laboratorio",
+    "recibido": "YA LLEGÓ",
+    "a_ajustar": "en ajuste",
+    "colocado": "colocado",
+    "cancelado": "cancelado",
+}
+
+
+async def _ver_trabajos_laboratorio(args: Dict, tenant_id: int) -> str:
+    """Lista trabajos de laboratorio con estado y vencimiento calculado en SQL.
+    Tenant-scoped, fail-safe."""
+    from db import db
+
+    filtro = str(args.get("filtro") or "resumen").strip().lower().replace(" ", "_")
+    paciente = str(args.get("paciente") or "").strip()
+
+    cond = ["lc.tenant_id = $1"]
+    params: list = [tenant_id]
+    if paciente:
+        params.append(f"%{paciente.lower()}%")
+        cond.append(
+            f"LOWER(p.first_name || ' ' || COALESCE(p.last_name, '')) LIKE ${len(params)}"
+        )
+
+    if filtro == "vencidos":
+        cond.append("lc.status IN ('enviado','a_ajustar') AND lc.promised_at < CURRENT_DATE")
+    elif filtro == "por_vencer":
+        cond.append(
+            "lc.status IN ('enviado','a_ajustar') AND lc.promised_at >= CURRENT_DATE "
+            "AND lc.promised_at <= CURRENT_DATE + INTERVAL '3 days'"
+        )
+    elif filtro == "llegaron":
+        cond.append("lc.status = 'recibido'")
+    elif filtro == "en_laboratorio":
+        cond.append("lc.status IN ('enviado','a_ajustar')")
+    elif filtro == "sin_avisar":
+        cond.append("lc.status = 'recibido' AND lc.patient_notified_at IS NULL")
+    else:  # resumen: lo que requiere acción (afuera o ya llegado)
+        cond.append("lc.status IN ('enviado','a_ajustar','recibido')")
+
+    try:
+        rows = await db.pool.fetch(
+            f"""
+            SELECT lc.id, lc.work_type, lc.status, lc.promised_at,
+                   lc.patient_notified_at,
+                   (lc.promised_at - CURRENT_DATE) AS days_left,
+                   p.first_name || ' ' || COALESCE(p.last_name, '') AS patient_name,
+                   l.name AS lab_name
+            FROM lab_cases lc
+            JOIN patients p ON p.id = lc.patient_id AND p.tenant_id = lc.tenant_id
+            LEFT JOIN labs l ON l.id = lc.lab_id AND l.tenant_id = lc.tenant_id
+            WHERE {" AND ".join(cond)}
+            ORDER BY lc.promised_at ASC NULLS LAST, lc.created_at DESC
+            LIMIT 15
+            """,
+            *params,
+        )
+    except Exception as e:
+        logger.warning(f"_ver_trabajos_laboratorio error: {e}")
+        return "No pude leer los trabajos de laboratorio ahora. Probá de nuevo en un momento."
+
+    if not rows:
+        return "No hay trabajos de laboratorio que coincidan con esa búsqueda."
+
+    lines = []
+    for r in rows:
+        st = r["status"]
+        d = r["days_left"]
+        if st in ("enviado", "a_ajustar") and d is not None:
+            if d < 0:
+                cuando = f" — 🔴 vencido hace {abs(int(d))}d"
+            elif d == 0:
+                cuando = " — 🟡 vence hoy"
+            elif d <= 3:
+                cuando = f" — 🟡 vence en {int(d)}d"
+            else:
+                cuando = f" — vence en {int(d)}d"
+        else:
+            cuando = ""
+        falta_avisar = (
+            " · 📲 falta avisarle" if st == "recibido" and not r["patient_notified_at"] else ""
+        )
+        lab = f" ({r['lab_name']})" if r["lab_name"] else ""
+        lines.append(
+            f"• #{r['id']} {r['work_type']} — {(r['patient_name'] or '').strip()}{lab}: "
+            f"{_LAB_ST_TXT.get(st, st)}{cuando}{falta_avisar}"
+        )
+    return f"🦷 Trabajos de laboratorio ({len(rows)}):\n" + "\n".join(lines)
+
+
+async def _cambiar_estado_trabajo(args: Dict, tenant_id: int) -> str:
+    """Cambia el estado de un trabajo sellando la fecha correspondiente (mismo
+    comportamiento que el tablero). Tenant-scoped, fail-safe."""
+    from db import db
+
+    try:
+        case_id = int(str(args.get("trabajo_id") or "").strip())
+    except (TypeError, ValueError):
+        return "Necesito el número del trabajo. Pedime primero la lista con ver_trabajos_laboratorio."
+
+    estado = str(args.get("estado") or "").strip().lower()
+    if estado not in _LAB_ST_TXT:
+        return f"Estado inválido. Los válidos son: {', '.join(_LAB_ST_TXT)}."
+
+    # Sellos de fecha por estado (igual que el endpoint del tablero)
+    sellos = {
+        "enviado": "sent_at = COALESCE(sent_at, CURRENT_DATE),",
+        "recibido": "received_at = CURRENT_DATE,",
+        "a_ajustar": "tried_at = CURRENT_DATE, rework_count = rework_count + 1,",
+        "colocado": "placed_at = CURRENT_DATE,",
+    }.get(estado, "")
+
+    try:
+        row = await db.pool.fetchrow(
+            f"""
+            UPDATE lab_cases
+            SET status = $3, {sellos} updated_at = NOW()
+            WHERE id = $1 AND tenant_id = $2
+            RETURNING id, work_type,
+                      (SELECT first_name || ' ' || COALESCE(last_name, '')
+                       FROM patients WHERE id = lab_cases.patient_id AND tenant_id = $2) AS patient_name
+            """,
+            case_id, tenant_id, estado,
+        )
+    except Exception as e:
+        logger.warning(f"_cambiar_estado_trabajo error: {e}")
+        return "No pude cambiar el estado ahora. Probá de nuevo en un momento."
+
+    if not row:
+        return f"No encontré el trabajo #{case_id} en esta clínica."
+
+    quien = (row["patient_name"] or "").strip()
+    extra = ""
+    if estado == "recibido":
+        extra = " Acordate de avisarle al paciente desde el tablero cuando quieras."
+    logger.info(f"🦷 Nova cambió trabajo #{case_id} a '{estado}' (tenant {tenant_id})")
+    return f"✅ Listo: {row['work_type']} de {quien} quedó como {_LAB_ST_TXT[estado]}.{extra}"
 
 
 async def _ver_pendientes(args: Dict, tenant_id: int) -> str:

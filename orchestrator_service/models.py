@@ -2224,3 +2224,80 @@ class CaseToReview(Base):
         ),
         Index("ix_cases_to_review_tenant_status", "tenant_id", "status"),
     )
+
+
+class Lab(Base):
+    """Laboratorio dental externo (módulo Laboratorio F2-4, migración 072)."""
+
+    __tablename__ = "labs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    tenant_id = Column(
+        Integer, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    name = Column(String(150), nullable=False)
+    email = Column(String(200), nullable=True)
+    phone = Column(String(50), nullable=True)
+    notes = Column(Text, nullable=True)
+    is_active = Column(Boolean, nullable=False, server_default=text("true"))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "name", name="uq_labs_tenant_name"),
+        Index("idx_labs_tenant", "tenant_id"),
+    )
+
+
+class LabCase(Base):
+    """Trabajo de laboratorio con ciclo de estados (migración 072).
+
+    pendiente_envio → enviado → recibido → a_ajustar (loop, rework_count++)
+    → colocado / cancelado. Las fechas del ciclo se sellan al transicionar.
+    """
+
+    __tablename__ = "lab_cases"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    tenant_id = Column(
+        Integer, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    patient_id = Column(
+        Integer, ForeignKey("patients.id", ondelete="CASCADE"), nullable=False
+    )
+    professional_id = Column(
+        Integer, ForeignKey("professionals.id", ondelete="SET NULL"), nullable=True
+    )
+    lab_id = Column(Integer, ForeignKey("labs.id", ondelete="SET NULL"), nullable=True)
+    work_type = Column(String(80), nullable=False)
+    tooth_numbers = Column(String(120), nullable=True)
+    shade = Column(String(40), nullable=True)
+    status = Column(String(30), nullable=False, server_default="pendiente_envio")
+    sent_at = Column(Date, nullable=True)
+    promised_at = Column(Date, nullable=True)
+    received_at = Column(Date, nullable=True)
+    tried_at = Column(Date, nullable=True)
+    placed_at = Column(Date, nullable=True)
+    rework_count = Column(Integer, nullable=False, server_default="0")
+    # Referencias sueltas a turnos (sin FK: el turno puede borrarse)
+    origin_appointment_id = Column(String(64), nullable=True)
+    placement_appointment_id = Column(String(64), nullable=True)
+    cost = Column(DECIMAL(12, 2), nullable=True)
+    lab_paid = Column(Boolean, nullable=False, server_default=text("false"))
+    notes = Column(Text, nullable=True)
+    # L2 (migración 073): sellos de las acciones manuales
+    patient_notified_at = Column(DateTime(timezone=True), nullable=True)
+    lab_chased_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pendiente_envio','enviado','recibido','a_ajustar',"
+            "'colocado','cancelado')",
+            name="ck_lab_cases_status",
+        ),
+        Index("idx_lab_cases_tenant_status", "tenant_id", "status"),
+        Index("idx_lab_cases_tenant_patient", "tenant_id", "patient_id"),
+    )

@@ -6075,6 +6075,35 @@ async def book_appointment(
             f"✅ book_appointment OK phone={phone} tenant={tenant_id} apt_id={apt_id} patient_id={patient_id} prof={target_prof['first_name']} datetime={apt_datetime}"
         )
 
+        # 🦷 LABORATORIO — cerrar el circuito de la COLOCACIÓN (auditoría 2026-07-24):
+        # si este paciente tiene un trabajo YA RECIBIDO del laboratorio esperando colocarse y
+        # todavía no tiene turno de colocación vinculado, este turno ES esa colocación. Se
+        # vincula solo (antes quedaba suelto y el tablero mostraba "recibido" para siempre).
+        # Determinista y best-effort: si falla, el turno queda igual y se vincula a mano.
+        try:
+            _lab_linked = await db.pool.fetchval(
+                """
+                UPDATE lab_cases
+                SET placement_appointment_id = $1, updated_at = NOW()
+                WHERE id = (
+                    SELECT id FROM lab_cases
+                    WHERE tenant_id = $2 AND patient_id = $3
+                      AND status = 'recibido' AND placement_appointment_id IS NULL
+                    ORDER BY received_at ASC NULLS LAST, created_at ASC
+                    LIMIT 1
+                )
+                RETURNING id
+                """,
+                str(apt_id), tenant_id, patient_id,
+            )
+            if _lab_linked:
+                logger.info(
+                    f"🦷 LAB: turno {apt_id} vinculado como COLOCACIÓN del trabajo #{_lab_linked} "
+                    f"(paciente {patient_id}, tenant {tenant_id})"
+                )
+        except Exception as _lab_link_err:
+            logger.debug(f"lab placement link skipped (non-fatal): {_lab_link_err}")
+
         # v8.2: Reset booking attempts on successful booking
         try:
             from services.conversation_state import reset_booking_attempts as _ba_reset
@@ -7086,6 +7115,110 @@ async def list_my_appointments():
     except Exception as e:
         logger.error(f"Error en list_my_appointments: {e}")
         return "Hubo un error al buscar tus turnos. ¿Probamos de nuevo?"
+
+
+@tool
+async def check_lab_work_status():
+    """
+    Consulta el estado del trabajo de LABORATORIO del paciente (corona, prótesis, placa, férula, carillas).
+    Usar SIEMPRE que pregunten si "llegó" su corona/prótesis/placa/trabajo, cómo viene el trabajo del laboratorio, o para cuándo estará.
+    No pide parámetros: resuelve al paciente por su número de chat.
+    """
+    # Integración bot↔Laboratorio (tarea #1, 2026-07-16). Patrón de list_my_appointments:
+    # paciente por contexto (+ familiares vinculados), queries SIEMPRE tenant-scoped.
+    p_id = get_patient_id_by_context()
+    tenant_id = current_tenant_id.get()
+    if not p_id:
+        phone = current_customer_phone.get()
+        if not phone:
+            return "No pude identificar tu número. Escribime desde el mismo WhatsApp con el que te registraste."
+        p_row = await db.pool.fetchrow(
+            "SELECT id FROM patients WHERE tenant_id = $1 AND REGEXP_REPLACE(phone_number, '[^0-9]', '', 'g') = $2",
+            tenant_id,
+            normalize_phone_digits(phone),
+        )
+        if not p_row:
+            return (
+                "SIN_TRABAJOS: no hay trabajos de laboratorio registrados para este contacto. "
+                "Decile que no te figura un trabajo de laboratorio a su nombre y, si insiste en que hay uno, "
+                "llamá derivhumano (motivo: 'Paciente consulta por trabajo de laboratorio que no figura registrado'). NO inventes estados."
+            )
+        p_id = p_row["id"]
+    try:
+        patient_ids = [p_id]
+        family_ids = current_family_patient_ids.get()
+        if family_ids:
+            patient_ids.extend(family_ids)
+        rows = await db.pool.fetch(
+            """
+            SELECT lc.work_type, lc.status, lc.promised_at, lc.received_at, lc.placed_at,
+                   lc.rework_count, p.first_name AS patient_first_name,
+                   -- Turno de COLOCACIÓN ya agendado (si existe y sigue vigente): sirve para
+                   -- recordárselo en vez de re-ofrecerle turno a quien ya lo tiene.
+                   a.appointment_datetime AS placement_at
+            FROM lab_cases lc
+            JOIN patients p ON p.id = lc.patient_id AND p.tenant_id = lc.tenant_id
+            LEFT JOIN appointments a
+                   ON a.id::text = lc.placement_appointment_id
+                  AND a.tenant_id = lc.tenant_id
+                  AND a.status != 'cancelled'
+                  AND a.appointment_datetime > NOW()
+            WHERE lc.tenant_id = $1 AND lc.patient_id = ANY($2::int[])
+              AND lc.status != 'cancelado'
+            ORDER BY COALESCE(lc.updated_at, lc.created_at) DESC
+            LIMIT 3
+            """,
+            tenant_id,
+            patient_ids,
+        )
+        logger.info(f"[check_lab_work_status] tenant={tenant_id} patient_ids={patient_ids} casos={len(rows)}")
+        if not rows:
+            return (
+                "SIN_TRABAJOS: no hay trabajos de laboratorio registrados para este paciente. "
+                "Decile que no te figura un trabajo de laboratorio a su nombre y, si insiste en que hay uno, "
+                "llamá derivhumano (motivo: 'Paciente consulta por trabajo de laboratorio que no figura registrado'). NO inventes estados."
+            )
+        _fmt = lambda d: d.strftime("%d/%m") if d else None
+        lines = []
+        for r in rows:
+            wt = r["work_type"] or "trabajo"
+            st = r["status"]
+            if st == "pendiente_envio":
+                lines.append(f"• {wt}: AÚN NO SALIÓ al laboratorio. Decile que está en preparación para el envío y que le avisamos apenas llegue.")
+            elif st == "enviado":
+                _p = _fmt(r["promised_at"])
+                lines.append(
+                    f"• {wt}: ESTÁ EN EL LABORATORIO."
+                    + (f" Fecha estimada de llegada: {_p}. Comunicá la fecha SOLO como estimada." if _p
+                       else " Sin fecha estimada cargada: decile que la clínica lo está siguiendo y le avisamos apenas llegue. NO inventes fechas.")
+                )
+            elif st == "recibido":
+                _pl = r["placement_at"]
+                if _pl:
+                    # Ya tiene turno de colocación agendado → NO re-ofrecer turnos (caso Gisela):
+                    # se lo recordamos con la fecha real.
+                    lines.append(
+                        f"• {wt}: ¡YA LLEGÓ a la clínica{(' el ' + _fmt(r['received_at'])) if r['received_at'] else ''}! "
+                        f"Y su turno de COLOCACIÓN YA ESTÁ AGENDADO para el {_pl.strftime('%d/%m a las %H:%M')} hs. "
+                        "Confirmáselo con entusiasmo y RECORDALE esa fecha. ⛔ NO le ofrezcas turnos nuevos "
+                        "ni llames check_availability: ya lo tiene."
+                    )
+                else:
+                    lines.append(
+                        f"• {wt}: ¡YA LLEGÓ a la clínica{(' el ' + _fmt(r['received_at'])) if r['received_at'] else ''}! "
+                        "Confirmáselo con entusiasmo y ofrecé coordinar el turno de COLOCACIÓN (usá check_availability)."
+                    )
+            elif st == "a_ajustar":
+                lines.append(f"• {wt}: está EN AJUSTE con el laboratorio (retoque). Decile que está en ajuste para que quede perfecto y le avisamos apenas vuelva.")
+            elif st == "colocado":
+                lines.append(f"• {wt}: ya fue COLOCADO{(' el ' + _fmt(r['placed_at'])) if r['placed_at'] else ''}. Si pregunta por uno nuevo, no figura otro en curso.")
+        return (
+            "ESTADO DE TRABAJOS DE LABORATORIO (interno — respondé en lenguaje natural, cálido y CORTO):\n"
+            + "\n".join(lines)
+        )
+    except Exception as e:
+        logger.error(f"Error en check_lab_work_status: {e}")
+        return "Hubo un problema al consultar el estado del trabajo. Decile al paciente que lo verificás con el equipo y llamá derivhumano (motivo: 'Consulta de trabajo de laboratorio — error al leer el estado')."
 
 
 @tool
@@ -11450,6 +11583,7 @@ DENTAL_TOOLS = [
     confirm_slot,
     book_appointment,
     list_my_appointments,
+    check_lab_work_status,
     cancel_appointment,
     reschedule_appointment,
     triage_urgency,
@@ -11850,6 +11984,7 @@ REGLAS PARA VOS:
 • PROHIBIDO mandar mensajes entre corchetes, texto interno, debug, o cualquier cosa que no sea lenguaje natural al paciente. ÚNICA EXCEPCIÓN: la respuesta [SILENCIO] del CIERRE DE CORTESÍA — esa palabra sola nunca llega al paciente (el sistema la intercepta y no envía nada).
 
 ## DOCUMENTACIÓN DE TOOLS ADICIONALES:
+• `check_lab_work_status`: Usar SIEMPRE que el paciente pregunte por su trabajo de LABORATORIO: "¿llegó mi corona/prótesis/placa/férula?", "¿cómo viene mi trabajo?", "¿para cuándo está?". Sin parámetros. ⛔ NUNCA respondas sobre el estado de un trabajo sin llamarla (no inventes "ya llegó" ni fechas). Si devuelve que YA LLEGÓ → ofrecé coordinar la colocación con check_availability, salvo que la tool te diga que la colocación YA está agendada (ahí solo recordale la fecha, sin ofrecer turnos).
 • `confirm_appointment`: Usar CUANDO el paciente confirma EXPLÍCITAMENTE un turno pre-reservado (SLOT_LOCKED) y no se usó book_appointment. Parámetros: appointment_id (UUID), approximate_time (ej: "15:00"), target_date (ej: "mañana"). NO usar para agenda interna ni para turnos ya agendados con book_appointment.
 • `link_payment_to_patient`: Usar CUANDO un tercero (NO el paciente) envía un comprobante de pago y especifica para quién es. Parámetros: patient_name (nombre del paciente destino), receipt_description, amount_detected, relationship. NO usar si el comprobante lo envía el propio paciente.
 • `end_conversation`: Usar CUANDO el paciente se despide, agradece o confirma que no necesita nada más. Marca la conversación como finalizada. Parámetros: conclusion (opcional, resumen breve del resultado). NO usar si hay preguntas pendientes, tools por ejecutar, o flujo activo. Si el paciente sigue agradeciendo después de tu cierre, combinala con la respuesta [SILENCIO] (ver CIERRE DE CORTESÍA)."""
@@ -14891,6 +15026,15 @@ try:
     logger.info("✅ Backup & Restore router registered")
 except Exception as e:
     logger.error(f"backup_router_registration_failed: {e}")
+
+# Módulo Laboratorio (F2-4 L1): labs + lab_cases
+try:
+    from routes.lab_routes import router as lab_router
+
+    app.include_router(lab_router, prefix="/admin", tags=["Laboratorio"])
+    logger.info("✅ Laboratorio router registered")
+except Exception as e:
+    logger.error(f"lab_router_registration_failed: {e}")
 
 try:
     from routes.pending_routes import router as pending_router

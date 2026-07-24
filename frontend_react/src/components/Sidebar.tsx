@@ -19,6 +19,7 @@ import {
   Layout,
   Zap,
   ListTodo,
+  FlaskConical,
   Wallet,
   Ban,
 } from 'lucide-react';
@@ -131,7 +132,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle, onCloseMo
     { id: 'agenda', labelKey: 'nav.agenda' as const, icon: <Calendar size={17} />, path: '/agenda', roles: ['ceo', 'professional', 'secretary'], hint: 'Agenda interactiva de turnos por profesional y sede' },
     { id: 'patients', labelKey: 'nav.patients' as const, icon: <Users size={17} />, path: '/pacientes', roles: ['ceo', 'professional', 'secretary'], hint: 'Base de pacientes con ficha clinica, odontograma y anamnesis' },
     { id: 'chats', labelKey: 'nav.chats' as const, icon: <MessageSquare size={17} />, path: '/chats', roles: ['ceo', 'professional', 'secretary'], hint: 'Conversaciones de WhatsApp, Instagram y Facebook en un solo lugar' },
-    { id: 'pendientes', labelKey: 'nav.pendientes' as const, icon: <ListTodo size={17} />, path: '/pendientes', roles: ['ceo', 'professional', 'secretary'], hint: 'Tareas con vencimiento y chats esperando respuesta — que nada se olvide' },
+    { id: 'pendientes', labelKey: 'nav.pendientes' as const, icon: <ListTodo size={17} />, path: '/pendientes', roles: ['ceo', 'professional', 'secretary'], hint: 'Tareas con vencimiento y derivaciones — que nada se olvide' },
+    { id: 'laboratorio', labelKey: 'nav.laboratorio' as const, icon: <FlaskConical size={17} />, path: '/laboratorio', roles: ['ceo', 'professional', 'secretary'], hint: 'Trabajos de laboratorio: estados, vencimientos y laboratorios' },
     { id: 'blocked', labelKey: 'nav.blocked' as const, icon: <Ban size={17} />, path: '/bloqueados', roles: ['ceo', 'secretary'], hint: 'Numeros que el agente no debe contestar (labs, proveedores, spam)' },
     // --- Gestión ---
     { id: 'treatments', labelKey: 'nav.treatments' as const, icon: <Clock size={17} />, path: '/tratamientos', roles: ['ceo', 'secretary'], hint: 'Tipos de tratamiento con precios, duracion e imagenes' },
