@@ -1160,6 +1160,21 @@ IMPORTANTE — REGLAS QUIRÚRGICAS:
     },
     {
         "type": "function",
+        "name": "crear_pendiente",
+        "description": "Crea una TAREA/PENDIENTE de la clínica. USALO cuando pidan 'agregá a pendientes', 'cargá una tarea', 'recordá que hay que...'. NO uses crear_registro para pendientes (el vencimiento falla). La tarea se crea SUELTA (sin paciente).",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "titulo": {"type": "string", "description": "Qué hay que hacer. Ej: 'mandar presupuesto a Lucas Puig'."},
+                "nota": {"type": "string", "description": "Detalle opcional."},
+                "prioridad": {"type": "string", "enum": ["urgente", "media", "tranqui"], "description": "Prioridad (default 'media')."},
+                "vence_en": {"type": "string", "description": "Vencimiento relativo en lenguaje natural: '2 dias', 'mañana', '3 horas', 'hoy'. Vacío = sin vencimiento."},
+            },
+            "required": ["titulo"],
+        },
+    },
+    {
+        "type": "function",
         "name": "actualizar_registro",
         "description": "Actualiza campos de UN registro en cualquier tabla. Requiere el ID del registro. Solo CEO puede modificar tenants y professionals.",
         "parameters": {
@@ -8340,6 +8355,8 @@ async def execute_nova_tool(
             return await _obtener_registros(args, tenant_id, user_role)
         elif name == "ver_pendientes":
             return await _ver_pendientes(args, tenant_id)
+        elif name == "crear_pendiente":
+            return await _crear_pendiente(args, tenant_id)
         elif name == "actualizar_registro":
             return await _actualizar_registro(args, tenant_id, user_role)
         elif name == "crear_registro":
@@ -10078,6 +10095,61 @@ UUID_ID_TABLES = {
 
 # Max results to prevent context explosion
 MAX_RESULTS = 15
+
+
+async def _crear_pendiente(args: Dict, tenant_id: int) -> str:
+    """Crea una tarea/pendiente SUELTA (sin paciente) desde Nova. Maneja el vencimiento
+    relativo ('2 dias', 'mañana', '3 horas', 'hoy') calculándolo EN SQL con NOW() + INTERVAL
+    (evita el error de string→datetime del crear_registro genérico). Pedido Carlos 2026-07-24."""
+    from db import db
+
+    titulo = str(args.get("titulo") or args.get("title") or "").strip()
+    if not titulo:
+        return "Necesito el texto de la tarea para cargarla (ej: 'mandar presupuesto a Lucas Puig')."
+    nota = str(args.get("nota") or args.get("note") or "").strip() or None
+    prio = str(args.get("prioridad") or args.get("priority") or "media").strip().lower()
+    if prio not in ("urgente", "media", "tranqui"):
+        prio = "media"
+
+    # Vencimiento relativo → intervalo validado (número entero + unidad fija; sin inyección).
+    vence = str(args.get("vence_en") or args.get("due") or "").strip().lower()
+    due_sql = "NULL"
+    vence_txt = ""
+    if vence:
+        import re as _re
+
+        if "mañana" in vence or "manana" in vence:
+            due_sql, vence_txt = "NOW() + INTERVAL '1 day'", "mañana"
+        elif "hoy" in vence:
+            due_sql, vence_txt = "NOW() + INTERVAL '8 hours'", "hoy"
+        else:
+            _m = _re.search(r"(\d+)", vence)
+            _n = int(_m.group(1)) if _m else 0
+            if _n > 0 and ("hora" in vence or vence.endswith("h")):
+                _n = min(_n, 168)
+                due_sql, vence_txt = f"NOW() + INTERVAL '{_n} hours'", f"en {_n} h"
+            elif _n > 0:  # días por defecto
+                _n = min(_n, 365)
+                due_sql, vence_txt = f"NOW() + INTERVAL '{_n} days'", f"en {_n} día{'s' if _n != 1 else ''}"
+
+    try:
+        pid = await db.pool.fetchval(
+            f"""
+            INSERT INTO clinic_pendings
+                (tenant_id, title, note, due_at, created_by, source, priority)
+            VALUES ($1, $2, $3, {due_sql}, 'dra', 'nova', $4)
+            RETURNING id
+            """,
+            tenant_id, titulo[:200], nota, prio,
+        )
+    except Exception as e:
+        logger.warning(f"_crear_pendiente error: {e}")
+        return "No pude cargar la tarea ahora. Probá de nuevo en un momento."
+
+    _pico = {"urgente": "🔴", "media": "🟡", "tranqui": "⚪"}.get(prio, "")
+    _cola = f" (vence {vence_txt})" if vence_txt else ""
+    logger.info(f"📌 Nova creó pendiente #{pid} (prio={prio}) tenant={tenant_id}")
+    return f"📌 Listo, cargué en Pendientes{_cola}:\n{_pico} {titulo}"
 
 
 async def _ver_pendientes(args: Dict, tenant_id: int) -> str:
