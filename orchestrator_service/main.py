@@ -7875,6 +7875,61 @@ async def derivhumano(reason: str):
         except Exception:
             pass  # Socket notification is non-critical
 
+        # AUTO-PENDIENTE (módulo Pendientes): cada derivación crea una tarea URGENTE que vence en
+        # 24h, linkeada al chat, para que el equipo la siga — cierra el hueco "la IA promete 'lo
+        # pasé al equipo' y el chat se olvida". Dedup: no duplica si ya hay una abierta de esta
+        # conversación en 24h. Best-effort. + aviso Telegram inmediato (sin IA, dedup por 'INSERT 0 1').
+        try:
+            _ins_status = await db.pool.execute(
+                """
+                INSERT INTO clinic_pendings
+                    (tenant_id, title, note, due_at, patient_id, conversation_id, created_by, source, priority)
+                SELECT $1, $2, $3, NOW() + INTERVAL '24 hours',
+                       (SELECT id FROM patients WHERE tenant_id = $1 AND phone_number = $4 LIMIT 1),
+                       (SELECT id FROM chat_conversations WHERE tenant_id = $1 AND external_user_id = $4 ORDER BY updated_at DESC LIMIT 1),
+                       'bot', 'derivhumano', 'urgente'
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM clinic_pendings
+                    WHERE tenant_id = $1 AND source = 'derivhumano' AND status = 'abierto'
+                      AND conversation_id = (SELECT id FROM chat_conversations WHERE tenant_id = $1 AND external_user_id = $4 ORDER BY updated_at DESC LIMIT 1)
+                      AND created_at > NOW() - INTERVAL '24 hours'
+                )
+                """,
+                tenant_id,
+                f"Seguir derivación: {(reason or '')[:150]}",
+                f"El bot derivó esta conversación al equipo. Motivo: {reason}",
+                phone,
+            )
+            _deriv_new = bool(_ins_status) and _ins_status.strip().endswith(" 1")
+            logger.info(f"📌 Auto-pendiente de derivación {'creado' if _deriv_new else 'deduplicado'} para {phone}")
+            if _deriv_new:
+                try:
+                    _dn = await db.pool.fetchrow(
+                        "SELECT first_name, last_name FROM patients "
+                        "WHERE tenant_id = $1 AND phone_number = $2 ORDER BY id LIMIT 1",
+                        tenant_id, phone,
+                    )
+                    _nom = (" ".join(filter(None, [_dn["first_name"], _dn["last_name"]])).strip() if _dn else "") or phone
+                    from services.telegram_notifier import send_proactive_message as _spm
+                    import asyncio as _aio_tg
+
+                    # Timeout 8s: si Telegram cuelga, la derivación no se traba (non-fatal).
+                    await _aio_tg.wait_for(
+                        _spm(
+                            tenant_id,
+                            f"🔔 <b>Derivación nueva</b> — {_nom}\n"
+                            f"📱 {phone}\n"
+                            f"📝 {(reason or '').strip()[:280]}\n\n"
+                            f"<i>Ya está en Pendientes (vence en 24h). Seguilo desde ahí.</i>",
+                        ),
+                        timeout=8,
+                    )
+                    logger.info(f"🔔 Aviso Telegram de derivación enviado para {phone}")
+                except Exception as _tg_err:
+                    logger.warning(f"aviso Telegram de derivación no enviado (non-fatal): {_tg_err}")
+        except Exception as _pend_err:
+            logger.warning(f"auto-pendiente de derivación no creado (non-fatal): {_pend_err}")
+
         # 1. Full patient data + PSIDs for social links
         patient = await db.pool.fetchrow(
             """
@@ -14763,6 +14818,14 @@ try:
     logger.info("✅ Backup & Restore router registered")
 except Exception as e:
     logger.error(f"backup_router_registration_failed: {e}")
+
+try:
+    from routes.pending_routes import router as pending_router
+
+    app.include_router(pending_router, prefix="/admin", tags=["Pendientes"])
+    logger.info("✅ Pendientes router registered")
+except Exception as e:
+    logger.error(f"pending_router_registration_failed: {e}")
 
 # Playbook Engine V2 routes
 try:

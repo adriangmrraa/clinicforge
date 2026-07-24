@@ -30,6 +30,7 @@ const AnamnesisPublicView = lazy(() => import('./views/AnamnesisPublicView'));
 const FinancialCommandCenterView = lazy(() => import('./views/FinancialCommandCenterView'));
 const ProfessionalLiquidationsView = lazy(() => import('./views/ProfessionalLiquidationsView'));
 const BlockedContactsView = lazy(() => import('./views/BlockedContactsView'));
+const PendientesView = lazy(() => import('./views/PendientesView'));
 
 const PageLoader = () => (
   <div className="flex items-center justify-center h-screen bg-[#06060e] text-white">
@@ -113,6 +114,7 @@ function App() {
                         <ROIDashboardView />
                       </ProtectedRoute>
                     } />
+                    <Route path="pendientes" element={<PendientesView />} />
                     <Route path="automation" element={
                       <ProtectedRoute allowedRoles={['ceo']}>
                         <AutomationView />

@@ -1277,6 +1277,23 @@ async def _process_canonical_messages(messages, tenant_id, provider, background_
                 except Exception as _pb_err:
                     logger.warning(f"⚠️ Playbook response handler (non-fatal): {_pb_err}")
 
+            # --- TAREA DE LA DRA. (marcador "Tarea:", SOLO números autorizados) ---
+            # Se resuelve ACÁ, en el punto más temprano, ANTES del silencio por override/bloqueo:
+            # un comando de la Dra. debe entrar SIEMPRE. Gateado por número autorizado dentro del
+            # helper, así un PACIENTE que escriba "tarea" NUNCA carga nada. Cada mensaje entra por
+            # separado → cada "Tarea:" es su propio pendiente.
+            try:
+                from services.buffer_task import _maybe_create_staff_task
+
+                if await _maybe_create_staff_task(
+                    pool, tenant_id, str(conv_id), msg.external_user_id,
+                    provider, msg.original_channel, [msg.content],
+                ):
+                    logger.info(f"📌 Tarea de la Dra. cargada desde webhook para {msg.external_user_id}")
+                    continue  # pendiente creado; no encolar ni correr agente
+            except Exception as _st_err:
+                logger.warning(f"staff-task (webhook) skipped (non-fatal): {_st_err}")
+
             if not is_locked:
                 # Auto-cleanup: if override expired but status is still human_handling, reset it
                 if override_row and override_row["human_override_until"] is not None:

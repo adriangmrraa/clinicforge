@@ -856,6 +856,121 @@ async def _send_blocked_autoreply(tenant_id, conversation_id, phone, provider, c
     )
 
 
+# Marcador de tarea de la Dra. (pedido Carlos 2026-07-23). Dos formas:
+#  - ESTRICTA (texto con dos puntos): "Tarea: ...", "Tarea urgente: ...", "Tarea para Paula: ..."
+#    → hasta 40 chars entre 'tarea' y los ':' para tolerar variantes; 'urgente' ahí sube prioridad.
+#  - LAXA (audio transcripto SIN dos puntos): "tarea mandar mensaje...", "tarea. mandar...".
+#    Cubre los AUDIOS de la Dra.: Whisper transcribe sin ":". Se le pide a Laura que arranque
+#    el audio/mensaje diciendo "tarea".
+_TASK_STRICT_RE = re.compile(r"^\s*tareas?\s*([^:：\n]{0,40})[:：]\s*(.+)", re.IGNORECASE | re.DOTALL)
+_TASK_LOOSE_RE = re.compile(r"^\s*tareas?\b[\s:：,.\-]+(.+)", re.IGNORECASE | re.DOTALL)
+
+
+def _parse_staff_task(text):
+    """Devuelve (urgente: bool, title: str, note: str|None), o None si no es una tarea.
+    Prueba primero la forma estricta (texto con ':') y si no, la laxa (audio sin ':')."""
+    m = _TASK_STRICT_RE.match(text or "")
+    if m:
+        urgente = "urgente" in (m.group(1) or "").lower()
+        body = (m.group(2) or "").strip()
+    else:
+        # Forma laxa (audio sin ':'): NO tomar PREGUNTAS como tarea ("tareas para hoy?") —
+        # un '?' delata una consulta, no un comando (auditoría 2026-07-24 #5).
+        m = _TASK_LOOSE_RE.match(text or "")
+        if not m or "?" in (text or ""):
+            return None
+        body = (m.group(1) or "").strip()  # la laxa tiene UN solo grupo
+        urgente = bool(re.match(r"(?i)urgente\b", body))
+        if urgente:
+            body = re.sub(r"(?i)^urgente\b[\s:：,.\-]*", "", body).strip()
+    if not body:
+        return None
+    first, _, rest = body.partition("\n")
+    title = (first.strip() or body.strip())[:200] or "Tarea"
+    note = rest.strip() or None
+    return urgente, title, note
+
+
+async def _maybe_create_staff_task(
+    pool, tenant_id, conversation_id, external_user_id, provider, channel, messages
+) -> bool:
+    """Tarea de la Dra. → Pendiente (determinista, sin LLM). Si el mensaje viene de un
+    número autorizado (tenants.config->'staff_task_phones' o bloqueo con label staff/⭐) y
+    arranca con el marcador 'Tarea:', lo carga a clinic_pendings. Devuelve True si lo manejó
+    (el caller corta y NO corre el agente). Fail-safe: cualquier error → False y sigue el flujo."""
+    text = "\n".join(x for x in messages if x) if isinstance(messages, list) else str(messages or "")
+    parsed = _parse_staff_task(text)
+    if not parsed:
+        return False
+
+    # --- allowlist de números autorizados (editable por tenant, sin tocar código) ---
+    import json as _json
+
+    def _digits(s):
+        return re.sub(r"\D", "", s or "")
+
+    sender = _digits(external_user_id)
+    authorized = False
+
+    # Fuente 1: lista explícita por config (tenants.config->'staff_task_phones').
+    try:
+        cfg_row = await pool.fetchrow(
+            "SELECT config->'staff_task_phones' AS phones FROM tenants WHERE id = $1", tenant_id
+        )
+        raw = cfg_row["phones"] if cfg_row else None
+        if raw is not None:
+            phones = raw if isinstance(raw, list) else _json.loads(raw)
+            allow = {_digits(p) for p in phones if p}
+            # match tolerante a prefijos 549/54/0/15: por los últimos 10 dígitos.
+            authorized = any(
+                sender == a or (len(a) >= 10 and len(sender) >= 10 and sender[-10:] == a[-10:])
+                for a in allow
+            )
+    except Exception:
+        pass
+
+    # Fuente 2 (pedido Carlos 2026-07-24 — UN SOLO LUGAR): número en la LISTA DE BLOQUEO con
+    # marcador de staff en el label ('⭐' o palabra entera 'staff'). Como la Dra. igual se bloquea
+    # para silenciarla, con el marcador queda habilitada; un paciente bloqueado por spam SIN el
+    # marcador NO queda autorizado.
+    if not authorized and len(sender) >= 10:
+        try:
+            _bl = await pool.fetchrow(
+                "SELECT label FROM blocked_phone_numbers WHERE tenant_id = $1 AND is_active = true "
+                "AND RIGHT(REGEXP_REPLACE(phone_digits, '[^0-9]', '', 'g'), 10) = $2 LIMIT 1",
+                tenant_id, sender[-10:],
+            )
+            _lbl = (_bl["label"] or "").lower() if _bl else ""
+            if _bl and ("⭐" in _lbl or re.search(r"\bstaff\b", _lbl)):
+                authorized = True
+        except Exception:
+            pass
+
+    if not authorized:
+        return False
+
+    # --- prioridad + título + nota (ya parseado arriba) ---
+    urgente, title, note = parsed
+    priority = "urgente" if urgente else "media"
+    due_interval = "2 hours" if urgente else "24 hours"
+
+    pend_id = await pool.fetchval(
+        f"""
+        INSERT INTO clinic_pendings
+            (tenant_id, title, note, due_at, created_by, source, priority)
+        VALUES ($1, $2, $3, NOW() + INTERVAL '{due_interval}', 'dra', 'whatsapp_dra', $4)
+        RETURNING id
+        """,
+        tenant_id, title, note, priority,
+    )
+    logger.info(
+        f"📌 Tarea de la Dra. → pendiente #{pend_id} (prio={priority}) tenant={tenant_id} de {external_user_id}"
+    )
+    # SIN confirmación por WhatsApp (decisión Carlos 2026-07-24): Meta cobra cada saliente.
+    # La tarea se crea en silencio; la Dra. la ve en el panel de Pendientes.
+    return True
+
+
 async def _notify_blocked_contact_email(tenant_id, phone, blocked, messages, pool):
     """Avisa por mail al derivation_email del tenant que un numero bloqueado escribio.
     No bloqueante: cualquier error solo se loguea."""
@@ -919,6 +1034,34 @@ async def _flag_agent_failure_and_alert(pool, tenant_id, conversation_id, phone,
         )
     except Exception as e:
         logger.warning(f"agent-failure: no pude marcar la conversacion: {e}")
+
+    # 2b) PENDIENTE URGENTE automático (pedido Carlos 2026-07-16: "Paula no entra al
+    # mail" — el email solo no alcanza; el canal de trabajo real es Pendientes).
+    # Vence en 2h, linkeado al chat, con dedupe (no duplica si ya hay uno abierto
+    # de esta conversación en las últimas 6h). Best-effort: nunca rompe el flujo.
+    try:
+        await pool.execute(
+            """
+            INSERT INTO clinic_pendings
+                (tenant_id, title, note, due_at, patient_id, conversation_id, created_by, source, priority)
+            SELECT $1, $2, $3, NOW() + INTERVAL '2 hours',
+                   (SELECT linked_patient_id FROM chat_conversations WHERE id = $4 AND tenant_id = $1),
+                   $4, 'sistema', 'bot_fallo', 'urgente'
+            WHERE NOT EXISTS (
+                SELECT 1 FROM clinic_pendings
+                WHERE tenant_id = $1 AND source = 'bot_fallo' AND status = 'abierto'
+                  AND conversation_id = $4
+                  AND created_at > NOW() - INTERVAL '6 hours'
+            )
+            """,
+            tenant_id,
+            f"⚠️ El bot no respondió: revisar chat ({phone})"[:200],
+            (reason or "")[:280],
+            conversation_id,
+        )
+        logger.info(f"📌 Pendiente urgente de bot-falló creado/deduplicado para {phone}")
+    except Exception as e:
+        logger.warning(f"agent-failure: pendiente urgente no creado (non-fatal): {e}")
 
     # 3) email a la clinica con rate-limit
     now = datetime.now(timezone.utc)
@@ -1184,6 +1327,18 @@ async def process_buffer_task(
 
     if not messages:
         return
+
+    # ========== TAREA DE LA DRA. → PENDIENTE (marcador "Tarea:", solo autorizados) ==========
+    # Es un COMANDO de la Dra., no una conversación de paciente → se procesa ANTES del override
+    # humano y de la lista de bloqueo (siempre debe entrar). Si viene de un número autorizado y
+    # arranca con "Tarea:" → carga a Pendientes SIN correr el agente. Fail-safe (sigue el flujo).
+    try:
+        if await _maybe_create_staff_task(
+            pool, tenant_id, conversation_id, external_user_id, provider, channel, messages
+        ):
+            return
+    except Exception as _st_err:
+        logger.warning(f"staff-task intake skipped (non-fatal): {_st_err}")
 
     # Spec 24: Human Override Check (Parity)
     # Check if human took control during buffer wait

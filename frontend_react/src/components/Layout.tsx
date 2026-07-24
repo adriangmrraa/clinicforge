@@ -29,6 +29,10 @@ export const Layout: React.FC<LayoutProps> = ({ children }: LayoutProps) => {
   const [guideTooltip, setGuideTooltip] = useState(false);
   const tooltipShownRef = useRef(false);
 
+  // Nova por VOZ oculto (no se usa; estorba en mobile y desktop) junto con su cartel y los
+  // tips que aparecen al entrar a cada pantalla. Pedido Carlos 2026-07-24. Reactivar: true.
+  const SHOW_NOVA_UI: boolean = false;
+
   // Tenant selector state (CEO multi-clinic)
   const [tenants, setTenants] = useState<{ id: number; clinic_name: string }[]>([]);
   const [activeTenantId, setActiveTenantId] = useState<string>(getCurrentTenantId() || '');
@@ -346,14 +350,14 @@ export const Layout: React.FC<LayoutProps> = ({ children }: LayoutProps) => {
         </div>
       </main>
 
-      {/* Page Tips — contextual animated tips per page */}
-      <PageTips />
+      {/* Page Tips — contextual animated tips per page (ocultos, ver SHOW_NOVA_UI) */}
+      {SHOW_NOVA_UI && <PageTips />}
 
-      {/* Nova AI Widget */}
-      <NovaWidget />
+      {/* Nova AI Widget (oculto — Nova por voz no se usa) */}
+      {SHOW_NOVA_UI && <NovaWidget />}
 
       {/* Nova tooltip — positioned near the floating button */}
-      {novaTooltip && (
+      {SHOW_NOVA_UI && novaTooltip && (
         <div
           className="fixed z-[9999] pointer-events-none"
           style={{ bottom: 'calc(max(1.5rem, env(safe-area-inset-bottom)) + 60px)', right: '1.5rem' }}
