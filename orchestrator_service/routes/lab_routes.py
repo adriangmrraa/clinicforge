@@ -253,12 +253,22 @@ async def list_lab_cases(
             l.name AS lab_name,
             (lc.status IN ('enviado', 'a_ajustar')
              AND lc.promised_at IS NOT NULL
-             AND lc.promised_at < CURRENT_DATE) AS is_overdue
+             AND lc.promised_at < CURRENT_DATE) AS is_overdue,
+            -- LLEGÓ Y NADIE AVISÓ (pedido Carlos 2026-07-24): el aviso lo manda la secretaria a
+            -- mano (nada automático, para no gastar fuera de la ventana de 24h), pero el tablero
+            -- lo marca para que no se pase por alto.
+            (lc.status = 'recibido' AND lc.patient_notified_at IS NULL) AS needs_notify,
+            -- Turno de COLOCACIÓN vinculado y vigente (lo vincula solo el bot al agendar).
+            apt.appointment_datetime AS placement_at
         FROM lab_cases lc
         JOIN patients p ON p.id = lc.patient_id AND p.tenant_id = lc.tenant_id
         LEFT JOIN professionals prof
             ON prof.id = lc.professional_id AND prof.tenant_id = lc.tenant_id
         LEFT JOIN labs l ON l.id = lc.lab_id AND l.tenant_id = lc.tenant_id
+        LEFT JOIN appointments apt
+            ON apt.id::text = lc.placement_appointment_id
+           AND apt.tenant_id = lc.tenant_id
+           AND apt.status != 'cancelled'
         WHERE {" AND ".join(conditions)}
         ORDER BY
             (lc.status = 'colocado' OR lc.status = 'cancelado') ASC,
@@ -435,7 +445,7 @@ async def _notify_preflight(case_id: int, tenant_id: int) -> dict:
     """
     row = await db.pool.fetchrow(
         """
-        SELECT lc.id, lc.work_type, lc.patient_notified_at,
+        SELECT lc.id, lc.work_type, lc.patient_notified_at, lc.status,
                p.first_name, p.last_name, p.phone_number, p.guardian_phone,
                NULLIF(t.config->>'lab_notify_template', '') AS template_name,
                COALESCE(NULLIF(t.config->>'lab_notify_template_lang', ''), 'es') AS template_lang
@@ -490,6 +500,7 @@ async def _notify_preflight(case_id: int, tenant_id: int) -> dict:
         "patient_name": f"{first_name} {(row['last_name'] or '').strip()}".strip(),
         "first_name": first_name,
         "work": work,
+        "status": row["status"],
         "phone": phone,
         "message": message,
         "in_window": in_window,
@@ -539,6 +550,17 @@ async def notify_patient_case(
     - Fuera de ventana sin plantilla → 409, NO SE ENVÍA NADA.
     """
     pf = await _notify_preflight(case_id, tenant_id)
+    # CANDADO DE ESTADO (auditoría 2026-07-24): el mensaje dice "ya llegó tu {trabajo}",
+    # así que SOLO puede salir si el trabajo está efectivamente RECIBIDO. Sin esto, un clic
+    # sobre un trabajo 'enviado'/'a_ajustar' le avisaba al paciente que llegó cuando no llegó.
+    if pf.get("status") != "recibido":
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"El trabajo está en estado '{pf.get('status')}', no 'recibido'. "
+                "El aviso aparece cuando el trabajo llega del laboratorio — no se envió nada."
+            ),
+        )
     if pf["will_use"] == "blocked":
         raise HTTPException(
             status_code=409,

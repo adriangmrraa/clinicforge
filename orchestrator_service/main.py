@@ -6446,6 +6446,35 @@ async def book_appointment(
             f"✅ book_appointment OK phone={phone} tenant={tenant_id} apt_id={apt_id} patient_id={patient_id} prof={target_prof['first_name']} datetime={apt_datetime}"
         )
 
+        # 🦷 LABORATORIO — cerrar el circuito de la COLOCACIÓN (auditoría 2026-07-24):
+        # si este paciente tiene un trabajo YA RECIBIDO del laboratorio esperando colocarse y
+        # todavía no tiene turno de colocación vinculado, este turno ES esa colocación. Se
+        # vincula solo (antes quedaba suelto y el tablero mostraba "recibido" para siempre).
+        # Determinista y best-effort: si falla, el turno queda igual y se vincula a mano.
+        try:
+            _lab_linked = await db.pool.fetchval(
+                """
+                UPDATE lab_cases
+                SET placement_appointment_id = $1, updated_at = NOW()
+                WHERE id = (
+                    SELECT id FROM lab_cases
+                    WHERE tenant_id = $2 AND patient_id = $3
+                      AND status = 'recibido' AND placement_appointment_id IS NULL
+                    ORDER BY received_at ASC NULLS LAST, created_at ASC
+                    LIMIT 1
+                )
+                RETURNING id
+                """,
+                str(apt_id), tenant_id, patient_id,
+            )
+            if _lab_linked:
+                logger.info(
+                    f"🦷 LAB: turno {apt_id} vinculado como COLOCACIÓN del trabajo #{_lab_linked} "
+                    f"(paciente {patient_id}, tenant {tenant_id})"
+                )
+        except Exception as _lab_link_err:
+            logger.debug(f"lab placement link skipped (non-fatal): {_lab_link_err}")
+
         # "QUIERE ANTES": el bypass particular es POR RESERVA — se apaga al concretarse
         # para que el próximo turno vuelva a respetar el plazo de su obra social.
         try:
@@ -7504,9 +7533,17 @@ async def check_lab_work_status():
         rows = await db.pool.fetch(
             """
             SELECT lc.work_type, lc.status, lc.promised_at, lc.received_at, lc.placed_at,
-                   lc.rework_count, p.first_name AS patient_first_name
+                   lc.rework_count, p.first_name AS patient_first_name,
+                   -- Turno de COLOCACIÓN ya agendado (si existe y sigue vigente): sirve para
+                   -- recordárselo en vez de re-ofrecerle turno a quien ya lo tiene.
+                   a.appointment_datetime AS placement_at
             FROM lab_cases lc
             JOIN patients p ON p.id = lc.patient_id AND p.tenant_id = lc.tenant_id
+            LEFT JOIN appointments a
+                   ON a.id::text = lc.placement_appointment_id
+                  AND a.tenant_id = lc.tenant_id
+                  AND a.status != 'cancelled'
+                  AND a.appointment_datetime > NOW()
             WHERE lc.tenant_id = $1 AND lc.patient_id = ANY($2::int[])
               AND lc.status != 'cancelado'
             ORDER BY COALESCE(lc.updated_at, lc.created_at) DESC
@@ -7537,10 +7574,21 @@ async def check_lab_work_status():
                        else " Sin fecha estimada cargada: decile que la clínica lo está siguiendo y le avisamos apenas llegue. NO inventes fechas.")
                 )
             elif st == "recibido":
-                lines.append(
-                    f"• {wt}: ¡YA LLEGÓ a la clínica{(' el ' + _fmt(r['received_at'])) if r['received_at'] else ''}! "
-                    "Confirmáselo con entusiasmo y ofrecé coordinar el turno de COLOCACIÓN (usá check_availability)."
-                )
+                _pl = r["placement_at"]
+                if _pl:
+                    # Ya tiene turno de colocación agendado → NO re-ofrecer turnos (caso Gisela):
+                    # se lo recordamos con la fecha real.
+                    lines.append(
+                        f"• {wt}: ¡YA LLEGÓ a la clínica{(' el ' + _fmt(r['received_at'])) if r['received_at'] else ''}! "
+                        f"Y su turno de COLOCACIÓN YA ESTÁ AGENDADO para el {_pl.strftime('%d/%m a las %H:%M')} hs. "
+                        "Confirmáselo con entusiasmo y RECORDALE esa fecha. ⛔ NO le ofrezcas turnos nuevos "
+                        "ni llames check_availability: ya lo tiene."
+                    )
+                else:
+                    lines.append(
+                        f"• {wt}: ¡YA LLEGÓ a la clínica{(' el ' + _fmt(r['received_at'])) if r['received_at'] else ''}! "
+                        "Confirmáselo con entusiasmo y ofrecé coordinar el turno de COLOCACIÓN (usá check_availability)."
+                    )
             elif st == "a_ajustar":
                 lines.append(f"• {wt}: está EN AJUSTE con el laboratorio (retoque). Decile que está en ajuste para que quede perfecto y le avisamos apenas vuelva.")
             elif st == "colocado":

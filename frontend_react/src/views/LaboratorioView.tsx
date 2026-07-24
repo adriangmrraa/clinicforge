@@ -49,6 +49,10 @@ interface LabCaseRow {
     origin_appointment_id: string | null;
     patient_notified_at?: string | null;
     lab_chased_at?: string | null;
+    /** Turno de colocación vinculado y vigente (lo vincula solo el bot al agendar). */
+    placement_at?: string | null;
+    /** Llegó del lab y todavía nadie le avisó al paciente. */
+    needs_notify?: boolean;
 }
 
 interface ProfessionalOpt {
@@ -456,6 +460,12 @@ export default function LaboratorioView() {
                                             {c.rework_count > 0 && (
                                                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-500/15 text-orange-400 font-medium">
                                                     🔁 {c.rework_count}
+                                                </span>
+                                            )}
+                                            {/* Colocación ya agendada (la vincula sola el bot al dar el turno) */}
+                                            {c.placement_at && (
+                                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-300 font-medium">
+                                                    📅 {t('lab.placement_on')} {fmtDate(c.placement_at)}
                                                 </span>
                                             )}
                                         </div>
