@@ -2015,11 +2015,18 @@ class LiquidationService:
         ignored_by: str,
     ):
         """Marks a reconciliation discrepancy as ignored. Idempotent."""
-        await pool.execute("""
+        # Los 3 placeholders no recibían argumentos → asyncpg tiraba error y "Ignorar
+        # discrepancia" daba 500 SIEMPRE (nunca funcionó).
+        await pool.execute(
+            """
             INSERT INTO reconciliation_ignored (tenant_id, appointment_id, ignored_by)
             VALUES ($1, $2, $3)
             ON CONFLICT (tenant_id, appointment_id) DO NOTHING
-        """)
+            """,
+            tenant_id,
+            appointment_id,
+            ignored_by,
+        )
 
     # ------------------------------------------------------------------
     # Helper: invalidate_liquidation_pdf

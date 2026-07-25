@@ -425,7 +425,10 @@ async def get_my_liquidation_detail(
             """
             SELECT *
             FROM professional_payouts
-            WHERE liquidation_id = $1 AND tenant_id = $2
+            -- La columna física es liquidation_record_id (ver models.py:2141). Con
+            -- 'liquidation_id' esta query tiraba UndefinedColumnError → el detalle de
+            -- liquidación del profesional daba 500 SIEMPRE (nunca funcionó).
+            WHERE liquidation_record_id = $1 AND tenant_id = $2
             ORDER BY payment_date DESC
             """,
             liquidation_id,

@@ -102,19 +102,25 @@ class AnalyticsService:
                 # "Returning Patient": A patient who has an appointment BEFORE start_date
                 returning_patients_count = await db.pool.fetchval(
                     """
-                    SELECT COUNT(DISTINCT patient_id)
+                    SELECT COUNT(DISTINCT a1.patient_id)
                     FROM appointments a1
-                    WHERE professional_id = $1
-                    AND appointment_datetime BETWEEN $2 AND $3
+                    WHERE a1.professional_id = $1
+                    AND a1.appointment_datetime BETWEEN $2 AND $3
+                    AND a1.tenant_id = $4
                     AND EXISTS (
                         SELECT 1 FROM appointments a2
                         WHERE a2.patient_id = a1.patient_id
                         AND a2.appointment_datetime < $2
+                        -- Sin estos 2 filtros, un paciente contaba como "que vuelve" por
+                        -- turnos de OTRA clínica u OTRO profesional (Soberanía §1).
+                        AND a2.tenant_id = $4
+                        AND a2.professional_id = $1
                     )
                 """,
                     prof_id,
                     start_date,
                     end_date,
+                    tenant_id,
                 )
 
                 retention_rate = (
@@ -284,18 +290,22 @@ class AnalyticsService:
             unique_patients = stats["unique_patients"] or 0
             returning_patients_count = await db.pool.fetchval(
                 """
-                SELECT COUNT(DISTINCT patient_id)
+                SELECT COUNT(DISTINCT a1.patient_id)
                 FROM appointments a1
-                WHERE professional_id = $1
-                AND appointment_datetime BETWEEN $2 AND $3
+                WHERE a1.professional_id = $1
+                AND a1.appointment_datetime BETWEEN $2 AND $3
+                AND a1.tenant_id = $4
                 AND EXISTS (
                     SELECT 1 FROM appointments a2
                     WHERE a2.patient_id = a1.patient_id AND a2.appointment_datetime < $2
+                    -- Sin estos 2 filtros contaba turnos de OTRA clínica/profesional (Soberanía §1).
+                    AND a2.tenant_id = $4 AND a2.professional_id = $1
                 )
                 """,
                 prof_id,
                 start_date,
                 end_date,
+                tenant_id,
             )
             retention_rate = (
                 (returning_patients_count / unique_patients) * 100
