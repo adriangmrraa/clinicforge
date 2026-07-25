@@ -138,7 +138,7 @@ async def _remind_tenant_lab(tenant_id: int):
 
     from services.telegram_notifier import send_proactive_message
 
-    sent = await send_proactive_message(tenant_id, "\n".join(lines), is_digest=True)
+    sent = await send_proactive_message(tenant_id, "\n".join(lines))
     if sent:
         logger.info(
             f"lab reminder tenant {tenant_id}: {len(vencidos)} vencidos, "

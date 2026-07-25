@@ -483,40 +483,12 @@ async def send_proactive_document(
         logger.warning(f"send_proactive_document error: {e}")
 
 
-def digests_enabled() -> bool:
-    """¿Están habilitados los DIGESTS automáticos por Telegram (resúmenes de jobs)?
-
-    Pedido Carlos 2026-07-25: en PRUEBAS no tienen que llegar (son ruido: el entorno
-    de test dispara los mismos avisos que producción), en PRODUCCIÓN sí.
-    Se apaga poniendo la variable de entorno TELEGRAM_DIGESTS=off en el entorno de
-    pruebas. Default ENCENDIDO para no cambiar producción sin querer.
-
-    NO afecta los avisos de EVENTO (derivaciones, turnos nuevos, pagos): esos siguen
-    saliendo siempre, porque son la razón de ser del bot.
-    """
-    import os
-
-    return os.getenv("TELEGRAM_DIGESTS", "on").strip().lower() not in (
-        "off", "false", "0", "no",
-    )
-
-
-async def send_proactive_message(
-    tenant_id: int, html_text: str, is_digest: bool = False
-) -> bool:
+async def send_proactive_message(tenant_id: int, html_text: str) -> bool:
     """Send a proactive message to all authorized Telegram users of a tenant.
     Devuelve True si se entregó a AL MENOS un destinatario; False si no hay bot,
     no hay destinatarios activos, o falló el envío (auditoría 2026-07-24 #2: quien
-    dependa de la entrega —ej. el aviso de pendientes vencidos— debe poder distinguir).
-
-    is_digest=True marca los resúmenes automáticos de jobs, que se pueden apagar por
-    entorno con TELEGRAM_DIGESTS=off (ver digests_enabled)."""
+    dependa de la entrega —ej. el aviso de pendientes vencidos— debe poder distinguir)."""
     try:
-        if is_digest and not digests_enabled():
-            logger.info(
-                f"digest de Telegram omitido (TELEGRAM_DIGESTS=off) para tenant {tenant_id}"
-            )
-            return False
         from services.telegram_bot import _bots
 
         app = _bots.get(tenant_id)

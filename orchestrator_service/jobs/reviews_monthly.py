@@ -87,7 +87,7 @@ async def send_reviews_month_closing():
                 f"¡Gracias por el laburo, equipo de {cn}! Arrancamos el mes nuevo 💪"
             )
             try:
-                await send_proactive_message(tid, msg, is_digest=True)
+                await send_proactive_message(tid, msg)
             except Exception as e:
                 logger.warning(f"reviews closing notify failed tenant={tid}: {e}")
     except Exception as e:
