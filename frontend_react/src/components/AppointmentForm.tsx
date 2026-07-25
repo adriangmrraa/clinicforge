@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { X, Calendar, User, Clock, FileText, DollarSign, Activity, AlertTriangle, Trash2, Check, ExternalLink, Info, Search, Send, FlaskConical } from 'lucide-react';
+import { X, Calendar, User, Clock, FileText, DollarSign, Activity, AlertTriangle, Trash2, Check, ExternalLink, Info, Search, Send } from 'lucide-react';
 import type { Appointment, Patient, Professional } from '../views/AgendaView';
 import api from '../api/axios';
 import { useTranslation } from '../context/LanguageContext';
@@ -829,20 +829,6 @@ export default function AppointmentForm({
                                     onChange={(e) => handleChange('notes', e.target.value)}
                                 />
                             </div>
-                            {/* L2 Laboratorio: crear trabajo pre-cargado desde el turno */}
-                            {isEditing && formData.patient_id && (
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        onClose();
-                                        window.location.href = `/laboratorio?new=1&patient_id=${formData.patient_id}&professional_id=${formData.professional_id || ''}&appointment_id=${initialData?.id || ''}`;
-                                    }}
-                                    className="w-full px-4 py-2.5 text-sm font-semibold text-violet-300 bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/20 hover:border-violet-500/30 rounded-xl transition-all flex items-center justify-center gap-2"
-                                >
-                                    <FlaskConical size={15} />
-                                    {t('lab.send_to_lab')}
-                                </button>
-                            )}
                         </div>
                     )}
 

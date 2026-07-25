@@ -31,7 +31,6 @@ const FinancialCommandCenterView = lazy(() => import('./views/FinancialCommandCe
 const ProfessionalLiquidationsView = lazy(() => import('./views/ProfessionalLiquidationsView'));
 const BlockedContactsView = lazy(() => import('./views/BlockedContactsView'));
 const PendientesView = lazy(() => import('./views/PendientesView'));
-const LaboratorioView = lazy(() => import('./views/LaboratorioView'));
 
 const PageLoader = () => (
   <div className="flex items-center justify-center h-screen bg-[#06060e] text-white">
@@ -116,7 +115,6 @@ function App() {
                       </ProtectedRoute>
                     } />
                     <Route path="pendientes" element={<PendientesView />} />
-                    <Route path="laboratorio" element={<LaboratorioView />} />
                     <Route path="automation" element={
                       <ProtectedRoute allowedRoles={['ceo']}>
                         <AutomationView />
