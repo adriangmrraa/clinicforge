@@ -246,7 +246,7 @@ async def _send_tenant_summary(tenant_id: int):
     lines.append("<i>¿Necesitás que confirme los turnos o te prepare algo?</i>")
 
     html_text = "\n".join(lines)
-    await send_proactive_message(tenant_id, html_text)
+    await send_proactive_message(tenant_id, html_text, is_digest=True)
     logger.info(f"Morning summary sent to tenant {tenant_id} ({total} turnos, {pay_count} cobros pendientes)")
 
 

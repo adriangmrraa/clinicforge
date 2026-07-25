@@ -153,7 +153,7 @@ async def _insight_campaign_roi(tenant_id: int):
             "<b>Tratamientos → Respuesta del Agente IA</b>, o modificar la audiencia "
             "directamente en Meta Ads Manager."
         )
-        await send_proactive_message(tenant_id, "\n".join(lines))
+        await send_proactive_message(tenant_id, "\n".join(lines), is_digest=True)
         await _mark_sent(tenant_id, key, ttl=86400)
 
 
@@ -242,7 +242,7 @@ async def _insight_lead_conversion_funnel(tenant_id: int):
             "para mejorar la retención."
         )
 
-    await send_proactive_message(tenant_id, "\n".join(lines))
+    await send_proactive_message(tenant_id, "\n".join(lines), is_digest=True)
     await _mark_sent(tenant_id, key, ttl=604800)  # 7 days
 
 
@@ -306,7 +306,7 @@ async def _insight_high_value_leads_stalled(tenant_id: int):
         "pero el bot genérico no les da ese empujón."
     )
 
-    await send_proactive_message(tenant_id, "\n".join(lines))
+    await send_proactive_message(tenant_id, "\n".join(lines), is_digest=True)
     await _mark_sent(tenant_id, key, ttl=86400)
 
 
@@ -363,7 +363,7 @@ async def _insight_top_performing_campaign(tenant_id: int):
         "si funciona, escalá sin tocar."
     ]
 
-    await send_proactive_message(tenant_id, "\n".join(lines))
+    await send_proactive_message(tenant_id, "\n".join(lines), is_digest=True)
     await _mark_sent(tenant_id, key, ttl=604800)
 
 
@@ -425,7 +425,7 @@ async def _insight_attribution_channel_shift(tenant_id: int):
             "y contenido en redes."
         )
 
-    await send_proactive_message(tenant_id, "\n".join(lines))
+    await send_proactive_message(tenant_id, "\n".join(lines), is_digest=True)
     await _mark_sent(tenant_id, key, ttl=604800)
 
 
@@ -475,7 +475,7 @@ async def _insight_reactivation_opportunity(tenant_id: int):
         f"<b>{int(count * 0.17)}</b> turnos recuperados."
     ]
 
-    await send_proactive_message(tenant_id, "\n".join(lines))
+    await send_proactive_message(tenant_id, "\n".join(lines), is_digest=True)
     await _mark_sent(tenant_id, key, ttl=604800)
 
 
@@ -523,7 +523,7 @@ async def _insight_no_show_pattern(tenant_id: int):
         "Con ambos activos, la tasa de no-show baja típicamente al 5-8%."
     ]
 
-    await send_proactive_message(tenant_id, "\n".join(lines))
+    await send_proactive_message(tenant_id, "\n".join(lines), is_digest=True)
     await _mark_sent(tenant_id, key, ttl=604800)
 
 

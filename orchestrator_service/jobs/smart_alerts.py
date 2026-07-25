@@ -161,6 +161,7 @@ async def _check_unconfirmed_tomorrow(tenant_id: int):
             f"{tomorrow.strftime('%d/%m')} — <b>requieren revisión</b>.\n\n"
             f"<i>Conviene confirmarlos con el paciente, o liberar el lugar si no va a venir "
             f"para dárselo a otro. ¿Querés que te los confirme?</i>",
+            is_digest=True,
         )
         await _mark_alert_sent(tenant_id, alert_key, ttl=86400)
         logger.info(f"Alert unconfirmed_tomorrow sent: tenant={tenant_id}, count={count}")
@@ -202,7 +203,7 @@ async def _check_no_shows_today(tenant_id: int):
         if len(no_shows) > 5:
             lines.append(f"▸ … y {len(no_shows) - 5} más")
         lines.extend(["", "<i>¿Los contacto para reagendar?</i>"])
-        await send_proactive_message(tenant_id, "\n".join(lines))
+        await send_proactive_message(tenant_id, "\n".join(lines), is_digest=True)
         await _mark_alert_sent(tenant_id, alert_key, ttl=86400)
         logger.info(f"Alert no_shows sent: tenant={tenant_id}, count={len(no_shows)}")
 
@@ -244,6 +245,7 @@ async def _check_recurring_no_show_patients(tenant_id: int):
             f"🔴 <b>Paciente con inasistencias reiteradas</b>\n\n"
             f"▸ <b>{name}</b> tuvo <b>{count} inasistencias</b> en los últimos 60 días\n\n"
             f"<i>¿Lo contactamos para ver qué pasó?</i>",
+            is_digest=True,
         )
         # No TTL — once alerted for this pattern, don't repeat until next cycle
         # (TTL 30 days allows re-alert if pattern continues a month later)
@@ -291,6 +293,7 @@ async def _check_imminent_unconfirmed(tenant_id: int):
             f"⚠️ <b>Turno próximo sin confirmar</b>\n\n"
             f"▸ <b>{name}</b> — {apt_time} (en menos de 1 hora)\n\n"
             f"<i>¿Lo confirmo o le envío un recordatorio?</i>",
+            is_digest=True,
         )
         # TTL 2h — longer than the 1h window to avoid duplication
         await _mark_alert_sent(tenant_id, alert_key, ttl=7200)
@@ -354,7 +357,7 @@ async def _check_overdue_payments(tenant_id: int):
         lines.append(f"▸ … y {len(debt_lines) - 8} más")
     lines.extend(["", "<i>¿Les mando recordatorio de pago?</i>"])
 
-    await send_proactive_message(tenant_id, "\n".join(lines))
+    await send_proactive_message(tenant_id, "\n".join(lines), is_digest=True)
     await _mark_alert_sent(tenant_id, alert_key, ttl=7 * 86400)
     logger.info(f"Alert overdue_weekly sent: tenant={tenant_id}, debts={len(debt_lines)}")
 

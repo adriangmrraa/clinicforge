@@ -122,7 +122,7 @@ async def _remind_tenant_overdue(tenant_id: int):
 
     from services.telegram_notifier import send_proactive_message
 
-    sent = await send_proactive_message(tenant_id, "\n".join(lines))
+    sent = await send_proactive_message(tenant_id, "\n".join(lines), is_digest=True)
 
     # SOLO estampar reminder_sent_at si el aviso REALMENTE se entregó (auditoría 2026-07-24 #2:
     # si no hay destinatarios activos o falla Telegram, no marcar como avisado — se reintenta al

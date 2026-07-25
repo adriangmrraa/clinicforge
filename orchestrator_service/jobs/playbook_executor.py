@@ -1054,7 +1054,7 @@ async def _action_notify_team(tenant_id, step, variables) -> bool:
 
         if channel in ("telegram", "both"):
             from services.telegram_notifier import send_proactive_message
-            await send_proactive_message(tenant_id, message)
+            await send_proactive_message(tenant_id, message, is_digest=True)
 
         if channel in ("dashboard", "both"):
             try:
@@ -1700,7 +1700,7 @@ async def _notify_telegram_action(
             f"✅ Ejecutado correctamente"
         )
 
-        await send_proactive_message(tenant_id, message)
+        await send_proactive_message(tenant_id, message, is_digest=True)
     except Exception as e:
         logger.warning(f"📢 _notify_telegram_action error: {e}")
 

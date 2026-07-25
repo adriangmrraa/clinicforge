@@ -139,6 +139,7 @@ async def send_tenant_report_now(tenant_id: int, tenant_tz=None):
         await send_proactive_message(
             tenant_id,
             f"🗓️ <b>Agenda de mañana ({data['fecha_titulo']})</b>\n\nNo hay turnos agendados 🎉",
+            is_digest=True,
         )
         logger.info(f"Agenda report tenant {tenant_id}: sin turnos mañana")
         return
@@ -161,7 +162,7 @@ async def send_tenant_report_now(tenant_id: int, tenant_tz=None):
 
     from services.telegram_notifier import send_proactive_document, send_proactive_message
 
-    await send_proactive_message(tenant_id, "\n".join(lines))
+    await send_proactive_message(tenant_id, "\n".join(lines), is_digest=True)
 
     # --- PDF adjunto (vista diaria, mismo generador del botón Imprimir) ---
     try:
