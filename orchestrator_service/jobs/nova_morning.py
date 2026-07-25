@@ -180,7 +180,13 @@ async def _send_tenant_summary(tenant_id: int):
         overdue_plans = await db.fetchval(
             """SELECT COUNT(*) FROM treatment_plans
                WHERE tenant_id = $1 AND status IN ('approved', 'in_progress')
-               AND updated_at < NOW() - INTERVAL '30 days'""",
+               AND updated_at < NOW() - INTERVAL '30 days'
+               -- Excluir los COSEGUROS cargados como presupuesto (ritual de la clínica:
+               -- "COSEG OSDE", "coseguro sosunc", "COSEG CIRUGIA"). No son presupuestos
+               -- pendientes de nada: son cobros ya hechos, e inflaban el número (41-56)
+               -- hasta volverlo inútil. Pedido Carlos 2026-07-25. Se puede quitar cuando
+               -- el coseguro tenga su propio lugar en el sistema (Lote 2 del motor de dinero).
+               AND COALESCE(name, '') !~* '(coseg|co-seg)'""",
             tenant_id,
         ) or 0
     except Exception:
