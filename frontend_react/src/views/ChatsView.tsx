@@ -2137,8 +2137,8 @@ export default function ChatsView() {
                     >
                       <Paperclip size={20} />
                     </button>
-                    <input
-                      type="text"
+                    <textarea
+                      rows={1}
                       value={newMessage}
                       onChange={(e) => setNewMessage(e.target.value)}
                       placeholder={
@@ -2154,7 +2154,7 @@ export default function ChatsView() {
                           else handleSendMessage(e as any);
                         }
                       }}
-                      className={`flex-1 px-4 py-2 border border-white/[0.08] rounded-lg focus:outline-none focus:ring-2 bg-white/[0.04] text-white placeholder-white/20
+                      className={`flex-1 px-4 py-2 resize-none max-h-32 leading-snug border border-white/[0.08] rounded-lg focus:outline-none focus:ring-2 bg-white/[0.04] text-white placeholder-white/20
                         ${selectedSession && selectedSession.is_window_open === false ? 'bg-white/[0.02] cursor-not-allowed opacity-75' : ''}
                         ${selectedSession ? 'focus:ring-green-500' : selectedChatwoot?.channel === 'instagram' ? 'focus:ring-pink-500' : selectedChatwoot?.channel === 'facebook' ? 'focus:ring-blue-500' : 'focus:ring-medical-500'}
                       `}
