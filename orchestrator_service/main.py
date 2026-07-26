@@ -6981,19 +6981,55 @@ async def book_appointment(
                     f"[conversation_state] set_state in book_appointment failed (non-blocking): {state_err}"
                 )
 
-            # Auto-link third party to conversation for future context
-            if phone and is_third_party:
+            # Vincular al tercero/menor a la conversación para tenerlo en el contexto futuro.
+            #
+            # ⚠️ FIX 2026-07-26 (auditoría de familiares, bug CRÍTICO): antes esto hacía
+            # `SET linked_patient_id = (el tercero)`, o sea que agendarle un turno a la HIJA
+            # convertía el chat en "el chat de la hija". Como el TEXTO del prompt se resuelve por
+            # teléfono (seguía viendo a la madre) pero las HERRAMIENTAS se resuelven por la
+            # identidad de la conversación (pasaban a operar sobre la hija), el bot "decía madre
+            # y hacía hija": listaba/cancelaba el turno de la nena creyendo que era el de la madre.
+            #
+            # Conducta correcta (la que el sistema YA usa en create_patient main.py:4677 y en
+            # admin_routes.py:7398): el dueño del teléfono sigue siendo el dueño del chat. El
+            # tercero se AGREGA a family_patient_ids; linked_patient_id solo se setea si estaba vacío.
+            #
+            # Además se usa `patient_id` (el paciente recién agendado) en vez de re-buscarlo por
+            # teléfono: la búsqueda por teléfono exacto fallaba cuando el paciente había sido
+            # encontrado por DNI con el teléfono guardado en otro formato, y escribía NULL —
+            # dejando la conversación sin ningún paciente vinculado.
+            if is_third_party and patient_id:
                 try:
                     conv = await db.pool.fetchrow(
-                        "SELECT id FROM chat_conversations WHERE tenant_id = $1 AND external_user_id = $2",
+                        "SELECT id, linked_patient_id FROM chat_conversations "
+                        "WHERE tenant_id = $1 AND external_user_id = $2",
                         tenant_id, chat_phone
                     )
                     if conv:
-                        await db.pool.execute(
-                            "UPDATE chat_conversations SET linked_patient_id = (SELECT id FROM patients WHERE tenant_id = $1 AND phone_number = $2) WHERE id = $3",
-                            tenant_id, phone, conv['id']
-                        )
-                        logger.info(f"🔗 Auto-linked third party {phone} to conversation {conv['id']}")
+                        _titular = conv["linked_patient_id"]
+                        if _titular and _titular != patient_id:
+                            # El chat YA tiene titular y el turno es de otra persona → familiar.
+                            await db.pool.execute(
+                                """
+                                UPDATE chat_conversations
+                                SET family_patient_ids = array_append(
+                                        COALESCE(family_patient_ids, '{}'::integer[]), $1)
+                                WHERE id = $2
+                                  AND NOT ($1 = ANY(COALESCE(family_patient_ids, '{}'::integer[])))
+                                """,
+                                patient_id, conv["id"],
+                            )
+                            logger.info(
+                                f"👨‍👩‍👧 Familiar {patient_id} agregado al chat {conv['id']} "
+                                f"(titular {_titular} intacto)"
+                            )
+                        elif not _titular:
+                            # Chat sin titular todavía → este pasa a serlo (comportamiento normal).
+                            await db.pool.execute(
+                                "UPDATE chat_conversations SET linked_patient_id = $1 WHERE id = $2",
+                                patient_id, conv["id"],
+                            )
+                            logger.info(f"🔗 Chat {conv['id']} vinculado a paciente {patient_id}")
                 except Exception as link_err:
                     logger.warning(f"Auto-link failed (non-blocking): {link_err}")
 

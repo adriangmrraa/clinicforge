@@ -2909,6 +2909,64 @@ async def process_buffer_task(
         except Exception as _hs_err:
             logger.debug(f"horario-atencion injection skipped (non-fatal): {_hs_err}")
 
+        # 👨‍👩‍👧 CANCELAR / REPROGRAMAR EL TURNO DE UN FAMILIAR (auditoría 2026-07-26, hueco #2).
+        # cancel_appointment (main.py:7642) y reschedule_appointment (main.py:7789) NO aceptan
+        # nombre de paciente: buscan el turno del TITULAR del chat. Cuando la mamá pide cancelar
+        # el turno de la hija, los 3 desenlaces posibles están MAL: cancela el de la mamá, o
+        # (si el chat quedó pisado) cancela el de la hija creyendo que es el de la mamá, o
+        # responde "no encontré ningún turno". El prompt ya lo admite en texto ("operan sobre el
+        # paciente TITULAR"), pero el modelo chico lo dropea → hace falta el candado.
+        #
+        # Conducta: si hay VARIOS pacientes en el chat y el pedido apunta a otro, NO ejecutar la
+        # herramienta y derivar al equipo. Que lo haga la secretaria es infinitamente mejor que
+        # cancelarle el turno a la persona equivocada. Solo dispara si hay familiares en el
+        # contexto: un chat de una sola persona sigue funcionando exactamente igual que hoy.
+        try:
+            _fam_ctx = bool(patient_context) and (
+                "HIJOS/MENORES VINCULADOS" in patient_context
+                or "Familiares a cargo" in patient_context
+            )
+            if _fam_ctx:
+                _cf_last = str(messages[-1] if messages else "").lower()
+                _cf_quiere = bool(re.search(
+                    r"cancel|anul|dar de baja|reprogram|cambiar (?:el |mi |la )?(?:turno|cita|hora|fecha)|"
+                    r"mover (?:el |mi )?turno|pasar (?:el |mi )?turno",
+                    _cf_last,
+                ))
+                # ¿El pedido apunta a OTRA persona? (parentesco explícito o "de <Nombre>")
+                _cf_otro = bool(re.search(
+                    r"\b(?:de |del |para |a )?(?:mi |la |el )?"
+                    r"(hij[oa]|nen[ae]|nietit?[oa]|niet[oa]|beb[eé]|peque|chiquit[oa]|"
+                    r"señora|esposa|esposo|marido|mujer|mam[aá]|pap[aá]|madre|padre|"
+                    r"hermán?[oa]|herman[oa]|t[ií][oa]|abuel[oa]|sobrin[oa]|prim[oa]|suegr[oa])\b",
+                    _cf_last,
+                ))
+                if _cf_quiere and _cf_otro:
+                    _cf_note = (
+                        "⛔ PEDIDO DE CANCELAR/REPROGRAMAR EL TURNO DE UN FAMILIAR. Las herramientas "
+                        "cancel_appointment y reschedule_appointment SOLO saben operar sobre el turno "
+                        "del titular del chat: si las usás acá, le vas a cancelar/mover el turno a la "
+                        "persona EQUIVOCADA. PROHIBIDO llamarlas en este turno. En su lugar: llamá "
+                        "derivhumano con motivo 'Cancelar/reprogramar turno de un familiar — la "
+                        "herramienta no distingue de quién es' y decile con calidez que ya lo pasaste "
+                        "al equipo para que lo resuelvan enseguida. NO prometas que quedó cancelado."
+                    )
+                    patient_context = (patient_context + "\n" + _cf_note) if patient_context else _cf_note
+                    logger.info(f"👨‍👩‍👧 CANDADO familiar-cancelar: derivación forzada para {external_user_id}")
+                elif _cf_quiere:
+                    # Pide cancelar/reprogramar pero NO aclara de quién, y hay varias personas.
+                    _cf_note = (
+                        "❓ EN ESTE CHAT HAY VARIOS PACIENTES y el pedido de cancelar/reprogramar no "
+                        "aclara de QUIÉN es el turno. ANTES de tocar nada, preguntá UNA vez de quién "
+                        "se trata, nombrando las opciones concretas que ves en el contexto (ej: '¿el "
+                        "tuyo del martes o el de Sofía del jueves?'). PROHIBIDO llamar a "
+                        "cancel_appointment o reschedule_appointment hasta que te lo confirme."
+                    )
+                    patient_context = (patient_context + "\n" + _cf_note) if patient_context else _cf_note
+                    logger.info(f"👨‍👩‍👧 CANDADO familiar-cancelar: pregunta de desambiguación para {external_user_id}")
+        except Exception as _cf_err:
+            logger.debug(f"candado familiar-cancelar skipped (non-fatal): {_cf_err}")
+
         # 🚨 URGENCIA — SE LE SALIÓ/CAYÓ UNA RESTAURACIÓN (caso Adriana/prod 2026-07-23):
         # "se me salió el arreglo/carilla/empaste de los dientes de frente" es urgencia (funcional
         # + estética), pero el bot lo trató de rutina y ofreció turnos lejanos sin derivar. triage_
